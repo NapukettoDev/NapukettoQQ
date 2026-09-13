@@ -313,10 +313,16 @@ importers:
       '@napuketto/network':
         specifier: workspace:*
         version: link:../network
+      ws:
+        specifier: ^8.21.1
+        version: 8.21.3
       zod:
         specifier: ^4.4.3
         version: 4.6.1
     devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       tsdown:
         specifier: ^0.22.14
         version: 0.22.14(tsx@4.23.13)(typescript@7.0.2)

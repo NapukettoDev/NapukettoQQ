@@ -26,6 +26,10 @@
         "./satori": {
             "types": "./dist/satori/index.d.mts",
             "import": "./dist/satori/index.mjs"
+        },
+        "./kurobot": {
+            "types": "./dist/kurobot/index.d.mts",
+            "import": "./dist/kurobot/index.mjs"
         }
     },
     "tsdown": {
@@ -33,7 +37,8 @@
             "src/index.ts",
             "src/core/index.ts",
             "src/onebot11/index.ts",
-            "src/satori/index.ts"
+            "src/satori/index.ts",
+            "src/kurobot/index.ts"
         ]
     },
     "scripts": {
@@ -41,6 +46,7 @@
         "build": "tsdown"
     },
     "devDependencies": {
+        "@types/ws": "^8.18.1",
         "tsdown": "^0.22.14"
     },
     "license": "MIT",
@@ -48,6 +54,7 @@
         "@napuketto/kernel": "workspace:*",
         "@napuketto/media": "workspace:*",
         "@napuketto/network": "workspace:*",
+        "ws": "^8.21.1",
         "zod": "^4.4.3"
     }
 }
