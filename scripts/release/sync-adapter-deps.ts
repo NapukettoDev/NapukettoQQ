@@ -55,7 +55,7 @@ interface RegistryResponse {
 
 /** 查询单个 npm 包 registry（返回 dist-tags）。 */
 export async function fetchDistTags(pkg: string): Promise<Record<string, string>> {
-    const url = `${REGISTRY}/${pkg.replace("/", "%2F")}`;
+    const url = `${REGISTRY}/${pkg.replace(/\//g, "%2F")}`;
     const res = await fetch(url, {
         headers: { accept: "application/json" },
         // 发布链环节：registry 不可达直接失败，不静默兜底

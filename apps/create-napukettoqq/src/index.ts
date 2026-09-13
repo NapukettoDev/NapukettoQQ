@@ -203,12 +203,25 @@ async function confirmRemove(dirName: string): Promise<boolean> {
 
 /** 空白/引号判定。 */
 const SHELL_WHITESPACE_RE = /[\s"]/;
-/** 内部引号转义。 */
-const QUOTE_RE = /"/g;
+/** 引号及其紧邻的前导反斜杠串。 */
+const QUOTED_BACKSLASH_RE = /(\\*)"/g;
+/** 结尾反斜杠串（紧邻收口引号）。 */
+const TRAILING_BACKSLASH_RE = /(\\+)$/;
 
-/** 拼命令行时最小转义：含空白/引号则加双引号包裹（参数均为内部字面量，仅兜底）。 */
+/**
+ * 拼命令行时按 MSVCRT 解析规则转义：引号 → \"，紧邻引号的反斜杠串翻倍
+ * （n 个反斜杠 + 引号编码为 2n+1 个反斜杠 + \"），结尾收口前同样翻倍，
+ * 否则路径尾部 \ 会与收口引号合成 \" 被解析为字面引号导致参数截断。
+ * （参数均为内部字面量，仅兜底。）
+ */
 function quoteShellArg(arg: string): string {
-    return SHELL_WHITESPACE_RE.test(arg) ? `"${arg.replace(QUOTE_RE, '\\"')}"` : arg;
+    if (!SHELL_WHITESPACE_RE.test(arg)) {
+        return arg;
+    }
+    const escaped = arg
+        .replace(QUOTED_BACKSLASH_RE, '$1$1\\"')
+        .replace(TRAILING_BACKSLASH_RE, "$1$1");
+    return `"${escaped}"`;
 }
 
 /**

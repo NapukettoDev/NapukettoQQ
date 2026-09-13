@@ -87,6 +87,16 @@ describe("parseCqMessage", () => {
         ]);
     });
 
+    it("无闭合 ] → 剩余整体按纯文本（对抗输入不回溯）", () => {
+        expect(parseCqMessage("[CQ:")).toEqual(["[CQ:"]);
+        expect(parseCqMessage("hi[CQ:at")).toEqual(["hi[CQ:at"]);
+        expect(parseCqMessage("[CQ:[CQ:[CQ:")).toEqual(["[CQ:[CQ:[CQ:"]);
+    });
+
+    it("嵌套 [CQ: 前缀 → 外层吞到第一个 ]", () => {
+        expect(parseCqMessage("[CQ:a[CQ:b]")).toEqual([{ type: "a[CQ:b", params: {} }]);
+    });
+
     it("空串 → 空数组", () => {
         expect(parseCqMessage("")).toEqual([]);
     });

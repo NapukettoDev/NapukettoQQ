@@ -58,7 +58,7 @@ export function parseArgs(argv: readonly string[]): ReleaseArgs {
  * 404（包从未发布）→ 空集；其他非 200 → 抛错（发布链中断）。
  */
 export async function fetchPublishedVersions(pkgName: string): Promise<Set<string>> {
-    const url = `${REGISTRY}/${pkgName.replace("/", "%2F")}`;
+    const url = `${REGISTRY}/${pkgName.replace(/\//g, "%2F")}`;
     const res = await fetch(url, { headers: { accept: "application/json" } });
     if (res.status === 404) {
         return new Set();

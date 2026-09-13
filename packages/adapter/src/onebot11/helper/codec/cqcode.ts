@@ -9,9 +9,6 @@
  * - 参数值：额外 , → &#44;
  */
 
-/** CQ 码片段正则（[CQ:xxx] 或 [CQ:xxx,k=v,...]）。 */
-const CQ_CODE_REGEX = /\[CQ:[^\]]*\]/g;
-
 /** 解析单个 CQ 码文本 → 结构化 CqCode。 */
 function parseCqCode(raw: string): CqCode {
     const body = raw.slice("[CQ:".length, -1);
@@ -74,17 +71,28 @@ export function encodeCqCode(
     return `[CQ:${type},${pairs.join(",")}]`;
 }
 
-/** 解析一条消息文本 → 文本片段与 CQ 码片段的混合数组（文本已反转义）。 */
+/**
+ * 解析一条消息文本 → 文本片段与 CQ 码片段的混合数组（文本已反转义）。
+ *
+ * 手工 indexOf 扫描而非全局正则（/\[CQ:[^\]]*\]/g）：消息文本不可信，正则在
+ * 「大量 [CQ: 前缀且无闭合 ]」的输入下每个起点都全量回扫，复杂度 O(n²)
+ * （CodeQL polynomial-redos）。indexOf 语义等价：从 [CQ: 起到其后第一个 ]。
+ */
 export function parseCqMessage(text: string): Array<string | CqCode> {
     const parts: Array<string | CqCode> = [];
     let lastIndex = 0;
-    for (const match of text.matchAll(CQ_CODE_REGEX)) {
-        const index = match.index ?? 0;
-        if (index > lastIndex) {
-            parts.push(unescapeCqText(text.slice(lastIndex, index)));
+    let start = text.indexOf("[CQ:");
+    while (start !== -1) {
+        const end = text.indexOf("]", start);
+        if (end === -1) {
+            break; // 无闭合 ]：剩余内容整体按纯文本处理
         }
-        parts.push(parseCqCode(match[0] ?? ""));
-        lastIndex = index + match[0].length;
+        if (start > lastIndex) {
+            parts.push(unescapeCqText(text.slice(lastIndex, start)));
+        }
+        parts.push(parseCqCode(text.slice(start, end + 1)));
+        lastIndex = end + 1;
+        start = text.indexOf("[CQ:", lastIndex);
     }
     if (lastIndex < text.length) {
         parts.push(unescapeCqText(text.slice(lastIndex)));

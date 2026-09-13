@@ -100,7 +100,7 @@ ws.addEventListener("message", (ev) => {
         return;
     }
     const resolve = pending.get(data.echo);
-    if (resolve !== undefined) {
+    if (typeof resolve === "function") {
         pending.delete(data.echo);
         resolve(data);
     }

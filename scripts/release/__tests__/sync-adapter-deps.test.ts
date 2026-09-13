@@ -40,7 +40,7 @@ function stubFetch(latestByPkg: Record<string, string>, fail?: () => Error): voi
             }
             const url = String(input);
             for (const [pkg, latest] of Object.entries(latestByPkg)) {
-                if (url.includes(pkg.replace("/", "%2F"))) {
+                if (url.includes(pkg.replace(/\//g, "%2F"))) {
                     return {
                         ok: true,
                         status: 200,
