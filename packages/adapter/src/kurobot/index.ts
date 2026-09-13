@@ -6,7 +6,7 @@
 export type { KurobotAdapterOptions, KurobotMsgApi } from "./adapter.js";
 export { NapukettoKurobotAdapter } from "./adapter.js";
 export type { KurobotConfig } from "./config.js";
-export { kurobotConfigSchema } from "./config.js";
+export { kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";
 export type {
     ConnectionEndedReason,
     KurobotConnectionOptions,

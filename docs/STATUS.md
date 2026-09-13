@@ -370,3 +370,31 @@ msgService 299 方法**（addKernelMsgListener/sendMsg/fetchMsgList 全在）。
 - wrapper.node 加载后进程不退出（后台线程）→ 测试脚本需 process.exit
 - bootmain 拉起 QQ 后挂起 → async 模式 + 观察日志文件
 - read_file 对正在写入的 boot.log 有缓存 → 用 PowerShell `Get-Content -Raw`
+
+---
+
+## 🎮 kurobot 协议适配器（KuroBot MVP-3，2026-09-14 追加）
+
+> 任务书 `docs/KUROBOT-PROMPT.md`；决策与实测实录 `docs/KUROBOT-NOTES.md`。
+> napukettoqq 原生新增**第三协议** kurobot：账号 TOML 配 `[accounts.kurobot]`
+> 段即启用，作为 kurobot-ws **WS 客户端**主动连入 KuroBot 服务端（MC 服务器），
+> QQ 群 ↔ MC 双向互通（文字互转 / join/leave/death 通知进群 / 群命令前缀 →
+> 游戏命令 + 结果回显）。与 KuroAdapter 侧 MVP-3（external 端口基座）并行开发，
+> 契约锚点 = 其 master `b0809ef`（协议 0.3.1）。
+
+- **位置**：`packages/adapter/src/kurobot/`（schema 镜像 / connection 自建连接层 /
+  translate 映射 / adapter 主体 / config schema），复刻 satori 模式（core 框架
+  BaseProtocolAdapter + ProtocolConfig seed）；`./kurobot` 子路径导出（ADR-014）。
+- **连接层自建**（不改 network）：子协议 `kurobot-ws.v1` + 应用层 ping 15s
+  （服务端只认应用层入帧）+ 指数退避 1s→60s + close 1002/1008 停止重连 +
+  未知帧容忍（对齐 ADR-026）；每次重连重发 hello。
+- **测试**：adapter 单测 +46（假 kurobot-ws 服务端真端口全链路 + golden 帧对表
+  锁 0.3.1 漂移 + 映射/渲染/命令链）+ 冒烟 scripts/kurobot-smoke.test.ts +3
+  （真 loader 取段 + dist 构建产物 + 假服务端双向帧）；全仓 899 用例绿。
+- **装配**：loader assemble-protocols kurobot 分支（段非空才装配，url 必填）、
+  cli config-parse/模板、create-napukettoqq 模板同步；changeset 已写
+  （adapter minor + loader/cli/create-napukettoqq patch，未发版）。
+- **遗留**：@kurobot/protocol 发版切真依赖、富文本上行、status 命令式查询
+  （query 能力已就绪未接 QQ 触发面）、wss 客户端配置——见 NOTES 债务清单；
+  真实群服互通终验（QQ 扫码在场）待 KuroAdapter 侧 MVP-3 完成后按其
+  peer-guide 联调（任务书 §7）。
