@@ -18,8 +18,8 @@ export function configTemplate(): string {
 # 本机配置不入库（.gitignore）；修改后重启生效。
 #
 # 配置组织：一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在账号内
-# （[accounts.onebot11] / [accounts.satori]）。账号没有写某协议段 = 该账号
-# 不启用该协议。账号必填（至少一个，qq 必填）。
+# （[accounts.onebot11] / [accounts.satori] / [accounts.kurobot]）。账号没有写
+# 某协议段 = 该账号不启用该协议。账号必填（至少一个，qq 必填）。
 
 # ------------------------------------------------------------
 # 全局配置（跨账号）
@@ -110,5 +110,22 @@ port = 3001
 # enabled = true
 # host = "127.0.0.1"
 # port = 5501
+
+# ------------------------------------------------------------
+# KuroBot 群服互通（kurobot-ws 客户端，MVP-3）
+# ------------------------------------------------------------
+# 账号内写 [accounts.kurobot] 段即启用；不写 = 不启用。作为 WS 客户端
+# 主动连入 KuroBot 服务端（Minecraft 服务器 kurobot 插件）。
+# QQ 群文字 ↔ 游戏聊天双向互通；群命令（前缀开头）→ 游戏命令。
+# [accounts.kurobot]
+# url = "ws://127.0.0.1:25580"           # 必填：KuroBot 服务端地址（ws:// 或 wss://）
+# # token = ""                           # 可选：鉴权 token（服务端配了则必填，错 token 拒连）
+# # client = "napukettoqq"               # 可选：自报身份（缺省 napukettoqq/<版本>）
+# # commandPrefix = "/"                  # 可选：群命令前缀
+# # pingIntervalMs = 15000               # 可选：应用层心跳间隔（毫秒，须 < 30000）
+# # chatTemplate = "[{player}] {content}"    # 游戏聊天渲染模板
+# # joinTemplate = "{player} 加入了服务器"    # 玩家进服模板
+# # leaveTemplate = "{player} 离开了服务器"   # 玩家退服模板
+# # deathTemplate = "{player} {message}"     # 玩家死亡模板（空消息显示「死亡了」）
 `;
 }

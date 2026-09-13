@@ -41,6 +41,18 @@ interface SatoriModuleLike {
     };
 }
 
+/** adapter 包 kurobot 子路径最小面（@napuketto/adapter，动态 import）。 */
+interface KurobotModuleLike {
+    kurobotConfigSchema: { parse(input: unknown): unknown };
+    kurobotConfigDefaults: () => unknown;
+    NapukettoKurobotAdapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+    };
+}
+
 /** adapter 包 core 子路径最小面（ProtocolConfig 框架）。 */
 interface AdapterCoreModuleLike {
     ProtocolConfig: new (options: Record<string, unknown>) => unknown;
@@ -78,6 +90,7 @@ export async function assembleOb11AndSatori(
         // NapukettoOneBot11Adapter）走 ./onebot11，core 框架（ProtocolConfig）走 ./core。
         const onebot11Entry = adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
         const satoriEntry = adapterEntry.replace(INDEX_MJS_RE, "satori/index.mjs");
+        const kurobotEntry = adapterEntry.replace(INDEX_MJS_RE, "kurobot/index.mjs");
         const coreEntry = adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
         const adapter = (await import(
             `file://${onebot11Entry.replace(BACKSLASH_RE, "/")}`
@@ -85,6 +98,9 @@ export async function assembleOb11AndSatori(
         const satoriAdapter = (await import(
             `file://${satoriEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as SatoriModuleLike;
+        const kurobotAdapter = (await import(
+            `file://${kurobotEntry.replace(BACKSLASH_RE, "/")}`
+        )) as unknown as KurobotModuleLike;
         const adapterCore = (await import(
             `file://${coreEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as AdapterCoreModuleLike;
@@ -93,7 +109,7 @@ export async function assembleOb11AndSatori(
         const broadcaster = new network.EventBroadcaster();
         // 全局 TOML 配置段：按登录账号 uin 从 accounts 取 [onebot11] / [satori] 段作 seed
         // （2026-08-08 结构拍板：协议配置嵌在账号内；未配置协议的账号不装配对应协议）。
-        const { cfgFile, ob11Section, satoriSection } = loadProtocolSections(
+        const { cfgFile, ob11Section, satoriSection, kurobotSection } = loadProtocolSections(
             kernel,
             loginResult.uin,
         );
@@ -192,10 +208,46 @@ export async function assembleOb11AndSatori(
         });
         await satori.start();
         log("bootstrap: satori adapter started");
+
+        // Kurobot 协议（可选，2026-09-13）：**仅当账号段非空才装配**（url 必填，
+        // 空段 parse 会炸；「段存在即启用、不写不启用」）。作为 WS 客户端连入
+        // KuroBot 服务端（kurobot-ws），段内协议配置经 zod 校验作 seed。
+        let kurobot: {
+            start(): Promise<unknown>;
+            stop(): Promise<void>;
+        } | null = null;
+        if (Object.keys(kurobotSection).length > 0) {
+            const kurobotConfig = new adapterCore.ProtocolConfig({
+                path: cfgFile,
+                schema: kurobotAdapter.kurobotConfigSchema,
+                defaults: kurobotAdapter.kurobotConfigDefaults(),
+                seed: kurobotAdapter.kurobotConfigSchema.parse(kurobotSection),
+            });
+            kurobot = new kurobotAdapter.NapukettoKurobotAdapter({
+                config: kurobotConfig,
+                msgChannel: channel,
+                msgApi: services.msgApi,
+                self: services.self,
+                // 连接生命周期 / 握手被拒等日志（pino 实例，最小面）
+                logger: services.logger as
+                    | {
+                          debug(obj: unknown, msg: string): void;
+                          info(obj: unknown, msg: string): void;
+                          warn(obj: unknown, msg: string): void;
+                          error(obj: unknown, msg: string): void;
+                      }
+                    | undefined,
+            }) as { start(): Promise<unknown>; stop(): Promise<void> };
+            await kurobot.start();
+            log("bootstrap: kurobot adapter started");
+        }
         return async () => {
             // 适配器 stop 幂等（started 标志守卫）：传输关闭 + kernel 事件退订
             await ob11.stop();
             await satori.stop();
+            if (kurobot !== null) {
+                await kurobot.stop();
+            }
         };
     } catch (e) {
         // 抛给 startProtocols 判引导失败（见函数头注释；不再吞错 fail-soft）

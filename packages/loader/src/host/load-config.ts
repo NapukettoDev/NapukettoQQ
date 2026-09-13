@@ -13,11 +13,12 @@ import { env } from "./env.js";
 import type { KernelLike } from "./types.js";
 import { errMsg, log } from "./util.js";
 
-/** 协议配置段（账号内 [onebot11] / [satori]，宽松对象，装配时 zod 校验）。 */
+/** 协议配置段（账号内 [onebot11] / [satori] / [kurobot]，宽松对象，装配时 zod 校验）。 */
 export interface ProtocolSections {
     cfgFile: string;
     ob11Section: Record<string, unknown>;
     satoriSection: Record<string, unknown>;
+    kurobotSection: Record<string, unknown>;
 }
 
 /** 宽松账号项（TOML [[accounts]] 元素）。 */
@@ -25,12 +26,13 @@ interface AccountLike {
     qq?: unknown;
     onebot11?: unknown;
     satori?: unknown;
+    kurobot?: unknown;
 }
 
 /** 账号内取协议段（宽松对象，装配时 zod 校验）。 */
 function sectionOf(
     account: AccountLike,
-    key: "onebot11" | "satori",
+    key: "onebot11" | "satori" | "kurobot",
 ): Record<string, unknown> | undefined {
     const section = account[key];
     if (section !== undefined && section !== null && typeof section === "object") {
@@ -47,6 +49,7 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
     const cfgFile = env.NAPKETTO_CONFIG || join(env.NAPUTO_CFG_DIR || ".", "napuketto.toml");
     let ob11Section: Record<string, unknown> = {};
     let satoriSection: Record<string, unknown> = {};
+    let kurobotSection: Record<string, unknown> = {};
     try {
         const raw = readFileSync(cfgFile, "utf8");
         const parsed = kernel.parseToml(raw);
@@ -61,10 +64,11 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
             if (mine !== undefined) {
                 ob11Section = sectionOf(mine, "onebot11") ?? {};
                 satoriSection = sectionOf(mine, "satori") ?? {};
+                kurobotSection = sectionOf(mine, "kurobot") ?? {};
             }
         }
     } catch (e) {
         log(`bootstrap: 全局配置读取失败（用默认 ob11/satori 配置）: ${errMsg(e)}`);
     }
-    return { cfgFile, ob11Section, satoriSection };
+    return { cfgFile, ob11Section, satoriSection, kurobotSection };
 }

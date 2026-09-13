@@ -18,7 +18,7 @@ const DEFAULT_RESTART_DELAY_MS = 2000;
 const QQ_IN_FORMAT_RE = /^\d{5,11}$/;
 
 /** 协议段键（宽松对象，装配时 zod 严格校验）。 */
-type ProtocolKey = "onebot11" | "satori";
+type ProtocolKey = "onebot11" | "satori" | "kurobot";
 
 /** 账号配置项（qq 必填；协议段缺省 = 该账号不启用对应协议）。 */
 export interface CliAccountConfig {
@@ -28,6 +28,8 @@ export interface CliAccountConfig {
     onebot11?: Record<string, unknown>;
     /** Satori 协议段（与 satoriConfigSchema 对应，宽松对象，装配时 zod 校验）。 */
     satori?: Record<string, unknown>;
+    /** Kurobot 协议段（与 kurobotConfigSchema 对应，宽松对象，装配时 zod 校验）。 */
+    kurobot?: Record<string, unknown>;
 }
 
 /** 主配置（跨账号，全局单文件 TOML）。 */
@@ -152,6 +154,10 @@ function parseAccount(item: unknown): CliAccountConfig {
     const satori = parseProtocolSection(raw, "satori");
     if (satori !== undefined) {
         out.satori = satori;
+    }
+    const kurobot = parseProtocolSection(raw, "kurobot");
+    if (kurobot !== undefined) {
+        out.kurobot = kurobot;
     }
     return out;
 }
