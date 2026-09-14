@@ -1,6 +1,6 @@
 {
     "name": "create-napukettoqq",
-    "version": "0.2.41",
+    "version": "0.2.42",
     "description": "一键生成 NapukettoQQ 机器人项目（yarn/pnpm/npm create napukettoqq）",
     "type": "module",
     "files": [
