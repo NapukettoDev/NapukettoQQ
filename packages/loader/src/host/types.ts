@@ -39,6 +39,13 @@ export interface MsgApiLike {
         elements: CanonicalElementLike[],
     ): Promise<{ msgId: string }>;
     fetchMessages(peer: unknown, options: { count: number }): Promise<RawMessageLike[]>;
+    /** 设置在线状态（自建宿主无 UI，引导链必须显式上报——缺它 = 半在线无推送，2026-09-15 发现 I）。 */
+    setOnlineStatus(opts: {
+        status: number;
+        extStatus: number;
+        batteryStatus: number;
+        customStatus?: { faceId: string; wording: string; faceType: string };
+    }): Promise<void>;
 }
 
 /** 原始消息（kernel RawMessage 最小面，字段宽松——运行时反射实证）。 */

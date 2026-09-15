@@ -25,6 +25,9 @@ class FakeNode {
     readonly register = vi.fn();
     readonly unregister = vi.fn();
     readonly on = vi.fn(() => undefined);
+    readonly setOnlineStatus = vi.fn(() =>
+        failOnlineStatus ? Promise.reject(new Error("boom")) : Promise.resolve(),
+    );
     constructor(...args: unknown[]) {
         this.args = args;
         instances.push(this);
@@ -40,6 +43,8 @@ interface LoggerCall {
 const tmpRoots: string[] = [];
 let loggerCalls: LoggerCall[];
 let instances: FakeNode[];
+/** 置 true = setOnlineStatus 拒绝（失败容忍路径用例）。 */
+let failOnlineStatus = false;
 
 /** kernel PascalCase 类成员名（计算键规避 useNamingConvention，同 msg-log.test.ts）。 */
 const KERNEL_MEMBERS = {
@@ -117,6 +122,7 @@ function freshCfgDir(): string {
 beforeEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
+    failOnlineStatus = false;
 });
 
 afterAll(() => {
@@ -169,5 +175,35 @@ describe("createKernelServices dispose 面（顺带回归：装配产物完整�
         // dispose 面 = 三桥 + GroupCache + BuddyCache（API/Channel 实例不在清理面）
         const disposed = instances.filter((n) => n.unregister.mock.calls.length > 0);
         expect(disposed).toHaveLength(5);
+    });
+});
+
+describe("createKernelServices 在线状态注册（2026-09-15 发现 I：半在线无推送修复）", () => {
+    it("装配即注册在线状态，参数对齐 OB11 set_online_status 动作缺省（status=10）", async () => {
+        vi.stubEnv("NAPUTO_IPC", "1");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        await assemble();
+        const called = instances.filter((n) => n.setOnlineStatus.mock.calls.length > 0);
+        expect(called).toHaveLength(1);
+        expect(called[0]?.setOnlineStatus).toHaveBeenCalledWith({
+            status: 10,
+            extStatus: 0,
+            batteryStatus: 0,
+            customStatus: { faceId: "", wording: "", faceType: "1" },
+        });
+    });
+
+    it("setOnlineStatus 拒绝不阻断装配（告警后继续，服务完整返回可用）", async () => {
+        vi.stubEnv("NAPUTO_IPC", "1");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        failOnlineStatus = true;
+        const { createKernelServices } = await import("../kernel-services.js");
+        const services = await createKernelServices(stubKernel(), stubCtx(), {
+            uin: "10000",
+            uid: "u1",
+        } satisfies LoginResultLike);
+        expect(services).not.toBeNull();
+        expect(services?.msgApi).toBeDefined();
+        services?.dispose();
     });
 });

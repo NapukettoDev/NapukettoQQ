@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { env } from "../env.js";
 import { setupMsgLogging } from "../msg-log.js";
 import type { CoreContextLike, EventChannelLike, KernelLike, LoginResultLike } from "../types.js";
-import { log } from "../util.js";
+import { errMsg, log } from "../util.js";
 
 /** kernel 业务服务集合（引导装配产物，协议/IPC 共用）。 */
 export interface KernelServices {
@@ -101,6 +101,23 @@ export async function createKernelServices(
     const util = (ctx as unknown as { exports?: { NodeQQNTWrapperUtil?: unknown } }).exports
         ?.NodeQQNTWrapperUtil;
     const msgApi = new kernel.MsgApi(session, channel, util);
+    // 在线状态注册（2026-09-15 发现 I）：自建宿主无 UI，引导链此前无人调 setStatus →
+    // NT 会话半在线（msf 连接可用、消息可发，但腾讯侧设备不在线）→ 服务端不推送实时
+    // 消息（群消息收不到、他端显示「电脑未登录」）。真 QQNT 客户端启动即上报在线，此处
+    // 补同款调用（IPC 与协议模式共用此装配面，软重登重装配时随 services 重建自动重报）；
+    // status=10 与 OB11 set_online_status 动作缺省一致。失败仅告警不阻断 boot——
+    // 收发链路其余部分已实证可用，状态缺失只影响推送。
+    try {
+        await msgApi.setOnlineStatus({
+            status: 10,
+            extStatus: 0,
+            batteryStatus: 0,
+            customStatus: { faceId: "", wording: "", faceType: "1" },
+        });
+        log("bootstrap: 在线状态已注册（setStatus status=10）");
+    } catch (statusErr) {
+        log(`bootstrap: 在线状态注册失败（实时消息推送可能不可用）: ${errMsg(statusErr)}`);
+    }
     const friendApi = new kernel.FriendApi(session, {
         uidToUin: (uids: string[]) => groupApi.uidToUin(uids),
     });
