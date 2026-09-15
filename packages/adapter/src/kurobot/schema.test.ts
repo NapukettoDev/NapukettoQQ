@@ -1,5 +1,5 @@
 /**
- * schema.test.ts：kurobot-ws 镜像 schema golden 帧对表（任务书 KUROBOT-PROMPT 阶段 2）。
+ * schema.test.ts：kurobridge-ws 镜像 schema golden 帧对表（任务书 KUROBOT-PROMPT 阶段 2）。
  *
  * ⚠️ 对表来源：KuroAdapter `bridge/protocol`（SSOT）master commit **b0809ef**
  * （协议 0.3.1，hello 可选 client）。下方 golden 字符串 = 各帧的线格式字面量
@@ -51,10 +51,10 @@ function expectGoldenRoundTrip(
 }
 
 describe("协议元信息（对表 b0809ef）", () => {
-    it("协议名 / 版本 0.3.1 / 子协议 kurobot-ws.v1", () => {
-        expect(PROTOCOL_NAME).toBe("kurobot-ws");
-        expect(PROTOCOL_VERSION).toBe("0.3.1");
-        expect(WS_SUBPROTOCOL).toBe("kurobot-ws.v1");
+    it("协议名 / 版本 0.3.1 / 子协议 kurobridge-ws.v1", () => {
+        expect(PROTOCOL_NAME).toBe("kurobridge-ws");
+        expect(PROTOCOL_VERSION).toBe("0.4.0");
+        expect(WS_SUBPROTOCOL).toBe("kurobridge-ws.v1");
     });
 
     it("主版本相同即兼容（镜像 isProtocolVersionCompatible）", () => {
@@ -69,7 +69,7 @@ describe("golden 帧对表：Peer → Server", () => {
     it("hello（含可选 token/client，MVP-3 0.3.1 形状）", () => {
         const golden =
             `{"header":{"type":"hello","id":"${UUID_A}"},"body":{"peerId":"10001","platform":"qq",` +
-            `"version":"0.2.1","protocolVersion":"0.3.1","token":"secret","client":"napukettoqq/0.2.1"}}`;
+            `"version":"0.2.1","protocolVersion":"0.4.0","token":"secret","client":"napukettoqq/0.2.1"}}`;
         expectGoldenRoundTrip(helloFrame, golden);
         const body = (
             helloFrame.safeParse(JSON.parse(golden) as unknown) as {
@@ -109,7 +109,7 @@ describe("golden 帧对表：Server → Peer", () => {
     it("hello_ack ok（含 channelBindings 快照）", () => {
         const golden =
             `{"header":{"type":"hello_ack","id":"${UUID_A}"},"body":{"ok":true,"serverId":"local",` +
-            `"version":"1.0.0","protocolVersion":"0.3.1","channelBindings":["808","10086"]}}`;
+            `"version":"1.0.0","protocolVersion":"0.4.0","channelBindings":["808","10086"]}}`;
         expectGoldenRoundTrip(helloAckFrame, golden);
     });
 

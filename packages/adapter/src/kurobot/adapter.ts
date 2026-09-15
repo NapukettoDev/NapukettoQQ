@@ -1,8 +1,8 @@
 /**
- * NapukettoKurobotAdapter：kurobot-ws 协议适配器（KuroBot MVP-3，2026-09-13）
+ * NapukettoKurobotAdapter：kurobridge-ws 协议适配器（KuroBot MVP-3，2026-09-13）
  *
  * - 出链路：订阅 kernel 消息事件通道 → 仅群聊 → 富文本降级 → 出站绑定过滤 →
- *   kurobot-ws chat 帧；命令前缀消息 → command 帧（source 由本侧提取）。
+ *   kurobridge-ws chat 帧；命令前缀消息 → command 帧（source 由本侧提取）。
  * - 入链路：KurobotConnection 收服务端帧 → chat/join/leave/death 渲染模板 →
  *   kernel 群消息 API 纯文本发送；status 仅缓存；command_result 经 pending 表
  *   关联回发群（帧无 channel 字段，靠请求 UUID 关联）。

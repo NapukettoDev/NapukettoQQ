@@ -1,7 +1,7 @@
 /**
  * connection.test.ts：KurobotConnection 全链路单测（任务书 KUROBOT-PROMPT 阶段 2）。
  *
- * 用假 kurobot-ws 服务端（ws 库真端口，握手校验复刻 KuroAdapter NodeWsServer）驱动：
+ * 用假 kurobridge-ws 服务端（ws 库真端口，握手校验复刻 KuroAdapter NodeWsServer）驱动：
  * 带子协议握手 / 不带被拒 / hello 0.3.1 + client + token / 应用层 ping / 断线指数退避
  * 重连且重发 hello / hello_ack 拒绝与 close 1002、1008 停止重连 / 未知帧容忍。
  * 重连节奏用测试快值（retryBaseDelayMs=20ms），不拖慢用例。
@@ -45,7 +45,7 @@ function makeConnection(
             peerId: "10001",
             platform: "qq",
             version: "0.2.1",
-            protocolVersion: "0.3.1",
+            protocolVersion: "0.4.0",
             client: "napukettoqq/0.2.1",
         },
         ...FAST,
@@ -68,7 +68,7 @@ function autoAck(server: FakeKurobotServer, bindings: string[], serverId = "fake
                     ok: true,
                     serverId,
                     version: "1.0.0",
-                    protocolVersion: "0.3.1",
+                    protocolVersion: "0.4.0",
                     channelBindings: bindings,
                 },
             });
@@ -109,7 +109,7 @@ describe("KurobotConnection 握手", () => {
             peerId: "10001",
             platform: "qq",
             version: "0.2.1",
-            protocolVersion: "0.3.1",
+            protocolVersion: "0.4.0",
             client: "napukettoqq/0.2.1",
         });
         // ack ok：绑定快照透出
@@ -128,7 +128,7 @@ describe("KurobotConnection 握手", () => {
                 peerId: "10001",
                 platform: "qq",
                 version: "0.2.1",
-                protocolVersion: "0.3.1",
+                protocolVersion: "0.4.0",
                 token: "secret-token",
             },
         });

@@ -1,14 +1,14 @@
 /**
- * KurobotConnection：kurobot-ws 客户端连接层（任务书 KUROBOT-PROMPT §1.2 决策二）
+ * KurobotConnection：kurobridge-ws 客户端连接层（任务书 KUROBOT-PROMPT §1.2 决策二）
  *
  * 自建而不复用 network.WsClient 的四个协议语义理由（均已核实 WsClient 现状）：
- * ① 服务端 handleProtocols 校验子协议 `kurobot-ws.v1`，不带直接拒连——WsClient
+ * ① 服务端 handleProtocols 校验子协议 `kurobridge-ws.v1`，不带直接拒连——WsClient
  *    不支持 Sec-WebSocket-Protocol；
  * ② 服务端空闲检测（30s）只认**应用层入帧**，WS 层 ws.ping() 不重置计时——必须发
  *    应用层 ping 帧；
  * ③ 每次连接（含重连）成功后必须立即重发 hello——WsClient 无 onOpen 回调；
  * ④ 重连需感知 close code（1002/1008 停止重连）——WsClient 是固定延迟重连。
- * 这四项都是 kurobot-ws 协议语义，塞进协议无关的 network 违反其定位（红线：不改 network）。
+ * 这四项都是 kurobridge-ws 协议语义，塞进协议无关的 network 违反其定位（红线：不改 network）。
  *
  * 状态机：connecting → establishing（hello 已发，等 ack）→ established（应用层 ping）
  * ↔ backoff（指数退避 1s/2s/…/60s 封顶）；hello_ack ok:false / close 1002 / 1008 →
@@ -158,7 +158,7 @@ const SERVER_FRAME_PARSERS: Record<string, (json: unknown) => ServerEventMessage
     },
 };
 
-/** kurobot-ws 客户端连接（子协议 + hello + 应用层 ping + 感知 close code 的指数退避）。 */
+/** kurobridge-ws 客户端连接（子协议 + hello + 应用层 ping + 感知 close code 的指数退避）。 */
 export class KurobotConnection {
     private readonly opts: KurobotConnectionOptions;
     private readonly log: KurobotLogger;

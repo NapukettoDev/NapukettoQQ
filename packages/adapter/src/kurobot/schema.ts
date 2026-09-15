@@ -1,11 +1,11 @@
 /**
- * kurobot-ws 协议 schema（镜像实现，任务书 KUROBOT-PROMPT §1.2 决策一）
+ * kurobridge-ws 协议 schema（镜像实现，任务书 KUROBOT-PROMPT §1.2 决策一）
  *
- * **SSOT: KuroBot bridge/protocol**（`C:\Dev\MC-Ecosystem\KuroAdapter\bridge\protocol\src\`），
- * 镜像基线 **0.3.x**（KuroAdapter master commit `b0809ef`，PROTOCOL_VERSION 0.3.1，
- * 含 MVP-3 的 hello 可选 `client` 字段）。`@kurobot/protocol` 未发 npm、跨仓构建期依赖
- * 不可行，故本仓镜像（对齐 onebot11 自研类型先例）；golden 帧对表测试锁漂移
- * （connection.test.ts / schema.test.ts），将来发版后可切换为真依赖。
+ * **SSOT: KuroBridge bridge/protocol**（`C:\Dev\MC-Ecosystem\KuroAdapter\bridge\protocol\src\`），
+ * 镜像基线 **0.4.x**（KuroAdapter ADR-030 品牌改名：kurobot-ws.v1 → kurobridge-ws.v1，
+ * PROTOCOL_VERSION 0.4.0；帧形状与 0.3.1 逐字段一致，仅品牌字符串与版本号变更）。
+ * `@kuro-bridge/protocol` 已发 npm，本仓暂维持镜像（golden 帧对表测试锁漂移：
+ * connection.test.ts / schema.test.ts），将来可切换为真依赖。
  *
  * 只镜像 WS 对端可见的消息集（meta / frame / messages/ws）；IPC 侧消息
  * （ready/broadcast/execute_command 等，Java↔Node 内部通道）不镜像。
@@ -16,13 +16,13 @@ import { z } from "zod";
 
 // ---- 协议元信息（镜像 meta.ts）----
 
-export const PROTOCOL_NAME = "kurobot-ws" as const;
+export const PROTOCOL_NAME = "kurobridge-ws" as const;
 
 /** 语义化版本（主版本相同即兼容，ADR-026：0.2.x/0.3.0 服务端均接受 0.3.1 hello）。 */
-export const PROTOCOL_VERSION = "0.3.1" as const;
+export const PROTOCOL_VERSION = "0.4.0" as const;
 
 /** WS 子协议（握手期校验，服务端 handleProtocols 不带即拒连）。 */
-export const WS_SUBPROTOCOL = "kurobot-ws.v1" as const;
+export const WS_SUBPROTOCOL = "kurobridge-ws.v1" as const;
 
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 

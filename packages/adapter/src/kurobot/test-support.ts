@@ -1,9 +1,9 @@
 /**
- * 测试支撑：假 kurobot-ws 服务端（ws 库起真端口，任务书阶段 2）。
+ * 测试支撑：假 kurobridge-ws 服务端（ws 库起真端口，任务书阶段 2）。
  *
  * 仅供相邻 *.test.ts 使用（vitest 根配置 include *.test.ts；本文件不进 tsdown
  * 构建产物）。握手子协议校验复刻 KuroAdapter NodeWsServer（handleProtocols 不带
- * `kurobot-ws.v1` 返回 false = 拒连）；hello 的应答行为由用例注入。
+ * `kurobridge-ws.v1` 返回 false = 拒连）；hello 的应答行为由用例注入。
  */
 import { type WebSocket, WebSocketServer } from "ws";
 import { encodeFrame, WS_SUBPROTOCOL } from "./schema.js";
@@ -14,7 +14,7 @@ export interface FakeServerFrame {
     body: unknown;
 }
 
-/** 假 kurobot-ws 服务端。 */
+/** 假 kurobridge-ws 服务端。 */
 export interface FakeKurobotServer {
     port: number;
     /** 全部收到的客户端帧（跨连接累计）。 */

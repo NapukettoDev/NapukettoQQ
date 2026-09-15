@@ -1,7 +1,7 @@
 /**
  * adapter.test.ts：NapukettoKurobotAdapter 适配器级全链路（任务书阶段 2/4，无 QQ）。
  *
- * 假 kurobot-ws 服务端 + ProtocolConfig（seed 模式）+ 桩 msgChannel/msgApi：
+ * 假 kurobridge-ws 服务端 + ProtocolConfig（seed 模式）+ 桩 msgChannel/msgApi：
  * [accounts.kurobot] 配置生效 → 连入握手 → QQ 群消息出帧（chat/command、自消息
  * 过滤、非绑定群不发）→ 服务端帧渲染回群（chat/join/leave/death/command_result、
  * status 只缓存）→ 绑定更新（bindings_updated / query_result）热生效。
@@ -111,7 +111,7 @@ function ackHello(s: FakeKurobotServer, bindings: string[]): void {
                     ok: true,
                     serverId: "fake",
                     version: "1.0.0",
-                    protocolVersion: "0.3.1",
+                    protocolVersion: "0.4.0",
                     channelBindings: bindings,
                 },
             });
@@ -158,7 +158,7 @@ describe("NapukettoKurobotAdapter 全链路", () => {
                         ok: true,
                         serverId: "fake",
                         version: "1.0.0",
-                        protocolVersion: "0.3.1",
+                        protocolVersion: "0.4.0",
                         channelBindings: ["808"],
                     },
                 });
@@ -179,7 +179,7 @@ describe("NapukettoKurobotAdapter 全链路", () => {
         expect(hello?.body).toMatchObject({
             peerId: "10001",
             platform: "qq",
-            protocolVersion: "0.3.1",
+            protocolVersion: "0.4.0",
         });
         expect(hello?.body).toHaveProperty("client");
 
@@ -309,7 +309,7 @@ describe("NapukettoKurobotAdapter 全链路", () => {
                         ok: true,
                         serverId: "fake",
                         version: "1.0.0",
-                        protocolVersion: "0.3.1",
+                        protocolVersion: "0.4.0",
                         channelBindings: [],
                     },
                 });
