@@ -14,8 +14,13 @@
     ],
     // 完全排除：packages/loader/native/ 是私有 Git Submodule（Native Bypass 载具），
     // 仅分发编译后二进制，源脚本（verify/tools）不进主仓库分析范围。
+    // apps/koishi-plugin-adapter 是 koishi 插件子模块（独立仓库自带工具链，主仓
+    // biome/tsc 同样跳过）：插件 deps 由 koishi 框架运行时消费、vue/eslint 是其自身
+    // 工具链，fallow 在主仓看不到可达性，纳入分析只报 11 个 unused-deps 误报 +
+    // workspace glob WARN（2026-09-15 CI fallow audit 门禁引入时实测）。
     "ignorePatterns": [
-        "packages/loader/native/**"
+        "packages/loader/native/**",
+        "apps/koishi-plugin-adapter/**"
     ],
     // 未使用依赖豁免（用户拍板保留，勿删）：
     //  - @napuketto/network / @napuketto/adapter：cli 经 import.meta.resolve 动态解析（boot.ts），

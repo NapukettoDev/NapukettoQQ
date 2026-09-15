@@ -1,0 +1,166 @@
+# CI 门禁流水线
+#
+# 三个并行 job：
+# - gate   主门禁（ubuntu）：pnpm install → pnpm -r build → pnpm check →
+#          test（附 lcov 覆盖率产出，经 codecov-action 上传，驱动 Codecov 在
+#            PR 上的覆盖率评论与 status check；未配 CODECOV_TOKEN secret 时
+#            公开仓自动降级 tokenless 上传，fork PR 出不了评论属预期）
+#          （build 必须前置于 check：tsc 按 NodeNext 解析 workspace 包经
+#            package.json exports 读到 dist 里的类型声明，全新环境无 dist 时
+#            tsc 直接 TS2307，本地因 dist 常在而感知不到该顺序依赖）
+#          （build 必须前置于 test：scripts/kurobot-smoke.test.ts 消费
+#            packages/adapter/dist 构建产物做真装配链冒烟，同理干净环境必挂）
+# - windows 跨平台测试补位：运行时目标是 Windows 优先（QQ 原生）+ Linux（wine），
+#            测试套件按跨平台设计（纯函数 + mock fixture + skipIf 平台守卫），
+#            与 gate 同一套用例再验一个 OS。只跑测试，不重复 check 与覆盖率。
+# - audit  fallow 增量门禁：fallow audit --base 只报本次改动引入的死代码 /
+#            复杂度 / 重复，存量问题自动基线豁免（gate excluded ... inherited）。
+#            不用整仓 dead-code 门禁：本仓跨包消费走 workspace 链接 → dist
+#            产物（NodeNext），fallow 静态图跨不过包边界，整仓模式报 82+ 误报
+#            （kernel Api 方法实际被 adapter 消费），上门禁须大面积豁免失去意义
+#            （2026-09-15 实测）。fallow 版本随 lockfile（devDeps +
+#            --frozen-lockfile），门禁口径不随上游漂移。
+#          base 解析：PR → origin/目标分支；push → 前一提交；新分支首推 /
+#            workflow_dispatch 回退 HEAD~1。
+#
+# 子模块策略（checkout 默认不检子模块，按需手动检）：
+#   apps/koishi-plugin-adapter —— 公共仓，pnpm-lock.yaml 的 importers 包含它，
+#     不检出则 --frozen-lockfile 判定 workspace 与 lockfile 不一致直接失败，必须检；
+#   packages/loader/native —— 私有仓（闭源 stub），构建（tsdown 只编译 src）与
+#     测试（全 mock/fixture，不碰真实 wrapper.node）均不需要，不检（GITHUB_TOKEN
+#     也无权访问该仓）。
+#
+# pnpm 版本与根 package.json 的 devEngines.packageManager 保持同步（根无
+# packageManager 字段，pnpm/action-setup 读不到，必须在此显式指定）。
+
+name: CI
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+    workflow_dispatch:
+
+# 同一分支 / PR 的旧跑自动取消，不占额度
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    gate:
+        name: gate (build / check / test / coverage)
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - name: Checkout（不检子模块）
+              uses: actions/checkout@v5
+
+            - name: 检出 koishi 适配器子模块（公共仓；native 私有仓跳过）
+              run: git submodule update --init apps/koishi-plugin-adapter
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 12.4.1
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: pnpm
+
+            - name: 安装依赖（frozen-lockfile 锁死供应链）
+              run: pnpm install --frozen-lockfile
+
+            - name: 全量构建（check 与 test 的前置，见文件头注释）
+              run: pnpm -r build
+
+            - name: biome check + tsc --noEmit
+              run: pnpm check
+
+            - name: test（含 lcov 覆盖率产出）
+              run: pnpm test --coverage
+
+            - name: 上传覆盖率到 Codecov
+              uses: codecov/codecov-action@v7
+              with:
+                  files: coverage/lcov.info
+                  token: ${{ secrets.CODECOV_TOKEN }}
+
+    windows:
+        name: windows (test)
+        runs-on: windows-latest
+        timeout-minutes: 30
+        steps:
+            - name: Checkout（不检子模块）
+              uses: actions/checkout@v5
+
+            - name: 检出 koishi 适配器子模块（公共仓；native 私有仓跳过）
+              run: git submodule update --init apps/koishi-plugin-adapter
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 12.4.1
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: pnpm
+
+            - name: 安装依赖（frozen-lockfile 锁死供应链）
+              run: pnpm install --frozen-lockfile
+
+            - name: 全量构建（kurobot 冒烟测试消费 adapter dist 产物）
+              run: pnpm -r build
+
+            - name: vitest 全量单测
+              run: pnpm test
+
+    audit:
+        name: audit (fallow 增量门禁)
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            # fallow audit 需要读取 base 提交做 diff，必须全量历史
+            - name: Checkout（全量历史；不检子模块）
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+
+            - name: 检出 koishi 适配器子模块（pnpm install 依赖其 package.json）
+              run: git submodule update --init apps/koishi-plugin-adapter
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 12.4.1
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: pnpm
+
+            - name: 安装依赖（fallow 来自 devDeps，版本随 lockfile）
+              run: pnpm install --frozen-lockfile
+
+            - name: 计算 audit 基线（PR → 目标分支；push → 前一提交；其余 → HEAD~1）
+              run: |
+                  if [ -n "$BASE_REF" ]; then
+                      echo "FALLOW_BASE=origin/$BASE_REF" >> "$GITHUB_ENV"
+                  elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+                      echo "FALLOW_BASE=$BEFORE" >> "$GITHUB_ENV"
+                  else
+                      echo "FALLOW_BASE=HEAD~1" >> "$GITHUB_ENV"
+                  fi
+              env:
+                  BASE_REF: ${{ github.base_ref }}
+                  BEFORE: ${{ github.event.before }}
+
+            - name: fallow audit（只报改动引入的问题，存量自动基线豁免）
+              run: pnpm exec fallow audit --base "$FALLOW_BASE"

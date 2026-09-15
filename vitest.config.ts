@@ -20,7 +20,8 @@ export default defineConfig({
         environment: "node",
         coverage: {
             provider: "v8",
-            reporter: ["json", "text-summary"],
+            // lcov（lcov.info）供 CI 上传 Codecov；json 供 fallow health 消费
+            reporter: ["json", "lcov", "text-summary"],
             // fallow health --coverage 读 istanbul 格式 json（json 报告默认即此格式）
             // 只统计生产代码（排除测试文件自身）
             exclude: ["**/*.test.ts", "**/*.test-d.ts"],
