@@ -46,11 +46,22 @@ const REGISTRY = process.env["NAPKETTO_REGISTRY"] ?? "https://registry.npmjs.org
 export interface ReleaseArgs {
     /** 只打包不发布（npm publish --dry-run）。 */
     dryRun: boolean;
+    /** npm 2FA 一次性验证码（--otp= 或 NAPKETTO_NPM_OTP；缺省交给 npm 自行处理）。 */
+    otp: string | undefined;
 }
 
-/** 解析命令行参数（--dry-run）。 */
+/** 解析命令行参数（--dry-run / --otp=）。 */
 export function parseArgs(argv: readonly string[]): ReleaseArgs {
-    return { dryRun: argv.includes("--dry-run") };
+    let otp: string | undefined;
+    for (const arg of argv) {
+        if (arg.startsWith("--otp=")) {
+            otp = arg.slice("--otp=".length);
+        }
+    }
+    return {
+        dryRun: argv.includes("--dry-run"),
+        otp: otp ?? process.env["NAPKETTO_NPM_OTP"],
+    };
 }
 
 /**
@@ -71,16 +82,22 @@ export async function fetchPublishedVersions(pkgName: string): Promise<Set<strin
 }
 
 /** 在包目录执行 npm publish，返回退出码。 */
-export function publishPkg(pkg: { name: string; dir: string }, dryRun: boolean): number {
+export function publishPkg(
+    pkg: { name: string; dir: string },
+    dryRun: boolean,
+    otp: string | undefined,
+): number {
     // --workspaces=false（2026-09-19）：根 package.json 声明 npm workspaces 字段
     // （5b96c48）后，npm 从包目录向上爬把主仓根认成 workspace root，读到根的
     // devEngines（强制 pnpm）→ EBADDEVENGINES 拒发。关掉 workspace 上下文即
     // 恢复 5b96c48 之前的行为（prefix 停在包目录自身，包内无 devEngines）。
+    // --otp：账号开 2FA 时 publish 需要一次性验证码（EOTP），经参数/env 透传。
     const args = [
         "publish",
         "--access",
         "public",
         "--workspaces=false",
+        ...(otp === undefined ? [] : ["--otp", otp]),
         ...(dryRun ? ["--dry-run"] : []),
     ];
     // Windows 上 npm 是 npm.cmd 批处理，CreateProcess 无法直接执行 .cmd（spawn
@@ -103,7 +120,7 @@ export function publishPkg(pkg: { name: string; dir: string }, dryRun: boolean):
 
 /** 主流程：发现 → 查 registry 版本 → 过滤已发布 → 拓扑排序 → 逐个发布。 */
 export async function main(argv: readonly string[]): Promise<number> {
-    const { dryRun } = parseArgs(argv);
+    const { dryRun, otp } = parseArgs(argv);
     const pkgs = await discoverPackages(REPO_ROOT);
     if (pkgs.length === 0) {
         console.log("[release-npm] 未发现任何可发布包");
@@ -139,7 +156,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
     // workspace:* → caret 真实版本映射（按工作区当前版本，改写在 publish 前、恢复在 finally）
     const workspaceVersions = new Map(pkgs.map((pkg) => [pkg.name, pkg.version]));
-    return await publishOrdered(ordered, workspaceVersions, dryRun);
+    return await publishOrdered(ordered, workspaceVersions, dryRun, otp);
 }
 
 /**
@@ -150,6 +167,7 @@ async function publishOrdered(
     ordered: readonly WorkspacePkg[],
     workspaceVersions: ReadonlyMap<string, string>,
     dryRun: boolean,
+    otp: string | undefined,
 ): Promise<number> {
     for (const pkg of ordered) {
         const manifestPath = join(pkg.dir, "package.json");
@@ -164,7 +182,7 @@ async function publishOrdered(
             );
         }
         try {
-            const code = publishPkg(pkg, dryRun);
+            const code = publishPkg(pkg, dryRun, otp);
             if (code !== 0) {
                 console.log(
                     `[release-npm] ❌ 发布失败: ${pkg.name}@${pkg.version}（退出码 ${code}），已中断`,
