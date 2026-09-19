@@ -12,7 +12,7 @@
         "dev": "node apps/cli/dist/index.mjs",
         "start": "node apps/cli/dist/index.mjs",
         "config": "node apps/cli/dist/index.mjs config",
-        "prepare": "pnpm -r build",
+        "prepare": "git config core.hooksPath scripts/git-hooks && pnpm -r build",
         "build": "pnpm -r build",
         "lint": "biome lint .",
         "format": "biome format --write .",
@@ -24,8 +24,8 @@
         "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
         "changeset": "changeset",
         "sync:adapter-deps": "node scripts/release/sync-adapter-deps.ts",
-        "release:dryrun": "pnpm changeset version && node scripts/release/sync-adapter-deps.ts --dry-run && pnpm -r build && node scripts/release/release-npm.ts --dry-run",
-        "release": "pnpm changeset version && node scripts/release/sync-adapter-deps.ts && pnpm -r build && node scripts/release/release-npm.ts"
+        "release:dryrun": "pnpm changeset version && node scripts/release/sync-adapter-deps.ts --dry-run && pnpm install --lockfile-only --ignore-scripts && pnpm -r build && node scripts/release/release-npm.ts --dry-run",
+        "release": "pnpm changeset version && node scripts/release/sync-adapter-deps.ts && pnpm install --lockfile-only --ignore-scripts && pnpm -r build && node scripts/release/release-npm.ts"
     },
     "devEngines": {
         "packageManager": {

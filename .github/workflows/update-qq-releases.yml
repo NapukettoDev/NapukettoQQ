@@ -5,7 +5,12 @@ name: update-qq-releases
 #   抓取 QQ 官方下载配置（rainbow pcConfig.json，im.qq.com 新版 SPA 的数据源）
 #   → 解析最新版号与下载链接 → 下载安装包计算 sha256 → 用内置 7-Zip 解析安装包
 #   内部版本目录名（含构建号）→ 更新 qq-releases.json（保留历史、按版本递增）。
-# 任何一步失败：脚本非零退出且不写清单；无变更时 no-op，不产生 PR。
+#
+# 失败策略（2026-09-20 起）：更新步骤 continue-on-error，失败不刷红 CI——
+# 腾讯 CDN 的 403 拦截（QQNTV2 路径段 2026-08-25 起对数据中心 IP / 非官方
+# 客户端 WAF，连本地浏览器直连都被拦）属外部因素，定时任务红了只会逼人禁用。
+# 失败改为在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
+# 本地跑 scripts/qq-releases/update-qq-releases.ts 兜底更新清单。
 on:
     schedule:
         # 每天 UTC 03:17（避开整点高峰）
@@ -15,24 +20,68 @@ on:
 permissions:
     contents: write
     pull-requests: write
+    issues: write
 
 jobs:
     update:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v5
 
             - name: Setup Node
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: 24
 
             - name: 更新 qq-releases.json
+              id: update
+              continue-on-error: true
               run: node scripts/qq-releases/update-qq-releases.ts
 
+            - name: 失败则在追踪 issue 报警（去重，不刷红 CI）
+              if: steps.update.outcome == 'failure'
+              uses: actions/github-script@v9
+              with:
+                  script: |
+                      const title = "chore(loader): qq-releases 自动更新失败（需本地兜底）";
+                      const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+                      const body = [
+                          `update-qq-releases 于 ${new Date().toISOString()} 更新失败。`,
+                          `运行日志: ${runUrl}`,
+                          ``,
+                          `常见原因：腾讯 CDN（qqdl.gtimg.cn）对 GitHub runner 下载安装包返回 403`,
+                          `（QQNTV2 路径段 2026-08-25 起被 WAF 拦截）。`,
+                          ``,
+                          `兜底方式：本地跑 \`node scripts/qq-releases/update-qq-releases.ts\`，`,
+                          `把变更后的 packages/loader/qq-releases.json 提交上来。`,
+                          `若日志显示的不是外部拦截而是脚本/页面结构问题，请优先修脚本。`,
+                      ].join("\n");
+                      const { data: issues } = await github.rest.issues.listForRepo({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          state: "open",
+                          per_page: 100,
+                      });
+                      const existing = issues.find((i) => i.title === title);
+                      if (existing) {
+                          await github.rest.issues.createComment({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              issue_number: existing.number,
+                              body,
+                          });
+                      } else {
+                          await github.rest.issues.create({
+                              owner: context.repo.owner,
+                              repo: context.repo.repo,
+                              title,
+                              body,
+                          });
+                      }
+
             - name: 有变更则提 PR
-              uses: peter-evans/create-pull-request@v7
+              uses: peter-evans/create-pull-request@v8
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   commit-message: "chore(loader): 更新 qq-releases.json 到最新 QQ 版本"

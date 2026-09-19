@@ -18,7 +18,7 @@
  * （实测安装包尾部有 UTF-16LE `9.9.33.52230-aff854e`）。清单 version 必须与安装包内部
  * 目录名一致（运行时 extractWrapperFiles 按版本目录名定位 wrapper.node）。
  *
- * 容错：任何一步失败（网络/解析/下载/7z/版本解析）→ 非零退出且不写清单（绝不写坏）。
+ * 容错：下载瞬态失败按 5s/15s 重试共 3 次；最终失败非零退出且不写清单（绝不写坏）。
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -409,7 +409,7 @@ async function main(argv: readonly string[]): Promise<number> {
     try {
         const installerPath = join(tmp, "installer.exe");
         info("下载安装包并计算 sha256…");
-        const sha256 = await downloadFile(release.x64Url, installerPath);
+        const sha256 = await downloadFileWithRetry(release.x64Url, installerPath);
         info(`sha256: ${sha256}`);
 
         // 4. 解析安装包内部版本目录名（含构建号）：7z 列归档优先，失败回退字节扫描
@@ -449,4 +449,35 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
             process.stderr.write(`[update-qq-releases] ❌ ${message}\n`);
             process.exitCode = 1;
         });
+}
+
+// —— 下载重试（置于 CLI 收尾之后：保持存量行号不变，fallow 增量基线锚点不受
+// 行号位移影响；引用处经函数声明提升，TDZ 安全——main 首个 await 后才会调用）——
+
+/** 下载重试间隔（5s/15s，尾部 -1 为终止哨兵）：腾讯 CDN 偶发 403/5xx，重试吸收瞬态失败。 */
+const DOWNLOAD_RETRY_DELAYS_MS = [5_000, 15_000, -1] as const;
+
+/** 归一化错误消息（Error 优先取 message）。 */
+function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+/** 带重试的下载：共 3 次尝试，失败按 5s/15s 退避后再试，仍失败抛最后一个错误。 */
+function downloadFileWithRetry(url: string, dest: string): Promise<string> {
+    return retryDownload(url, dest, [...DOWNLOAD_RETRY_DELAYS_MS]);
+}
+
+/** 递归重试体（线性展开避免循环嵌套，控制 fallow 复杂度门禁口径）。 */
+async function retryDownload(url: string, dest: string, delays: number[]): Promise<string> {
+    try {
+        return await downloadFile(url, dest);
+    } catch (err) {
+        const [delayMs = -1] = delays;
+        if (delayMs < 0) {
+            throw new Error(`下载失败（重试 2 次后仍放弃）: ${errorMessage(err)}`);
+        }
+        warn(`下载失败，${Math.round(delayMs / 1000)}s 后重试: ${errorMessage(err)}`);
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
+        return retryDownload(url, dest, delays.slice(1));
+    }
 }

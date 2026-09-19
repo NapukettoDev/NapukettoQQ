@@ -1,0 +1,37 @@
+#!/bin/sh
+# 依赖声明与 pnpm-lock.yaml 一致性预提交门禁。
+#
+# 背景：2026-09 三次 CI 红灯（3991fcf / f640df1 / 5b96c48）都是同一根因——
+# package.json 依赖范围或子模块指针变了但 pnpm-lock.yaml 没同步提交，CI 的
+# --frozen-lockfile 判定漂移直接 ERR_PNPM_OUTDATED_LOCKFILE，三个 job 全挂，
+# 下一个提交才补 lock。本钩子在提交侧根治：暂存区含依赖声明而 lock 未同步时，
+# 跑 pnpm install --lockfile-only 校验，lock 出现 diff 则拒绝提交并提示一并提交。
+#
+# 触发范围：任意层级 package.json、pnpm-workspace.yaml、koishi 子模块指针
+# （apps/koishi-plugin-adapter 的 package.json 参与 workspace 解析）。
+# 启用方式：根 package.json 的 prepare 脚本已设置 core.hooksPath，无需手动配置。
+
+set -u
+
+staged=$(git diff --cached --name-only)
+
+# 未触碰依赖声明 → 直接放行
+echo "$staged" | grep -qE '(^|/)package\.json$|^pnpm-workspace\.yaml$|^apps/koishi-plugin-adapter$' || exit 0
+
+# lock 已随本次提交变更 → 放行（作者已同步）
+echo "$staged" | grep -q '^pnpm-lock\.yaml$' && exit 0
+
+echo "pre-commit: 依赖声明变更未带 pnpm-lock.yaml，校验 lock 是否需要刷新..." >&2
+if ! pnpm install --lockfile-only --ignore-scripts >/dev/null 2>&1; then
+    echo "pre-commit: pnpm install --lockfile-only 失败——请手动 pnpm install 排查后重试。" >&2
+    exit 1
+fi
+
+if [ -n "$(git diff --name-only -- pnpm-lock.yaml)" ]; then
+    echo "pre-commit: package.json 变更导致 pnpm-lock.yaml 需要刷新（diff 已生成）：" >&2
+    git diff --stat -- pnpm-lock.yaml >&2
+    echo "执行 git add pnpm-lock.yaml 后重新提交（lock 应与依赖变更同一 commit）。" >&2
+    exit 1
+fi
+
+exit 0
