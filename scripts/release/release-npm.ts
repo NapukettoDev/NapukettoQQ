@@ -72,7 +72,17 @@ export async function fetchPublishedVersions(pkgName: string): Promise<Set<strin
 
 /** 在包目录执行 npm publish，返回退出码。 */
 export function publishPkg(pkg: { name: string; dir: string }, dryRun: boolean): number {
-    const args = ["publish", "--access", "public", ...(dryRun ? ["--dry-run"] : [])];
+    // --workspaces=false（2026-09-19）：根 package.json 声明 npm workspaces 字段
+    // （5b96c48）后，npm 从包目录向上爬把主仓根认成 workspace root，读到根的
+    // devEngines（强制 pnpm）→ EBADDEVENGINES 拒发。关掉 workspace 上下文即
+    // 恢复 5b96c48 之前的行为（prefix 停在包目录自身，包内无 devEngines）。
+    const args = [
+        "publish",
+        "--access",
+        "public",
+        "--workspaces=false",
+        ...(dryRun ? ["--dry-run"] : []),
+    ];
     // Windows 上 npm 是 npm.cmd 批处理，CreateProcess 无法直接执行 .cmd（spawn
     // 报 ENOENT）——必须经 cmd.exe（ComSpec）显式执行。参数数组原样传递，不经
     // shell 展开，无注入面（规避 Node 对 shell:true 传参的 DEP0190 警告）。
