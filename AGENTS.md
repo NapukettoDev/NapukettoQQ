@@ -64,7 +64,8 @@ pnpm release            # 消费 changeset：升版本 + CHANGELOG + 构建 + �
 - **changeset 工作流（强制，勿攒）**：每次完成一批用户可见改动（feat / fix / refactor 涉及发布内容），**必须随改动一起**在 `.changeset/` 写 changeset 并提交，不要攒到发版前——攒必漏，漏写则 `changeset version` 无 pending 条目直接退出，版本号与 CHANGELOG 不更新、无法发包。写法：`pnpm changeset` 交互式选择，或手写 `.changeset/<名字>.md`（frontmatter 声明受影响包 + bump 类型 + 简体中文说明，模板见下）。
 - **bump 类型（0.x 阶段，API 未冻结）**：API 破坏 → minor（`0.1.x → 0.2.x`）、修复 → patch（`0.0.x`）；**依赖联动自动处理**：kernel 升版本 → 依赖它的 adapter/loader/cli 同步升 patch 并重依赖新版本。
 - **不需要 changeset**：纯 chore——koishi 子模块指针、pnpm-lock 更新、删除脚本、文档、无行为变化的目录重命名。
-- 发版时 `pnpm release`（= `changeset version && build && publish`）自动升版本 + 写各包 CHANGELOG + 按拓扑序发布；**发不出包时先检查 `.changeset/` 是否有 pending 条目**。
+- 发版时 `pnpm release`（= `changeset version && sync-adapter-deps && lockfile 刷新 && build && publish`）自动升版本 + 写各包 CHANGELOG + 按拓扑序发布；**发不出包时先检查 `.changeset/` 是否有 pending 条目**。changeset version 后 `pnpm release` 链已自动跑 `pnpm install --lockfile-only` 刷新 lock——依赖变更与 lock 必须同一 commit。
+- **lockfile 一致性 pre-commit 钩子（2026-09-20 起，自动启用）**：根 prepare 设 `core.hooksPath scripts/git-hooks`；暂存 package.json / pnpm-workspace.yaml / koishi 子模块指针而未带 pnpm-lock.yaml 时，钩子自动跑 `pnpm install --lockfile-only --ignore-scripts` 校验，lock 出现 diff 即拒绝提交（根治 CI `ERR_PNPM_OUTDATED_LOCKFILE` 红灯，2026-09 三次同根因）。绕过用 `--no-verify`（不推荐）。
 - ⚠️ 发布前确认工作区干净（pnpm publish 有 git-checks）；scoped 包发布需 `napuketto` 组织已创建（npmjs.org/org/create）。npm 凭据已配置（2026-08-09 用户配置 token），发布时勿读取/打印 token。
 
   > `.changeset/<名字>.md` 模板：

@@ -21,7 +21,8 @@
 #            （2026-09-15 实测）。fallow 版本随 lockfile（devDeps +
 #            --frozen-lockfile），门禁口径不随上游漂移。
 #          base 解析：PR → origin/目标分支；push → 前一提交；新分支首推 /
-#            workflow_dispatch 回退 HEAD~1。
+#            workflow_dispatch 回退 HEAD~1。强推后 github.event.before 指向
+#            孤儿提交（fetch 不可达），用 git cat-file 探活后同样回退 HEAD~1。
 #
 # 子模块策略（checkout 默认不检子模块，按需手动检）：
 #   apps/koishi-plugin-adapter —— 公共仓，pnpm-lock.yaml 的 importers 包含它，
@@ -154,11 +155,11 @@ jobs:
             - name: 安装依赖（fallow 来自 devDeps，版本随 lockfile）
               run: pnpm install --frozen-lockfile
 
-            - name: 计算 audit 基线（PR → 目标分支；push → 前一提交；其余 → HEAD~1）
+            - name: 计算 audit 基线（PR → 目标分支；push → 前一提交；不可达 → HEAD~1）
               run: |
                   if [ -n "$BASE_REF" ]; then
                       echo "FALLOW_BASE=origin/$BASE_REF" >> "$GITHUB_ENV"
-                  elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+                  elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
                       echo "FALLOW_BASE=$BEFORE" >> "$GITHUB_ENV"
                   else
                       echo "FALLOW_BASE=HEAD~1" >> "$GITHUB_ENV"
