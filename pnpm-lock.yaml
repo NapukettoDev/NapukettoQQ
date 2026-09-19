@@ -237,12 +237,6 @@ importers:
 
   apps/koishi-plugin-adapter:
     dependencies:
-      '@koishijs/client':
-        specifier: ^5.29.4
-        version: 5.30.11(@types/node@26.5.1)(lightningcss@1.33.0)(postcss@8.5.28)(rollup@4.63.1)(supports-color@8.1.1)(typescript@7.0.2)
-      '@koishijs/plugin-console':
-        specifier: ^5.30.11
-        version: 5.30.11(@koishijs/client@5.30.11(@types/node@26.5.1)(lightningcss@1.33.0)(postcss@8.5.28)(rollup@4.63.1)(supports-color@8.1.1)(typescript@7.0.2))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)(supports-color@8.1.1))
       '@napuketto/adapter':
         specifier: ~0.3.1
         version: link:../../packages/adapter
@@ -253,7 +247,7 @@ importers:
         specifier: ~0.0.34
         version: link:../../packages/loader
       '@napuketto/media':
-        specifier: ~0.0.2
+        specifier: ~0.0.4
         version: link:../../packages/media
       '@napuketto/network':
         specifier: ~0.0.2
@@ -262,6 +256,12 @@ importers:
       '@biomejs/biome':
         specifier: ^2.5.6
         version: 2.5.13
+      '@koishijs/client':
+        specifier: ^5.29.4
+        version: 5.30.11(@types/node@26.5.1)(lightningcss@1.33.0)(postcss@8.5.28)(rollup@4.63.1)(supports-color@8.1.1)(typescript@7.0.2)
+      '@koishijs/plugin-console':
+        specifier: ^5.30.11
+        version: 5.30.11(@koishijs/client@5.30.11(@types/node@26.5.1)(lightningcss@1.33.0)(postcss@8.5.28)(rollup@4.63.1)(supports-color@8.1.1)(typescript@7.0.2))(koishi@4.18.11(@cordisjs/plugin-http@0.6.3(cordis@3.18.1))(cordis@3.18.1)(supports-color@8.1.1))
       '@satorijs/core':
         specifier: ^4.6.0
         version: 4.6.0(cordis@3.18.1)
