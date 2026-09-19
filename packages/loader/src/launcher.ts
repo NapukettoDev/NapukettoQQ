@@ -206,7 +206,9 @@ async function resolveNodeExecutable(options: LaunchOptions): Promise<{
 
 /** 可执行文件名是否 node（win32 宿主判定；node.exe / node 两种形态）。 */
 export function isNodeExecutable(execPath: string): boolean {
-    const name = basename(execPath).toLowerCase();
+    // 反斜杠 Windows 路径先归一化：posix basename 不认 `\` 分隔符，整个字符串
+    // 当文件名比对恒 false（CI ubuntu 门禁实测挂过）
+    const name = basename(execPath.replaceAll("\\", "/")).toLowerCase();
     return name === "node.exe" || name === "node";
 }
 

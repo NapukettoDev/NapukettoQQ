@@ -181,8 +181,10 @@ function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
 export function resolveQqInstall(qqPath?: string): QqInstallInfo {
     const qq = qqPath ?? process.env["NAPUTO_QQ_PATH"] ?? locateQqPath();
     // Windows 安装结构：<installDir>/versions/<版本>/resources/app/wrapper.node
-    // ⚠️ dirname 跨平台：Linux/WSL 路径用正斜杠（lastIndexOf("\\") 会切错，2026-08-13 实测）
-    const installDir = dirname(qq);
+    // ⚠️ dirname 跨平台：Linux/WSL 路径用正斜杠（lastIndexOf("\\") 会切错，2026-08-13 实测）；
+    // 反斜杠 Windows 路径在 posix dirname 下不切分（切错目录），非 win32 先归一化——
+    // win32 不动原串，保持返回值分隔符与调用方输入一致（精确比对场景）
+    const installDir = dirname(process.platform === "win32" ? qq : qq.replaceAll("\\", "/"));
     return resolveFromRoot(installDir, "local");
 }
 
