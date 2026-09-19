@@ -250,7 +250,7 @@ importers:
         specifier: ~0.1.1
         version: link:../../packages/kernel
       '@napuketto/loader':
-        specifier: ~0.0.32
+        specifier: ~0.0.34
         version: link:../../packages/loader
       '@napuketto/media':
         specifier: ~0.0.2
