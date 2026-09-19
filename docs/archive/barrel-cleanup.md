@@ -1,5 +1,7 @@
 # 任务提示词：Barrel 规范化整理
 
+> **归档说明（2026-09-20）**：本任务已执行完毕（kernel apis/infra/types/login/bridge 与 adapter 各 api/helper barrel 均已落地）。
+
 > 用法：在**新对话**中粘贴本文件内容作为首条消息。执行前先读 `AGENTS.md` → `docs/STATUS.md` → `docs/architecture.md`。
 
 ## 目标

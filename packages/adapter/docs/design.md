@@ -197,32 +197,33 @@ JSON 序列化形如 `[[10,64,…]]`）：外层数组 = 批（两样本均单�
 - `extractSysMsgEnvelope` 按 7.3 布局逐字段软失败（全部可空），翻译保持
   纯函数（ADR-008）。
 
-## 8. kurobot 协议适配器（KuroBot MVP-3，2026-09-13）
+## 8. kurobot 协议适配器（KuroBot MVP-3，2026-09-13；09-16 改名对齐 0.4.0）
 
-> 任务书：`docs/KUROBOT-PROMPT.md`。napukettoqq 以「新增协议适配器」方式原生说
-> kurobot-ws：账号 TOML 配了 `[accounts.kurobot]` 段即启用，作为 **WS 客户端**主动
-> 连入 KuroBot 服务端（KuroBot 恒为服务端），实现 QQ 群 ↔ MC 双向互通。
+> 任务书：`docs/archive/KUROBOT-PROMPT.md`（已执行完毕）。napukettoqq 以「新增协议适配器」
+> 方式原生说 kurobridge-ws：账号 TOML 配了 `[accounts.kurobot]` 段即启用，作为 **WS 客户端**
+> 主动连入 KuroBot 服务端（KuroBot 恒为服务端），实现 QQ 群 ↔ MC 双向互通。
 > 复刻 satori 模式（core 框架 + 薄映射层），不动 onebot11/satori/network/kernel。
 
 ### 8.1 协议契约与镜像决策
 
 - **SSOT**：KuroAdapter `bridge/protocol/src/`（meta / frame / messages/ws）——
-  镜像基线 **0.3.1**（KuroAdapter master commit `b0809ef`，含 MVP-3 的 hello 可选
-  `client` 字段）。`@kurobot/protocol` 未发 npm、跨仓构建期依赖不可行 →
-  `src/kurobot/schema.ts` 本仓**镜像实现**（逐字段抄录，文件头注明 SSOT 与基线）；
+  镜像基线 **0.4.0**（子协议 `kurobridge-ws.v1`；0.3.1 首版落地后随 KuroAdapter
+  **ADR-030 品牌改名**对齐：kurobot-ws.v1 → kurobridge-ws.v1、PROTOCOL_VERSION 0.4.0，
+  帧形状逐字段不变，commit `5bc2aea`）。`@kurobot/protocol` 未发 npm、跨仓构建期依赖
+  不可行 → `src/kurobot/schema.ts` 本仓**镜像实现**（逐字段抄录，文件头注明 SSOT 与基线）；
   golden 帧对表测试锁漂移（将来发版可切换依赖，债务见 NOTES）。
 - **帧格式**：`{header: {type, id?}, body}`（单行 JSON 文本帧）。事件帧无 id；
   请求/响应帧 id 必填（UUID 关联）。收帧两段式：wireFrameSchema 取 type →
   分发到具体 schema；未知事件帧忽略、未知请求帧回同 id `<type>_result`
-  `{ok:false, error:"unknown frame type"}`（对齐 ADR-026 未知帧容忍，防乒乓循环：
-  `_result` 结尾的未知响应帧不回执）。
+  `{ok:false, error:"unknown frame type"}`（对齐 KuroAdapter ADR-026 未知帧容忍，
+  防乒乓循环：`_result` 结尾的未知响应帧不回执）。
 - **IPC 侧消息**（ready/broadcast/execute_command 等）不镜像——那些是 KuroAdapter
   内部 Java↔Node 通道，WS 对端永不接触。
 
 ### 8.2 连接层（`connection.ts` KurobotConnection，自建不复用 network.WsClient）
 
 不复用的四个协议语义理由（任务书 §1.2 决策二，已核实 network WsClient）：
-① 服务端 `handleProtocols` 不带 `Sec-WebSocket-Protocol: kurobot-ws.v1` 直接拒连，
+① 服务端 `handleProtocols` 不带 `Sec-WebSocket-Protocol: kurobridge-ws.v1` 直接拒连，
 WsClient 不支持子协议；② 服务端空闲检测只认**应用层入帧**（30s 阈值，WS 层 ping
 不重置），必须发应用层 `ping` 帧；③ 每次连接（含重连）成功后必须**立即重发 hello**，
 WsClient 无 onOpen 回调；④ 重连需感知 close code（1002/1008 停止重连），WsClient
@@ -242,7 +243,7 @@ idle ──start()──▶ connecting ──open──▶ establishing（发 he
 ```
 
 - **握手**：open 后立即发 `hello`（请求帧，UUID）：`{peerId: <本账号 uin>,
-  platform: "qq", version: <adapter 版本>, protocolVersion: "0.3.1", token?非空才带,
+  platform: "qq", version: <adapter 版本>, protocolVersion: "0.4.0", token?非空才带,
   client?（缺省 napukettoqq，能取到包版本则 napukettoqq/<版本>）}`；收到同 id
   `hello_ack`：ok → 建立（回 `serverId/version/channelBindings`）；ok:false →
   永久停止（reason 进 error 日志）。
@@ -314,8 +315,8 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
 
 ### 8.6 测试（`*.test.ts` 与源码相邻，vitest 根配置）
 
-- **假 kurobot-ws 服务端**（`ws` 库起真端口，`handleProtocols` 复刻服务端校验）驱动
-  连接层全链路：带子协议握手 / 不带被拒（HTTP 401 复现服务端行为）/ hello 0.3.1 +
+- **假 kurobridge-ws 服务端**（`ws` 库起真端口，`handleProtocols` 复刻服务端校验）驱动
+  连接层全链路：带子协议握手 / 不带被拒（HTTP 401 复现服务端行为）/ hello 0.4.0 +
   client + token / 应用层 ping / 断线指数退避重连且重发 hello / hello_ack error、
   1002、1008 停止重连。
 - **golden 帧对表**：双向各 ≥3 种帧的线格式字面量（对表来源 commit `b0809ef` 注明

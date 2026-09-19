@@ -1,6 +1,6 @@
 # NapukettoQQ 工程指南
 
-> 本文件是项目级指令（VS Code Copilot 自动加载）。开始任何工作前，先读本文件与 `docs/STATUS.md`（现状 + 关键决策点）→ `docs/architecture.md`（架构书）→ 对应包的 `docs/design.md`。
+> 本文件是项目级指令（VS Code Copilot 自动加载）。开始任何工作前，先读本文件与 `docs/STATUS.md`（现状 + 遗留清单，导航见 `docs/README.md`）→ `docs/architecture.md`（架构书）→ 对应包的 `docs/design.md`。
 
 ## 项目是什么
 
@@ -31,7 +31,7 @@ NapukettoQQ：基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人
 5. **不做的事**：framework 模式（QQNT 插件）、webui、插件系统、NapCat 的 Proxy 事件老方案、无理由的 `any`。**功能范围 = NapCat 全部能力（协议 + API）− WebUI − 插件系统**（2026-08-06 用户拍板）。
 6. **media 严格解耦**：`@napuketto/media` 只被协议层（adapter）依赖，kernel 不背媒体依赖。
 7. **技术路线（2026-08-06 定稿，V2：Native C++ Bypass 载具 + NAPI 业务层混合模式）**：
-   - **⚠️ 关键决策点**：先读 `docs/STATUS.md` 顶部——**自建宿主为唯一路线（已全链路验证）**（标准 Node 纯 Node 模式，NapCat 实证 ~237MB），路线 B（注入 worker）已淘汰（2026-08-07 用户拍板）。
+   - **⚠️ 关键决策点**：**自建宿主为唯一路线（已全链路验证）**（标准 Node 纯 Node 模式，NapCat 实证 ~237MB），路线 B（注入 worker）已淘汰（2026-08-07 用户拍板）。路线演进背景见 `docs/DECISIONS.md`。
    - **完整架构书**：`docs/architecture.md`（分层/ADR/路线图/红线/工具链，新对话必读）。
    - **业务层（JS/NAPI）**：kernel/adapter/network/media/cli 继续纯 NAPI 调用 `wrapper.node` 业务 API（getMsgService 等），现有 79 个 OneBot 动作（含别名变体）全保留。
    - **载具层（C++ Native，私有）**：`@napuketto/loader` 负责**自建宿主引导**（`launchSelfHost`：标准 node + stub QQNT.dll → dlopen wrapper.node，唯一路线）+ 无头阻断（自建宿主无 QQ 进程/UI，天然满足）。**路线 B（注入 QQ 主进程 → fork worker）已淘汰（2026-08-07 用户拍板）**；V1 注入框架（bootmain/hookdll）与 V2 载具（vehicle.cpp）已归档 archive/，本包不再编译 C++ 组件（仅保留闭源 stub QQNT.dll）。载具 DLL 历史职责：① NOP `wrapper.node` 环境自检与 self-register 校验 ② 激活 session `cpp_impl`（自建宿主不需要）③ 阻断 Chromium UI/GPU/Renderer 进程。

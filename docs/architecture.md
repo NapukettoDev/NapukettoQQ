@@ -1,9 +1,10 @@
-# NapukettoQQ 架构书（2026-08-06 合并定稿）
+# NapukettoQQ 架构书（2026-08-06 合并定稿；2026-09-20 增补修订）
 
 > **状态**：本文件是唯一架构书，合并自旧 `architecture.md`（总体架构）+ `architecture-investigation.md`
 > （9.9.31 排查）+ `architecture-v2-native-bypass.md`（V2 决策书），并按 2026-08-06 路线修正
-> （自建宿主唯一路线 + 路线 B 已淘汰，详见 `docs/STATUS.md` 顶部决策点）。
-> **配套**：`docs/STATUS.md`（现状 + 下一步）、`docs/DECISIONS.md`（决策史）、各包 `docs/design.md`。
+> （自建宿主唯一路线 + 路线 B 已淘汰）。2026-09-20 增补：kurobot 第三协议、create-napukettoqq
+> 脚手架、ADR 019~022 补录、发版与 CI 工具链。
+> **配套**：`docs/STATUS.md`（现状 + 遗留）、`docs/DECISIONS.md`（决策史）、各包 `docs/design.md`。
 > 新对话先读 STATUS → AGENTS.md → 本文件 → 对应包 design.md。
 
 ---
@@ -13,25 +14,28 @@
 NapukettoQQ 是基于 **QQ NT 架构客户端**的机器人框架：
 
 - 通过 QQ 原生模块 `wrapper.node` 把 QQ 内部 C++ 服务包装成语义化 API。
-- 对外提供 **OneBot 11**（当前）协议接口（HTTP / WebSocket）；**Satori**（已实现，2026-08-08）。
+- 对外提供多协议接口：**OneBot 11**（HTTP / WS / 反向 WS）、**Satori**（2026-08-08）、
+  **kurobot**（2026-09-13，QQ 群 ↔ Minecraft 双向互通的 kurobridge-ws 客户端）。
   **OneBot 12 已放弃**（2026-08-05 用户拍板：规范过于模糊，commit ac5ebba 删除占位）。
 - **永远不做 WebUI**；**不做 framework 模式**（QQNT 插件形式），只做独立进程/宿主模式。
 - **全局配置 = 单一 TOML**：`<项目根>/napuketto.toml`（全局段 + `[[accounts]]` 账号段，
-  协议与通信配置嵌在账号内——`[accounts.onebot11]` / `[accounts.satori]`，账号必填、
-  无协议段 = 不启用，2026-08-08 拍板；cli 读写 + zod 校验，boot 按登录账号 uin 取段作 seed
-  注入 kernel ConfigBase）。**数据根默认 `<项目根>/.napuketto`**（2026-08-08 拍板：部署原因
-  不放用户目录），只承载账号目录/日志/缓存/QQ 数据，路径解析见 kernel `resolveDataRoot` /
-  `resolveConfigPath`。
+  协议与通信配置嵌在账号内——`[accounts.onebot11]` / `[accounts.satori]` /
+  `[accounts.kurobot]`，账号必填、无协议段 = 不启用，2026-08-08 拍板；cli 读写 + zod 校验，
+  boot 按登录账号 uin 取段作 seed 注入 kernel ConfigBase）。**数据根默认 `<项目根>/.napuketto`**
+  （2026-08-08 拍板：部署原因不放用户目录），只承载账号目录/日志/缓存/QQ 数据，路径解析见
+  kernel `resolveDataRoot` / `resolveConfigPath`。
 
 ## 2. 包结构与依赖方向（只允许向下依赖）
 
 ```
 apps/cli               启动编排（commander + 登录渲染 + 配置命令 + supervisor 多账号）
-  └─ @napuketto/adapter   协议适配器容器（core 框架 + onebot11/satori）
+  └─ @napuketto/adapter   协议适配器容器（core 框架 + onebot11/satori/kurobot）
        ├─ @napuketto/kernel   唯一原生交互层（wrapper / apis / 事件通道 / 缓存）
        ├─ @napuketto/network  协议无关传输层（HTTP / WS / 泛型广播）
        └─ @napuketto/media    媒体转码（silk / ffmpeg / 文件识别）
        （loader 仅被 cli 依赖，kernel 不依赖 loader；loader 依赖 kernel）
+apps/create-napukettoqq   项目脚手架（交互式生成 napuketto.toml + 目录布局，依赖 @napuketto/cli）
+apps/koishi-plugin-adapter（git submodule，独立仓）  Koishi 适配器插件
 ```
 
 依赖方向硬约束（AGENTS.md 第 2 条）：
@@ -40,7 +44,7 @@ apps/cli               启动编排（commander + 登录渲染 + 配置命令 + 
 @napuketto/media     无内部依赖
 @napuketto/network   无内部依赖（协议无关传输原语）
 @napuketto/adapter   kernel + network + media（协议适配器容器）
-@napuketto/loader    kernel（boot 引导）+ 无其他（唯一 C++ 组件：注入 + 引导 + Native Bypass 载具）
+@napuketto/loader    kernel（boot 引导）+ 无其他（自建宿主引导；C++ 载具已归档，native/ 为闭源 submodule 仅存编译产物）
 apps/cli             kernel + adapter + loader
 apps/koishi-plugin-adapter（git submodule）kernel + loader + media + adapter + network
 ```
@@ -59,7 +63,7 @@ apps/koishi-plugin-adapter（git submodule）kernel + loader + media + adapter +
 | **network** | 协议无关的传输原语（HTTP/WS + 泛型广播） | 禁止 import 任何协议包；事件类型泛型化 |
 | **adapter**（协议容器） | 协议语义：事件模型、action 注册表、数据翻译、ID 映射 | 只认识 kernel 的 API/事件/缓存，不认识原生 |
 | **media** | 媒体编解码与识别 | 只被协议层依赖；kernel 不背媒体依赖 |
-| **loader** | 注入引导 + Native Bypass 载具（C++） | 逆向手段仅限此层；载具闭源（native） |
+| **loader** | 自建宿主引导（launchSelfHost）+ 跨平台（wine）+ IPC 模式 + instance-lock + 登录相位机 | 逆向手段（如启用）仅限此层；载具闭源（native submodule） |
 | **cli** | 启动编排、登录渲染、配置命令 | 不写业务逻辑，只装配 |
 
 ## 4. 技术路线（V2 定稿：Native Bypass 混合模式 + 自建宿主修正）
@@ -67,7 +71,8 @@ apps/koishi-plugin-adapter（git submodule）kernel + loader + media + adapter +
 ### 4.0 当前定稿（2026-08-06）
 
 > **⚠️ 关键决策点**：自建宿主（标准 Node 纯 Node 模式）为**唯一路线**（NapCat 纯 Node 模式
-> ~237MB 能登录实证），路线 B（注入 300MB）**已淘汰（2026-08-07 用户拍板）**。详细背景见 `docs/STATUS.md` 顶部。
+> ~237MB 能登录实证），路线 B（注入 300MB）**已淘汰（2026-08-07 用户拍板）**。路线演进背景见
+> `docs/DECISIONS.md`（V4 存疑 → V9/V10 定案）。
 
 | 路线 | 形态 | 内存 | 状态 |
 |---|---|---|---|
@@ -160,8 +165,8 @@ start！**）→ 等 `onOpentelemetryInit(is_init=true)`。`Base_PowerMessageWin
 ```
 wrapper.node 原生回调
   --> kernel event-channel（每个 Service 只注册一次原生监听）
-      ├── kernel 内部订阅：缓存主动维护（GroupCache 等）
-      └── onebot 订阅：翻译为 OB11 事件（只读缓存，纯函数）
+      ├── kernel 内部订阅：缓存主动维护（GroupCache / BuddyCache 等）
+      └── 协议适配器订阅（onebot11 / satori / kurobot）：翻译为协议事件（只读缓存，纯函数）
           --> network EventBroadcaster 广播给所有 HTTP/WS 适配器
 ```
 
@@ -189,21 +194,31 @@ wrapper.node 原生回调
 | ADR-016 | **数据目录按账号隔离，放用户目录；配置文件独立放项目根** | 数据放程序目录 | 程序目录可能只读；多账号天然分离；配置文件靠近项目便于管理（2026-08-07 修订） |
 | ADR-017 | **KernelError 类型化错误 + 协议层映射表** | 原生 `{result, errMsg}` 透传（细化 ADR-009） | 错误分类在 kernel 只做一次 |
 | ADR-018 | **wrapper 版本探测独立模块（wrapper-version）** | 硬编码版本路径 | appid/qua 与版本强相关（每版本从 major.node 解析） |
+| ADR-019 | **loader 跨平台 v2：wine 跑 Windows node.exe（方案 a）** | 方案 b（wine 跑完整 QQ）；在 npm 包/Docker 镜像内置任何腾讯二进制 | 只暴露无状态标准协议端口，云原生部署；2026-08-12 用户拍板（loader design.md） |
+| ADR-020 | **koishi 插件经 loader IPC 共享动作表**（`NAPUTO_IPC=1`，loader 运行时动态 import adapter/network） | 插件进程内直连原生（崩溃连带）/ 独立网络端口双开 | 零网络传输零配置 IO；动态 import 不构成编译期依赖，依赖方向不变（2026-08-27，loader design.md §9） |
+| ADR-021 | **kurobot 连接层在 adapter 包内自建**（不复用 network.WsClient） | 给 network.WsClient 加子协议/onOpen/退避参数 | 子协议握手、应用层心跳、close-code 感知退避全是 kurobot 协议语义，下沉 network 违反协议无关（2026-09-13，adapter design.md §8.2） |
+| ADR-022 | **版本管理 Changesets；GitHub Release repo 级 tag 与包版本解耦** | 手工改版本号；repo tag 锚定包版本 | 多包联动 bump 自动化；首个 GitHub Release v0.1.0（2026-09-19）即 repo 级 |
+
+> **编号说明**：文档与代码中出现的 **ADR-026 / ADR-030 是姊妹项目 KuroAdapter 的 ADR**
+> （`bridge/protocol`：026 = 未知帧容忍策略，030 = kurobot→kurobridge 品牌改名），非本仓
+> 编号；本仓编号 001~022 连续，无缺号。
 
 ## 7. 路线图（现状修正，2026-08-06）
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **P0 地基** | 类型层 + paths/config/logger/event-channel + errors/wrapper-version | ✅ 完成 |
-| **P1 登录** | wrapper-version → engine init → QR/快速登录 → CoreContext + selfInfo | ✅ 完成（含网络重试） |
-| **P2 消息链路** | apis/msg 收发 + adapter 订阅 + OB11 翻译 + network 广播 + send_msg | ✅ 完成 |
+| **P1 登录** | wrapper-version → engine init → QR/快速登录 → CoreContext + selfInfo | ✅ 完成（含网络重试 + 快速登录超时兜底 T3） |
+| **P2 消息链路** | apis/msg 收发 + adapter 订阅 + OB11 翻译 + network 广播 + send_msg | ✅ 完成（含富媒体发送三连修复） |
 | **P3 OB11 补全** | 群管/好友/文件/资料/系统 动作 + notice/request/meta 事件 + HTTP 上报 | ✅ 完成（79 动作（含别名变体），对齐度 ≈70%） |
 | **P4 扩展** | 合并转发、翻译、在线状态、media 接入、api 聚合、GroupCache | ✅ 完成 |
 | **P5 多协议** | satori 协议适配器（adapter 包内新目录，复用 core 框架） | ✅ 完成（2026-08-08：HTTP RPC + WS 事件服务 + 元素 XML 编解码 + 20 动作 + 4 类事件） |
-| **P6 多账号** | cli 子进程编排（supervisor） | ✅ 代码完成（实测待补） |
-| **路线验证** | 自建宿主验证实验（P2-2）→ 无头/低内存验收 | ✅ 自建宿主全链路实测通过（登录→READY→收发→onebot11→消息接收）；剩内存实测 |
+| **P6 多账号** | cli 子进程编排（supervisor）+ 运维命令 status/stop/restart | ✅ 完成（2026-09-08 运维命令实测） |
+| **P7 第三协议 kurobot** | adapter 包内 kurobot/ 目录（kurobridge-ws 客户端，QQ 群 ↔ MC） | ✅ 完成（2026-09-13 MVP-3；协议镜像 0.4.0） |
+| **P8 工程化** | Changesets 发版链 / CI 三 job / Codecov / fallow audit 门禁 / 贡献文档 | ✅ 完成（2026-09；首个 GitHub Release v0.1.0） |
+| **P9 loader 跨平台** | 无本机 QQ 运行（多级来源 + 自动下载）+ wine/Linux | ✅ 代码完成（wine 冒烟全绿；完整登录待测）；Docker ❌ 未实现 |
 
-> P5 之后 webui 永远不在路线图上。
+> P 系列之后 webui 永远不在路线图上；数据包层（packet 后端）为远期项。
 
 ## 8. 红线与合规（AGENTS.md 第 7 条，两路线都适用）
 
@@ -229,14 +244,32 @@ wrapper.node 原生回调
   窗口类（Base_PowerMessageWindow）已验证非必要。Ghidra 现仅用于远期数据包层（packet 后端）与
   「仅限 loader 载具层」的逆向手段研究。
 
-### 9.2 C++ 载具构建
+### 9.2 C++ 构建（历史资产）
 
-- LLVM-MinGW g++（`scripts/build-runtime.mjs`，PATH 前置 g++ 目录防 PowerShell PATH 失效）
-- 载具源码：`packages/loader/native/`（公共注入框架）+ `packages/loader/native/`（闭源子仓库）
+- V1 注入框架（bootmain/hookdll）与 V2 载具（vehicle.cpp）**已归档 archive/，loader 不再
+  编译 C++ 组件**（AGENTS.md 第 7 条）；stub QQNT.dll 用 LLVM-MinGW 编译（构建流程记录在
+  native 闭源子仓库 docs/）。
+- `packages/loader/native/` 现为**私有 submodule**（Oppenheymu/NapukettoQQ-Native），仅保留
+  闭源 stub 编译产物；clone 后需 `git submodule update --init --recursive`。
 
 ### 9.3 环境事实
 
-- QQ 9.9.33-51802：`<项目/工作目录>\QQNT\`（wrapper.node 114MB，exports 98 个；9.9.27/9.9.31 登录服务已下线勿用）
-- QQ 登录数据：`<用户目录>\Documents\Tencent Files\`（含 7 账号；快速登录用 **<测试QQ号>**）
+- QQ 9.9.33-52230（2026-09-08 实测）：`C:\Program Files\Tencent\QQNT\`（wrapper.node 114MB，
+  exports 98 个；9.9.27/9.9.31 登录服务已下线勿用）
+- QQ 登录数据：`<用户目录>\Documents\Tencent Files\`（多账号；测试账号注意事项见 STATUS.md）
 - 自建宿主 stub：`packages/loader/native/build/stub-test-env/`（默认 stub 目录，llvm-mingw 编译）
-- NapCat 参考部署包：`<NapCat Shell 部署包目录>`（仅参考，已不依赖）
+- NapCat 参考部署包：仅历史参考，已不依赖
+
+### 9.4 发版与 CI（2026-09 落地）
+
+- **版本管理**：Changesets——每批用户可见改动随改动写 `.changeset/<名字>.md`（勿攒），
+  发版 `pnpm release` 消费（升版本 + CHANGELOG + 构建 + 拓扑序发布）；工作流细则见 AGENTS.md。
+- **发版脚本**：`scripts/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 npm
+  2FA 验证码；sync-adapter-deps 发版链自动对齐 koishi 插件依赖范围）。
+- **GitHub Release**：repo 级 tag 与包版本解耦（2026-09-19 首 Release v0.1.0）。
+- **CI**（`.github/workflows/ci.yml`）：gate（ubuntu：build → check → test + Codecov）/
+  windows（跨平台测试补位）/ audit（fallow 增量门禁 `--base`）三并行 job；
+  `update-qq-releases.yml` Cron 维护 QQ 版本清单。
+- **pre-commit**：`scripts/git-hooks`（root prepare 启用）lockfile 一致性门禁——暂存
+  package.json / pnpm-workspace.yaml / 子模块指针必须同刷 pnpm-lock.yaml。
+- **贡献文档**：`.github/CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`。

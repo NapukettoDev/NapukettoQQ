@@ -1,5 +1,7 @@
 # 调查交接：自建宿主图片发送失败（rich media transfer failed）
 
+> **归档说明（2026-09-20）**：本调查已完结（图片/语音发送均已修复并落地 kernel），问题主线见 §5.5-§5.7；归档备查，细节勿再当作现状。
+
 > **状态**：✅ **图片发送已修复（2026-08-11 晚，elementType=2 重大发现）**——真正的根因是
 > **PIC 元素 elementType 应为 2（PIC），之前所有实验和 kernel 发送路径误用 1（TEXT）**！
 > NapCat 式完整流程（elementType=2 + md5 + getRichMediaFilePathForGuild + util.copyFile

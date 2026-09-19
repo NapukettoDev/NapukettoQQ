@@ -1,9 +1,11 @@
-# NapukettoQQ 决策史（V1 → V10，2026-08-07 整理）
+# NapukettoQQ 决策史（V1 → V10，2026-08-07 整理；2026-09-20 补录 V10 后决策）
 
 > **用途**：路线演进与关键决策的存档，**新对话一般不需要读本文件**——先读 `docs/STATUS.md`（现状）
 > 和 `docs/architecture.md`（架构书）。仅在需要理解「为什么走到今天」时查阅本节。
 > 旧文档（HANDOVER.md / V2 / V3 / V4 / V5 + 3 份 architecture）已合并进本文件 + STATUS + architecture，
 > 原始内容保留在 git 历史（归档提交 `d9a790e`）。
+> **2026-09-20 补录**：V10 之后（2026-08-08 起）的决策原本散落在 STATUS 轮次快照里，随 STATUS
+> 瘦身收编到本文件 §10；轮次级实现细节在各包 `docs/design.md`。
 
 ---
 
@@ -108,7 +110,7 @@ Shell Worker 是 Electron utilityProcess（QQ env），不是纯标准 Node。**
 **🎯 V4 结论**：纯标准 Node 自建宿主无法完成登录 → 路线 A 判死，转路线 B。
 
 **⚠️ 但 V5 深夜存疑（见 §5）**：判死用的是已下线的 9.9.31；NapCat 纯 Node 模式（9.9.27 + napi2native）
-能跑通 → 判死可能不成立。→ 2026-08-06 文档整理时用户拍板**按「自建宿主可救」规划**（见 STATUS.md 顶部）。
+能跑通 → 判死可能不成立。→ 2026-08-06 文档整理时用户拍板**按「自建宿主可救」规划**（见 architecture.md §4）。
 
 ---
 
@@ -140,7 +142,7 @@ QQ env 天然带 cpp_impl，vehicle 仅无头用）。
 资源 + napi2native bypass 库）。napi2native 真实职责是反风控/环境模拟（进程名伪装、隐藏模块、
 Base_PowerMessageWindow 窗口类、数据包层 hook）——**不是 env 兼容层**。
 
-→ **2026-08-06 文档整理决策**：按「自建宿主可救」规划，路线 B 降为兜底（详见 STATUS.md 顶部决策点）。
+→ **2026-08-06 文档整理决策**：按「自建宿主可救」规划，路线 B 降为兜底（详见 architecture.md §4）。
 
 ---
 
@@ -226,8 +228,66 @@ initializeSession 顺序）。此前失败原因：① 先 `ssw.start()` 再 ini
 
 | 想查什么 | 去哪看 |
 |---|---|
-| 当前路线 / 自建宿主存疑 / 验证实验 | `docs/STATUS.md` 顶部 |
-| 架构分层 / 红线 / 技术路线 | `docs/architecture.md` |
+| 当前状态 / 遗留清单 / 环境事实 | `docs/STATUS.md` |
+| 架构分层 / 红线 / 技术路线 / ADR 表 | `docs/architecture.md` |
 | 各包模块设计 / 实现记录 | 对应包 `docs/design.md` |
 | P0/P1/P2 实验细节（历史） | git 历史归档提交 `d9a790e` 前的 HANDOVER-V2~V5 |
 | GhidraMCP 工具用法 | `packages/loader/native/docs/ghidra-mcp-guide.md`（闭源子仓库，2026-08-07 移入） |
+
+---
+
+## 10. V10 后决策补录（2026-08-08 → 2026-09-20）
+
+> V10（2026-08-07）之后项目进入业务补全与工程化阶段，无新的路线级抉择。原记录在
+> STATUS.md 各轮快照中，随 STATUS 瘦身收编于此；实现细节去对应包 design.md。
+
+### 10.1 配置结构重构（2026-08-08，用户拍板）
+
+- 旧结构缺陷：顶层 `[onebot11]`/`[satori]` 全局共享（多账号端口冲突、无法按账号启停协议）、
+  QQ 号非必填。定案：**一个 QQ 账号一个 `[[accounts]]` 段，协议段嵌在账号内**
+  （`[accounts.onebot11]` / `[accounts.satori]` / 后增 `[accounts.kurobot]`；段存在即启用）；
+  **账号必填**（删「空配置交互式登录」老路径）；配置文件移到项目根 `<项目根>/napuketto.toml`，
+  数据根默认 `<项目根>/.napuketto`。
+- 装配链：loader `loadProtocolSections(kernel, uin)` 登录成功后按 uin 取段 zod 校验作 seed。
+
+### 10.2 native/ 私有化 + 载具退役（2026-08-07 起）
+
+- `packages/loader/native/` 转为 **Git submodule**（私有仓 Oppenheymu/NapukettoQQ-Native），
+  公共仓库只含注入框架与 stub 编译产物引用；stub 不做混淆（仅公开符号表 + 空函数，无可护机密）。
+- V1 注入框架与 V2 载具归档 archive/，loader 不再编译 C++ 组件（自建宿主不需要 cpp_impl 激活）。
+
+### 10.3 koishi 插件 IPC 模式（2026-08-27，ADR-020）
+
+- koishi 插件经 loader 拉起自建宿主子进程共享 IPC 动作表（kernel 点分动作 + 可选整表挂载的
+  OB11 动作容器）；loader 运行时动态 import，不构成编译期依赖。详见 loader design.md §9。
+
+### 10.4 loader 跨平台 v2（2026-08-12 拍板，ADR-019）
+
+- **绝不内置腾讯二进制**；Linux = wine 跑 Windows node.exe（方案 a，否决方案 b）；Docker
+  规划未实现。详见 loader design.md（v2 设计书）。
+
+### 10.5 2026-09 接线与审计收尾（T1-T10 / A1-A2 / T3 / c3）
+
+- 09-08 接线收尾轮 T1-T10（request 链 / control login / 媒体双向 / onReload / 运维命令）——
+  adapter design.md §1-3、loader design.md。
+- 09-08 登录生命周期收尾轮 A1/A2（登录竞态相位分派 + ready 态软重登）——loader design.md §10。
+- 09-10 c3 无源事件探测轮（五 notice 事件找源 + InVisit 参数破案）——kernel design.md §1/§5.5。
+- 2026-09 审计遗留收口：软重登挂起根治（T3 快速登录超时兜底 `d424c67`，kernel design.md §7）、
+  sysmsg protobuf 解码器（`e4bdcb3`，adapter design.md §7，识别表空待样本）、checkIdentity
+  单测补齐（koishi 子模块）、instance-lock pid 复用根治（cmdline 二次校验，OPERATIONS §3）。
+
+### 10.6 kurobot 第三协议（2026-09-13，ADR-021）
+
+- napukettoqq 原生新增 kurobot 协议适配器（KuroBot MVP-3 并行开发，QQ 群 ↔ MC 双向互通）；
+  协议 schema 本仓镜像 + 连接层自建。任务书与实录：`docs/archive/KUROBOT-PROMPT.md` /
+  `docs/KUROBOT-NOTES.md`。
+- 2026-09-16 随 KuroAdapter ADR-030 品牌改名对齐协议镜像：`kurobot-ws.v1`/0.3.1 →
+  **`kurobridge-ws.v1`/0.4.0**（帧形状不变，commit `5bc2aea`）。
+
+### 10.7 工程化与发布（2026-09，ADR-022）
+
+- Changesets 版本管理（2026-08-07 引入，AGENTS.md 工作流节）；发版链 `scripts/release/`
+  （release-npm 2FA otp 透传 / sync-adapter-deps 插件依赖对齐）。
+- CI 三并行 job（gate / windows / audit fallow 增量门禁）+ Codecov + lockfile pre-commit
+  门禁 + CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 落库。
+- 2026-09-19 首个 GitHub Release（repo 级 tag 与包版本解耦，ADR-022）。

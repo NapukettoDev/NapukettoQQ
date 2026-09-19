@@ -166,9 +166,10 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
 
 ## 6. 已知缺口（下一轮）
 
-- **onRecvSysMsg payload = 原始 protobuf 字节**（c3 运行时实触，int8 数组）：
-  card/title/sign 的 type/subType 在 protobuf 内——**解码器是下轮翻译前置**
-  （手写 protobuf varint 解码或引入轻量解码，产出结构化 sysmsg 事件）。
+- ~~onRecvSysMsg payload = 原始 protobuf 字节，解码器是下轮翻译前置~~ **已收口（2026-09-10）**：
+  解码器落地在 adapter 侧（`helper/sysmsg.ts`，wire-format 手写解码 + 信封提取 + 识别层，
+  详见 adapter design.md §7）；识别表 KIND_TABLE 当前为空，等 card/title/sign 真实样本
+  登记规则后才开始广播，kernel 侧无待办。
 - onRecvOfflineFileMsg / onGroupEssenceListChange payload 形状待真实事件
   校准（adapter 侧 raw 校准日志已挂，loader.log 积累中）。
 - onBuddyReqChange payload 形状（BuddyReq 字段 words 等待真实事件校准）。

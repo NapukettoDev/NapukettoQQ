@@ -1,8 +1,12 @@
 # KUROBOT-NOTES：kurobot 协议适配器任务实录（KuroBot MVP-3 napukettoqq 侧）
 
-> 任务书：`docs/KUROBOT-PROMPT.md`（无人值守，2026-09-13 执行 / 09-14 收尾）。
+> 任务书：`docs/archive/KUROBOT-PROMPT.md`（无人值守，2026-09-13 执行 / 09-14 收尾）。
 > 决策编号 KB-01 起：做了什么、为什么、放弃了哪些替代方案。
 > 镜像契约基线：KuroAdapter master commit `b0809ef`（协议 0.3.1）。
+> **后记（2026-09-16）**：KuroAdapter ADR-030 品牌改名——子协议 `kurobot-ws.v1` →
+> `kurobridge-ws.v1`、hello `protocolVersion` 0.3.1 → **0.4.0**（帧形状逐字段不变），
+> 本仓镜像已随 commit `5bc2aea` 对齐；下文 KB-01/KB-02/KB-09 中的 0.3.1 表述按
+> 执行时点读取，现状以 `packages/adapter/src/kurobot/schema.ts` 头注释为准。
 
 ## 决策实录
 

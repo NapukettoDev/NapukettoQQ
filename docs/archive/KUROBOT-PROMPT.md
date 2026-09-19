@@ -1,5 +1,7 @@
 # NapukettoQQ kurobot 协议适配器任务书（无人值守）——KuroBot MVP-3 napukettoqq 侧
 
+> **归档说明（2026-09-20）**：本任务书已执行完毕（KuroBot MVP-3 napukettoqq 侧 2026-09-13~14 落地，09-16 随 KuroAdapter 改名对齐 0.4.0）；决策实录见 `docs/KUROBOT-NOTES.md`。
+
 > 本文件是一次**无人值守任务**的完整任务书。执行智能体拿到本文即视为唯一指令来源，与任何
 > 对话历史无关。完成后本文件保留存档；决策与实录记 `docs/KUROBOT-NOTES.md`（随本册新建）。
 >
