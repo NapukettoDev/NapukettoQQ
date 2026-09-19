@@ -8,7 +8,7 @@
  *   node scripts/release/sync-adapter-deps.ts --pkg=<path>  # 指定插件 package.json（默认 apps/koishi-plugin-adapter）
  *
  * 行为：
- *   - 查询 npm registry 上 @napuketto/kernel、@napuketto/loader 的 latest
+ *   - 查询 npm registry 上 TRACKED_PACKAGES 各包（kernel/loader/adapter/network/media）的 latest
  *   - 把 koishi 插件 dependencies 中对应项改写为 `~<latest>`
  *   - 幂等：已是 `~latest` 则 no-op（退出码 0）
  *   - registry 不可达 / 响应畸形 → 抛错退出（退出码非 0，发布链中断，避免发残缺包）

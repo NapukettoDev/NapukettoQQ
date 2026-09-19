@@ -115,12 +115,13 @@ describe("fetchLatestVersions", () => {
 });
 
 describe("main", () => {
-    /** 全量 registry latest（追踪 4 包，任一缺失 → fetch 404 → main 抛错）。 */
+    /** 全量 registry latest（追踪 5 包，任一缺失 → fetch 404 → main 抛错）。 */
     const fullLatest = {
         "@napuketto/kernel": "0.0.3",
         "@napuketto/loader": "0.0.6",
         "@napuketto/adapter": "0.0.19",
         "@napuketto/network": "0.0.1",
+        "@napuketto/media": "0.0.4",
     };
 
     it("依赖已最新 → 不改写文件，退出码 0", async () => {
@@ -129,6 +130,7 @@ describe("main", () => {
             "@napuketto/loader": "~0.0.6",
             "@napuketto/adapter": "~0.0.19",
             "@napuketto/network": "~0.0.1",
+            "@napuketto/media": "~0.0.4",
         });
         stubFetch(fullLatest);
         const code = await main([`--pkg=${pkgPath}`]);
@@ -145,6 +147,7 @@ describe("main", () => {
             "@napuketto/loader": "~0.0.6",
             "@napuketto/adapter": "~0.0.19",
             "@napuketto/network": "~0.0.1",
+            "@napuketto/media": "~0.0.2",
         });
         stubFetch(fullLatest);
         const code = await main([`--pkg=${pkgPath}`]);

@@ -1,8 +1,8 @@
 /**
  * sync-adapter-deps-core.ts：koishi 适配器依赖同步核心逻辑（纯函数，可单测）。
  *
- * 职责：把 koishi-plugin-adapter 的 package.json 中 @napuketto/kernel、
- * @napuketto/loader 的依赖范围改写为 `~<registry latest>`，让插件发版时
+ * 职责：把 koishi-plugin-adapter 的 package.json 中 TRACKED_PACKAGES 各
+ * @napuketto/* 包的依赖范围改写为 `~<registry latest>`，让插件发版时
  * 自动追踪主仓库已发布的最新 0.0.x 修复（用户安装/升级插件即拿到最新）。
  *
  * 时序（主仓库 release 链）：changeset version（workspace:* → caret）→
@@ -16,12 +16,16 @@
 /**
  * 需要同步的 @napuketto/* 包（key = npm 包名）。
  * 2026-08-27：+ adapter / network（koishi 插件 OB11 动作桥子进程侧入口依赖，design.md §5.14）。
+ * 2026-09-19：+ media（插件 voice-decode/actions 直接消费 decodeSilkToWav /
+ *   encodePcmToSilk；0.0.32 钉 ~0.0.2 缺 decodeSilkToWav 导出，生产环境收方向
+ *   语音解码不可用，且 0.0.3 起的 CJS 入口修复拿不到）。
  */
 export const TRACKED_PACKAGES = [
     "@napuketto/kernel",
     "@napuketto/loader",
     "@napuketto/adapter",
     "@napuketto/network",
+    "@napuketto/media",
 ] as const;
 
 /** 单次变更项（planSync 产出）。 */

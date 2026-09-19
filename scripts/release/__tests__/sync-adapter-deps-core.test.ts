@@ -65,12 +65,13 @@ describe("tildeRange", () => {
 });
 
 describe("planSync", () => {
-    /** 全量 latest 映射（追踪 4 包）。 */
+    /** 全量 latest 映射（追踪 5 包）。 */
     const fullLatest = {
         "@napuketto/kernel": "0.0.3",
         "@napuketto/loader": "0.0.6",
         "@napuketto/adapter": "0.0.19",
         "@napuketto/network": "0.0.1",
+        "@napuketto/media": "0.0.4",
     };
 
     it("全部最新 → 空变更集", () => {
@@ -79,6 +80,7 @@ describe("planSync", () => {
             "@napuketto/loader": "~0.0.6",
             "@napuketto/adapter": "~0.0.19",
             "@napuketto/network": "~0.0.1",
+            "@napuketto/media": "~0.0.4",
         };
         expect(planSync(deps, fullLatest)).toEqual([]);
     });
@@ -89,6 +91,7 @@ describe("planSync", () => {
             "@napuketto/loader": "~0.0.6",
             "@napuketto/adapter": "~0.0.19",
             "@napuketto/network": "~0.0.1",
+            "@napuketto/media": "~0.0.4",
         };
         expect(planSync(deps, fullLatest)).toEqual([
             { pkg: "@napuketto/kernel", from: "^0.0.2", to: "~0.0.3" },
@@ -100,6 +103,7 @@ describe("planSync", () => {
             "@napuketto/loader": "~0.0.6",
             "@napuketto/adapter": "~0.0.19",
             "@napuketto/network": "~0.0.1",
+            "@napuketto/media": "~0.0.4",
         };
         expect(planSync(deps, fullLatest)).toEqual([
             { pkg: "@napuketto/kernel", from: "(缺失)", to: "~0.0.3" },
@@ -128,12 +132,13 @@ describe("latestFromDistTags", () => {
 });
 
 describe("TRACKED_PACKAGES", () => {
-    it("追踪 kernel / loader / adapter / network", () => {
+    it("追踪 kernel / loader / adapter / network / media", () => {
         expect(TRACKED_PACKAGES).toEqual([
             "@napuketto/kernel",
             "@napuketto/loader",
             "@napuketto/adapter",
             "@napuketto/network",
+            "@napuketto/media",
         ]);
     });
 });
