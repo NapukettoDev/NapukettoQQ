@@ -244,7 +244,7 @@ sequenceDiagram
 4. ✅ `src/index.ts`（参数解析 + readline 交互 + install + 启动询问）
 5. ✅ 发布准备（cli/loader 去 private、loader files、根 publish 脚本 + 根 private）
 6. ✅ `pnpm check` + `pnpm -r build` + 冒烟
-7. ✅ 提交合并 master
+7. ✅ 提交合并 main
 8. ✅（2026-08-07 美化 v2）参考 koishi create：banner / kleur 彩色 / prompts 交互 /
    `-f -y -h` 参数 / 非空目录询问清空 / 启动指引
 9. ✅（2026-08-07 美化 v3）交互层换 `@clack/prompts`（intro/outro/spinner/log，

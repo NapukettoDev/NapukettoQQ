@@ -17,7 +17,7 @@ pnpm test     # vitest 全量单测
 
 涉及发布的包改动时加跑 `pnpm build`。
 
-以上检查由 CI 自动执行（[workflows/ci.yml](./.github/workflows/ci.yml)）：PR 与 master push 触发三个并行 job——`gate`（build / check / test / 覆盖率上报 Codecov）、`windows`（跨平台测试补位）、`audit`（fallow 增量审计，配置见根目录 `.fallowrc.jsonc`）。本地全绿而 CI 红，优先排查构建顺序：CI 里 build 前置于 check 与 test（类型检查读取各包 dist 里的类型声明，kurobot 冒烟测试消费 adapter 构建产物）。
+以上检查由 CI 自动执行（[workflows/ci.yml](./.github/workflows/ci.yml)）：PR 与 main push 触发三个并行 job——`gate`（build / check / test / 覆盖率上报 Codecov）、`windows`（跨平台测试补位）、`audit`（fallow 增量审计，配置见根目录 `.fallowrc.jsonc`）。本地全绿而 CI 红，优先排查构建顺序：CI 里 build 前置于 check 与 test（类型检查读取各包 dist 里的类型声明，kurobot 冒烟测试消费 adapter 构建产物）。
 
 ## 提交约定
 
