@@ -1,6 +1,6 @@
 [submodule "packages/loader/native"]
 	path = packages/loader/native
-	url = https://github.com/Oppenheymu/NapukettoQQ-Native.git
+	url = https://github.com/NapukettoDev/NapukettoQQ-Native.git
 [submodule "apps/koishi-plugin-adapter"]
 	path = apps/koishi-plugin-adapter
-	url = https://github.com/Oppenheymu/koishi-plugin-adapter-napuketto.git
+	url = https://github.com/NapukettoDev/koishi-plugin-adapter-napuketto.git

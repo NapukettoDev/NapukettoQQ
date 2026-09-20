@@ -8,4 +8,4 @@ NapukettoQQ 引导组件——**自建宿主**：标准 Node + stub QQNT.dll 直
 
 ## 注意
 
-`native/` 为 Git Submodule（private 仓库 `Oppenheymu/NapukettoQQ-Native`），含 stub QQNT.dll 源码与编译产物。clone 后需 `git submodule update --init --recursive`。
+`native/` 为 Git Submodule（private 仓库 `NapukettoDev/NapukettoQQ-Native`），含 stub QQNT.dll 源码与编译产物。clone 后需 `git submodule update --init --recursive`。

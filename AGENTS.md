@@ -13,7 +13,7 @@ NapukettoQQ：基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人
    逆向腾讯 QQ 的产物（RVA/Offset 表）绝不进公共仓库，仅分发编译后的二进制（**2026-08-07
    用户拍板：不做混淆**——stub 仅含公开符号表+空函数，无机密可护，混淆徒增误报风险）；
    公共仓库只含注入框架。
-   **2026-08-07 起 `native/` 为 Git Submodule（private 仓库 Oppenheymu/NapukettoQQ-Native）**：
+   **2026-08-07 起 `native/` 为 Git Submodule（private 仓库 NapukettoDev/NapukettoQQ-Native）**：
    clone 主仓库后需 `git submodule update --init --recursive`；子仓库内容不进主仓库历史。
 2. **依赖方向**（只允许向下依赖）：
 

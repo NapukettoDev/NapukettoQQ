@@ -249,7 +249,7 @@ wrapper.node 原生回调
 - V1 注入框架（bootmain/hookdll）与 V2 载具（vehicle.cpp）**已归档 archive/，loader 不再
   编译 C++ 组件**（AGENTS.md 第 7 条）；stub QQNT.dll 用 LLVM-MinGW 编译（构建流程记录在
   native 闭源子仓库 docs/）。
-- `packages/loader/native/` 现为**私有 submodule**（Oppenheymu/NapukettoQQ-Native），仅保留
+- `packages/loader/native/` 现为**私有 submodule**（NapukettoDev/NapukettoQQ-Native），仅保留
   闭源 stub 编译产物；clone 后需 `git submodule update --init --recursive`。
 
 ### 9.3 环境事实

@@ -252,7 +252,7 @@ initializeSession 顺序）。此前失败原因：① 先 `ssw.start()` 再 ini
 
 ### 10.2 native/ 私有化 + 载具退役（2026-08-07 起）
 
-- `packages/loader/native/` 转为 **Git submodule**（私有仓 Oppenheymu/NapukettoQQ-Native），
+- `packages/loader/native/` 转为 **Git submodule**（私有仓 NapukettoDev/NapukettoQQ-Native），
   公共仓库只含注入框架与 stub 编译产物引用；stub 不做混淆（仅公开符号表 + 空函数，无可护机密）。
 - V1 注入框架与 V2 载具归档 archive/，loader 不再编译 C++ 组件（自建宿主不需要 cpp_impl 激活）。
 
