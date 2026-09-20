@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="380" height="72" viewBox="0 0 380 72" role="img" aria-label="NapukettoQQ">
+  <defs>
+    <linearGradient id="bubble" x1="0" y1="0" x2="52" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#41C3F9"/>
+      <stop offset="1" stop-color="#0E86D4"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(4,10)">
+    <rect x="0" y="0" width="52" height="44" rx="14" fill="url(#bubble)"/>
+    <path d="M13 38 L13 52 L27 38 Z" fill="url(#bubble)"/>
+    <circle cx="14" cy="22" r="3.5" fill="#ffffff"/>
+    <circle cx="26" cy="22" r="3.5" fill="#ffffff"/>
+    <circle cx="38" cy="22" r="3.5" fill="#ffffff"/>
+  </g>
+  <text x="70" y="52" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="46" font-weight="700" letter-spacing="-1.5" fill="#F4F4F5">Napuketto<tspan fill="#12B7F5">QQ</tspan></text>
+</svg>
