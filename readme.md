@@ -3,7 +3,7 @@
 <h1 id="napukettoqq">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
-    <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="500">
+    <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="600">
   </picture>
 </h1>
 
