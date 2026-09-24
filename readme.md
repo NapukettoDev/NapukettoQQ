@@ -79,6 +79,12 @@ pnpm start                    # 启动：自动登录，就绪后协议服务开
 
 ---
 
+## 状态
+
+[![Repobeats analytics image](https://repobeats.axiom.co/api/embed/1bf92988cdc683dd8eec6232b526e6c619984c37.svg "Repobeats analytics image")](https://github.com/NapukettoDev/NapukettoQQ/pulse)
+
+---
+
 ## English
 
 NapukettoQQ is a **high-performance bot framework built on the QQ NT native module (`wrapper.node`)**. It boots a self-hosted standard Node process, loads the native module directly, and exposes OneBot 11 and Satori protocol interfaces.
