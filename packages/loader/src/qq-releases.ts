@@ -10,6 +10,10 @@
  * 解析最新版 + 下载安装包计算 sha256 + 解析安装包内部版本目录后更新本清单
  * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUTO_QQ_URL
  * 可运行时覆盖下载地址（用户拿到新链接时用）。
+ *
+ * ⚠️ 下载 URL 必须经 normalizeDownloadUrl 归一化后再请求（2026-10-07 定位）：
+ * 腾讯 CDN 边缘 WAF 对字面量 `/QQNTV2/` 路径段区分大小写地拦截，官方
+ * rainbow 配置给出的 URL 直接请求必得 403。详见该函数注释。
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -87,4 +91,38 @@ export function latestRelease(releases: QqReleasesFile): QqReleaseEntry {
 export function resolveDownloadUrl(release: QqReleaseEntry): string {
     const override = process.env["NAPUTO_QQ_URL"];
     return override !== undefined && override !== "" ? override : release.url;
+}
+
+/**
+ * 被 CDN 边缘 WAF 大小写敏感拦截的路径段（全局匹配，仅用于 String.replace——
+ * replace 会复位 lastIndex，无跨调用状态残留）。语义见 normalizeDownloadUrl。
+ */
+const QQNTV2_SEGMENT_RE = /\/QQNTV2\//gi;
+
+/**
+ * 归一化 QQ 官方安装包下载 URL：把 `/QQNTV2/` 路径段降为小写。
+ *
+ * **为什么需要**（2026-10-07 实测定位，issue #6 的真正根因）：
+ * 腾讯 CDN 边缘 WAF 约 2026-08-25 起加了一条 **区分大小写** 的规则，匹配
+ * 字面量 `/QQNTV2/` 路径段。命中即由边缘直接拒绝，**不回源**：
+ *
+ * ```text
+ * HTTP/1.1 403 Forbidden
+ * Content-Length: 0
+ * Server: Lego Server
+ * X-Cache-Lookup: Return Directly
+ * ```
+ *
+ * 而 qqdl.gtimg.cn 的缓存/源站对路径大小写 **不敏感**：同一 URL 仅把路径段
+ * 写成 `/qqntv2/`（以及 `/Qqntv2/`）即正常返回（实测 x64 安装包
+ * `HTTP/1.1 200 OK` + `Content-Length: 330446512`，Range 请求返回 `206` 且首字节
+ * 为 PE 头 `MZ`）。同一出口 IP、同一时刻的两次请求只有路径大小写不同 → 403 的
+ * 成因是 **路径匹配规则**，不是「数据中心 IP 被封」。
+ *
+ * 归一化只改请求用的 URL，**清单里仍保留官方原样 URL**（可追溯、来源即官方
+ * 配置字段 `ntDownloadX64Url`）；若腾讯哪天修掉这条规则，小写路径依旧等价可用
+ * （源站大小写不敏感），因此不必回改清单。
+ */
+export function normalizeDownloadUrl(url: string): string {
+    return url.replace(QQNTV2_SEGMENT_RE, "/qqntv2/");
 }

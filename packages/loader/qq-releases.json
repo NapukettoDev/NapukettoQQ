@@ -16,6 +16,14 @@
             "appid": 0,
             "source": "official",
             "buildDate": "2026-08-13"
+        },
+        {
+            "version": "9.9.36-53644",
+            "url": "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.36/release/e8e54bbb/QQ_9.9.36_260924_x64_01.exe",
+            "sha256": "63255c70c7ff523e7eed7d52d9708ed7a77ea346ece6474c65dded406edb3155",
+            "appid": 0,
+            "source": "official",
+            "buildDate": "2026-09-24"
         }
     ]
 }

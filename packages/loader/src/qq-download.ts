@@ -6,6 +6,8 @@
  *  - 下载同时流式累加 sha256，完成后与清单比对（防链接漂移劫持 / 下载不完整）
  *  - 支持 302 重定向（QQ CDN 可能跳转）
  *  - NAPUTO_QQ_URL 环境变量可覆盖下载地址（用户拿到新链接时用）
+ *  - 出站 URL 统一经 normalizeDownloadUrl 归一化（绕过 CDN 边缘对 `/QQNTV2/`
+ *    路径段的大小写敏感拦截，见 qq-releases.ts；否则清单里的官方 URL 必 403）
  */
 import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync, statSync } from "node:fs";
@@ -15,6 +17,7 @@ import { get, type RequestOptions } from "node:https";
 import { dirname } from "node:path";
 import process from "node:process";
 import { loaderVersion } from "./package-info.js";
+import { normalizeDownloadUrl } from "./qq-releases.js";
 
 /** 下载请求 User-Agent（运行时读本包版本，失败兜底 0.0.0）。 */
 const USER_AGENT = `napuketto-loader/${loaderVersion()}`;
@@ -88,10 +91,12 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
  * 返回实际 sha256（无论是否校验），便于调用方回填清单。
  */
 export async function downloadFile(options: DownloadOptions): Promise<DownloadResult> {
-    const url = options.url ?? process.env["NAPUTO_QQ_URL"];
-    if (url === undefined || url === "") {
+    const requested = options.url ?? process.env["NAPUTO_QQ_URL"];
+    if (requested === undefined || requested === "") {
         throw new DownloadError("下载地址为空：请设置 NAPUTO_QQ_URL 或提供清单 URL");
     }
+    // 唯一出站口，统一归一化（清单 URL / NAPUTO_QQ_URL / 未来调用方全覆盖）
+    const url = normalizeDownloadUrl(requested);
     const timeoutMs = options.timeoutMs ?? 60_000;
     // 目标目录必须提前建好（createWriteStream 不自动建目录）
     mkdirSync(dirname(options.dest), { recursive: true });

@@ -7,9 +7,11 @@ name: update-qq-releases
 #   内部版本目录名（含构建号）→ 更新 qq-releases.json（保留历史、按版本递增）。
 #
 # 失败策略（2026-09-20 起）：更新步骤 continue-on-error，失败不刷红 CI——
-# 腾讯 CDN 的 403 拦截（QQNTV2 路径段 2026-08-25 起对数据中心 IP / 非官方
-# 客户端 WAF，连本地浏览器直连都被拦）属外部因素，定时任务红了只会逼人禁用。
-# 失败改为在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
+# 腾讯 CDN 的路径拦截（QQNTV2 路径段 2026-08-25 起被 WAF 按字面量大小写拦截）
+# 属外部因素，定时任务红了只会逼人禁用。
+# 2026-10-07 已定位并修复：拦截规则区分大小写且不回源，源站大小写不敏感，
+# 脚本改为请求小写 `/qqntv2/` 路径段（normalizeDownloadUrl），见 scripts 头注释。
+# 失败仍在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
 # 本地跑 scripts/qq-releases/update-qq-releases.ts 兜底更新清单。
 on:
     schedule:
@@ -50,12 +52,14 @@ jobs:
                           `update-qq-releases 于 ${new Date().toISOString()} 更新失败。`,
                           `运行日志: ${runUrl}`,
                           ``,
-                          `常见原因：腾讯 CDN（qqdl.gtimg.cn）对 GitHub runner 下载安装包返回 403`,
-                          `（QQNTV2 路径段 2026-08-25 起被 WAF 拦截）。`,
+                          `脚本已对下载 URL 做路径段归一化（\`/QQNTV2/\` → \`/qqntv2/\`），`,
+                          `用于绕开 CDN 边缘那条区分大小写的拦截规则（2026-10-07 定位，不回源 403）。`,
+                          `若仍失败，请按日志判断阶段：① 配置源 pcConfig.json 改版 → 解析失败；`,
+                          `② 拦截规则收紧（如改为大小写不敏感）→ 需重新定位可用路径；`,
+                          `③ 安装包结构变化 → 版本目录名解析失败。`,
                           ``,
                           `兜底方式：本地跑 \`node scripts/qq-releases/update-qq-releases.ts\`，`,
                           `把变更后的 packages/loader/qq-releases.json 提交上来。`,
-                          `若日志显示的不是外部拦截而是脚本/页面结构问题，请优先修脚本。`,
                       ].join("\n");
                       const { data: issues } = await github.rest.issues.listForRepo({
                           owner: context.repo.owner,
