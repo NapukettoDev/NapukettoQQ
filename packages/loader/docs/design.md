@@ -106,6 +106,19 @@ https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/a0ce07ad/QQ_9.9.33_260730_x64_0
 - **CI 自动更新方案（GitHub Actions）**：
   - Cron Job（每日）调 `scripts/qq-releases/update-qq-releases.ts`（CI/本地共用）→ 抓配置 → 下载算 sha256
     → 解析版本目录 → 更新清单 → 发现变更自动提 PR（GitOps 免维护）。
+- **⚠️ 下载 URL 必须归一化路径段大小写（2026-10-07 定位，issue #6 根因）**：
+  2026-08-25 前后腾讯 CDN 边缘 WAF 新增一条 **区分大小写** 规则匹配字面量
+  `/QQNTV2/` 路径段（rainbow 配置新给的 `ntDownloadX64Url` 即该形态）。命中后由边缘
+  直接拒绝、**不回源**：`403` + `Content-Length: 0` + `Server: Lego Server` +
+  `X-Cache-Lookup: Return Directly`。而 qqdl.gtimg.cn 的缓存/源站对路径大小写
+  **不敏感**——同一 URL 仅把路径段写成小写 `/qqntv2/` 即 `200 OK`
+  （实测 x64 安装包 `Content-Length: 330446512`，Range 请求 `206` 且首字节为 PE 头 `MZ`）。
+  同一出口 IP、同一时刻、仅路径大小写不同的两次请求结果相反 → 成因是**路径匹配规则**，
+  而非此前 workflow 注释里写的「数据中心 IP 被封」。
+  故 `normalizeDownloadUrl()`（`src/qq-releases.ts`）负责把 `/QQNTV2/` 降为小写，
+  在**唯一出站口** `downloadFile()` 处统一生效；清单里仍保存官方原样 URL（可追溯），
+  若腾讯日后修掉该规则，小写路径依旧等价可用。
+  > 历史：`QQNT` 段（9.9.33 及更早）不受该规则影响，故旧条目 URL 保持原样。
 
 **版本清单机制（qq-releases.json）**：
 

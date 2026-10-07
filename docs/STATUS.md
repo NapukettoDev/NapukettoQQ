@@ -49,7 +49,7 @@
 
 ---
 
-## 当前工作面（最近一轮落地，2026-09-13 ~ 09-16）
+## 当前工作面（最近一轮落地，2026-09-13 ~ 10-07）
 
 1. **kurobot 协议适配器（KuroBot MVP-3）全量落地**：镜像 schema + 自建连接层 +
    翻译映射 + 装配接线 4 处（loader / cli / create-napukettoqq 模板 / adapter package.json），
@@ -60,6 +60,14 @@
    （media 范围对齐 `~0.0.4`、console 转 peer、`@napuketto/loader ~0.0.34`）。
 3. **CI 根治**（`a583b04` / `e131ed7`）：lock 漂移预提交门禁、GitHub Action 升级、
    qq-releases 降噪、fallow audit 强推后孤儿 before 的守卫回退。
+4. **qq-releases 自动更新 403 根因定位并修复**（2026-10-07，追踪 issue #6 连续 18 天日报的
+   真因）：不是「CDN 封数据中心 IP」，而是腾讯 CDN 边缘 WAF 有一条**区分大小写**的规则匹配
+   字面量 `/QQNTV2/` 路径段，命中即边缘直接 403（`Content-Length: 0` + `Return Directly`，
+   不回源）；源站对路径大小写不敏感，改请求 `/qqntv2/` 即 `200`（实测 330,446,512 字节、
+   PE 头 `MZ`）。修复：`normalizeDownloadUrl()` 在 loader 唯一出站口 `downloadFile()` 与 CI
+   脚本统一归一化（清单仍存官方原样 URL），清单随之补齐到 **9.9.36**；同时修掉内置 `7zz`
+   的 git 可执行位（原 `100644` → CI 上 `execFile` EACCES，7-Zip 解析路径实为死代码，
+   一直静默回退字节扫描）。回归用例 `packages/loader/src/__tests__/qq-releases.test.ts`。
 
 ---
 

@@ -19,6 +19,12 @@
  * 目录名一致（运行时 extractWrapperFiles 按版本目录名定位 wrapper.node）。
  *
  * 容错：下载瞬态失败按 5s/15s 重试共 3 次；最终失败非零退出且不写清单（绝不写坏）。
+ *
+ * ⚠️ 下载 URL 归一化（2026-10-07，issue #6 根因）：官方 rainbow 给出的
+ * `ntDownloadX64Url` 形如 `.../qqfile/QQNTV2/...`，腾讯 CDN 边缘 WAF 对字面量
+ * `/QQNTV2/` 路径段 **区分大小写** 地拦截（403 + Content-Length: 0 + Return
+ * Directly，不回源），直连必失败；源站对大小写不敏感，改小写 `/qqntv2/` 即正常。
+ * 因此请求前统一走 normalizeDownloadUrl（清单里仍写官方原样 URL）。
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -30,6 +36,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { QqReleaseEntry, QqReleasesFile } from "../../packages/loader/src/qq-releases.ts";
+import { normalizeDownloadUrl } from "../../packages/loader/src/qq-releases.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -171,21 +178,29 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
     });
 }
 
-/** 下载文件并流式计算 sha256（失败清理半成品），返回十六进制小写 sha256。 */
+/**
+ * 下载文件并流式计算 sha256（失败清理半成品），返回十六进制小写 sha256。
+ * 完整性校验见 assertDownloadComplete（抽成独立函数：内联会把本函数圈复杂度
+ * 从 5 推到 6、触发 fallow 增量门禁 CRAP 超阈，同「重试体线性展开」口径）。
+ */
 async function downloadFile(url: string, dest: string): Promise<string> {
     const hash = createHash("sha256");
     const stream = createWriteStream(dest);
     try {
         const res = await httpsGet(url, 120_000);
+        const declared = Number.parseInt(res.headers["content-length"] ?? "", 10);
+        let received = 0;
         await new Promise<void>((resolvePromise, reject) => {
             res.on("data", (chunk: Buffer) => {
                 hash.update(chunk);
+                received += chunk.length;
             });
             res.on("error", reject);
             stream.on("error", reject);
             stream.on("finish", resolvePromise);
             res.pipe(stream);
         });
+        assertDownloadComplete(declared, received);
     } catch (err) {
         stream.destroy();
         await rm(dest, { force: true });
@@ -378,6 +393,11 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     info(`官方最新: 版本=${release.marketingVersion} 日期=${release.updateDate}`);
     info(`下载 URL: ${release.x64Url}`);
+    // 实际请求用小写路径段（绕 CDN 边缘对 /QQNTV2/ 的大小写敏感拦截）；清单仍存官方原样 URL
+    const downloadUrl = normalizeDownloadUrl(release.x64Url);
+    if (downloadUrl !== release.x64Url) {
+        info(`请求 URL 归一化: ${downloadUrl}`);
+    }
 
     // 2. 与清单比对：URL 未变 → no-op；营销版本回退 → 跳过（防降级，可能是备用源滞后）
     const sorted = sortEntries(manifest.known);
@@ -409,7 +429,7 @@ async function main(argv: readonly string[]): Promise<number> {
     try {
         const installerPath = join(tmp, "installer.exe");
         info("下载安装包并计算 sha256…");
-        const sha256 = await downloadFileWithRetry(release.x64Url, installerPath);
+        const sha256 = await downloadFileWithRetry(downloadUrl, installerPath);
         info(`sha256: ${sha256}`);
 
         // 4. 解析安装包内部版本目录名（含构建号）：7z 列归档优先，失败回退字节扫描
@@ -479,5 +499,22 @@ async function retryDownload(url: string, dest: string, delays: number[]): Promi
         warn(`下载失败，${Math.round(delayMs / 1000)}s 后重试: ${errorMessage(err)}`);
         await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
         return retryDownload(url, dest, delays.slice(1));
+    }
+}
+
+// —— 下载完整性校验（同上下载重试：置于文件末尾，独立成函数以守住 downloadFile 的
+// 圈复杂度口径）——
+
+/**
+ * 校验下载完整性：响应声明了 `Content-Length` 时，实际接收字节数必须一致。
+ *
+ * 截断的传输（连接正常关闭但少收字节）不会触发流错误，若不校验就会把**残缺文件的
+ * sha256 写进清单**——而运行时 downloadFile 拿清单里的 sha256 校验，会让全体用户
+ * 一起失败。经归一化路径（小写 `/qqntv2/`）取包时这道兜底尤其有价值：CDN 若对
+ * 大小写不同的路径返回了缓存错误页，长度不一致能立刻发现。
+ */
+function assertDownloadComplete(declared: number, received: number): void {
+    if (Number.isFinite(declared) && declared !== received) {
+        throw new Error(`下载不完整: 声明 ${declared} 字节，实际 ${received} 字节`);
     }
 }
