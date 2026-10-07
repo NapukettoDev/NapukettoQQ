@@ -180,12 +180,8 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
 
 /**
  * 下载文件并流式计算 sha256（失败清理半成品），返回十六进制小写 sha256。
- *
- * 完整性：若响应带 `Content-Length`，则实际接收字节数必须一致才算成功。截断的
- * 传输（连接正常关闭但少收字节）不会触发流错误，若不校验就会把**残缺文件的
- * sha256 写进清单**——而运行时 downloadFile 拿这个 sha256 校验，全体用户一起
- * 失败。经归一化路径（小写 /qqntv2/）取包时该兜底尤其重要：CDN 若对大小写不同
- * 的路径返回了缓存错误页，长度校验能立刻发现。
+ * 完整性校验见 assertDownloadComplete（抽成独立函数：内联会把本函数圈复杂度
+ * 从 5 推到 6、触发 fallow 增量门禁 CRAP 超阈，同「重试体线性展开」口径）。
  */
 async function downloadFile(url: string, dest: string): Promise<string> {
     const hash = createHash("sha256");
@@ -204,9 +200,7 @@ async function downloadFile(url: string, dest: string): Promise<string> {
             stream.on("finish", resolvePromise);
             res.pipe(stream);
         });
-        if (Number.isFinite(declared) && declared !== received) {
-            throw new Error(`下载不完整: 声明 ${declared} 字节，实际 ${received} 字节`);
-        }
+        assertDownloadComplete(declared, received);
     } catch (err) {
         stream.destroy();
         await rm(dest, { force: true });
@@ -505,5 +499,22 @@ async function retryDownload(url: string, dest: string, delays: number[]): Promi
         warn(`下载失败，${Math.round(delayMs / 1000)}s 后重试: ${errorMessage(err)}`);
         await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
         return retryDownload(url, dest, delays.slice(1));
+    }
+}
+
+// —— 下载完整性校验（同上下载重试：置于文件末尾，独立成函数以守住 downloadFile 的
+// 圈复杂度口径）——
+
+/**
+ * 校验下载完整性：响应声明了 `Content-Length` 时，实际接收字节数必须一致。
+ *
+ * 截断的传输（连接正常关闭但少收字节）不会触发流错误，若不校验就会把**残缺文件的
+ * sha256 写进清单**——而运行时 downloadFile 拿清单里的 sha256 校验，会让全体用户
+ * 一起失败。经归一化路径（小写 `/qqntv2/`）取包时这道兜底尤其有价值：CDN 若对
+ * 大小写不同的路径返回了缓存错误页，长度不一致能立刻发现。
+ */
+function assertDownloadComplete(declared: number, received: number): void {
+    if (Number.isFinite(declared) && declared !== received) {
+        throw new Error(`下载不完整: 声明 ${declared} 字节，实际 ${received} 字节`);
     }
 }
