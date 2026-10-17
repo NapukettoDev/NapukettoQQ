@@ -8,6 +8,5 @@
         // 3. Languages & Formats
         "tamasfe.even-better-toml",
         "typescriptteam.native-preview",
-        "fallow-rs.fallow-vscode"
     ]
 }
