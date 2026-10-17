@@ -1,5 +1,13 @@
 # @napuketto/adapter
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [3665e63]
+  - @napuketto/kernel@0.2.0
+  - @napuketto/media@0.0.5
+
 ## 0.3.1
 
 ### Patch Changes

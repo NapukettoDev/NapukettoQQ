@@ -238,16 +238,16 @@ importers:
   apps/koishi-plugin-adapter:
     dependencies:
       '@napuketto/adapter':
-        specifier: ~0.3.1
+        specifier: ~0.3.2
         version: link:../../packages/adapter
       '@napuketto/kernel':
-        specifier: ~0.1.1
+        specifier: ~0.2.0
         version: link:../../packages/kernel
       '@napuketto/loader':
-        specifier: ~0.0.34
+        specifier: ~0.0.35
         version: link:../../packages/loader
       '@napuketto/media':
-        specifier: ~0.0.4
+        specifier: ~0.0.5
         version: link:../../packages/media
       '@napuketto/network':
         specifier: ~0.0.2
