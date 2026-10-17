@@ -210,3 +210,98 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
   relogin.ts 显式传 20000（与 initTimeoutMs 同值，固化软重登口径）。
 - 已知边界：登录期（login-race 相位）的快速登录挂起本就有抢占口兜底
   （T2），本机制与其正交——抢占后悬挂 promise 照旧丢弃。
+
+## 8. 视频发送（VIDEO 元素，2026-10-17）
+
+**目标**：协议层 `h.video(...)` / OneBot `video` 段 → canonical video → kernel
+`prepareVideoElement` → `sendMsg` 发出**可播放的视频消息**（不是文本、不是文件）。
+
+### 8.1 canonical 元素
+
+```ts
+| { type: "video"; path: string; url?: string; thumbPath?: string;
+    width?: number; height?: number; durationSec?: number }
+```
+
+- `path`：本地视频文件路径（adapter 负责把 data URL / http(s) URL 落盘成临时文件）。
+- `thumbPath`（可选）：缩略图**本地**路径（adapter 用 `@napuketto/media` 的
+  `extractVideoFrame` 抽首帧生成；kernel 不生成、不 import media——红线 6）。
+- `width`/`height`：**视频**宽高（收向实测 `thumbWidth`/`thumbHeight` 与视频一致）。
+- `durationSec`：整数秒（由 ffprobe 得出，向上取整保底 1）。
+
+收向 `videoToCanonical` 同步补全：`thumbPath`（从实测 `Map<number,string>` 的
+`get(0)`）、`width`/`height`（`thumbWidth`/`thumbHeight`）、`durationSec`
+（`fileTime`，单位秒）——发送/接收共用同一 canonical 形状。
+
+### 8.2 发送流程（`MsgApi.prepareVideoElement`）
+
+1. `statFile` + `hashFile`（md5 十六进制小写）；
+2. `getRichMediaFilePathForGuild({ md5HexStr, fileName, elementType: 5,
+   elementSubType: 0, thumbSize: 0, needCreate: true, downloadType: 1,
+   file_uuid: "" })` → `Video/<YYYY-MM>/Ori/<md5>.<ext>`；
+3. `util.copyFile(path, targetPath)` 放置原文件；
+4. 缩略图（有 `thumbPath` 时）：`statFile`/`hashFile` 取缩略图内容 md5，
+   **但目标路径用视频 md5**：`downloadType: 2` → `Video/<YYYY-MM>/Thumb/<videoMd5>_0.png`，
+   `util.copyFile` 放置；
+5. 组装完整 `videoElement`（见 8.3），`thumbPath` 用 **真实 `Map<number,string>`
+   `new Map([[0, thumbRelPath]])`**——经 JSON/IPC 会退化成 `{}`，wrapper 转换失败；
+6. `prepareSendElements` 用该元素替换 canonical video，其余走 `toSendElements`
+   （`toSendElements` 的 `video` 分支改为抛「需经预处理」的显式错误，防止绕过）。
+
+`placeMediaFile` 增加 `downloadType` 参数（默认 1），PIC/PTT 行为不变。
+
+### 8.3 videoElement 字段契约（收向实测 + 发送探测）
+
+| 字段 | 值 | 来源 |
+|---|---|---|
+| `fileName` | 视频文件名（basename） | 收向实测 |
+| `filePath` | 步骤 2 的目标路径（绝对，Ori） | 收向实测 |
+| `fileSize` | 文件字节数（**字符串**） | 收向实测 |
+| `videoMd5` | 视频 md5（小写十六进制） | 收向实测 |
+| `fileTime` | 时长（**秒**） | 收向实测 |
+| `fileFormat` | `0` | 收向实测（0/1 均出现过，发送取 0） |
+| `busiType` / `subBusiType` | `0` | 收向实测 |
+| `storeID` | `1` | 收向实测 |
+| `original` | `true` | 收向实测（true/false 均出现） |
+| `videoFrom` | `0` | 收向实测 |
+| `sourceVideoCodecFormat` | `0` | 收向实测（0/1 均出现） |
+| `fileUuid` / `fileSubId` | `""` | 收向实测 |
+| `thumbMd5` / `thumbSize` | 缩略图内容 md5 / 字节数 | 收向实测 |
+| `thumbWidth` / `thumbHeight` | canonical `width`/`height` | 收向实测 |
+| `thumbPath` | `Map<0, 缩略图路径>`，路径文件名用**视频 md5**（`Thumb/<videoMd5>_0.png`） | 收向实测（**Map 非字符串**） |
+
+收向实测样本还携带 `transferStatus/progress/invalidState/fileBizId/
+originVideoMd5/import_rich_media_context/isInApplicationDataPath`（下载态字段），
+发送时不填——由 wrapper 传输流程自行维护。
+
+### 8.4 发送链路已打通（2026-10-17 实测）
+
+**根因（关键）**：缩略图目标路径必须用**视频 md5** 计算，不能用缩略图内容 md5。
+
+真实视频消息实测（用户手机 QQ 发出的 18s/2.5MB 竖屏视频）：
+
+- `videoMd5 = 3d27c01ecb7cf9f6c952ee587f8cfc3f`
+- `thumbMd5 = 46daaa71ff0e5deac591ac32d6a7002c`（= 缩略图文件内容 md5，实测比对一致）
+- 实际落盘缩略图：`Video/2026-10/Thumb/3d27c01ecb7cf9f6c952ee587f8cfc3f_0.png`
+  ——文件名是**视频 md5**，不是 `46da…`
+
+此前实现按 `thumbMd5` 调 `getRichMediaFilePathForGuild(downloadType=2)`，缩略图被放到
+`Thumb/<thumbMd5>_0.png`；native 传输按视频 md5 推导缩略图路径（对应二进制里的
+`move orig as thumb failed` / `combine video and it's thumb failed`），找不到即整体
+`rich media transfer failed`——这正是 20+ 组字段/路径变体全部失败的原因（字段本身
+一直是对的）。
+
+**修复**：`prepareVideoElement` 用视频 md5 + 缩略图扩展名构造缩略图目标路径
+（`placeMediaFile(..., md5, `${md5}.png`, downloadType=2)`），`thumbMd5` 仍填缩略图
+内容 md5。
+
+**验证**：2026-10-17 18:12 自建宿主（QQ 9.9.33-52230）`MsgApi.sendMessage` 发
+canonical video（`test3.mp4` 640×360 10s + `test3.png` 缩略图），返回
+`{ msgId: "7771794519560903400" }`（sendStatus 2/3 确认通过），**群内收到可播放
+视频**（用户目视确认）；落盘 `Ori/e54a…mp4`（md5 一致）+ `Thumb/e54a…_0.png`
+（内容 md5 `e182…`，与 `thumbMd5` 一致）。
+
+**回归**：图片/语音/文本路径未改动（仅 `placeMediaFile` 增加默认 `downloadType=1`
+参数、`prepareSendElements` 增加 video 分支）；kernel 全量 242 用例、koishi 插件
+244 用例、`pnpm check`、`pnpm -r build` 均通过。
+

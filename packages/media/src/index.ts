@@ -24,4 +24,4 @@ export type {
     VideoInfo,
 } from "./types.js";
 export { MediaError } from "./types.js";
-export { getVideoInfo, transcodeVideo } from "./video.js";
+export { extractVideoFrame, getVideoInfo, transcodeVideo } from "./video.js";

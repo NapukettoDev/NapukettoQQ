@@ -6,6 +6,10 @@
  *  - sendMessage / fetchMsgsByMsgId / fetchPttText / sendForwardMessage /
  *    fetchForwardMessage / recallMessage
  */
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import type { NodeIQQNTWrapperSession, Peer } from "../../types/index.js";
@@ -51,6 +55,73 @@ describe("sendMessage", () => {
     it("原生失败抛 KernelError", async () => {
         const { api } = makeApi({ sendMsg: vi.fn(async () => ({ result: -1 })) });
         await expect(api.sendMessage(target, [])).rejects.toBeInstanceOf(KernelError);
+    });
+
+    it("video → 完整 videoElement（路径放置 + Map thumbPath + 元数据）", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "napuketto-kernel-video-"));
+        const videoPath = join(dir, "clip.mp4");
+        const thumbPath = join(dir, "clip.png");
+        writeFileSync(videoPath, Buffer.from("video-bytes"));
+        writeFileSync(thumbPath, Buffer.from("thumb-bytes"));
+        try {
+            const getRichMediaFilePathForGuild = vi.fn(
+                (req: { downloadType: number; md5HexStr: string }) =>
+                    req.downloadType === 2
+                        ? `Video/2026-10/Thumb/${req.md5HexStr}_0.png`
+                        : `Video/2026-10/Ori/${req.md5HexStr}.mp4`,
+            );
+            const sendMsg = vi.fn(async () => ({ result: 0 }));
+            const { api } = makeApi({ getRichMediaFilePathForGuild, sendMsg });
+
+            await api.sendMessage(target, [
+                {
+                    type: "video",
+                    path: videoPath,
+                    thumbPath,
+                    width: 640,
+                    height: 360,
+                    durationSec: 3,
+                },
+            ]);
+
+            const calls = getRichMediaFilePathForGuild.mock.calls;
+            expect(calls).toHaveLength(2);
+            expect(calls[0]?.[0]).toMatchObject({
+                elementType: 5,
+                downloadType: 1,
+                md5HexStr: createHash("md5").update("video-bytes").digest("hex"),
+            });
+            expect(calls[1]?.[0]).toMatchObject({
+                elementType: 5,
+                downloadType: 2,
+                // 缩略图目标路径用视频 md5（真实消息实测：Thumb/<videoMd5>_0.png）
+                md5HexStr: createHash("md5").update("video-bytes").digest("hex"),
+            });
+
+            const sent = (sendMsg.mock.calls[0] as unknown[] | undefined)?.[2] as
+                | Array<{ elementType: number; videoElement: Record<string, unknown> }>
+                | undefined;
+            const element = sent?.[0];
+            expect(element?.elementType).toBe(5);
+            const video = element?.videoElement ?? {};
+            expect(video["fileName"]).toBe("clip.mp4");
+            expect(video["filePath"]).toBe(
+                `Video/2026-10/Ori/${createHash("md5").update("video-bytes").digest("hex")}.mp4`,
+            );
+            expect(video["fileSize"]).toBe(String(Buffer.byteLength("video-bytes")));
+            expect(video["fileTime"]).toBe(3);
+            expect(video["thumbMd5"]).toBe(createHash("md5").update("thumb-bytes").digest("hex"));
+            expect(video["thumbSize"]).toBe(Buffer.byteLength("thumb-bytes"));
+            expect(video["thumbWidth"]).toBe(640);
+            expect(video["thumbHeight"]).toBe(360);
+            const thumbMap = video["thumbPath"];
+            expect(thumbMap).toBeInstanceOf(Map);
+            expect((thumbMap as Map<number, string>).get(0)).toBe(
+                `Video/2026-10/Thumb/${createHash("md5").update("video-bytes").digest("hex")}_0.png`,
+            );
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });
 

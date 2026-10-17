@@ -13,6 +13,7 @@ import type {
     RawMessage,
     ReplyElement,
     TextElement,
+    VideoElement,
 } from "../entities.js";
 
 /** 原生通用返回：result 非 0 即失败（errMsg 附原因）。 */
@@ -55,6 +56,7 @@ export interface SendMessageElement {
     replyElement?: ReplyElement;
     picElement?: PicElement;
     pttElement?: PttElement;
+    videoElement?: VideoElement;
 }
 
 /** 消息服务：apis/msg 用到的核心方法面。 */

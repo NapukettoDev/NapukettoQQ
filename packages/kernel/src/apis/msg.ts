@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
 import type { MsgEventChannel } from "../bridge/msg-bridge.js";
 import { kernelError } from "../infra/index.js";
 import type {
@@ -20,6 +20,7 @@ import type {
     RawElement,
     RawMessage,
     SendMessageElement,
+    VideoElement,
 } from "../types/index.js";
 import { ElementType, toSendElements } from "../types/index.js";
 import { unwrapResult } from "./result.js";
@@ -59,6 +60,28 @@ const PTT_AI_VOICE_TYPE = 0;
 /** 假波形数组（占位波形）：无真实振幅数据时发送的固定占位，silk v3 协议契约值。 */
 const PTT_WAVE_AMPLITUDES = [0, 18, 9, 23, 16, 17, 16, 15, 44, 17, 24, 20, 14, 15, 17];
 
+/**
+ * VIDEO 元素发送契约值（2026-10-17 收向实测字段 + 发送实测调通）。
+ *
+ * 依据：历史视频消息 `getLatestDbMsgs` 的 videoElement 实测快照（fileFormat /
+ * busiType / subBusiType / storeID / original / videoFrom / sourceVideoCodecFormat
+ * 均为实测出现的取值）。2026-10-17 18:12 自建宿主实测调通：`sendMsg` 成功
+ * （sendStatus 2/3，群内可播放）；关键坑是**缩略图目标路径必须用视频 md5**
+ * （见 prepareVideoElement 注释），与字段取值无关。
+ */
+const VIDEO_FILE_FORMAT = 0;
+const VIDEO_BUSI_TYPE = 0;
+const VIDEO_SUB_BUSI_TYPE = 0;
+const VIDEO_STORE_ID = 1;
+const VIDEO_ORIGINAL = true;
+const VIDEO_FROM = 0;
+const VIDEO_SOURCE_CODEC_FORMAT = 0;
+/** 视频缩略图在 thumbPath Map 中的 key（收向实测 Map<0, path>）。 */
+const VIDEO_THUMB_KEY = 0;
+/** getRichMediaFilePathForGuild 的 downloadType：1 = 原文件，2 = 缩略图。 */
+const RICH_MEDIA_DOWNLOAD_TYPE_ORIGIN = 1;
+const RICH_MEDIA_DOWNLOAD_TYPE_THUMB = 2;
+
 /** downloadRichMedia 契约值（2026-09-08 B1 实测：downloadType=2 可用 / thumbSize=0）。 */
 const DOWNLOAD_TYPE_COMMON = 2;
 const THUMB_SIZE_NONE = 0;
@@ -74,21 +97,21 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** 读文件 stat（富媒体发送预处理；文件不存在抛 INVALID_PARAM）。 */
-async function statFile(path: string): Promise<{ size: number }> {
+async function statFile(path: string, label = "图片"): Promise<{ size: number }> {
     try {
         return await stat(path);
     } catch {
-        throw kernelError(`图片文件不存在: ${path}`, "INVALID_PARAM");
+        throw kernelError(`${label}文件不存在: ${path}`, "INVALID_PARAM");
     }
 }
 
 /** 计算文件 md5（十六进制小写）。 */
-async function hashFile(path: string): Promise<string> {
+async function hashFile(path: string, label = "图片"): Promise<string> {
     try {
         const buf = await readFile(path);
         return createHash("md5").update(buf).digest("hex");
     } catch {
-        throw kernelError(`图片文件读取失败: ${path}`, "INVALID_PARAM");
+        throw kernelError(`${label}文件读取失败: ${path}`, "INVALID_PARAM");
     }
 }
 
@@ -208,6 +231,9 @@ export class MsgApi {
                 case "voice":
                     out.push(await this.preparePttElement(el.path));
                     break;
+                case "video":
+                    out.push(await this.prepareVideoElement(el));
+                    break;
                 default:
                     out.push(...toSendElements([el]));
                     break;
@@ -286,14 +312,83 @@ export class MsgApi {
     }
 
     /**
-     * 富媒体文件放置（PIC/PTT 共用）：md5 + 文件名 → QQ 内部目标路径
-     * （getRichMediaFilePathForGuild）→ util.copyFile 放置 → 返回相对数据根路径。
+     * VIDEO 元素预处理：md5 → 目标路径 → copyFile → 完整 videoElement。
+     *
+     * 字段依据：2026-10-17 收向实测（历史视频消息 videoElement 全字段快照）+
+     * 发送实测（2026-10-17 18:12 自建宿主发送成功，群内可播放）：
+     *  1. `thumbPath` 必须是真实 `Map<number, string>`（收向实测 `Map<0, path>`）——
+     *     经 JSON/IPC 传参会退化成 `{}`，wrapper 转换失败；
+     *  2. **缩略图目标路径用视频 md5**（`Video/<YYYY-MM>/Thumb/<videoMd5>_0.png`）：
+     *     真实消息实测 videoMd5=`3d27…`、thumbMd5=`46da…`，落盘文件名却是
+     *     `3d27…_0.png`；此前按 thumbMd5 放置 → native 传输按视频 md5 找不到缩略图
+     *     → `rich media transfer failed`（20+ 组字段变体都无效的真正原因）；
+     *  3. `thumbMd5` 是缩略图**内容**的 md5，与文件名无关；`fileTime` 为秒。
+     */
+    private async prepareVideoElement(
+        el: Extract<CanonicalElement, { type: "video" }>,
+    ): Promise<SendMessageElement> {
+        const file = await statFile(el.path, "视频");
+        const md5 = await hashFile(el.path, "视频");
+        const fileName = basename(el.path);
+        const relPath = await this.placeMediaFile(
+            el.path,
+            ElementType.VIDEO,
+            md5,
+            fileName,
+            RICH_MEDIA_DOWNLOAD_TYPE_ORIGIN,
+        );
+        const videoElement: VideoElement = {
+            fileName,
+            filePath: relPath,
+            fileSize: String(file.size),
+            videoMd5: md5,
+            fileTime: el.durationSec ?? 0,
+            fileFormat: VIDEO_FILE_FORMAT,
+            busiType: VIDEO_BUSI_TYPE,
+            subBusiType: VIDEO_SUB_BUSI_TYPE,
+            fileUuid: "",
+            fileSubId: "",
+            storeID: VIDEO_STORE_ID,
+            original: VIDEO_ORIGINAL,
+            videoFrom: VIDEO_FROM,
+            sourceVideoCodecFormat: VIDEO_SOURCE_CODEC_FORMAT,
+        };
+        if (el.thumbPath !== undefined && el.thumbPath !== "") {
+            const thumbSize = await statFile(el.thumbPath, "视频缩略图");
+            const thumbMd5 = await hashFile(el.thumbPath, "视频缩略图");
+            // ⚠️ 目标路径必须用**视频 md5**（不是缩略图内容 md5）：2026-10-17 实测
+            // 真实视频消息的缩略图文件名为 `Thumb/<videoMd5>_0.png`，而
+            // `thumbMd5` 只是缩略图内容的 md5（例：videoMd5=3d27…、thumbMd5=46da…，
+            // 实际落盘 `3d27…_0.png`）。此前用 thumbMd5 算路径 → native 传输按视频
+            // md5 找不到缩略图 → `rich media transfer failed`。
+            const thumbRelPath = await this.placeMediaFile(
+                el.thumbPath,
+                ElementType.VIDEO,
+                md5,
+                `${md5}${extname(el.thumbPath)}`,
+                RICH_MEDIA_DOWNLOAD_TYPE_THUMB,
+            );
+            videoElement.thumbMd5 = thumbMd5;
+            videoElement.thumbSize = thumbSize.size;
+            videoElement.thumbWidth = el.width ?? 0;
+            videoElement.thumbHeight = el.height ?? 0;
+            videoElement.thumbPath = new Map([[VIDEO_THUMB_KEY, thumbRelPath]]);
+        }
+        return { elementType: ElementType.VIDEO, elementId: "", videoElement };
+    }
+
+    /**
+     * 富媒体文件放置（PIC/PTT/VIDEO 共用）：md5 + 文件名 → QQ 内部目标路径
+     * （getRichMediaFilePathForGuild）→ util.copyFile 放置 → 返回目标路径。
+     *
+     * `downloadType`：1 = 原文件（Ori），2 = 缩略图（Thumb，视频缩略图必须）。
      */
     private async placeMediaFile(
         path: string,
         elementType: ElementType,
         md5: string,
         fileName: string,
+        downloadType = RICH_MEDIA_DOWNLOAD_TYPE_ORIGIN,
     ): Promise<string> {
         const service = this.service;
         const util = this.util;
@@ -307,7 +402,7 @@ export class MsgApi {
             elementSubType: 0, // 元素子类型（发送固定 0）
             thumbSize: 0, // 缩略图尺寸（发送固定 0，不预生成缩略图）
             needCreate: true,
-            downloadType: 1, // 下载类型（发送固定 1）
+            downloadType, // 下载类型：1 = 原文件，2 = 缩略图（视频缩略图必须）
             file_uuid: "",
         });
         if (util !== null) {

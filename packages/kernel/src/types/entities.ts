@@ -101,12 +101,43 @@ export interface ReplyElement {
     senderUin?: string;
 }
 
-/** 视频元素。 */
+/** 视频元素（接收 + 发送）。 */
 export interface VideoElement {
     filePath?: string;
     videoUrl?: string;
     fileName?: string;
     fileSize?: string;
+    // 接收字段（2026-10-17 收向实测快照，getLatestDbMsgs 历史视频消息）
+    videoMd5?: string;
+    thumbMd5?: string;
+    /** 时长（秒）。 */
+    fileTime?: number;
+    thumbSize?: number;
+    thumbWidth?: number;
+    thumbHeight?: number;
+    fileFormat?: number;
+    busiType?: number;
+    subBusiType?: number;
+    /**
+     * 缩略图路径（收向实测 `Map<number, string>`，key 0 = Thumb 下的图片路径）。
+     * 发送时必须传真实 Map——JSON 序列化会丢成 `{}`，wrapper 转换失败。
+     */
+    thumbPath?: Map<number, string>;
+    transferStatus?: number;
+    progress?: number;
+    invalidState?: number;
+    fileUuid?: string;
+    fileSubId?: string;
+    fileBizId?: unknown;
+    originVideoMd5?: string;
+    import_rich_media_context?: unknown;
+    sourceVideoCodecFormat?: number;
+    storeID?: number;
+    original?: boolean;
+    videoFrom?: number;
+    isInApplicationDataPath?: boolean | null;
+    /** 发送补充字段（PIC/PTT 同款 md5 字段名）。 */
+    md5HexStr?: string;
 }
 
 /** 文件元素。 */

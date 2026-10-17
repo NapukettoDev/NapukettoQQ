@@ -80,11 +80,25 @@ function videoToCanonical(video: VideoElement | undefined): CanonicalElement {
         return { type: "video", path: "" };
     }
     const path = video.filePath ?? video.videoUrl ?? "";
-    const url = video.videoUrl;
-    if (url === undefined) {
-        return { type: "video", path };
+    const base: Extract<CanonicalElement, { type: "video" }> = { type: "video", path };
+    if (video.videoUrl !== undefined) {
+        base.url = video.videoUrl;
     }
-    return { type: "video", path, url };
+    // 收向实测：thumbPath 为 Map<number, string>（key 0 = Thumb 图片路径）
+    const thumb = video.thumbPath?.get(0);
+    if (thumb !== undefined && thumb !== "") {
+        base.thumbPath = thumb;
+    }
+    if (video.thumbWidth !== undefined && video.thumbWidth > 0) {
+        base.width = video.thumbWidth;
+    }
+    if (video.thumbHeight !== undefined && video.thumbHeight > 0) {
+        base.height = video.thumbHeight;
+    }
+    if (video.fileTime !== undefined && video.fileTime > 0) {
+        base.durationSec = video.fileTime;
+    }
+    return base;
 }
 
 /** FILE 元素 → canonical file。 */
@@ -179,6 +193,13 @@ export function toSendElements(elements: CanonicalElement[]): SendMessageElement
                 });
                 break;
             case "video":
+                // 视频发送必须经 MsgApi.prepareVideoElement 预处理（md5/目标路径/
+                // 缩略图 Map 等字段无法从 canonical 直接得到）。canonical → NT
+                // 元元素只在 prepareSendElements 内部发生，此处属误用。
+                throw kernelError(
+                    "视频发送需经 MsgApi 预处理（prepareVideoElement）",
+                    "INVALID_PARAM",
+                );
             case "file":
             case "forward":
             case "json":
@@ -200,7 +221,15 @@ export type CanonicalElement =
     | { type: "image"; path: string; url?: string; size?: { width: number; height: number } }
     | { type: "face"; id: string }
     | { type: "voice"; path: string; durationMs?: number; url?: string }
-    | { type: "video"; path: string; url?: string }
+    | {
+          type: "video";
+          path: string;
+          url?: string;
+          thumbPath?: string;
+          width?: number;
+          height?: number;
+          durationSec?: number;
+      }
     | { type: "file"; path: string; name?: string; size?: number }
     | { type: "reply"; messageId: string }
     | { type: "forward"; messageIds: string[] }

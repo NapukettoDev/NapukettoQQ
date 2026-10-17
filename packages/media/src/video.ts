@@ -4,6 +4,7 @@
  * ffmpeg 由 execa 以子进程方式调用（非 node 内置），依赖系统 PATH 中的 ffmpeg。
  * - `transcodeVideo`：转码 / 缩放 / 帧率
  * - `getVideoInfo`：解析 ffprobe 输出取宽高与时长
+ * - `extractVideoFrame`：抽首帧作缩略图（QQ 视频消息发送需要）
  */
 import { existsSync } from "node:fs";
 import { execa } from "execa";
@@ -101,4 +102,39 @@ export async function getVideoInfo(input: string): Promise<VideoInfo> {
         throw new MediaError(`ffprobe 未取到视频信息: ${input}`);
     }
     return { width, height, durationMs: Math.round(Number(durationStr) * MS_PER_SECOND) };
+}
+
+/**
+ * 抽视频首帧为 PNG 缩略图（QQ 视频消息发送契约：thumbPath 指向真实图片文件）。
+ *
+ * 固定 `-ss 0` 取首帧：QQ 缩略图只需要一张可解码的封面，首帧最稳定
+ * （部分视频首帧为黑屏时可改 1s，此处不引入额外配置）。转码失败 / ffmpeg
+ * 缺失 / 输出未生成均抛 MediaError，由调用方决定降级策略。
+ */
+export async function extractVideoFrame(input: string, outputPath: string): Promise<string> {
+    const args = [
+        "-y",
+        "-ss",
+        "0",
+        "-i",
+        input,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        "-f",
+        "image2",
+        outputPath,
+    ];
+    let exitCode: number | undefined;
+    try {
+        const result = await execa("ffmpeg", args, { reject: false });
+        exitCode = result.exitCode;
+    } catch (err) {
+        throw new MediaError(`ffmpeg 不可用或抽帧失败: ${input}`, { cause: err });
+    }
+    if (exitCode !== 0 || !existsSync(outputPath)) {
+        throw new MediaError(`ffmpeg 抽帧失败: ${input}（exit ${exitCode ?? "?"}）`);
+    }
+    return outputPath;
 }

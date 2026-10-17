@@ -107,6 +107,13 @@
   文本（NapCat 式 sendMsg '0' + onMsgInfoListUpdate sendStatus 判定）、图片（elementType=2 +
   getRichMediaFilePathForGuild + util.copyFile 完整预处理）、语音（完整 pttElement；非 silk
   输入 wrapper 内部自动转码，无需外部 silk）。
+- **视频发送已打通**（2026-10-17，设计见 `packages/kernel/docs/design.md` §8）：canonical `video` →
+  `MsgApi.prepareVideoElement` → `sendMsg` 在自建宿主实测成功（18:12 群内收到可播放视频，
+  sendStatus 2/3）。**根因：缩略图目标路径必须用视频 md5**（`Video/<月>/Thumb/<videoMd5>_0.png`），
+  `thumbMd5` 只是缩略图内容 md5；此前按 thumbMd5 放置 → native 传输找不到缩略图 →
+  `rich media transfer failed`（20+ 组字段/路径变体全失败的原因，字段本身一直是对的）。
+  回归：图片/语音/文本未受影响。koishi 适配器层的 `h.video` 链路（data URL 落盘 +
+  ffmpeg 抽首帧）已实现并单测覆盖，尚未经真实插件端到端复测。
 
 ---
 
