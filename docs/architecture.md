@@ -264,12 +264,12 @@ wrapper.node 原生回调
 
 - **版本管理**：Changesets——每批用户可见改动随改动写 `.changeset/<名字>.md`（勿攒），
   发版 `pnpm release` 消费（升版本 + CHANGELOG + 构建 + 拓扑序发布）；工作流细则见 AGENTS.md。
-- **发版脚本**：`scripts/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 npm
+- **发版脚本**：`tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 npm
   2FA 验证码；sync-adapter-deps 发版链自动对齐 koishi 插件依赖范围）。
 - **GitHub Release**：repo 级 tag 与包版本解耦（2026-09-19 首 Release v0.1.0）。
 - **CI**（`.github/workflows/ci.yml`）：gate（ubuntu：build → check → test + Codecov）/
   windows（跨平台测试补位）/ audit（fallow 增量门禁 `--base`）三并行 job；
   `update-qq-releases.yml` Cron 维护 QQ 版本清单。
-- **pre-commit**：`scripts/git-hooks`（root prepare 启用）lockfile 一致性门禁——暂存
+- **pre-commit**：`tooling/git-hooks`（root prepare 启用）lockfile 一致性门禁——暂存
   package.json / pnpm-workspace.yaml / 子模块指针必须同刷 pnpm-lock.yaml。
 - **贡献文档**：`.github/CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`。

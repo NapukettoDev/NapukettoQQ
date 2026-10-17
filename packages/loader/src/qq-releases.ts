@@ -6,7 +6,7 @@
  *
  * 维护机制（真实存在，非「声称」）：清单由 CI 自动维护——
  * .github/workflows/update-qq-releases.yml（每日 cron + 手动触发）调用
- * scripts/qq-releases/update-qq-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
+ * tooling/qq-releases/update-qq-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
  * 解析最新版 + 下载安装包计算 sha256 + 解析安装包内部版本目录后更新本清单
  * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUTO_QQ_URL
  * 可运行时覆盖下载地址（用户拿到新链接时用）。

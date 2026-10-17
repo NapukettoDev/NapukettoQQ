@@ -230,7 +230,7 @@ sequenceDiagram
 > 另外：未认证用户 PUT 不存在的包统一回 404（CouchDB 语义），`pnpm login` 失败时
 > 也会看到 404 而非 401。
 
-> **workspace:* 改写（2026-08-16 修复）**：发布环节走 `scripts/release/release-npm.ts`
+> **workspace:* 改写（2026-08-16 修复）**：发布环节走 `tooling/release/release-npm.ts`
 > （npm publish 逐个发布），该脚本发布前把每个包 package.json 的 `workspace:*`
 > 依赖改写为 caret 真实版本、发布后恢复原样（`rewriteWorkspaceProtocol`，幂等：
 > `pnpm changeset version` 正常跑时已改写则空转）。此前曾绕过 changeset 直发，

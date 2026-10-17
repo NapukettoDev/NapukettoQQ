@@ -2,7 +2,7 @@
  * wine-login-smoke.ts：Linux/wine 完整链路登录冒烟（P2 Step 2）。
  *
  * 用法（WSL2 内，从项目根；Node 24 直接跑 TS）：
- *   node scripts/wine/wine-login-smoke.ts [--ext4-dir <dir>] [--uin <QQ号>]
+ *   node tooling/wine/wine-login-smoke.ts [--ext4-dir <dir>] [--uin <QQ号>]
  *
  * 流程（复用自建宿主全链路，与 Windows 完全一致，仅换宿主为 wine + win-node）：
  *   1. 确保 QQ 文件（P1 ensureQqFiles）

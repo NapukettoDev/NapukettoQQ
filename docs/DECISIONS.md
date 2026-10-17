@@ -286,7 +286,7 @@ initializeSession 顺序）。此前失败原因：① 先 `ssw.start()` 再 ini
 
 ### 10.7 工程化与发布（2026-09，ADR-022）
 
-- Changesets 版本管理（2026-08-07 引入，AGENTS.md 工作流节）；发版链 `scripts/release/`
+- Changesets 版本管理（2026-08-07 引入，AGENTS.md 工作流节）；发版链 `tooling/release/`
   （release-npm 2FA otp 透传 / sync-adapter-deps 插件依赖对齐）。
 - CI 三并行 job（gate / windows / audit fallow 增量门禁）+ Codecov + lockfile pre-commit
   门禁 + CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 落库。

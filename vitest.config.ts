@@ -15,7 +15,7 @@ export default defineConfig({
             "packages/*/src/**/*.test.ts",
             "apps/*/src/**/*.test.ts",
             // 发布工具链（koishi 适配器依赖同步等）也纳入单测
-            "scripts/**/*.test.ts",
+            "tooling/**/*.test.ts",
         ],
         environment: "node",
         coverage: {

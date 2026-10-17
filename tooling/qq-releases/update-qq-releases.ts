@@ -3,8 +3,8 @@
  * update-qq-releases.ts：qq-releases.json 自动维护脚本（CI 定时/手动与本地共用，纯 Node 零第三方依赖）。
  *
  * 用法（从项目根）：
- *   node scripts/qq-releases/update-qq-releases.ts            # 抓最新版 → 下载 → sha256 → 更新清单
- *   node scripts/qq-releases/update-qq-releases.ts --dry-run  # 只打印计划，不下载、不写清单
+ *   node tooling/qq-releases/update-qq-releases.ts            # 抓最新版 → 下载 → sha256 → 更新清单
+ *   node tooling/qq-releases/update-qq-releases.ts --dry-run  # 只打印计划，不下载、不写清单
  *
  * 数据源（2026-08-13 实测修正）：im.qq.com 新版为 Vite SPA——HTML 壳仅 ~7KB，
  * 下载链接由前端运行时抓取 rainbow 配置 JSON（下载页同源数据）。设计文档 §2.2 旧

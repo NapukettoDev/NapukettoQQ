@@ -104,7 +104,7 @@ https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/a0ce07ad/QQ_9.9.33_260730_x64_0
   用内置 7-Zip 列归档（`7z l`）解析——清单 version 必须与安装包内部目录名一致（运行时
   `extractWrapperFiles` 按版本目录名定位 wrapper.node）。
 - **CI 自动更新方案（GitHub Actions）**：
-  - Cron Job（每日）调 `scripts/qq-releases/update-qq-releases.ts`（CI/本地共用）→ 抓配置 → 下载算 sha256
+  - Cron Job（每日）调 `tooling/qq-releases/update-qq-releases.ts`（CI/本地共用）→ 抓配置 → 下载算 sha256
     → 解析版本目录 → 更新清单 → 发现变更自动提 PR（GitOps 免维护）。
 - **⚠️ 下载 URL 必须归一化路径段大小写（2026-10-07 定位，issue #6 根因）**：
   2026-08-25 前后腾讯 CDN 边缘 WAF 新增一条 **区分大小写** 规则匹配字面量
@@ -353,7 +353,7 @@ packages/loader/
 
 1. **wine 版本**：`wine-stable`（发行版默认）；Docker 仅 `wine64`。
 2. **路径映射**：`toWinePath` 纯函数入 launcher（§3.2），所有传给 wine 子进程的路径过转换。
-3. **版本探测**：已立项，实测官方下载配置 JSON（SPA 数据源）可读（§2.2）；CI Cron 自动更新清单已落地（`scripts/qq-releases/update-qq-releases.ts` + `.github/workflows/update-qq-releases.yml`）。
+3. **版本探测**：已立项，实测官方下载配置 JSON（SPA 数据源）可读（§2.2）；CI Cron 自动更新清单已落地（`tooling/qq-releases/update-qq-releases.ts` + `.github/workflows/update-qq-releases.yml`）。
 4. **下载实现**：Node 内置 `https` + `crypto`（sha256），无第三方依赖。
 5. **解包工具**：内置 `7za.exe`（LGPL 合规可分发）+ Linux/Docker 系统 `p7zip-full`。
 6. **ARM**：第一版只承诺 `linux/amd64`，ARM 列后置 P2/P3。

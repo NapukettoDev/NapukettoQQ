@@ -3,9 +3,9 @@
  * sync-adapter-deps.ts：koishi 适配器依赖同步 CLI（发布链一环）。
  *
  * 用法（Node 22.7+ 原生 type stripping，零构建直接跑）：
- *   node scripts/release/sync-adapter-deps.ts            # 查询 registry latest 并改写依赖范围
- *   node scripts/release/sync-adapter-deps.ts --dry-run  # 只打印计划，不改写
- *   node scripts/release/sync-adapter-deps.ts --pkg=<path>  # 指定插件 package.json（默认 apps/koishi-plugin-adapter）
+ *   node tooling/release/sync-adapter-deps.ts            # 查询 registry latest 并改写依赖范围
+ *   node tooling/release/sync-adapter-deps.ts --dry-run  # 只打印计划，不改写
+ *   node tooling/release/sync-adapter-deps.ts --pkg=<path>  # 指定插件 package.json（默认 apps/koishi-plugin-adapter）
  *
  * 行为：
  *   - 查询 npm registry 上 TRACKED_PACKAGES 各包（kernel/loader/adapter/network/media）的 latest

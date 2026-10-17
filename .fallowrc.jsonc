@@ -5,12 +5,12 @@
     "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
     // 手动入口：loader/src/host/ 是 tsdown 多入口（dist/host/self-host.cjs CJS bundle），
     // 不在 package.json exports 里，fallow 无法自动发现——声明后 host/ 目录不再报 unused。
-    // scripts/wine/*.ts 是手动冒烟脚本（node scripts/... 直接跑），
+    // tooling/wine/*.ts 是手动冒烟脚本（node tooling/... 直接跑），
     // 非 import 可达，声明为入口避免误报 unused-file。
     "entry": [
         "packages/loader/src/host/core/self-host.ts",
-        "scripts/wine/wine-smoke.ts",
-        "scripts/wine/wine-login-smoke.ts"
+        "tooling/wine/wine-smoke.ts",
+        "tooling/wine/wine-login-smoke.ts"
     ],
     // 完全排除：packages/loader/native/ 是私有 Git Submodule（Native Bypass 载具），
     // 仅分发编译后二进制，源脚本（verify/tools）不进主仓库分析范围。
@@ -114,7 +114,7 @@
         "packages/network/src/**/*.test.ts",
         "packages/media/src/**/*.test.ts",
         "apps/**/*.test.ts",
-        "scripts/**/*.test.ts"
+        "tooling/**/*.test.ts"
     ],
     // 测试文件豁免大函数检查（fallow 官方推荐）：长 describe/it 块会被误计为
     // ">60 LOC 大函数"，污染 unit size 扣分（unit size = per_k 大函数数 × 0.5）。

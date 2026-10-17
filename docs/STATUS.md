@@ -37,14 +37,14 @@
 
 **发布与工程化**：
 - 版本管理 = Changesets（AGENTS.md 工作流节）；`.changeset/` 当前**无 pending 条目**（已全部消费发版）。
-- 发版链 = `scripts/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 2FA 验证码；
+- 发版链 = `tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 2FA 验证码；
   sync-adapter-deps 自动对齐 koishi 插件依赖范围）。
 - 2026-09-19 发布首个 GitHub Release（**repo 级 tag 与包版本解耦**，npm 各包独立版本照常）。
 - CI = `.github/workflows/ci.yml` 三并行 job：**gate**（ubuntu：build → check → test + Codecov
   覆盖率）、**windows**（跨平台测试补位）、**audit**（fallow 增量门禁 `--base`，整仓模式因
   跨包 dist 消费误报 82+ 不采用）。另有 `update-qq-releases.yml`（Cron 爬官方下载配置更新
   `packages/loader/qq-releases.json`，发现新版本自动 PR）。
-- lockfile 一致性 pre-commit 钩子（`scripts/git-hooks`，root prepare 自动启用）。
+- lockfile 一致性 pre-commit 钩子（`tooling/git-hooks`，root prepare 自动启用）。
 - `.github/` 下有 CONTRIBUTING / SECURITY / CODE_OF_CONDUCT（2026-09 落库）。
 
 ---

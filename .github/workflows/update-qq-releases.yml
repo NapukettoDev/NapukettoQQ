@@ -1,7 +1,7 @@
 name: update-qq-releases
 
 # qq-releases.json 自动维护：每日 cron + 手动触发。
-# 脚本 scripts/qq-releases/update-qq-releases.ts 与本地共用（纯 Node 零第三方依赖）：
+# 脚本 tooling/qq-releases/update-qq-releases.ts 与本地共用（纯 Node 零第三方依赖）：
 #   抓取 QQ 官方下载配置（rainbow pcConfig.json，im.qq.com 新版 SPA 的数据源）
 #   → 解析最新版号与下载链接 → 下载安装包计算 sha256 → 用内置 7-Zip 解析安装包
 #   内部版本目录名（含构建号）→ 更新 qq-releases.json（保留历史、按版本递增）。
@@ -10,9 +10,9 @@ name: update-qq-releases
 # 腾讯 CDN 的路径拦截（QQNTV2 路径段 2026-08-25 起被 WAF 按字面量大小写拦截）
 # 属外部因素，定时任务红了只会逼人禁用。
 # 2026-10-07 已定位并修复：拦截规则区分大小写且不回源，源站大小写不敏感，
-# 脚本改为请求小写 `/qqntv2/` 路径段（normalizeDownloadUrl），见 scripts 头注释。
+# 脚本改为请求小写 `/qqntv2/` 路径段（normalizeDownloadUrl），见 tooling 头注释。
 # 失败仍在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
-# 本地跑 scripts/qq-releases/update-qq-releases.ts 兜底更新清单。
+# 本地跑 tooling/qq-releases/update-qq-releases.ts 兜底更新清单。
 on:
     schedule:
         # 每天 UTC 03:17（避开整点高峰）
@@ -39,7 +39,7 @@ jobs:
             - name: 更新 qq-releases.json
               id: update
               continue-on-error: true
-              run: node scripts/qq-releases/update-qq-releases.ts
+              run: node tooling/qq-releases/update-qq-releases.ts
 
             - name: 失败则在追踪 issue 报警（去重，不刷红 CI）
               if: steps.update.outcome == 'failure'
@@ -58,7 +58,7 @@ jobs:
                           `② 拦截规则收紧（如改为大小写不敏感）→ 需重新定位可用路径；`,
                           `③ 安装包结构变化 → 版本目录名解析失败。`,
                           ``,
-                          `兜底方式：本地跑 \`node scripts/qq-releases/update-qq-releases.ts\`，`,
+                          `兜底方式：本地跑 \`node tooling/qq-releases/update-qq-releases.ts\`，`,
                           `把变更后的 packages/loader/qq-releases.json 提交上来。`,
                       ].join("\n");
                       const { data: issues } = await github.rest.issues.listForRepo({
