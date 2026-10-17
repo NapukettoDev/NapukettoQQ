@@ -57,5 +57,6 @@ archive/
 .npmrc
 
 # 一些缓存？
-.pnpm-store
+.fallow/
+.pnpm-store/
 .repo/
