@@ -287,7 +287,23 @@ initializeSession 顺序）。此前失败原因：① 先 `ssw.start()` 再 ini
 ### 10.7 工程化与发布（2026-09，ADR-022）
 
 - Changesets 版本管理（2026-08-07 引入，AGENTS.md 工作流节）；发版链 `tooling/release/`
-  （release-npm 2FA otp 透传 / sync-adapter-deps 插件依赖对齐）。
+  （release-npm 2FA otp 透传 / sync-adapter-deps 插件依赖对齐——2026-10-18 随插件独立移除）。
 - CI 三并行 job（gate / windows / audit fallow 增量门禁）+ Codecov + lockfile pre-commit
   门禁 + CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 落库。
 - 2026-09-19 首个 GitHub Release（repo 级 tag 与包版本解耦，ADR-022）。
+
+### 10.8 koishi 适配器独立成仓（2026-10-18，ADR-023）
+
+- **现象**：插件既是 `apps/koishi-plugin-adapter` submodule，又在主仓 pnpm workspace 内。
+  479 个提交里 93 个动到该路径、57 个是纯指针；changesets 会把版本与 CHANGELOG 直接写进
+  子仓工作树（0.0.34 的 `Updated dependencies` 就是跨仓产物），一次修复要两仓三次提交；
+  `linkWorkspacePackages: true` 让 `~0.2.0` 解析成本地源码，主仓 CI 绿不代表 npm 安装
+  形态可用；工具链靠 tsconfig exclude / fallow ignore / CI 检出步骤拼接。
+- **判断**：submodule 是**源码保密边界**的工具（native 私有仓），不是「独立发布单元」的
+  工具。独立 npm 包需要的是独立仓库：自己的 lockfile、CI、版本与发布节奏。
+- **处置**：插件迁到 `C:\Dev\Bot-Dev\koishi-plugin-adapter-napuketto`（独立 clone，
+  commit `38eff88`，版本 0.0.36），自带 `pnpm-workspace.yaml` / `pnpm-lock.yaml` /
+  GitHub Actions CI；主仓删除 submodule、workspace importer、`sync-adapter-deps*` 工具链
+  及全部相关豁免与 CI 检出步骤；跨仓联调改走 `pnpm pack` tarball / prerelease。
+- **代价**：契约变更需先发主仓包、再跟插件（顺序反而符合「发布形态优先」）；换来主仓历史
+  干净、插件 CI 测的就是 npm 安装形态。

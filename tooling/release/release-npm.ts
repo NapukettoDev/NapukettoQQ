@@ -7,9 +7,7 @@
  *   node tooling/release/release-npm.ts --dry-run  # 只跑 npm publish --dry-run（打包检查，不发布）
  *
  * 前置（由根 package.json 的 release 链保证）：
- *   1. node tooling/release/sync-adapter-deps.ts —— koishi 适配器的 kernel/loader
- *      依赖已刷成 ~latest
- *   2. pnpm -r build —— 各包 dist 已构建
+ *   1. pnpm -r build —— 各包 dist 已构建
  *
  * workspace:* 改写（2026-08-16 修复，本脚本自保证，不再依赖 changeset）：
  *   发布前把每个包 package.json 中 workspace:* 依赖改写为 caret 真实版本

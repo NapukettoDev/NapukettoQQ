@@ -1,29 +1,31 @@
-# NapukettoQQ 项目现状（2026-09-20 更新）
+# NapukettoQQ 项目现状（2026-10-18 更新）
 
 > **新对话开场指引**：先读本文件（现状 + 遗留清单）→ `AGENTS.md`（工程指南 + 红线）→
 > `docs/architecture.md`（架构书）→ 对应包 `docs/design.md`（kernel / adapter / loader /
-> koishi-plugin-adapter / create-napukettoqq）。需要理解「为什么走到今天」时读
+> create-napukettoqq）。需要理解「为什么走到今天」时读
 > `docs/DECISIONS.md`（决策史 V1→V10 + V10 后补录）。涉及**登录 / 停启实例 /
 > instance-lock / stderr 噪音排查**等实操时先读 `docs/OPERATIONS.md`。载具层闭源细节
 > （私有子仓库）：`packages/loader/native/docs/HANDOVER-V11.md`。
+> **Koishi 适配器的设计书已随仓库独立**：`NapukettoDev/koishi-plugin-adapter-napuketto`
+> 的 `docs/design.md`（不在本仓）。
 >
 > 各文档导航见 `docs/README.md`。历史轮次详情不留在本文件——已收编进决策史与各包
 > design.md，本文件只保留「当前快照 + 遗留 + 环境」。
 
 ---
 
-## 项目快照（2026-09-20）
+## 项目快照（2026-10-18）
 
 | 包 | 版本 | 状态 |
 |---|---|---|
-| @napuketto/kernel | 0.1.1 | 完整（wrapper / login / apis / 三桥 + 缓存 / 事件通道） |
-| @napuketto/adapter | 0.3.1 | 完整（core 框架 + onebot11 + satori + kurobot） |
+| @napuketto/kernel | 0.2.1 | 完整（wrapper / login / apis / 三桥 + 缓存 / 事件通道） |
+| @napuketto/adapter | 0.3.2 | 完整（core 框架 + onebot11 + satori + kurobot） |
 | @napuketto/network | 0.0.2 | 完整（HttpServer/HttpClient/WsServer/WsClient/EventBroadcaster） |
-| @napuketto/media | 0.0.4 | 完整（image/audio(silk)/video(ffmpeg)） |
-| @napuketto/loader | 0.0.34 | 完整（自建宿主引导 + 跨平台 wine + IPC 模式 + 登录相位机） |
-| @napuketto/cli | 0.1.21 | 完整（启动 / config 子命令 / supervisor / 运维命令） |
-| apps/create-napukettoqq | 0.2.45 | 完整（项目脚手架） |
-| apps/koishi-plugin-adapter | （独立仓 submodule，npm 包名 koishi-plugin-adapter-napuketto） | 完整（Koishi 适配器，IPC 模式） |
+| @napuketto/media | 0.0.5 | 完整（image/audio(silk)/video(ffmpeg)） |
+| @napuketto/loader | 0.0.35 | 完整（自建宿主引导 + 跨平台 wine + IPC 模式 + 登录相位机） |
+| @napuketto/cli | 0.1.22 | 完整（启动 / config 子命令 / supervisor / 运维命令） |
+| apps/create-napukettoqq | 0.2.46 | 完整（项目脚手架） |
+| koishi-plugin-adapter-napuketto | 0.0.36 | **独立仓**（2026-10-18 起不在本 workspace / CI / 发布链；依赖本仓 npm 已发布包） |
 
 **协议面**：
 - **OneBot 11**：79 个动作（含别名变体）+ message/notice/request/meta 事件 + HTTP/WS/反向 WS
@@ -37,8 +39,7 @@
 
 **发布与工程化**：
 - 版本管理 = Changesets（AGENTS.md 工作流节）；`.changeset/` 当前**无 pending 条目**（已全部消费发版）。
-- 发版链 = `tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 2FA 验证码；
-  sync-adapter-deps 自动对齐 koishi 插件依赖范围）。
+- 发版链 = `tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 2FA 验证码）。
 - 2026-09-19 发布首个 GitHub Release（**repo 级 tag 与包版本解耦**，npm 各包独立版本照常）。
 - CI = `.github/workflows/ci.yml` 三并行 job：**gate**（ubuntu：build → check → test + Codecov
   覆盖率）、**windows**（跨平台测试补位）、**audit**（fallow 增量门禁 `--base`，整仓模式因
@@ -49,7 +50,7 @@
 
 ---
 
-## 当前工作面（最近一轮落地，2026-09-13 ~ 10-07）
+## 当前工作面（最近一轮落地，2026-09-13 ~ 10-18）
 
 1. **kurobot 协议适配器（KuroBot MVP-3）全量落地**：镜像 schema + 自建连接层 +
    翻译映射 + 装配接线 4 处（loader / cli / create-napukettoqq 模板 / adapter package.json），
@@ -68,6 +69,17 @@
    脚本统一归一化（清单仍存官方原样 URL），清单随之补齐到 **9.9.36**；同时修掉内置 `7zz`
    的 git 可执行位（原 `100644` → CI 上 `execFile` EACCES，7-Zip 解析路径实为死代码，
    一直静默回退字节扫描）。回归用例 `packages/loader/src/__tests__/qq-releases.test.ts`。
+5. **Koishi 适配器独立成仓（2026-10-18）**：判定「submodule + 主仓 workspace」双身份是
+   麻烦来源（指针噪音 57 次提交、changesets 跨仓写子仓 package.json/CHANGELOG、workspace
+   link 让「CI 绿 ≠ 发布版可用」）。处置：
+   - 插件迁到 `C:\Dev\Bot-Dev\koishi-plugin-adapter-napuketto`（独立 clone，commit
+     `38eff88`），自带 `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `.github/workflows/ci.yml`；
+   - 主仓删除 submodule（`.gitmodules` 仅剩 `native`）、workspace importer、tsconfig
+     exclude、fallow 豁免、CI 检出步骤、`sync-adapter-deps*` 工具链与 release 链引用；
+   - 插件依赖只认 npm 已发布 `@napuketto/*`；跨仓联调用 tarball / prerelease，不再
+     workspace link（`linkWorkspacePackages` 已移除）。
+   - 同时修掉插件里 pre-existing 的 `noFloatingPromises`（`update()` 内 `refresh()` 显式
+     `void`），插件 CI 首次真正跑通自有 check/test（244 用例）。
 
 ---
 

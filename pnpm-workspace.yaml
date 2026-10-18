@@ -13,11 +13,6 @@ packages:
 #（mjs 时代同样如此，非本次 TS 化引入）。
 overrides:
   '@typescript-eslint/*>typescript': 'npm:@typescript/typescript6@6.0.2'
-# 显式开启 workspace 链接（pnpm 11 默认关闭，仅 workspace:* 才 link）：
-# koishi 子仓库用 ~0.0.x 版本范围（非 workspace:*，因需独立发 npm），
-# 依赖版本匹配 workspace 包时 link 本地源码——否则开发时只能解析到 npm
-# 已发布旧版（新功能如 IPC 契约在未发布前无法被 koishi 消费）。
-linkWorkspacePackages: true
 # pnpm 11 构建脚本审批：允许这些依赖运行 postinstall（esbuild/parcel 需要）
 allowBuilds:
   '@parcel/watcher': true
@@ -46,9 +41,9 @@ minimumReleaseAgeExclude:
   - '@napuketto/loader@0.0.12'
   - '@napuketto/loader@0.0.13'
   - '@napuketto/loader@0.0.14'
-# verify-deps-before-run 预检：每次命令前自动 reinstall，在 git submodule monorepo
-# （koishi-plugin-adapter 子仓库）场景触发失败。关闭预检，按需手动 pnpm install
-#（开发工作流不受影响）。
+# verify-deps-before-run 预检：每次命令前自动 reinstall。发布链自己显式跑
+# `pnpm install --lockfile-only`，这里关掉以免命令间隐式重装干扰；日常也可按需手动
+# pnpm install（开发工作流不受影响）。
 # ⚠️ 必须写在顶层：pnpm-workspace.yaml 没有 `settings` 这个键（文档里的
 # “Settings” 是章节标题）。pnpm 11 会静默忽略未知键，pnpm 12 起不仅忽略不了，
 # 在项目 pin 的 pnpm 版本被满足时还会直接报 ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS。

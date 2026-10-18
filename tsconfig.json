@@ -39,8 +39,5 @@
         "noEmit": true,
         "allowImportingTsExtensions": true,
         "erasableSyntaxOnly": true
-    },
-    "exclude": [
-        "apps/koishi-plugin-adapter"
-    ]
+    }
 }

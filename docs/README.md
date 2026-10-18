@@ -19,7 +19,8 @@
    - [`packages/loader/docs/design.md`](../packages/loader/docs/design.md)——跨平台 v2 设计书
      （QQ 文件来源解耦 / wine / Docker 规划）/ IPC 模式与 OB11 容器装配（§9）/
      登录相位机与软重登（§10）
-   - `apps/koishi-plugin-adapter/docs/design.md`（独立仓 submodule）
+   - `koishi-plugin-adapter-napuketto` 的 `docs/design.md`（**独立仓**
+     `NapukettoDev/koishi-plugin-adapter-napuketto`，2026-10-18 起不在本仓）
    - `apps/create-napukettoqq/docs/design.md`
    - `packages/loader/native/docs/HANDOVER-V11.md`（**闭源私有 submodule**，载具层最终交接）
 

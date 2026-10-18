@@ -24,12 +24,12 @@
 #            workflow_dispatch 回退 HEAD~1。强推后 github.event.before 指向
 #            孤儿提交（fetch 不可达），用 git cat-file 探活后同样回退 HEAD~1。
 #
-# 子模块策略（checkout 默认不检子模块，按需手动检）：
-#   apps/koishi-plugin-adapter —— 公共仓，pnpm-lock.yaml 的 importers 包含它，
-#     不检出则 --frozen-lockfile 判定 workspace 与 lockfile 不一致直接失败，必须检；
+# 子模块策略（checkout 默认不检子模块）：
 #   packages/loader/native —— 私有仓（闭源 stub），构建（tsdown 只编译 src）与
 #     测试（全 mock/fixture，不碰真实 wrapper.node）均不需要，不检（GITHUB_TOKEN
 #     也无权访问该仓）。
+#   koishi 适配器已独立成仓（2026-10-18），不在本仓 workspace / CI 内，另有自己的
+#   workflow：NapukettoDev/koishi-plugin-adapter-napuketto。
 #
 # pnpm 版本与根 package.json 的 devEngines.packageManager 保持同步（根无
 # packageManager 字段，pnpm/action-setup 读不到，必须在此显式指定）。
@@ -61,11 +61,8 @@ jobs:
         runs-on: ubuntu-24.04
         timeout-minutes: 30
         steps:
-            - name: Checkout（不检子模块）
+            - name: Checkout（不检 native 子模块）
               uses: actions/checkout@v5
-
-            - name: 检出 koishi 适配器子模块（公共仓；native 私有仓跳过）
-              run: git submodule update --init apps/koishi-plugin-adapter
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6
@@ -101,11 +98,8 @@ jobs:
         runs-on: windows-latest
         timeout-minutes: 30
         steps:
-            - name: Checkout（不检子模块）
+            - name: Checkout（不检 native 子模块）
               uses: actions/checkout@v5
-
-            - name: 检出 koishi 适配器子模块（公共仓；native 私有仓跳过）
-              run: git submodule update --init apps/koishi-plugin-adapter
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6
@@ -133,13 +127,10 @@ jobs:
         timeout-minutes: 10
         steps:
             # fallow audit 需要读取 base 提交做 diff，必须全量历史
-            - name: Checkout（全量历史；不检子模块）
+            - name: Checkout（全量历史；不检 native 子模块）
               uses: actions/checkout@v5
               with:
                   fetch-depth: 0
-
-            - name: 检出 koishi 适配器子模块（pnpm install 依赖其 package.json）
-              run: git submodule update --init apps/koishi-plugin-adapter
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6

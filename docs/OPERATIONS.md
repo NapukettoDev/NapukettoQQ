@@ -86,7 +86,7 @@ loader，5 场景）。
 `[libprotobuf ERROR ..\third_party\protobuf\...\wire_format_lite.cc:577]
 String field 'opentelemetry.proto.trace.v1.Span.Event.name' contains invalid
 UTF-8 data...`（经 koishi 插件原样转发时带 `[napuketto 子进程]` 前缀，
-`apps/koishi-plugin-adapter/src/ipc/transport.ts:95`）。
+`koishi-plugin-adapter-napuketto` 仓 `src/ipc/transport.ts:95`）。
 
 **结论（2026-09-09 二进制验证，用户拍板只验证不修复）**：QQNT wrapper.node
 内部 OpenTelemetry C++ SDK + OTLP exporter 给自己操作打 trace 的噪音，

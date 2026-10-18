@@ -459,7 +459,7 @@ cli 模式（非 IPC）无 control 通道，不触达软重登；为完整性
 `services.stopAdapters`），并修复内部 catch 吞错——装配失败现在正常抛给
 startProtocols 判引导失败退出（回归 2026-09-06 的设计意图）。
 
-### 10.3 koishi 侧配合（apps/koishi-plugin-adapter）
+### 10.3 koishi 侧配合（koishi-plugin-adapter-napuketto 独立仓）
 
 - 决策表（login-actions.ts）：登录期 + **logged_in（ready 态）** + client
   可用 → control login（plan 携带 soft 标记）；failed / client 不可用 →

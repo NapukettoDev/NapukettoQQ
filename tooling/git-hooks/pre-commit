@@ -7,8 +7,7 @@
 # 下一个提交才补 lock。本钩子在提交侧根治：暂存区含依赖声明而 lock 未同步时，
 # 跑 pnpm install --lockfile-only 校验，lock 出现 diff 则拒绝提交并提示一并提交。
 #
-# 触发范围：任意层级 package.json、pnpm-workspace.yaml、koishi 子模块指针
-# （apps/koishi-plugin-adapter 的 package.json 参与 workspace 解析）。
+# 触发范围：任意层级 package.json、pnpm-workspace.yaml、native 子模块指针。
 # 启用方式：根 package.json 的 prepare 脚本已设置 core.hooksPath，无需手动配置。
 
 set -u
@@ -16,7 +15,7 @@ set -u
 staged=$(git diff --cached --name-only)
 
 # 未触碰依赖声明 → 直接放行
-echo "$staged" | grep -qE '(^|/)package\.json$|^pnpm-workspace\.yaml$|^apps/koishi-plugin-adapter$' || exit 0
+echo "$staged" | grep -qE '(^|/)package\.json$|^pnpm-workspace\.yaml$|^packages/loader/native$' || exit 0
 
 # lock 已随本次提交变更 → 放行（作者已同步）
 echo "$staged" | grep -q '^pnpm-lock\.yaml$' && exit 0

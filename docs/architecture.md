@@ -35,7 +35,7 @@ apps/cli               启动编排（commander + 登录渲染 + 配置命令 + 
        └─ @napuketto/media    媒体转码（silk / ffmpeg / 文件识别）
        （loader 仅被 cli 依赖，kernel 不依赖 loader；loader 依赖 kernel）
 apps/create-napukettoqq   项目脚手架（交互式生成 napuketto.toml + 目录布局，依赖 @napuketto/cli）
-apps/koishi-plugin-adapter（git submodule，独立仓）  Koishi 适配器插件
+（仓外）koishi-plugin-adapter-napuketto  Koishi 适配器插件（独立仓，2026-10-18 起不在本 workspace）
 ```
 
 依赖方向硬约束（AGENTS.md 第 2 条）：
@@ -46,14 +46,14 @@ apps/koishi-plugin-adapter（git submodule，独立仓）  Koishi 适配器插�
 @napuketto/adapter   kernel + network + media（协议适配器容器）
 @napuketto/loader    kernel（boot 引导）+ 无其他（自建宿主引导；C++ 载具已归档，native/ 为闭源 submodule 仅存编译产物）
 apps/cli             kernel + adapter + loader
-apps/koishi-plugin-adapter（git submodule）kernel + loader + media + adapter + network
+（仓外）koishi 插件  依赖上述包的 npm 发布版（版本范围自持；不参与本仓 workspace）
 ```
 
-> **koishi 插件 IPC 模式**（2026-08-27）：koishi 插件经 loader 拉起自建宿主子进程
-> （`NAPUTO_IPC=1`），共享 IPC 动作表 = kernel 点分动作 + **可选整表挂载的 OB11 动作
-> 容器**（app 层注入 `NAPUTO_ADAPTER_ENTRY`/`NAPUTO_NETWORK_ENTRY` 时，loader IPC 分支
-> 动态 import adapter/network 装配——仅注册表 + 接收链路，零网络传输；详见 loader
-> design.md §9）。loader 运行时动态 import 不构成编译期依赖，依赖方向约束不变。
+> **koishi 插件 IPC 模式**（2026-08-27；插件 2026-10-18 起在独立仓）：koishi 插件经 loader
+> 拉起自建宿主子进程（`NAPUTO_IPC=1`），共享 IPC 动作表 = kernel 点分动作 + **可选整表
+> 挂载的 OB11 动作容器**（app 层注入 `NAPUTO_ADAPTER_ENTRY`/`NAPUTO_NETWORK_ENTRY` 时，
+> loader IPC 分支动态 import adapter/network 装配——仅注册表 + 接收链路，零网络传输；
+> 详见 loader design.md §9）。loader 运行时动态 import 不构成编译期依赖，依赖方向约束不变。
 
 ## 3. 分层原则
 
@@ -198,10 +198,11 @@ wrapper.node 原生回调
 | ADR-020 | **koishi 插件经 loader IPC 共享动作表**（`NAPUTO_IPC=1`，loader 运行时动态 import adapter/network） | 插件进程内直连原生（崩溃连带）/ 独立网络端口双开 | 零网络传输零配置 IO；动态 import 不构成编译期依赖，依赖方向不变（2026-08-27，loader design.md §9） |
 | ADR-021 | **kurobot 连接层在 adapter 包内自建**（不复用 network.WsClient） | 给 network.WsClient 加子协议/onOpen/退避参数 | 子协议握手、应用层心跳、close-code 感知退避全是 kurobot 协议语义，下沉 network 违反协议无关（2026-09-13，adapter design.md §8.2） |
 | ADR-022 | **版本管理 Changesets；GitHub Release repo 级 tag 与包版本解耦** | 手工改版本号；repo tag 锚定包版本 | 多包联动 bump 自动化；首个 GitHub Release v0.1.0（2026-09-19）即 repo 级 |
+| ADR-023 | **Koishi 适配器独立成仓**（脱离 submodule 与主仓 workspace） | 保持 submodule+workspace 双身份 / 仅移出 workspace 保留 submodule | submodule 只该用于源码保密边界（native）；独立发布单元放进 workspace 会带来指针噪音、changesets 跨仓写文件、workspace link 掩盖发布形态问题（CI 绿 ≠ npm 安装可用）（2026-10-18 用户拍板，DECISIONS §10.8） |
 
 > **编号说明**：文档与代码中出现的 **ADR-026 / ADR-030 是姊妹项目 KuroAdapter 的 ADR**
 > （`bridge/protocol`：026 = 未知帧容忍策略，030 = kurobot→kurobridge 品牌改名），非本仓
-> 编号；本仓编号 001~022 连续，无缺号。
+> 编号；本仓编号 001~023 连续，无缺号。
 
 ## 7. 路线图（现状修正，2026-08-06）
 
@@ -265,7 +266,7 @@ wrapper.node 原生回调
 - **版本管理**：Changesets——每批用户可见改动随改动写 `.changeset/<名字>.md`（勿攒），
   发版 `pnpm release` 消费（升版本 + CHANGELOG + 构建 + 拓扑序发布）；工作流细则见 AGENTS.md。
 - **发版脚本**：`tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 npm
-  2FA 验证码；sync-adapter-deps 发版链自动对齐 koishi 插件依赖范围）。
+  2FA 验证码）。koishi 插件是独立仓，发版不在本链内。
 - **GitHub Release**：repo 级 tag 与包版本解耦（2026-09-19 首 Release v0.1.0）。
 - **CI**（`.github/workflows/ci.yml`）：gate（ubuntu：build → check → test + Codecov）/
   windows（跨平台测试补位）/ audit（fallow 增量门禁 `--base`）三并行 job；
