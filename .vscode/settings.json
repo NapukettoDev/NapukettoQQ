@@ -8,12 +8,15 @@
     },
     "material-icon-theme.folders.associations": {
         // apps
-        "create-napukettoqq": "generator",
-        "koishi-plugin-adapter": "scripts",
+        "napuketto-create": "generator",
         // packages
-        "adapter": "hook",
+        "adapter": "connection",
         "kernel": "core",
         "loader": "plugin",
-        "network": "connection",
+        "network": "server",
+        // tooling
+        "git-hooks": "hook",
+        "qq-releases": "tasks",
+        "wine": "linux"
     },
 }
