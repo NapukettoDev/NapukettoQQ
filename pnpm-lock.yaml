@@ -219,7 +219,7 @@ importers:
         specifier: ^0.22.14
         version: 0.22.14(tsx@4.23.13)(typescript@7.0.2)
 
-  apps/create-napukettoqq:
+  apps/napuketto-create:
     dependencies:
       '@clack/prompts':
         specifier: ^1.7.0
