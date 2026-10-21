@@ -29,6 +29,25 @@
         "picocolors",
         "qrcode"
     ],
+    // 依赖 override 豁免（2026-10-21）：根 package.json 的
+    // `@typescript-eslint/*>typescript` 是刻意保留的前瞻性 override（pnpm 尚未支持
+    // peer 覆盖，见 pnpm-workspace.yaml 的注释），并非升级欠账；fallow 会把它报成
+    // unused-dependency-override。按 override 键（含父选择器）+ 声明文件精确豁免。
+    "ignoreDependencyOverrides": [
+        {
+            "package": "@typescript-eslint/*>typescript",
+            "source": "package.json"
+        }
+    ],
+    // 已复核的重复块（2026-10-21）：tooling 下两个可直接执行的脚本（update-qq-releases /
+    // release-npm）共用同一段「被直接执行时跑 main」的入口 guard（15 行命令行样板）。
+    // 它是 node: CLI 的惯用样板，不是可抽取的业务逻辑。键格式 <fingerprint>:<实例数>，
+    // 内容或实例数一变就会重新上报，逼人重新复核。
+    "duplicates": {
+        "ignoredClones": [
+            "dup:6f87acd9:2"
+        ]
+    },
     // 预留导出豁免（勿删）：sendLog 是日志转发到 koishi 控制台（koishi 侧
     // ipc/types.ts 已有 log 消息类型 + IpcLogLevel），host 侧接线待补（P5）。
     "ignoreExports": [

@@ -37,7 +37,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { WorkspacePkg } from "./release-npm-core.ts";
+import type { SkippedPkg, WorkspacePkg } from "./release-npm-core.ts";
 import {
     discoverPackages,
     planPublish,
@@ -123,9 +123,7 @@ async function preflightTrustConfigs(
     ordered: readonly WorkspacePkg[],
     published: ReadonlyMap<string, ReadonlySet<string>>,
 ): Promise<boolean> {
-    const hasVersions = (pkg: WorkspacePkg): boolean => (published.get(pkg.name)?.size ?? 0) > 0;
-    const existing = ordered.filter(hasVersions);
-    const fresh = ordered.filter((pkg) => !hasVersions(pkg));
+    const { existing, fresh } = splitByPublished(ordered, published);
     if (fresh.length > 0) {
         console.log(
             `[release-npm] ℹ️ 首发包不参与预检（registry 无任何版本）：${fresh
@@ -146,6 +144,32 @@ async function preflightTrustConfigs(
         );
         return false;
     }
+    const { missing, uncertain } = await probeTrustOfExisting(existing, idToken);
+    return reportTrustGaps(missing, uncertain, existing.length);
+}
+
+/** 预检分组：已有发布版本的包（可预检）与首发包（registry 无版本，无从配置）。 */
+function splitByPublished(
+    ordered: readonly WorkspacePkg[],
+    published: ReadonlyMap<string, ReadonlySet<string>>,
+): { existing: WorkspacePkg[]; fresh: WorkspacePkg[] } {
+    const existing: WorkspacePkg[] = [];
+    const fresh: WorkspacePkg[] = [];
+    for (const pkg of ordered) {
+        if ((published.get(pkg.name)?.size ?? 0) > 0) {
+            existing.push(pkg);
+        } else {
+            fresh.push(pkg);
+        }
+    }
+    return { existing, fresh };
+}
+
+/** 逐包换 token 并归因：missing = 缺配置；uncertain = 探测本身不确定（只告警）。 */
+async function probeTrustOfExisting(
+    existing: readonly WorkspacePkg[],
+    idToken: string,
+): Promise<{ missing: WorkspacePkg[]; uncertain: string[] }> {
     console.log(`[release-npm] 🔐 预检 OIDC 信任配置（${existing.length} 个包）…`);
     const results = await probeTrustConfigs(
         idToken,
@@ -154,16 +178,29 @@ async function preflightTrustConfigs(
     );
     const byName = new Map(results.map((result) => [result.name, result]));
     const missing: WorkspacePkg[] = [];
+    const uncertain: string[] = [];
     for (const pkg of existing) {
         const result = byName.get(pkg.name);
         if (result?.status === "missing") {
             missing.push(pkg);
         } else if (result?.status === "error") {
-            console.log(`[release-npm] ⚠️ 探测不确定 ${pkg.name}：${result.detail}（不据此拦截）`);
+            uncertain.push(`${pkg.name}：${result.detail}`);
         }
     }
+    return { missing, uncertain };
+}
+
+/** 打印预检结论与修复指引；缺配置返回 true（整批不发）。 */
+function reportTrustGaps(
+    missing: readonly WorkspacePkg[],
+    uncertain: readonly string[],
+    existingCount: number,
+): boolean {
+    for (const line of uncertain) {
+        console.log(`[release-npm] ⚠️ 探测不确定 ${line}（不据此拦截）`);
+    }
     if (missing.length === 0) {
-        console.log(`[release-npm] ✅ OIDC 信任配置预检通过（${existing.length} 个包）`);
+        console.log(`[release-npm] ✅ OIDC 信任配置预检通过（${existingCount} 个包）`);
         return false;
     }
     console.log(
@@ -222,6 +259,52 @@ export function publishPkg(
     return res.status ?? 1;
 }
 
+/** 查询工作区全部包在 registry 的已发布版本（并发）。 */
+async function fetchAllPublishedVersions(
+    pkgs: readonly WorkspacePkg[],
+): Promise<Map<string, Set<string>>> {
+    const published = new Map<string, Set<string>>();
+    await Promise.all(
+        pkgs.map(async (pkg) => {
+            published.set(pkg.name, await fetchPublishedVersions(pkg.name));
+        }),
+    );
+    return published;
+}
+
+/** 打印因版本已在 registry 而跳过的包。 */
+function printSkipped(skipped: readonly SkippedPkg[]): void {
+    if (skipped.length === 0) {
+        return;
+    }
+    console.log(`[release-npm] 跳过（版本已在 registry，${skipped.length} 个）:`);
+    for (const item of skipped) {
+        console.log(`  ⏭  ${item.pkg.name}@${item.pkg.version}（${item.reason}）`);
+    }
+}
+
+/** 打印本次发布计划（拓扑序）。 */
+function printPublishPlan(ordered: readonly WorkspacePkg[], dryRun: boolean): void {
+    console.log(
+        `[release-npm] 发布顺序（${ordered.length} 个包，${dryRun ? "dry-run" : "publish"}）:`,
+    );
+    for (const pkg of ordered) {
+        console.log(`  ${pkg.name}@${pkg.version}`);
+    }
+}
+
+/** OIDC 模式下的发布前信任预检；返回 true 表示拦下本次发布。 */
+async function oidcPreflight(
+    ordered: readonly WorkspacePkg[],
+    published: ReadonlyMap<string, ReadonlySet<string>>,
+    dryRun: boolean,
+): Promise<boolean> {
+    if (dryRun || !isOidcTrustedPublishing()) {
+        return false;
+    }
+    return preflightTrustConfigs(ordered, published);
+}
+
 /** 主流程：发现 → 查 registry 版本 → 过滤已发布 → 拓扑排序 → 逐个发布。 */
 export async function main(argv: readonly string[]): Promise<number> {
     const { dryRun, otp } = parseArgs(argv);
@@ -232,38 +315,18 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
 
     // 发布前查询 registry，只发布版本有变化的包（changeset 未 bump 的跳过）
-    const published = new Map<string, Set<string>>();
-    await Promise.all(
-        pkgs.map(async (pkg) => {
-            published.set(pkg.name, await fetchPublishedVersions(pkg.name));
-        }),
-    );
+    const published = await fetchAllPublishedVersions(pkgs);
     const { toPublish, skipped } = planPublish(pkgs, published);
-
-    if (skipped.length > 0) {
-        console.log(`[release-npm] 跳过（版本已在 registry，${skipped.length} 个）:`);
-        for (const item of skipped) {
-            console.log(`  ⏭  ${item.pkg.name}@${item.pkg.version}（${item.reason}）`);
-        }
-    }
+    printSkipped(skipped);
     if (toPublish.length === 0) {
         console.log("[release-npm] 无需发布，全部版本已在 registry");
         return 0;
     }
 
     const ordered = topoSort(toPublish);
-    console.log(
-        `[release-npm] 发布顺序（${ordered.length} 个包，${dryRun ? "dry-run" : "publish"}）:`,
-    );
-    for (const pkg of ordered) {
-        console.log(`  ${pkg.name}@${pkg.version}`);
-    }
-    // OIDC 预检：逐包换一次 token，缺配置就整批不发（见 preflightTrustConfigs）
-    if (!dryRun && isOidcTrustedPublishing()) {
-        const blocked = await preflightTrustConfigs(ordered, published);
-        if (blocked) {
-            return 1;
-        }
+    printPublishPlan(ordered, dryRun);
+    if (await oidcPreflight(ordered, published, dryRun)) {
+        return 1;
     }
     // workspace:* → caret 真实版本映射（按工作区当前版本，改写在 publish 前、恢复在 finally）
     const workspaceVersions = new Map(pkgs.map((pkg) => [pkg.name, pkg.version]));
