@@ -50,6 +50,11 @@
         "tsdown": "^0.22.14"
     },
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/adapter"
+    },
     "dependencies": {
         "@napuketto/kernel": "workspace:*",
         "@napuketto/media": "workspace:*",

@@ -25,6 +25,11 @@
         "tsdown": "^0.22.14"
     },
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/network"
+    },
     "dependencies": {
         "@hono/node-server": "^2.0.12",
         "hono": "^4.12.34",

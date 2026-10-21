@@ -29,6 +29,11 @@
         "tsdown": "^0.22.14"
     },
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/media"
+    },
     "dependencies": {
         "execa": "^10.0.1",
         "file-type": "^22.0.1",

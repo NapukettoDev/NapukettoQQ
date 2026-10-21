@@ -30,6 +30,11 @@
         "vitest": "^4.1.10"
     },
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/kernel"
+    },
     "dependencies": {
         "pino": "^10.3.1",
         "pino-pretty": "^13.1.3",

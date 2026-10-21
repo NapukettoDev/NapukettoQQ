@@ -35,5 +35,10 @@
         "@types/node": "^24.0.0",
         "tsdown": "^0.22.14"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/loader"
+    }
 }
