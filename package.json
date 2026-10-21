@@ -5,6 +5,7 @@
     "description": "",
     "type": "module",
     "private": true,
+    "packageManager": "pnpm@12.4.1",
     "license": "MIT",
     "author": "睦 <oppenheymu@gmail.com>",
     "keywords": [],
@@ -29,13 +30,6 @@
         "release:publish": "node tooling/release/release-npm.ts",
         "release:dryrun": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts --dry-run",
         "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts"
-    },
-    "devEngines": {
-        "packageManager": {
-            "name": "pnpm",
-            "version": "12.4.1",
-            "onFail": "download"
-        }
     },
     "devDependencies": {
         "@biomejs/biome": "^2.5.6",
