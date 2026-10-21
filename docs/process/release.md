@@ -159,6 +159,15 @@ workflow 可在 npmjs.com 包页面核验）。
   等待批准（暂存版本不在 registry 的 versions 列表里，重跑必然再 409）。到
   npmjs.com 的 Staged Packages 批准或拒绝，或 `npm stage list/approve/reject`
   （npm ≥ 11.15）。
+- **E422 `Failed to validate repository information`**：provenance 会校验
+  package.json 的 `repository.url` 与 OIDC 来源仓库一致。新增包必须带
+  `repository`（`type` / `url` / `directory`），否则 registry 在 PUT 阶段回 422
+  （2026-10-21 首次 OIDC 发布即此，PR #9 已给 7 个包补齐）。GitHub 仓改名 /
+  转移 owner 后要同步更新 package.json 的 repository URL。
+- **202 异步处理**：`npm publish` 成功可能只是 registry 的 202「processing」，
+  版本要几分钟才在 registry 可见。刚发完 `npm view` 404 属正常，不要立刻重发
+  （重发会被 registry 比对跳过）。复核用
+  `https://registry.npmjs.org/<包名>/<版本>`（版本端点比 packument 的 CDN 缓存新）。
 - **artifact 过期**：审批拖过 30 天导致 publish 取不到产物时，用
   `skip-version=true` 重跑（版本已在 main，只需重新构建与发布）。
 
