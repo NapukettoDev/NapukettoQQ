@@ -1,6 +1,6 @@
 {
     "name": "@napuketto/kernel",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "description": "Core runtime kernel of NapukettoQQ",
     "type": "module",
     "files": [
