@@ -23,8 +23,12 @@
         "test:coverage": "vitest run --coverage",
         "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
         "changeset": "changeset",
-        "release:dryrun": "pnpm changeset version && pnpm install --lockfile-only --ignore-scripts && pnpm -r build && node tooling/release/release-npm.ts --dry-run",
-        "release": "pnpm changeset version && pnpm install --lockfile-only --ignore-scripts && pnpm -r build && node tooling/release/release-npm.ts"
+        "release:version": "pnpm changeset version && pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile",
+        "release:build": "pnpm -r build",
+        "release:test": "pnpm test",
+        "release:publish": "node tooling/release/release-npm.ts",
+        "release:dryrun": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts --dry-run",
+        "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts"
     },
     "devEngines": {
         "packageManager": {

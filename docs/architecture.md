@@ -261,16 +261,21 @@ wrapper.node 原生回调
 - 自建宿主 stub：`packages/loader/native/build/stub-test-env/`（默认 stub 目录，llvm-mingw 编译）
 - NapCat 参考部署包：仅历史参考，已不依赖
 
-### 9.4 发版与 CI（2026-09 落地）
+### 9.4 发版与 CI（2026-09 落地；2026-10 起 CI 发版 + PR-only）
 
-- **版本管理**：Changesets——每批用户可见改动随改动写 `.changeset/<名字>.md`（勿攒），
-  发版 `pnpm release` 消费（升版本 + CHANGELOG + 构建 + 拓扑序发布）；工作流细则见 AGENTS.md。
-- **发版脚本**：`tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 npm
-  2FA 验证码）。koishi 插件是独立仓，发版不在本链内。
+- **版本管理**：Changesets——每批用户可见改动随改动写 `.changeset/<名字>.md`（勿攒）。
+- **发版（CI 自动，2026-10-21）**：合并带 changeset 的 PR 后，`.github/workflows/release.yml`
+  的 `prepare` 消费 changeset（升版本 + CHANGELOG + lockfile 刷新）→ 构建 → 测试 → 用 GitHub
+  App token 推送版本提交；`publish` 在 `release` environment 审批后走 **npm OIDC 可信发布**
+  （逐包短时 token，无长期凭证，自动 provenance；发布前预检每包信任配置）。本地
+  `tooling/release/` 仅作演练 / 应急。细则见 `docs/process/release.md`。
 - **GitHub Release**：repo 级 tag 与包版本解耦（2026-09-19 首 Release v0.1.0）。
+- **PR-only（2026-10-21）**：main 由 ruleset 保护（PR + 1 审批 + merge queue + 必需状态检查 +
+  签名 + CodeQL）；`ci.yml` 增加 `merge_group` 触发，三个 job name 即必需检查 context。
+  唯一允许直推 main 的是发布链的版本提交（App token 进 ruleset bypass，模式 `exempt`）。
 - **CI**（`.github/workflows/ci.yml`）：gate（ubuntu：build → check → test + Codecov）/
   windows（跨平台测试补位）/ audit（fallow 增量门禁 `--base`）三并行 job；
   `update-qq-releases.yml` Cron 维护 QQ 版本清单。
 - **pre-commit**：`tooling/git-hooks`（root prepare 启用）lockfile 一致性门禁——暂存
   package.json / pnpm-workspace.yaml / 子模块指针必须同刷 pnpm-lock.yaml。
-- **贡献文档**：`.github/CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md`。
+- **贡献文档**：`.github/CONTRIBUTING.md` / `SECURITY.md` / `CODE_OF_CONDUCT.md` / `CODEOWNERS`。

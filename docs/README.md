@@ -28,6 +28,7 @@
 
 | 文档 | 内容 | 何时读 |
 |---|---|---|
+| [process/release.md](process/release.md) | 发布流程：CI 自动发版（OIDC 可信发布）、两 job 分工、一次性仓库配置（App / environment / npm 信任配置）、补发与排障 | 发版 / 改发布链 / 配置 npm 信任前 |
 | [OPERATIONS.md](OPERATIONS.md) | 运维与实验规程：同账号双实例互斥 / koishi dev 行为 / instance-lock / OTel 噪音 | 涉及登录、停启实例、stderr 排查的实操前 |
 | [KUROBOT-NOTES.md](KUROBOT-NOTES.md) | kurobot 协议适配器任务实录（KB 决策编号）+ 债务清单 | 做 kurobot 相关工作 / 消费债务前 |
 | [DECISIONS.md](DECISIONS.md) | 决策史：路线演进 V1→V10 + V10 后补录（§10） | 需要理解「为什么走到今天」时 |

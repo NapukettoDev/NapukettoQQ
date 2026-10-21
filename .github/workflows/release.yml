@@ -1,0 +1,294 @@
+# 发布流水线（npm OIDC 可信发布）
+#
+# 形态：两个串联 job，按「能不能换到 OIDC token」切分——只有 publish 持
+# id-token: write 且挂 environment 审批。动机：npm 的可信发布把发布权授给
+# 「谁能让本文件在 main 上跑起来」，因此**构建期可执行的代码绝不能与 OIDC
+# token 同处一个 job**。package.json 的脚本、tsdown 配置都是构建期执行的代码，
+# 一处被改坏就能拿着 token 发这 7 个包的任意版本。
+#
+#   prepare  消费 changeset → 构建 → 测试 → 推送版本提交 → 打包 artifact
+#            （contents: read；推送用 GitHub App token，**无** id-token）
+#   publish  解包 artifact → 逐包 npm publish
+#            （id-token: write + environment 审批，**无** contents 写权限）
+#
+# 为什么 version 与 build 合成一个 job、不再跨 job 传 SHA：早先的写法是
+# version job 输出提交 SHA，build job 用 `actions/checkout` 的 `ref:` 取那份
+# 代码，CodeQL 的 actions/cache-poisoning 查询会判定为「可被 workflow_dispatch
+# 影响的 ref 被特权 job 检出并执行」。合成一个 job 后用默认 checkout，既消掉
+# 该污点，也免掉 SHA 传递这笔额外状态：构建与测试跑的就是本 job 里刚提交的
+# 那棵树。
+#
+# 为什么推送排在构建与测试之后：推送是最后一步，构建或测试失败则 main 上不会
+# 留下「版本已升、包却没发出去」的提交。
+#
+# 为什么推送要用 GitHub App 的 installation token（而不是默认 GITHUB_TOKEN）：
+# main 由 ruleset「保护主分支」保护（pull_request / merge_queue /
+# required_signatures / code_scanning / non_fast_forward / deletion），而
+# **GITHUB_TOKEN 无法被加入该 ruleset 的 bypass 名单**（GitHub 的安全限制），
+# 于是 `git push origin HEAD:main` 必然被拒，报
+# `GH013: Repository rule violations found for refs/heads/main`。App 的
+# installation token 可以进 bypass 名单（模式须让规则对该 actor 不生效：
+# `Always` 或 `exempt`，`Pull requests only` 则对直推无效）。用 `exempt` 时
+# 「规则不会为该 actor 运行，也不产生 bypass 审计条目」。
+#
+# 代价必须写清：bypass 的语义是「**免于该 ruleset 的全部规则**」，不是「只免
+# 签名」——这个 App 被滥用即可往 main 推任意内容（绕过 PR、merge queue、签名）。
+# 另外 App token 落在**会执行构建期代码**的 prepare job 里（install / build /
+# test 都在它前面跑），理论上可被污染的构建期代码窃取：`.git/hooks/pre-push`
+# 就是现成通道，故推送用 `-c core.hooksPath=/dev/null` 显式禁用 hook；剩余面
+# 靠 CODEOWNERS 对构建文件的强制复核兜底。
+#
+# 为什么 publish 不跑 pnpm install：`release:publish` 只做 registry 比对、
+# workspace:* 改写与逐包 npm publish，只用到 node: 内建模块与 npm CLI，不需要
+# node_modules；而 install 是构建期代码执行的主要入口，不该出现在持 token 的
+# job 里。
+#
+# npm 版本：OIDC 可信发布需 npm ≥ 11.5.1。runner 自带的 npm 版本随 Node 镜像
+# 漂移，故在 publish job 显式升级到 11（与本地开发口径同一大版本）。runner 的
+# npm 装在系统级 prefix（/usr/local，属 root），直接 `npm install -g` 会 EACCES，
+# 因此装进用户级 prefix 再前置 PATH。
+#
+# 触发：只认「携带 changeset 的合并」，其余（补发 / 上次失败）走
+# workflow_dispatch。
+#
+# 补发路径（`skip-version` 输入）：changeset 一旦被消费，重跑就再也走不到
+# publish——version 环无条目可消费，`changed=false`，publish 被 if 跳过。
+# 故 workflow_dispatch 提供 `skip-version`：置 true 时跳过 version 环，直接
+# 构建当前 main 并交给 publish，由 `release:publish` 的 registry 比对决定哪些
+# 版本真的需要发（已发布的自动跳过）。它只影响「要不要消费 changeset」，不改变
+# 任何审批：publish 依旧卡在 environment。
+#
+# 自激的边界：GitHub 只对 GITHUB_TOKEN 免触发——用它做的事所触发的事件不创建
+# 新的 workflow 运行，而 App token 不在豁免之列。版本提交会删掉 `.changeset/`
+# 条目，该提交因此命中本文件的 `paths: ['.changeset/**']`。所以一次发布会多出
+# 一次运行：那次运行消费不到 changeset，`changed=false`，只跑 install 与检测
+# 即空转退出，不会再推送，故不构成循环；`concurrency: group: release` 还保证
+# 两者串行。同一原因也会触发一次 `ci.yml`——每次发布固定多出一轮完整 CI，
+# 这是改由 App token 推送（而非 GITHUB_TOKEN）的固有代价。
+#
+# 前置（均为仓库设置，非代码；详见 docs/process/release.md）：
+#   1. Settings → Environments 建 `release` 并勾 Required reviewers。名字必须
+#      与 npm 信任配置的 environment claim 严格同名，否则 OIDC 不认；而 claim
+#      不声明 environment 时，删掉本文件里的 environment: 即可绕过审批。
+#   2. 该 Environment 的 Deployment branches 必须限制为 main：workflow_dispatch
+#      是在「被 dispatch 的那个 ref」上取 workflow 文件的，不限制的话，有写权限
+#      者可以在分支上改本文件后 dispatch，借 environment 拿到 OIDC。
+#   3. 建一个 GitHub App（Repository permissions 只给 Contents: Read and write，
+#      Webhook 关掉，仅安装到 NapukettoDev/NapukettoQQ），把 Client ID 存成仓库
+#      variable `RELEASE_APP_CLIENT_ID`（Client ID 非敏感）、私钥存成 secret
+#      `RELEASE_APP_PRIVATE_KEY`，并把它加进主分支 ruleset 的 bypass 名单
+#      （模式 `exempt`）。GITHUB_TOKEN 进不了该名单，这一步没有替代品。
+#   4. 开启 require_code_owner_review（CODEOWNERS 已覆盖 .github/workflows/**、
+#      tooling/release/**、.changeset/**、package.json、pnpm-lock.yaml）。
+#   5. npm 侧各包信任配置：repository=NapukettoDev/NapukettoQQ、
+#      workflow 文件=release.yml、environment=release、权限只含 publish。
+#      **逐包配置、不是仓库级开关**；新建后 2 天内必须完成首次发布。
+
+name: Release
+
+on:
+    push:
+        branches: [main]
+        paths: [".changeset/**"]
+    workflow_dispatch:
+        inputs:
+            # 补发通道：changeset 已被消费 / 上次 publish 失败时，跳过 version 环直接发布
+            skip-version:
+                description: 跳过 changeset 消费，构建并发布当前 main 的版本（补齐「版本已升、包未发」的中间态）
+                type: boolean
+                default: false
+
+# 严禁并发：两个运行同时消费 changeset 会撞版本号
+concurrency:
+    group: release
+    cancel-in-progress: false
+
+permissions:
+    contents: read
+
+jobs:
+    prepare:
+        name: prepare（消费 changeset → 构建 → 测试 → 推送）
+        runs-on: ubuntu-24.04
+        timeout-minutes: 45
+        permissions:
+            # 推送用的是 App token（不受 job 级 GITHUB_TOKEN 权限约束），
+            # 因此这里保持最小读权限；GITHUB_TOKEN 本来也推不进受保护的 main。
+            contents: read
+        outputs:
+            changed: ${{ steps.bump.outputs.changed }}
+        steps:
+            # persist-credentials: false —— checkout 默认把 GITHUB_TOKEN 写进
+            # .git/config 并一直生效；推送已改用 App token，留着这份凭证会让
+            # 请求头里的身份归属变得不确定。本 job 其余步骤都不需要它。
+            - uses: actions/checkout@v7
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v6
+              with:
+                  version: 12.4.1
+
+            - name: Setup Node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: pnpm
+
+            # App 配置缺失时早失败：否则会先消费 changeset、跑完构建测试，
+            # 才在 create-github-app-token 处报一句难懂的错。
+            - name: 检查发布 App 配置
+              env:
+                  APP_CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+              run: |
+                  if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+                      echo "::error::缺少发布 App 配置：请先设置仓库 variable RELEASE_APP_CLIENT_ID 与 secret RELEASE_APP_PRIVATE_KEY（见 docs/process/release.md §3）。"
+                      exit 1
+                  fi
+
+            - name: 安装依赖
+              run: pnpm install --frozen-lockfile
+
+            # commitVersionBumps 走 git commit；checkout 不带身份，不配必然失败。
+            # 身份固定为 GitHub Actions 的官方 bot：这些提交由流水线自动生成，
+            # 用维护者邮箱等于把机器提交记到其贡献主页上。署名与推送认证是两件
+            # 事——推送仍走 App 的 installation token。
+            - name: 配置 git 身份（GitHub Actions bot）
+              run: |
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+            - id: bump
+              name: 消费 changeset（只提交，推送留到构建与测试通过之后）
+              run: |
+                  # skip-version（补发）：changeset 已被消费，跳过 version 环但继续
+                  # 构建与发布——changed 在此处的含义是「本次运行要构建并发布」
+                  if [ "${{ inputs.skip-version }}" = "true" ]; then
+                      echo "changed=true" >> "$GITHUB_OUTPUT"
+                      echo "::notice::skip-version：跳过 changeset 消费，直接构建并发布当前提交"
+                      exit 0
+                  fi
+                  pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l)
+                  if [ "$pending" -eq 0 ]; then
+                      echo "changed=false" >> "$GITHUB_OUTPUT"
+                      echo "::notice::无 pending changeset（可能已在上一轮消费），跳过构建与发布"
+                      exit 0
+                  fi
+                  pnpm release:version
+                  git add -A
+                  if git diff --cached --quiet; then
+                      echo "changed=false" >> "$GITHUB_OUTPUT"
+                      echo "::notice::changeset 已消费但工作区无变化（条目可能全部命中 ignore 列表）"
+                      exit 0
+                  fi
+                  git commit -m "chore(release): 消费 changeset，升版本并更新 CHANGELOG"
+                  echo "changed=true" >> "$GITHUB_OUTPUT"
+
+            - if: steps.bump.outputs.changed == 'true'
+              name: 构建（发布产物 dist）
+              run: pnpm release:build
+
+            # 发布前测试：复用根 test 口径，避免在 YAML 里另写一份
+            - if: steps.bump.outputs.changed == 'true'
+              name: 发布前测试
+              run: pnpm release:test
+
+            # 取 App installation token（1 小时有效）。用 client-id 而不是 app-id：
+            # v3 的 action.yml 给 app-id 标了弃用提示，README 亦推荐 client-id。
+            # repositories 显式限定：不写的话 token 会覆盖该 App 安装到的所有仓库。
+            - if: steps.bump.outputs.changed == 'true' && !inputs.skip-version
+              id: app-token
+              uses: actions/create-github-app-token@v3
+              with:
+                  client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  repositories: NapukettoQQ
+
+            # HEAD:main 而非 main：runner 上未必存在名为 main 的本地分支。
+            # 三点讲究：
+            #   · 凭证走 env + shell 变量，不把 token 内联进 run（脚本原文进日志）。
+            #   · 用完整 URL 而非 git remote，绕开 .git/config 里的 remote 配置。
+            #   · core.hooksPath 指向空处以禁用 hook：构建期代码若被污染，塞一个
+            #     .git/hooks/pre-push 就能在这个步骤里读到 GH_TOKEN 并外传。
+            # skip-version 时不推：那次运行没有新提交可推（补发场景）。
+            - if: steps.bump.outputs.changed == 'true' && !inputs.skip-version
+              name: 推送版本提交
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+              run: |
+                  git -c core.hooksPath=/dev/null push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+
+            # 打包给 publish job；node_modules 与 .git 都不需要
+            - if: steps.bump.outputs.changed == 'true'
+              name: 打包工作区
+              run: tar --exclude=./node_modules --exclude=./.git -czf "$RUNNER_TEMP/release-workspace.tgz" .
+
+            # retention 必须长于「等人工审批」这段不可控时长：publish 卡在
+            # environment 审批上，多久有人点没人能保证。30 天 = 仓库默认，
+            # 足以覆盖任何正常的审批延迟；过短会导致审批通过时产物已被清理。
+            - if: steps.bump.outputs.changed == 'true'
+              uses: actions/upload-artifact@v7
+              with:
+                  name: release-workspace
+                  path: ${{ runner.temp }}/release-workspace.tgz
+                  retention-days: 30
+
+    publish:
+        name: publish（OIDC 发包，需 environment 审批）
+        needs: prepare
+        if: needs.prepare.outputs.changed == 'true'
+        runs-on: ubuntu-24.04
+        timeout-minutes: 30
+        # 与 npm 信任配置的 environment claim 同名；required reviewers 在这里生效。
+        # 这是「合并 ≠ 上线」的唯一结构性保证——审批发生在包真正推上 npm 之前。
+        # 用对象形式而非 `environment: release` 简写：编辑器 schema 对简写有误报。
+        environment:
+            name: release
+        permissions:
+            contents: read # 版本提交已由 prepare 推送，此处不需要写权限
+            id-token: write # OIDC：换包级短时 token + 自动 provenance
+        steps:
+            - name: Setup Node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+
+            # runner 上的 npm 是系统级安装（/usr/local/lib/node_modules/npm），
+            # /usr/local 属 root：`npm install -g npm@11` 会因写 man 目录 EACCES。
+            # 改为装进用户级 prefix 并把它的 bin 前置进 PATH：GITHUB_PATH 只对
+            # 后续步骤生效，故安装与写 PATH 必须在同一步；不用 sudo。
+            - name: 升级 npm（OIDC 发布需 npm ≥ 11.5.1）
+              run: |
+                  npm install -g npm@11 --prefix "$HOME/.npm-global"
+                  echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+
+            # 留证据：publish 环内部同样按 PATH 找 npm（release-npm.ts 的 spawnSync）
+            - name: 确认 npm 版本
+              run: npm --version
+
+            - uses: actions/download-artifact@v8
+              with:
+                  name: release-workspace
+                  path: ${{ runner.temp }}
+
+            - name: 解包到工作区
+              run: |
+                  mkdir -p "$GITHUB_WORKSPACE"
+                  tar -xzf "$RUNNER_TEMP/release-workspace.tgz" -C "$GITHUB_WORKSPACE"
+
+            # 不跑 pnpm install：发布链只用 node: 内建模块，npm publish 也不需要
+            # node_modules。
+            #
+            # NPM_CONFIG_LOGLEVEL=verbose 不是调试残留，而是唯一的故障可见性来源：
+            # npm 的 OIDC 换 token 每个失败分支都只写 log.verbose，然后静默退回
+            # 「无凭证发布」，registry 于是回 ENEEDAUTH——线上日志里一句原因都没有。
+            # 开 verbose 后 npm 会打印 `oidc Failed token exchange request ...`，
+            # 那才是真正的报错。不泄露凭证：换来的 token 只进请求头。
+            - name: 逐包发布
+              working-directory: ${{ github.workspace }}
+              env:
+                  NPM_CONFIG_LOGLEVEL: verbose
+              run: node tooling/release/release-npm.ts
