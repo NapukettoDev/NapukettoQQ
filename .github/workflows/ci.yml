@@ -31,8 +31,10 @@
 #   koishi 适配器已独立成仓（2026-10-18），不在本仓 workspace / CI 内，另有自己的
 #   workflow：NapukettoDev/koishi-plugin-adapter-napuketto。
 #
-# pnpm 版本与根 package.json 的 devEngines.packageManager 保持同步（根无
-# packageManager 字段，pnpm/action-setup 读不到，必须在此显式指定）。
+# pnpm 版本与根 package.json 的 packageManager 字段保持同步；显式写 `version`
+# 是为了让流水线不依赖 package.json 的解析结果。不要改用 devEngines.packageManager
+# 声明版本：npm ≥ 11.5 会在任何命令前校验它，而 OIDC 发布只能用 npm，等于把整仓
+# 的 npm 命令（npm view / npm trust / npm publish）全部变成 EBADDEVENGINES 退出。
 #
 # runs-on 固定 ubuntu-24.04（不用 ubuntu-latest）：ubuntu-latest 2026-10-19 起
 # 迁移到 Ubuntu 26，固定版本避免迁移窗口内环境漂移；等 26 稳定后再显式升。

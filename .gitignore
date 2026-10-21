@@ -10,6 +10,10 @@ apps/koishi-plugin-adapter/
 
 # dependencies
 node_modules/
+# 本仓只用 pnpm（lockfile = pnpm-lock.yaml）；npm 命令（view/trust/publish）可用，
+# 但若误跑 npm install，别让包管理器分歧产生的 lock 混进仓库
+package-lock.json
+yarn.lock
 
 # logs
 npm-debug.log*

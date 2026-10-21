@@ -4,7 +4,7 @@
 
 ## 快速上手
 
-1. 环境要求：Node.js ≥ 24（与 CI 一致）、pnpm 12.4.1（版本由根 package.json 的 devEngines 锁定）。
+1. 环境要求：Node.js ≥ 24（与 CI 一致）、pnpm 12.4.1（版本由根 package.json 的 `packageManager` 字段锁定，corepack 依此选版本）。
 2. `pnpm install` 安装依赖；`packages/loader/native` 为私有子模块（闭源 stub，仅分发编译产物），无访问权限不影响主仓构建与测试，可跳过。koishi 适配器自 2026-10-18 起是独立仓库，不在本 workspace 内。
 3. 开工前先读工程指南：[AGENTS.md](./AGENTS.md)（硬性约束 / 依赖方向 / 工作流）→ [docs/STATUS.md](./docs/STATUS.md)（现状 + 关键决策点）→ [docs/architecture.md](./docs/architecture.md)（架构书）→ 对应包的 `docs/design.md`。
 
