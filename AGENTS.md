@@ -58,17 +58,20 @@ pnpm check              # biome check + tsc --noEmit（提交前必跑）
 pnpm fix                # biome 自动修复 + tsc
 pnpm -r build           # 全量构建（tsdown）
 pnpm --filter @napuketto/kernel dev   # 单包 watch 构建
-pnpm changeset          # 发版前记录版本 bump（2026-08-07 引入 Changesets）
-pnpm release            # 消费 changeset：升版本 + CHANGELOG + 构建 + 拓扑序发布
+pnpm changeset          # 随改动记录版本 bump（2026-08-07 引入 Changesets）
+pnpm release:dryrun     # 本地演练：升版本 + 构建 + npm publish --dry-run（不发布）
 ```
+
+**一切改动走 PR（2026-10-21 起）**：main 由 ruleset「保护主分支」保护（pull_request + 1 审批 + merge queue + 必需状态检查 + 签名 + CodeQL）。开发在分支上提交 → 开 PR → CI 三个 job（gate / windows / audit）全绿 → 合并（squash，走 merge queue）。**唯一允许直推 main 的是发布链的版本提交**（`.github/workflows/release.yml` 的 prepare job 用 GitHub App token 绕过 ruleset）；其余任何改动（含文档、CI）都走 PR，禁止人工直推。
 
 **版本管理（Changesets，2026-08-07）**：多包 monorepo 统一用 changesets 联动版本。
 - **changeset 工作流（强制，勿攒）**：每次完成一批用户可见改动（feat / fix / refactor 涉及发布内容），**必须随改动一起**在 `.changeset/` 写 changeset 并提交，不要攒到发版前——攒必漏，漏写则 `changeset version` 无 pending 条目直接退出，版本号与 CHANGELOG 不更新、无法发包。写法：`pnpm changeset` 交互式选择，或手写 `.changeset/<名字>.md`（frontmatter 声明受影响包 + bump 类型 + 简体中文说明，模板见下）。
 - **bump 类型（0.x 阶段，API 未冻结）**：API 破坏 → minor（`0.1.x → 0.2.x`）、修复 → patch（`0.0.x`）；**依赖联动自动处理**：kernel 升版本 → 依赖它的 adapter/loader/cli 同步升 patch 并重依赖新版本。
 - **不需要 changeset**：纯 chore——native 子模块指针、pnpm-lock 更新、删除脚本、文档、无行为变化的目录重命名。
-- 发版时 `pnpm release`（= `changeset version && lockfile 刷新 && build && publish`）自动升版本 + 写各包 CHANGELOG + 按拓扑序发布；**发不出包时先检查 `.changeset/` 是否有 pending 条目**。changeset version 后 `pnpm release` 链已自动跑 `pnpm install --lockfile-only` 刷新 lock——依赖变更与 lock 必须同一 commit。
+- **发布（CI 自动，2026-10-21 起）**：日常发版 = 合并带 changeset 的 PR。`.github/workflows/release.yml` 先由 `prepare` 消费 changeset（`pnpm release:version` → 构建 → 测试）并推送版本提交，再由 `publish` 在 `release` environment 审批后走 **npm OIDC 可信发布**（无长期 token，自动 provenance）。重跑幂等：registry 比对自动跳过已发布版本；补发用 `workflow_dispatch` + `skip-version`。**发不出包时先检查 `.changeset/` 是否有 pending 条目**。完整流程（App / environment / npm 信任配置 / 两天过期规则）见 `docs/process/release.md`。
+- **本地发布只作应急/演练**：`pnpm release`（= `release:version` + `release:build` + `release:publish`）走本机 npm 登录态 + 2FA；正常发布不要用它。changeset version 后发布链已自动跑 `pnpm install --lockfile-only` 刷新 lock——依赖变更与 lock 必须同一 commit。
 - **lockfile 一致性 pre-commit 钩子（2026-09-20 起，自动启用）**：根 prepare 设 `core.hooksPath tooling/git-hooks`；暂存 package.json / pnpm-workspace.yaml / native 子模块指针而未带 pnpm-lock.yaml 时，钩子自动跑 `pnpm install --lockfile-only --ignore-scripts` 校验，lock 出现 diff 即拒绝提交（根治 CI `ERR_PNPM_OUTDATED_LOCKFILE` 红灯，2026-09 三次同根因）。绕过用 `--no-verify`（不推荐）。
-- ⚠️ 发布前确认工作区干净（pnpm publish 有 git-checks）；scoped 包发布需 `napuketto` 组织已创建（npmjs.org/org/create）。npm 凭据已配置（2026-08-09 用户配置 token），发布时勿读取/打印 token。
+- ⚠️ 发布权限已交给 OIDC：npm 侧是**逐包**信任配置（repository / release.yml / environment=release），新建后 2 天内必须完成首次发布。本机不再需要长期 token；任何日志与文档都不得打印凭证。
 
   > `.changeset/<名字>.md` 模板：
   >

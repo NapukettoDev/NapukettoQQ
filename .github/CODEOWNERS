@@ -1,0 +1,52 @@
+# CODEOWNERS —— 谁是需要复核这些路径的人。
+#
+# 生效位置：GitHub 按 .github/CODEOWNERS → /CODEOWNERS → docs/CODEOWNERS 的
+# 顺序取第一份命中的文件，本仓放这里。
+#
+# 语法要点（写新规则前先读）：
+# - 每行 `模式 所有者...`；`#` 开头为注释；空行忽略。
+# - 所有者只能是「本仓协作者」或「组织 team」；组织当前没有 team，因此全部写
+#   个人 handle。写错的 handle 会被 GitHub 静默忽略该行。
+# - 模式顺序有意义：**同一文件被多条规则命中时，最后一条生效**。
+# - 以 `/` 开头的模式锚定仓库根；`**` 跨目录；`*` 不跨 `/`。
+#
+# 定位：本仓是单人维护，`require_code_owner_review` 对 owner 自己提的 PR 不产生
+# 第二人复核（GitHub 不允许自审），实际门禁是「PR + 必需状态检查 + merge
+# queue」。本文件的现实作用是**把高风险路径显式列出来**：新增发布链 / CI /
+# 根配置时在此补规则，提醒改动的影响面，也为将来加第二位 owner 留好挂点。
+#
+# 维护纪律：新增高风险路径（发布链 / 根配置 / CI / 预编译产物等）时在本文件
+# 补一条规则，并同步 docs/process/release.md 的口径。
+
+# ---- 通配兜底 ----
+
+*                                   @Oppenheymu
+
+# ---- 核心包与工具链 ----
+
+/packages/**                       @Oppenheymu
+/apps/**                           @Oppenheymu
+/tooling/**                        @Oppenheymu
+/docs/**                           @Oppenheymu
+
+# ---- 敏感路径：发布链与版本管理（一切发布走发布链 / CI，禁止手动 npm publish） ----
+
+/tooling/release/**                @Oppenheymu
+/.changeset/**                     @Oppenheymu
+
+# ---- 依赖面与仓库级配置（改动影响全仓解析与门禁口径） ----
+
+/package.json                      @Oppenheymu
+/pnpm-lock.yaml                    @Oppenheymu
+/pnpm-workspace.yaml               @Oppenheymu
+/tsconfig.json                     @Oppenheymu
+/biome.json                        @Oppenheymu
+/vitest.config.ts                  @Oppenheymu
+/.fallowrc.jsonc                   @Oppenheymu
+
+# ---- CI、发布工作流与仓库常驻指令（门禁与发布权的唯一执行面） ----
+
+/.github/workflows/**              @Oppenheymu
+/.github/CODEOWNERS                @Oppenheymu
+/AGENTS.md                         @Oppenheymu
+/.github/CONTRIBUTING.md           @Oppenheymu

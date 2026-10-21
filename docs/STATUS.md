@@ -39,14 +39,22 @@
 
 **发布与工程化**：
 - 版本管理 = Changesets（AGENTS.md 工作流节）；`.changeset/` 当前**无 pending 条目**（已全部消费发版）。
-- 发版链 = `tooling/release/`（release-npm 支持 `--otp=` / `NAPKETTO_NPM_OTP` 透传 2FA 验证码）。
+- **发版 = CI 自动（2026-10-21 起）**：合并带 changeset 的 PR 后，`.github/workflows/release.yml`
+  的 `prepare` 消费 changeset → 构建 → 测试 → 用 GitHub App token 推送版本提交，`publish` 在
+  `release` environment 审批后走 **npm OIDC 可信发布**（无长期 token、自动 provenance、发布前
+  逐包预检信任配置）。排障与一次性配置见 `docs/process/release.md`。
+- 本地 `pnpm release` 保留作演练 / 应急（`tooling/release/`，支持 `--otp=` / `NAPKETTO_NPM_OTP`）；
+  正常发布不再使用。
+- **一切改动走 PR**：main 由 ruleset 保护（PR + 1 审批 + merge queue + 必需检查 + 签名 + CodeQL），
+  CI 增加 `merge_group` 触发以配合 merge queue；唯一例外是发布链的版本提交。`CODEOWNERS` 覆盖
+  发布链 / CI / 根配置等高风险路径。
 - 2026-09-19 发布首个 GitHub Release（**repo 级 tag 与包版本解耦**，npm 各包独立版本照常）。
 - CI = `.github/workflows/ci.yml` 三并行 job：**gate**（ubuntu：build → check → test + Codecov
   覆盖率）、**windows**（跨平台测试补位）、**audit**（fallow 增量门禁 `--base`，整仓模式因
   跨包 dist 消费误报 82+ 不采用）。另有 `update-qq-releases.yml`（Cron 爬官方下载配置更新
   `packages/loader/qq-releases.json`，发现新版本自动 PR）。
 - lockfile 一致性 pre-commit 钩子（`tooling/git-hooks`，root prepare 自动启用）。
-- `.github/` 下有 CONTRIBUTING / SECURITY / CODE_OF_CONDUCT（2026-09 落库）。
+- `.github/` 下有 CONTRIBUTING / SECURITY / CODE_OF_CONDUCT / CODEOWNERS（2026-10 补齐 CODEOWNERS）。
 
 ---
 

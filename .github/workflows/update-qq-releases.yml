@@ -87,7 +87,11 @@ jobs:
             - name: 有变更则提 PR
               uses: peter-evans/create-pull-request@v8
               with:
-                  token: ${{ secrets.GITHUB_TOKEN }}
+                  # 用 github.token 而不是 secrets.GITHUB_TOKEN（后者根本不存在，
+                  # 传给 action 的是一个空串）。代价：GITHUB_TOKEN 创建的 PR 不会
+                  # 触发 pull_request workflow，CI 不会在这个 bot PR 上跑——它只改
+                  # qq-releases.json 数据，且由维护者合并，可接受。
+                  token: ${{ github.token }}
                   commit-message: "chore(loader): 更新 qq-releases.json 到最新 QQ 版本"
                   branch: chore/qq-releases-update
                   delete-branch: true

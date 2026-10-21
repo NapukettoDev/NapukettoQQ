@@ -38,6 +38,17 @@
 # 迁移到 Ubuntu 26，固定版本避免迁移窗口内环境漂移；等 26 稳定后再显式升。
 # setup-node / pnpm/action-setup 升到 node24 运行时版本，消 runner 的
 # 「Node.js 20 is deprecated」注解。
+#
+# 触发面（2026-10-21 起）：merge_group 不可省。主分支 ruleset「保护主分支」
+# 启用了 merge queue，且 gate / windows / audit 是必需状态检查。GitHub 对必需
+# 检查只认「在队列建的 gh-readonly-queue/<base>/pr-* 临时 ref 上跑出来的」那
+# 一次，pull_request 那次不算数：缺 merge_group 时队列永远等不到检查上报，
+# 超时（该 ruleset 的 check_response_timeout_minutes）后把 PR 从队列里剔除，
+# 等于合并必然失败。
+#
+# 三个 job 的 name 就是 ruleset 里的必需检查 context，**改名必须同步改规则集**
+# （gh api repos/NapukettoDev/NapukettoQQ/rulesets/24073406），否则 PR 永远等
+# 不到同名检查。
 
 name: CI
 
@@ -45,6 +56,7 @@ on:
     push:
         branches: [main]
     pull_request:
+    merge_group:
     workflow_dispatch:
 
 # 同一分支 / PR 的旧跑自动取消，不占额度
@@ -62,7 +74,7 @@ jobs:
         timeout-minutes: 30
         steps:
             - name: Checkout（不检 native 子模块）
-              uses: actions/checkout@v5
+              uses: actions/checkout@v7
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6
@@ -99,7 +111,7 @@ jobs:
         timeout-minutes: 30
         steps:
             - name: Checkout（不检 native 子模块）
-              uses: actions/checkout@v5
+              uses: actions/checkout@v7
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6
@@ -128,7 +140,7 @@ jobs:
         steps:
             # fallow audit 需要读取 base 提交做 diff，必须全量历史
             - name: Checkout（全量历史；不检 native 子模块）
-              uses: actions/checkout@v5
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
