@@ -10,7 +10,7 @@
  *   - 无 -q：读全局配置 accounts（至少一个，账号必填）→ supervisor 拉起全部启用账号
  *   - config 子命令：init / list / apply（主配置管理）
  *
- * 路线 B（拉起 QQ + 注入）已淘汰（2026-08-07 用户拍板），仅 launchQqWithLoader 历史回退。
+ * 路线 B（拉起 QQ + 注入）已淘汰（2026-08-07 用户拍板），相关入口已移除。
  */
 
 import process from "node:process";

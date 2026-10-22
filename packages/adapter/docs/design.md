@@ -3,7 +3,7 @@
 > 协议适配器容器（ADR-013）：core 框架（BaseProtocolAdapter/ActionRegistry/
 > ProtocolConfig）+ onebot11 + satori。只认识 kernel 的 API/事件/缓存，不认识
 > 原生（红线）。本文覆盖 2026-09-08 接线轮次动到的模块；79 动作注册表 /
-> CQ 码 / 传输装配等既有结构见源码与 `docs/architecture.md`。
+> CQ 码 / 传输装配等既有结构见源码与 `docs/architecture/overview.md`。
 
 ## 1. onebot11 事件链（adapter.ts 订阅 + helper/ 翻译）
 
@@ -199,7 +199,7 @@ JSON 序列化形如 `[[10,64,…]]`）：外层数组 = 批（两样本均单�
 
 ## 8. kurobot 协议适配器（KuroBot MVP-3，2026-09-13；09-16 改名对齐 0.4.0）
 
-> 任务书：`docs/archive/KUROBOT-PROMPT.md`（已执行完毕）。napukettoqq 以「新增协议适配器」
+> 协议说明见 `docs/protocols/kurobot.md`。napukettoqq 以「新增协议适配器」
 > 方式原生说 kurobridge-ws：账号 TOML 配了 `[accounts.kurobot]` 段即启用，作为 **WS 客户端**
 > 主动连入 KuroBot 服务端（KuroBot 恒为服务端），实现 QQ 群 ↔ MC 双向互通。
 > 复刻 satori 模式（core 框架 + 薄映射层），不动 onebot11/satori/network/kernel。
