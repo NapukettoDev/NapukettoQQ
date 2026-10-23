@@ -11,8 +11,8 @@ NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器�
 - **单一配置**：项目根一份 `napuketto.toml`，账号内嵌协议段；账号必填。
 
 **明确不做**：WebUI、插件系统、framework 模式（把本框架做成 QQNT 插件）、OneBot 12
-（规范过于模糊，已放弃）。功能范围按“NapCat 能力 − WebUI − 插件系统”对齐，但不引入
-NapCat 代码。
+（规范过于模糊，已放弃）。功能范围 = 完整协议 + API 能力 − WebUI − 插件系统，且只做
+原创实现。
 
 ## 2. 仓库结构
 
@@ -85,9 +85,9 @@ CLI（单账号或 supervisor）
 
 ## 6. 硬性红线
 
-1. **许可证 MIT，零引入 NapCat 代码**：任何文件（含类型定义）不得复制或移植自 NapCat
-   （GPL-2.0-only 与 MIT 不兼容）。接口签名是外部系统（腾讯 `wrapper.node`）的事实，可以
-   自研描述，但架构与实现必须原创。
+1. **许可证 MIT，零引入 GPL-2.0-only 实现代码**：任何文件（含类型定义）不得复制或移植自
+   GPL-2.0-only 项目（该许可证与 MIT 不兼容）。接口签名是外部系统（腾讯 `wrapper.node`）的
+   事实，可以自研描述，但架构与实现必须原创。
 2. **kernel 是唯一原生交互层**：其他包不得直接 `dlopen`、访问 `wrapper.node`、注册原生
    listener；只能调 kernel 的语义化 API、订阅事件通道、读缓存。
 3. **network 协议无关**：不得 import 协议包；事件与传输适配器保持泛型。
