@@ -3,7 +3,7 @@
 <h1 id="napukettoqq">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
-    <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="600">
+    <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="800">
   </picture>
 </h1>
 
@@ -12,10 +12,6 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/NapukettoDev/NapukettoQQ/ci.yml?style=flat-square&label=CI)](https://github.com/NapukettoDev/NapukettoQQ/actions/workflows/ci.yml)
 &emsp;
 [![npm](https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/create-napukettoqq)
-&emsp;
-[![Release](https://img.shields.io/github/v/release/NapukettoDev/NapukettoQQ?style=flat-square&label=Release)](https://github.com/NapukettoDev/NapukettoQQ/releases)
-&emsp;
-![Node.js](https://img.shields.io/badge/Node.js-24-339933?style=flat-square&logo=node.js&logoColor=white)
 &emsp;
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript&logoColor=white)
 &emsp;
