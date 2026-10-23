@@ -91,4 +91,4 @@ pnpm create napukettoqq
 pnpm start
 ```
 
-*Not affiliated with Tencent. Entirely original implementation with no NapCat code. Released under the [MIT License](./LICENSE).*
+*Not affiliated with Tencent. Entirely original implementation with no third-party GPL code. Released under the [MIT License](./LICENSE).*

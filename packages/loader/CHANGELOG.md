@@ -284,11 +284,11 @@
 
 ### Patch Changes
 
-- f744cf7: fix(kernel): 修复图片发送失败（PIC 元素 NapCat 式预处理：elementType=2 + getRichMediaFilePathForGuild + copyFile + 完整 picElement）
+- f744cf7: fix(kernel): 修复图片发送失败（PIC 元素按 QQ 原生契约预处理：elementType=2 + getRichMediaFilePathForGuild + copyFile + 完整 picElement）
 - 769d457: fix(kernel): 修复消息发送失败（sendMsg 返回 result=5 被误判失败）
 
   问题根因：旧实现以 `sendMsg(msgId, peer, ...)` 调用并直接看返回值 `result===0` 判成败，
-  但 wrapper 对正确调用返回 `result=5`（文本/图片均失败）。按 NapCat 同款方式修复：
+  但 wrapper 对正确调用返回 `result=5`（文本/图片均失败）。按 QQ 原生调用契约修复：
 
   - sendMsg 第一参固定传 `'0'`，msgId 塞 `peer.guildId`
   - 先注册 `onMsgInfoListUpdate` 事件监听再调 sendMsg，以事件 `sendStatus===2` 确认发送成功

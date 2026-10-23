@@ -73,7 +73,7 @@ IPC event 消息（koishi 插件消费）；协议模式由 adapter 订阅。
 - **group-notify.ts**：`getSingleScreenNotifies(doubt, count)` /
   `handleGroupRequest`。OB11 `set_group_add_request` 的 flag = `GroupNotify.seq`。
 - **msg.ts**：`fetchMsgsByMsgId(peer, ids)`（get_image/get_record 反查）、
-  `placeMediaFile`（发送侧 NapCat 式放置：getRichMediaFilePathForGuild +
+  `placeMediaFile`（发送侧按 QQ 原生契约放置：getRichMediaFilePathForGuild +
   util.copyFile）。
 - **richmedia.ts**：群文件系列（getGroupFileList 等）。**注意**：原生
   `downloadRichMedia` 方法存在于 wrapper（字符串证据），但签名未探测——

@@ -7,7 +7,7 @@
 
 | # | 决策 | 否决/替代方案 | 理由 |
 |---|---|---|---|
-| ADR-001 | 许可证 MIT，零引入 NapCat 代码 | 复制/移植 NapCat 类型或实现 | NapCat 为 GPL-2.0-only，与 MIT 不兼容；接口签名是外部系统事实，可自研描述 |
+| ADR-001 | 许可证 MIT，零引入 GPL-2.0-only 实现代码 | 复制/移植第三方 GPL-2.0-only 实现 | GPL-2.0-only 与 MIT 不兼容；接口签名是外部系统事实，可自研描述 |
 | ADR-002 | `@napuketto/network` 协议无关，adapter 依赖 network | 传输层直接绑定 OB11 类型 | 同一套传输原语要供 OneBot 11 / Satori 复用 |
 | ADR-003 | 类型化事件通道（`NTEventChannel`，事件名 `Service/method`） | Proxy + `any` 的旧事件系统 | 编译期签名检查；每个 Service 只注册一次原生 listener；单订阅者异常不打断派发 |
 | ADR-004 | 不做 framework 模式（QQNT 插件） | 以 QQ 插件形式运行 | 只做独立宿主/进程模式，便于部署与隔离 |
@@ -44,7 +44,7 @@
 | 路线 B：拉起 QQ → 注入 → utilityProcess worker | 已淘汰（2026-08-07 用户拍板），CLI 不再实现或调用 |
 | OneBot 12 | 规范过于模糊，已删除占位 |
 | 独立 JSON 协议配置 / 顶层 `[onebot11]` 配置 | 改为项目根单一 TOML + 账号内嵌协议段 |
-| framework 模式 / WebUI / 插件系统 | 永远不做；功能范围 = NapCat 能力 − WebUI − 插件系统 |
+| framework 模式 / WebUI / 插件系统 | 永远不做；功能范围 = 完整协议 + API 能力 − WebUI − 插件系统 |
 
 ## 记录规则
 

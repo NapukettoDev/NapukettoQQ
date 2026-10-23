@@ -39,7 +39,7 @@ pnpm test     # vitest 全量单测
 
 ## 许可证红线
 
-- 本仓 MIT，**零引入 NapCat 代码**（NapCat 为 GPL-2.0-only，与 MIT 不兼容）：任何文件（含类型定义）不得复制或移植自 NapCat。
+- 本仓 MIT，**零引入 GPL-2.0-only 实现代码**（与 MIT 不兼容）：任何文件（含类型定义）不得复制或移植自此类项目。
 - `packages/loader/native/` 的逆向产物（RVA / Offset 表等）绝不进本仓库。
 
 ## 行为准则与安全
