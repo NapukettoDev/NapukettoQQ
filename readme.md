@@ -35,7 +35,7 @@
     自建宿主直接 `dlopen` `wrapper.node`，调用官方 NAPI 导出接口；不经过代理层，也不依赖外部协议端。
 
 - **无侵入运行**：\
-    不拉起 QQ 客户端、不注入 QQ 进程、不修改安装目录；运行期只在内存中操作，升级/卸载零残留。
+    不拉起 QQ 客户端、不注入 QQ 进程、不修改安装目录。
 
 - **多协议对外**：\
     OneBot 11、Satori、KuroBot群服互通；HTTP / WebSocket / 反向 WebSocket 多实例并存。
@@ -44,10 +44,10 @@
     每个账号独立宿主进程，supervisor 统一拉起、监测与自动重启；单账号崩溃不拖垮其他账号。
 
 - **配置单一来源**：\
-    项目根一份 `napuketto.toml`，全局配置 + `[[accounts]]` 账号段；协议与通信配置内嵌在账号内，没写协议段即不启用。
+   配置文件全局配置 + `[[accounts]]` 账号段；协议与通信配置内嵌在账号内，没写协议段即不启用。
 
 - **跨平台部署**：\
-    Windows 原生运行；Linux 通过 Wine 运行 Windows 版 `node.exe`；loader 可自动定位或下载 QQ 原生文件。
+    Windows 原生运行；Linux 通过 Wine 运行 Windows 版 `node.exe`
 
 ---
 
