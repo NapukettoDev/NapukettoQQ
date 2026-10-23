@@ -10,7 +10,7 @@ NapukettoQQ：基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人
 
 ## 硬性约束（违反 = 错误）
 
-1. **许可证 MIT（2026-08-06 由 GPL-3.0 迁移），零引入 NapCat 代码**。NapCat 是 GPL-2.0-only，与 MIT 不兼容，任何文件（含类型定义）都不得复制或移植。接口签名是外部系统（腾讯 wrapper.node）的事实，可以自研描述，但架构与实现必须原创。
+1. **许可证 MIT（2026-08-06 由 GPL-3.0 迁移），零引入 GPL-2.0-only 实现代码**。GPL-2.0-only 与 MIT 不兼容，任何文件（含类型定义）都不得复制或移植自此类项目。接口签名是外部系统（腾讯 wrapper.node）的事实，可以自研描述，但架构与实现必须原创。
    **闭源例外**：`@napuketto/loader` 的 `native/` 为私有组件——
    逆向腾讯 QQ 的产物（RVA/Offset 表）绝不进公共仓库，仅分发编译后的二进制（**2026-08-07
    用户拍板：不做混淆**——stub 仅含公开符号表+空函数，无机密可护，混淆徒增误报风险）；
@@ -31,22 +31,22 @@ NapukettoQQ：基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人
 
 3. **kernel 是唯一原生交互层**：只有 `packages/kernel` 允许 `process.dlopen`、访问 `wrapper.node`、注册原生 listener。其他包只能调 kernel 的语义化 API、订阅事件通道、读缓存。
 4. **network 协议无关**：`@napuketto/network` 不得 import 任何协议包（adapter 等），事件类型必须泛型化。
-5. **不做的事**：framework 模式（QQNT 插件）、webui、插件系统、NapCat 的 Proxy 事件老方案、无理由的 `any`。**功能范围 = NapCat 全部能力（协议 + API）− WebUI − 插件系统**（2026-08-06 用户拍板）。
+5. **不做的事**：framework 模式（QQNT 插件）、webui、插件系统、Proxy 事件老方案、无理由的 `any`。**功能范围 = 完整协议 + API 能力 − WebUI − 插件系统**（2026-08-06 用户拍板）。
 6. **media 严格解耦**：`@napuketto/media` 只被协议层（adapter）依赖，kernel 不背媒体依赖。
 7. **技术路线（自建宿主唯一路线，2026-08-07 定稿）**：
-   - **⚠️ 关键决策点**：**自建宿主为唯一路线（已全链路验证）**（标准 Node 纯 Node 模式，NapCat 实证 ~237MB），路线 B（注入 worker）已淘汰（2026-08-07 用户拍板）。路线演进结论见 `docs/architecture/decisions.md`。
+   - **⚠️ 关键决策点**：**自建宿主为唯一路线（已全链路验证）**（标准 Node 纯 Node 模式，实测约 237MB），路线 B（注入 worker）已淘汰（2026-08-07 用户拍板）。路线演进结论见 `docs/architecture/decisions.md`。
    - **架构文档**：`docs/architecture/overview.md`（分层/包结构/红线）+ `docs/architecture/runtime.md`（启动链/登录/数据流）。
    - **业务层（JS/NAPI）**：kernel/adapter/network/media/cli 继续纯 NAPI 调用 `wrapper.node` 业务 API（getMsgService 等），现有 79 个 OneBot 动作（含别名变体）全保留。
    - **引导层（loader）**：`@napuketto/loader` 负责**自建宿主引导**（`launchSelfHost`：标准 node + stub QQNT.dll → dlopen wrapper.node，唯一路线）+ 无头阻断（自建宿主无 QQ 进程/UI，天然满足）。**路线 B（注入 QQ 主进程 → fork worker）已淘汰（2026-08-07 用户拍板）**；V1 注入框架与 V2 载具已移除（历史实现查 git 历史），本包不再编译 C++ 组件（仅保留闭源 stub QQNT.dll）。载具 DLL 历史职责（当前不需要）：① NOP `wrapper.node` 环境自检与 self-register 校验 ② 激活 session `cpp_impl` ③ 阻断 Chromium UI/GPU/Renderer 进程。
    - **⚠️ 逆向边界（2026-08-06 用户拍板：允许必要逆向，非 0 逆向）**：
-     - **允许逆向的用途**（与 NapCat 能力对齐所需）：
+     - **允许逆向的用途**（为实现完整协议/API 能力所需）：
        a. **环境模拟/反风控**：进程名伪装、模块隐藏（K32EnumProcessModules/GetModuleHandleW）、内存 RWX→RX、窗口类（napi2native 自研等价物；实测自建宿主非必要，保留无害）
        b. **数据包层**：C++ 层 hook 数据包 send/recv（Frida Gum 等价物，数据包监控/协议分析）
        c. **无头阻断**：内存中阻断 UI/GPU/Renderer 进程降内存
        d. **模拟触发 `cpp_impl` 激活信号**（旧载具职责，自建宿主已不需要）
      - **业务层优先 NAPI（优先级而非禁令）**：收发消息/事件监听/数据解析**优先**走官方 NAPI 导出接口（稳定、简单、可维护）；仅当 NAPI 无法覆盖的能力（数据包层、环境模拟）才用 C++ 逆向补足。
      - **技术手段不设限**：允许 koffi / vtable 槽位 / 内存偏移 / thiscall 裸调等逆向手段——但**仅限 loader 的私有 native 组件**，业务层（kernel/adapter）仍不得直接使用（版本脆弱性，不是合规问题）。
-     - **绝对禁止（许可证底线，不变）**：复制/移植 NapCat 代码（GPL-2.0-only 与 MIT 不兼容），任何文件（含类型定义）不得来自 NapCat。
+     - **绝对禁止（许可证底线，不变）**：复制/移植 GPL-2.0-only 实现代码（与 MIT 不兼容），任何文件（含类型定义）不得来自此类项目。
    - **零磁盘篡改**：内存 Patch 仅在 QQ.exe 运行期 RAM 生效，**严禁修改/覆盖磁盘上 QQ 安装目录任何二进制**（QQNT.dll / wrapper.node / package.json / asar）；升级/卸载零残留。
    - **逆向产物管理**：Ghidra 分析（RVA 表/Offset）不提交公共仓库，仅存私有；旧 koffi 探测脚本已移除（历史实现查 git 历史）。
 8. **全局配置 = 单一 TOML 文件**（2026-08-05 用户拍板；2026-08-07 移到项目根；2026-08-08 账号内嵌协议段）：所有配置统一放 `<项目根>/napuketto.toml`（全局段 + `[[accounts]]` 账号段——**协议与通信配置嵌在账号内**：`[accounts.onebot11]` / `[accounts.satori]`，账号没写某协议段 = 不启用该协议），**不再使用独立 JSON 配置文件**（JSON 门槛太高）。**账号必填**（至少一个，qq 必填，2026-08-08 拍板）。**数据根默认 `<项目根>/.napuketto`**（2026-08-08 拍板：部署原因不放用户目录；支持 `~`/相对路径，消费端 `resolveDataRoot` 展开），优先级 `--data-dir` > `NAPKETTO_DATA` > 项目根默认；配置文件路径解析见 kernel `resolveConfigPath`（`NAPKETTO_CONFIG` 显式 > 项目根探测 > 数据根兜底）。kernel `ConfigBase` 支持 TOML（smol-toml 解析/序列化，按 `.toml` 扩展名推断）+ `seed`（内存初值：boot 按登录账号 uin 从 accounts 取协议段 zod 校验后作 seed，adapter 不再读独立协议文件）。cli `config init/list/apply` 读写该文件；本机配置不入库（.gitignore，模板才入库）。

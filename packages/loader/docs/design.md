@@ -46,7 +46,7 @@
 
 1. **不内置腾讯二进制**：所有发布产物（npm 包 / Docker 镜像 / 仓库文件）不得包含
    `wrapper.node`、`QQNT.dll`、官方安装包 `.exe`、`major.node` 等腾讯文件（含压缩/编码形式）。
-2. **不内置 NapCat 代码**（GPL-2.0-only 与 MIT 不兼容，AGENTS.md 红线不变）。
+2. **不内置 GPL-2.0-only 实现代码**（与 MIT 不兼容，AGENTS.md 红线不变）。
 3. **只接受 wine 方案 a**：Linux 上 = wine 跑 Windows 版 node.exe + stub + dlopen wrapper.node，
    不跑完整 QQ 客户端。
 4. **零磁盘篡改**（AGENTS.md 第 7 条不变）：只读加载，不改写任何腾讯文件。
