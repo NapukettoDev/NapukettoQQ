@@ -4,7 +4,7 @@
 > 访问 `wrapper.node`、注册原生 listener。其他包只调语义化 API / 订阅事件通道 /
 > 读缓存。无全局单例（ADR-015 推论）：logger/cache/event-channel 均实例化，
 > 由 `CoreContext` 持有。本文覆盖 2026-09-08 接线轮次动到的模块；wrapper 加载 /
-> login / paths / config 等既有模块详见源码头注释与 `docs/architecture.md`。
+> login / paths / config 等既有模块详见源码头注释与 `docs/architecture/overview.md`。
 
 ## 1. 事件桥（bridge/）
 

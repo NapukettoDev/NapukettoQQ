@@ -8,8 +8,8 @@
 #          （build 必须前置于 check：tsc 按 NodeNext 解析 workspace 包经
 #            package.json exports 读到 dist 里的类型声明，全新环境无 dist 时
 #            tsc 直接 TS2307，本地因 dist 常在而感知不到该顺序依赖）
-#          （build 必须前置于 test：scripts/kurobot-smoke.test.ts 消费
-#            packages/adapter/dist 构建产物做真装配链冒烟，同理干净环境必挂）
+#          （build 必须前置于 test：tooling/package-exports.test.ts 断言
+#            dist 里的类型声明文件，干净环境无 dist 时必挂）
 # - windows 跨平台测试补位：运行时目标是 Windows 优先（QQ 原生）+ Linux（wine），
 #            测试套件按跨平台设计（纯函数 + mock fixture + skipIf 平台守卫），
 #            与 gate 同一套用例再验一个 OS。只跑测试，不重复 check 与覆盖率。
@@ -129,7 +129,7 @@ jobs:
             - name: 安装依赖（frozen-lockfile 锁死供应链）
               run: pnpm install --frozen-lockfile
 
-            - name: 全量构建（kurobot 冒烟测试消费 adapter dist 产物）
+            - name: 全量构建（package-exports 守卫消费 dist 产物）
               run: pnpm -r build
 
             - name: vitest 全量单测

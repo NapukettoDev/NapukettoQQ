@@ -66,7 +66,7 @@
 # 两者串行。同一原因也会触发一次 `ci.yml`——每次发布固定多出一轮完整 CI，
 # 这是改由 App token 推送（而非 GITHUB_TOKEN）的固有代价。
 #
-# 前置（均为仓库设置，非代码；详见 docs/process/release.md）：
+# 前置（均为仓库设置，非代码；详见 docs/guides/release.md）：
 #   1. Settings → Environments 建 `release` 并勾 Required reviewers。名字必须
 #      与 npm 信任配置的 environment claim 严格同名，否则 OIDC 不认；而 claim
 #      不声明 environment 时，删掉本文件里的 environment: 即可绕过审批。
@@ -145,7 +145,7 @@ jobs:
                   APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
               run: |
                   if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-                      echo "::error::缺少发布 App 配置：请先设置仓库 variable RELEASE_APP_CLIENT_ID 与 secret RELEASE_APP_PRIVATE_KEY（见 docs/process/release.md §3）。"
+                      echo "::error::缺少发布 App 配置：请先设置仓库 variable RELEASE_APP_CLIENT_ID 与 secret RELEASE_APP_PRIVATE_KEY（见 docs/guides/release.md §3）。"
                       exit 1
                   fi
 

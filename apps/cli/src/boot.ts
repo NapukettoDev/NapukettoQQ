@@ -12,7 +12,7 @@
  * qq.wrapperPath / qq.version（NAPUTO_QQ_PATH 仅注入、self-host 未读取），占位安全。
  *
  * 不写业务逻辑：kernel 装配 + 登录 + 协议装配全部在 self-host.cjs → boot-bootstrap.js 完成。
- * 路线 B（拉起 QQ + 注入）已淘汰（launchQqWithLoader 仅历史回退，cli 不再调用）。
+ * 路线 B（拉起 QQ + 注入）已淘汰（launchQqWithLoader 已移除，cli 只走自建宿主）。
  */
 import path from "node:path";
 import process from "node:process";

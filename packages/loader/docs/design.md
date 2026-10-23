@@ -1,6 +1,6 @@
 # @napuketto/loader 设计（v2：跨平台 + 无本机 QQ 运行）
 
-> **状态**：设计稿（2026-08-12）。配套主仓库 `docs/STATUS.md` / `docs/architecture.md`。
+> **状态**：设计稿（2026-08-12）。配套主仓库 `docs/architecture/overview.md` / `docs/architecture/runtime.md`。
 > 设计先行——本文件定稿后再实现，实现顺序见 §7。
 >
 > **用户拍板（2026-08-12，含技术栈逐条确认）**：

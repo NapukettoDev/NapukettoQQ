@@ -2,7 +2,7 @@
  * Satori 资源类型（协议 v1，自研描述，规范参考 satori.chat/zh-CN/resources）
  *
  * 说明：Satori 大部分字段可选（平台差异）。QQ 平台（platform=qq）语义
- * 见 docs/satori.md §3 ID 映射。
+ * 见 docs/protocols/satori.md §6 ID 映射。
  */
 
 /** 频道类型。 */

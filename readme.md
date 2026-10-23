@@ -20,7 +20,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
 <p>
-  <a href="./docs/architecture.md">文档</a> •
+  <a href="./docs/README.md">文档</a> •
   <a href="#english">English</a>
 </p>
 
@@ -38,14 +38,11 @@
 * **原生直连**\
 　直接调用官方 NAPI 导出接口，不经过任何代理层
 * **无侵入运行**\
-　自建宿主直接加载原生模块，不拉起 QQ 客户端、不注入任何进程、零磁盘篡改，内存占用百兆级
-
-<!-- -->
-
-* **双协议对外**\
-　OneBot 11（79 动作含别名变体）+ Satori，HTTP / WebSocket / 反向 WebSocket 多实例
+　自建宿主直接加载原生模块，不拉起 QQ 客户端、不注入任何进程、零磁盘篡改，内存占用可控
+* **多协议对外**\
+　OneBot 11（79 动作含别名变体）+ Satori，另有 KuroBot 群服互通；HTTP / WebSocket / 反向 WebSocket 多实例
 * **开箱即用**\
-　单进程编排多账号（崩溃自动重启），项目根一份 `napuketto.toml` 管全部配置
+　单命令编排多账号（每账号独立进程，崩溃自动重启），项目根一份 `napuketto.toml` 管全部配置
 
 ---
 
@@ -73,7 +70,7 @@ pnpm start                    # 启动：自动登录，就绪后协议服务开
 
 ## 维护
 
-* **文档**：[架构书](./docs/architecture.md) ｜ [运维手册](./docs/OPERATIONS.md)
+* **文档**：[文档导航](./docs/README.md) ｜ [架构总览](./docs/architecture/overview.md) ｜ [运维手册](./docs/guides/operations.md)
 * **治理**：[贡献指南](./.github/CONTRIBUTING.md) ｜ [仓库约定](./AGENTS.md) ｜ [安全策略](./.github/SECURITY.md)
 * **授权说明**：[MIT](./LICENSE)
 
