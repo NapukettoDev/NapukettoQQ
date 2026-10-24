@@ -59,4 +59,5 @@ export {
     type IpcStatusMessage,
     type IpcStatusPayload,
 } from "./ipc-types.js";
+export { toJsonSafe } from "./json-safe.js";
 export { isNativeNoiseLine } from "./native-noise.js";

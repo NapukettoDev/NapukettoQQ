@@ -30,4 +30,34 @@ describe("ipc-codec", () => {
         const message = { v: IPC_VERSION, type: "ping" } as const;
         expect(decodeIpcMessage(`  ${encodeIpcMessage(message).trim()}  `)).toEqual(message);
     });
+
+    it("encode 规整 Map/Set（2026-10-24 线上事故回归：thumbPath Map 跨进程不得丢成 {}）", () => {
+        const message = {
+            v: IPC_VERSION,
+            type: "event",
+            payload: {
+                service: "Msg",
+                name: "onRecvMsg",
+                args: [
+                    {
+                        elements: [
+                            {
+                                elementType: 5,
+                                videoElement: {
+                                    filePath: "/v.mp4",
+                                    thumbPath: new Map([[0, "/t.png"]]),
+                                },
+                            },
+                        ],
+                    },
+                ],
+            },
+        } as unknown as IpcMessage;
+        const decoded = decodeIpcMessage(encodeIpcMessage(message));
+        expect(decoded).not.toBeNull();
+        const args = (decoded as { payload: { args: unknown[] } | undefined }).payload?.args ?? [];
+        const video = (args[0] as { elements: Array<{ videoElement: { thumbPath: unknown } }> })
+            .elements[0]?.videoElement;
+        expect(video?.thumbPath).toEqual({ "0": "/t.png" });
+    });
 });

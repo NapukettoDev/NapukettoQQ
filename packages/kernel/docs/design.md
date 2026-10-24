@@ -229,8 +229,8 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
 - `width`/`height`：**视频**宽高（收向实测 `thumbWidth`/`thumbHeight` 与视频一致）。
 - `durationSec`：整数秒（由 ffprobe 得出，向上取整保底 1）。
 
-收向 `videoToCanonical` 同步补全：`thumbPath`（从实测 `Map<number,string>` 的
-`get(0)`）、`width`/`height`（`thumbWidth`/`thumbHeight`）、`durationSec`
+收向 `videoToCanonical` 同步补全：`thumbPath`（`readVideoThumbPath` 防御读取，
+见 8.3 备注）、`width`/`height`（`thumbWidth`/`thumbHeight`）、`durationSec`
 （`fileTime`，单位秒）——发送/接收共用同一 canonical 形状。
 
 ### 8.2 发送流程（`MsgApi.prepareVideoElement`）
@@ -273,6 +273,14 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
 收向实测样本还携带 `transferStatus/progress/invalidState/fileBizId/
 originVideoMd5/import_rich_media_context/isInApplicationDataPath`（下载态字段），
 发送时不填——由 wrapper 传输流程自行维护。
+
+**thumbPath 接收形态（2026-10-24 线上事故后定稿）**：进程内收向为
+`Map<0, path>`（上表）；但经 JSON 序列化（koishi IPC 行协议等）跨进程后，
+`JSON.stringify(Map)` 内容全丢——loader 侧会规整成平面对象 `{"0": path}`，
+未规整的旧链路则退化为空对象 `{}`。因此**接收读取一律走
+`message-element.ts` 的 `readVideoThumbPath`**（Map / 平面对象 / 字符串三形态
+均容忍，`VideoElement.thumbPath` 类型同步放宽为三者联合）；发送侧仍是
+8.2 步骤 5 的真实 Map 契约，不变。
 
 ### 8.4 发送链路已打通（2026-10-17 实测）
 
