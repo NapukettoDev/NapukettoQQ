@@ -4,6 +4,8 @@
  * 仅 NAPUTO_IPC=1 启用：stdout 专用于 JSON 行协议（stdin 收 action/control）。
  * 非 IPC 模式（cli pnpm start）stdout 不输出协议行，零干扰。
  */
+
+import { encodeIpcMessage } from "./ipc-codec.js";
 import {
     IPC_VERSION,
     type IpcBootPhase,
@@ -32,7 +34,7 @@ function sendIpc(message: IpcMessage): void {
         return;
     }
     try {
-        process.stdout.write(`${JSON.stringify(message)}\n`);
+        process.stdout.write(encodeIpcMessage(message));
     } catch {
         // ignore：stdout 不可写不阻塞引导（崩溃堆栈仍走 stderr）
     }

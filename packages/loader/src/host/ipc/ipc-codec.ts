@@ -6,10 +6,11 @@
  * 不崩通道。
  */
 import { type IpcMessage, IpcMessageSchema } from "./ipc-types.js";
+import { toJsonSafe } from "./json-safe.js";
 
-/** 编码为 JSON 行（追加换行）。 */
+/** 编码为 JSON 行（追加换行）。Map/Set 先规整为可序列化形态（见 json-safe.ts）。 */
 export function encodeIpcMessage(message: IpcMessage): string {
-    return `${JSON.stringify(message)}\n`;
+    return `${JSON.stringify(toJsonSafe(message))}\n`;
 }
 
 /** 解码一行 JSON；非法行/空行/形状不合法返回 null。 */

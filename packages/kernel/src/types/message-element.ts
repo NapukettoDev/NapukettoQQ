@@ -23,6 +23,38 @@ import { ElementType, type SendMessageElement } from "./services/msg-service.js"
 /** 文本 at 类型（QQ wrapper 契约，自研描述）。 */
 const AtType = { ALL: 1, ONE: 2, ME: 4 } as const;
 
+/**
+ * 视频缩略图在 thumbPath 中的 key（收向实测 Map<0, path>；平面对象形态下
+ * 数字 key 经序列化变字符串 "0"。apis/msg.ts 发送侧有同名常量，types 层
+ * 不能反向 import apis（依赖方向），此处独立定义）。
+ */
+const VIDEO_THUMB_KEY = 0;
+
+/**
+ * 读视频缩略图路径（接收方向形态不唯一，防御读取）：
+ *  - 进程内为 `Map<0, path>`（收向实测）；
+ *  - 跨进程/JSON 序列化后退化为平面对象 `{"0": path}`（`JSON.stringify(Map)`
+ *    内容全丢，无规整的传输会得到空对象 `{}`）；
+ *  - 个别形态可能直接给字符串路径（兜底容忍）。
+ *
+ * 2026-10-24 线上事故：koishi IPC 模式下 thumbPath 到达父进程已是平面对象，
+ * 直接 `.get(0)` 抛 TypeError，整条视频消息事件分派失败。
+ */
+function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefined {
+    if (thumb === undefined || thumb === "") {
+        return undefined;
+    }
+    if (typeof thumb === "string") {
+        return thumb;
+    }
+    if (thumb instanceof Map) {
+        const value = thumb.get(VIDEO_THUMB_KEY);
+        return value === "" ? undefined : value;
+    }
+    const value = thumb[String(VIDEO_THUMB_KEY)];
+    return value === "" ? undefined : value;
+}
+
 /** TEXT 元素 → canonical（at 或纯文本）。 */
 function textToCanonical(textEl: TextElement | undefined): CanonicalElement {
     if (textEl === undefined) {
@@ -84,9 +116,9 @@ function videoToCanonical(video: VideoElement | undefined): CanonicalElement {
     if (video.videoUrl !== undefined) {
         base.url = video.videoUrl;
     }
-    // 收向实测：thumbPath 为 Map<number, string>（key 0 = Thumb 图片路径）
-    const thumb = video.thumbPath?.get(0);
-    if (thumb !== undefined && thumb !== "") {
+    // thumbPath 接收形态不唯一（Map / 序列化平面对象 / 字符串），统一走防御读取
+    const thumb = readVideoThumbPath(video.thumbPath);
+    if (thumb !== undefined) {
         base.thumbPath = thumb;
     }
     if (video.thumbWidth !== undefined && video.thumbWidth > 0) {

@@ -373,6 +373,15 @@ action/control）。登录前启动 stdin 服务端（login.refreshQr 可达）�
 `attachIpcServices` 把 kernel 服务动作（`msg.sendMessage` 等点分域）并入同一张
 共享动作表，事件通道经 `sendEvent(service, name, args)` 透出。
 
+**编码规整（2026-10-24）**：`JSON.stringify` 对 Map/Set 内容全丢（Map → `{}`、
+Set → `[]`）——事件 args（`videoElement.thumbPath Map<0, path>`）与动作结果
+（如 `uinToUid` 的 `Map<qq, uid>`）跨进程即丢，koishi 插件侧读 `thumbPath.get(0)`
+直接 TypeError（线上事故）。`encodeIpcMessage`（`ipc-codec.ts`）统一先过
+`toJsonSafe`（`json-safe.ts`，幂等深规整：Map → 平面对象、Set → 数组、环引用
+丢分支；非普通对象原样交 stringify）再序列化；`ipc-sender.sendIpc` 也改走
+`encodeIpcMessage` 单一出口。协议行前缀（`native-noise.ts` 的 `IPC_LINE_PREFIX`）
+不受影响。
+
 ### 9.1 OB11 容器可选装配（ipc-ob11.ts）
 
 **触发条件**：IPC 模式 && `NAPUTO_ADAPTER_ENTRY` + `NAPUTO_NETWORK_ENTRY` 已注入

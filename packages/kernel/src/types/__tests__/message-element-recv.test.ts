@@ -160,6 +160,75 @@ describe("toCanonicalElements", () => {
         ).toEqual([{ type: "video", path: "/v.mp4" }]);
     });
 
+    it("VIDEO thumbPath 三形态防御读取（Map / 序列化平面对象 / 字符串）", () => {
+        // 进程内实测形态：Map<0, path>
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: new Map([[0, "/t.png"]]) },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4", thumbPath: "/t.png" }]);
+        // IPC/JSON 序列化后形态（2026-10-24 线上报错回归：平面对象无 .get）
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: { "0": "/t.png" } },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4", thumbPath: "/t.png" }]);
+        // 字符串路径兜底
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: "/t.png" },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4", thumbPath: "/t.png" }]);
+    });
+
+    it("VIDEO thumbPath 空值形态：空对象（stringify 丢内容）/ 空串 / 空值 key → 忽略", () => {
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: {} },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4" }]);
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: new Map([[0, ""]]) },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4" }]);
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.VIDEO,
+                        videoElement: { filePath: "/v.mp4", thumbPath: "" },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "video", path: "/v.mp4" }]);
+    });
+
     it("FILE：有 fileName → name；无 → 仅 path", () => {
         expect(
             toCanonicalElements(

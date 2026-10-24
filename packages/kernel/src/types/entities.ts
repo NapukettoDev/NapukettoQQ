@@ -119,10 +119,13 @@ export interface VideoElement {
     busiType?: number;
     subBusiType?: number;
     /**
-     * 缩略图路径（收向实测 `Map<number, string>`，key 0 = Thumb 下的图片路径）。
+     * 缩略图路径。进程内收向实测 `Map<number, string>`（key 0 = Thumb 图片路径）；
+     * 经 JSON 序列化（IPC 行协议等）后退化为平面对象（`{"0": path}`，且无规整的
+     * 传输会丢成空对象 `{}`）。接收读取统一走 message-element 的
+     * readVideoThumbPath（Map / 平面对象 / 字符串三形态均容忍）。
      * 发送时必须传真实 Map——JSON 序列化会丢成 `{}`，wrapper 转换失败。
      */
-    thumbPath?: Map<number, string>;
+    thumbPath?: Map<number, string> | Record<string, string> | string;
     transferStatus?: number;
     progress?: number;
     invalidState?: number;
