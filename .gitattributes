@@ -4,3 +4,6 @@
 * text=auto eol=lf
 
 *.tmpl linguist-language=Text
+
+# 语言统计排除测试文件：GitHub Linguist 不计入 TS 行数
+*.test.ts linguist-detectable=false
