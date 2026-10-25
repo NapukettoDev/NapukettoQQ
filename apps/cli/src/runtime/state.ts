@@ -1,5 +1,5 @@
 /**
- * runtime-state.ts：账号运行时状态文件 + 进程控制原语（2026-09-08 T8）。
+ * state.ts：账号运行时状态文件 + 进程控制原语（2026-09-08 T8）。
  *
  * 跨进程通信选型（决策记录）：现有 IPC 为 stdio JSON 行协议（NAPUTO_IPC=1，
  * koishi 插件专用），supervisor 子进程不在此模式；引入独立通道（socket/pipe）

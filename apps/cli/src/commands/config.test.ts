@@ -1,5 +1,5 @@
 /**
- * config-validate.test.ts：config validate 子命令单测（2026-10-25）。
+ * config.test.ts：config 子命令单测（config validate，2026-10-25）。
  *
  * 覆盖四态（文件合法 / 文件非法 / 内联合法 / 内联非法）+ 无参形态（生效配置；
  * 文件缺失纯只读报「配置文件不存在」不落模板）+ 参数冲突（用法错误）。
@@ -12,11 +12,11 @@ import process from "node:process";
 import { ConfigError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./logger.js", () => ({
+vi.mock("../logger.js", () => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { cmdConfigValidate } from "./config-cmds.js";
+import { cmdConfigValidate } from "./config.js";
 
 let tmp = "";
 const inline = JSON.stringify({ autoRestart: true, accounts: [{ qq: "10086" }] });

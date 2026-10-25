@@ -12,7 +12,7 @@
  */
 import process from "node:process";
 import { configError } from "@napuketto/kernel";
-import { type CliConfig, parseCliConfig } from "./config-parse.js";
+import { type CliConfig, parseCliConfig } from "./schema.js";
 
 /** 内联配置 env 键（读取为精确键访问；Windows 上 process.env 本身大小写不敏感）。 */
 const INLINE_CONFIG_ENV = "NAPKETTO_CONFIG_JSON";

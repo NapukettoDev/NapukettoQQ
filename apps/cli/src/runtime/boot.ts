@@ -33,9 +33,9 @@ import {
     writeStopSentinel,
 } from "@napuketto/loader";
 import QRCode from "qrcode";
-import { isInlineConfigActive } from "./config-inline.js";
-import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "./logger.js";
-import { writeAccountRuntime } from "./runtime-state.js";
+import { isInlineConfigActive } from "../config/inline.js";
+import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "../logger.js";
+import { writeAccountRuntime } from "./state.js";
 
 /** 单账号启动选项。 */
 export interface BootOptions {

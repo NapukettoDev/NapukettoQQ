@@ -1,7 +1,7 @@
 /**
- * ops-commands.ts：status / stop / restart 运维命令实现（2026-09-08 T8）。
+ * ops.ts：status / stop / restart 运维命令实现（2026-09-08 T8）。
  *
- * 数据源：runtime-state 状态文件（supervisor/单账号 boot 写入）+ liveness 检测。
+ * 数据源：runtime/state 状态文件（supervisor/单账号 boot 写入）+ liveness 检测。
  * stop/restart 语义（2026-10-25 优雅化）：
  *  - stop -q <uin>：写单账号停止哨兵 → 等该账号进程链优雅退出 → 超时树杀兜底。
  *    ⚠️ supervisor 在跑且 autoRestart 时账号会被自动拉起——提示用户先 `napuketto stop`。
@@ -11,7 +11,7 @@
  */
 import process from "node:process";
 import { removeStopSentinel, writeStopSentinel } from "@napuketto/loader";
-import { logger } from "./logger.js";
+import { logger } from "../logger.js";
 import {
     type AccountRuntime,
     aggregateStatus,
@@ -20,7 +20,7 @@ import {
     listAccountRuntimes,
     readSupervisorRuntime,
     spawnDetached,
-} from "./runtime-state.js";
+} from "../runtime/state.js";
 
 /** 运维命令选项。 */
 export interface OpsOptions {

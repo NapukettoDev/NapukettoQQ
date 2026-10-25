@@ -13,15 +13,15 @@ import process from "node:process";
 import { createInterface } from "node:readline";
 import { EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
-import { loadCliConfigWithSource } from "./config-cmds.js";
-import type { CliAccountConfig, CliConfig } from "./config-parse.js";
+import type { CliAccountConfig, CliConfig } from "../config/schema.js";
+import { loadCliConfigWithSource } from "../config/store.js";
 import {
     effectiveConsoleEnv,
     effectiveConsoleFormat,
     logger,
     resolveCliLogConfig,
-} from "./logger.js";
-import { writeAccountRuntime, writeSupervisorRuntime } from "./runtime-state.js";
+} from "../logger.js";
+import { writeAccountRuntime, writeSupervisorRuntime } from "./state.js";
 
 /** 默认重启延迟（毫秒）。 */
 const DEFAULT_RESTART_DELAY_MS = 2000;

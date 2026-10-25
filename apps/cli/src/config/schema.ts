@@ -1,5 +1,5 @@
 /**
- * 主配置类型与手写校验器（从 config-cmds.ts 拆分，2026-08-08 FTA 优化）
+ * 主配置类型与手写校验器（原 config-cmds.ts 拆分，2026-08-08 FTA 优化）
  *
  * 主配置 parse（不引入 zod）：数据根 / 自动重启 / 重启延迟 / 账号列表。
  * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
@@ -9,7 +9,7 @@
  * 内联与文件两形态共用本校验器）。
  */
 import { configError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
-import { RESERVED_PLACEHOLDER_QINS } from "./config-template.js";
+import { RESERVED_PLACEHOLDER_QINS } from "./template.js";
 
 /** 默认自动重启。 */
 const DEFAULT_AUTO_RESTART = true;

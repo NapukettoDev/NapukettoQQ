@@ -1,5 +1,5 @@
 /**
- * 配置模板（TOML 注释版，从 config-cmds.ts 拆分，2026-08-08 FTA 优化）。
+ * 配置模板（TOML 注释版，原 config-cmds.ts 拆分，2026-08-08 FTA 优化）。
  * `config init` 与首次启动（loadCliConfig）缺失时生成。
  *
  * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在

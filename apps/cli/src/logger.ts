@@ -22,7 +22,7 @@ import {
     resolveConfigPath,
     resolveDataRoot,
 } from "@napuketto/kernel";
-import { readInlineConfigText } from "./config-inline.js";
+import { readInlineConfigText } from "./config/inline.js";
 
 /** 已解析日志配置缓存（preAction 首次解析后固定；-d 后续变化不影响已构造 logger）。 */
 let cachedConfig: LogConfig | null = null;
