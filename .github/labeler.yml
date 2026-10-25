@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026-present Napuketto contributors.
+
+# PR 自动打标配置（actions/labeler，由 triage workflow 消费）。
+#
+# 仅覆盖「范围（pkg / protocol / native）」与「文档 / CI」两个维度：类型
+# label 由维护者给出，状态与上游维度由维护者手动维护。glob 未命中时不出
+# label；sync-labels 关闭，只增不减，手动摘除不会被后续 push 加回。
+#
+# 前导 / 锚定仓库根级文件（否则会匹配到各包内的同名文件）。
+# protocol 目录在 pkg: adapter 之下，协议相关 PR 会同时带上两个 label，
+# 属预期：粗粒度看包、细粒度看协议。
+
+"pkg: kernel":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/kernel/**"
+
+"pkg: network":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/network/**"
+
+"pkg: media":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/media/**"
+
+"pkg: adapter":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/adapter/**"
+
+"pkg: loader":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/loader/**"
+
+"pkg: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/cli/**"
+
+"pkg: create":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/napuketto-create/**"
+
+"protocol: onebot11":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/adapter/src/onebot11/**"
+
+"protocol: satori":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/adapter/src/satori/**"
+
+"protocol: kurobot":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/adapter/src/kurobot/**"
+
+"native":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/loader/native/**"
+          - "/.gitmodules"
+
+"docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+"ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "tooling/**"
+          - "/package.json"
+          - "/pnpm-lock.yaml"
+          - "/pnpm-workspace.yaml"
+          - "/tsconfig.json"
+          - "/biome.json"
+          - "/vitest.config.ts"
+          - "/.fallowrc.jsonc"
+          - "/.editorconfig"
