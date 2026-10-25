@@ -12,17 +12,23 @@ import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import { createInterface } from "node:readline";
 import { resolveDataRoot } from "@napuketto/kernel";
+import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
 import { loadCliConfig } from "./config-cmds.js";
 import type { CliAccountConfig, CliConfig } from "./config-parse.js";
-import { logger } from "./logger.js";
+import {
+    effectiveConsoleEnv,
+    effectiveConsoleFormat,
+    logger,
+    resolveCliLogConfig,
+} from "./logger.js";
 import { writeAccountRuntime, writeSupervisorRuntime } from "./runtime-state.js";
 
 /** 默认重启延迟（毫秒）。 */
 const DEFAULT_RESTART_DELAY_MS = 2000;
 /** 退出轮询间隔（毫秒）。 */
 const EXIT_POLL_MS = 100;
-/** 子进程强制退出时限（毫秒，超时未退则父进程强制退出）。 */
-const FORCE_EXIT_MS = 5000;
+/** 子进程优雅退出时限（毫秒）：哨兵/信号后子进程自行停止，超时强杀兜底。 */
+const FORCE_EXIT_MS = 8000;
 
 /** supervisor 选项。 */
 export interface SupervisorOptions {
@@ -60,17 +66,29 @@ interface SupervisorCtx {
     children: Map<string, ChildProcess>;
     /** 每账号守护重启计数（写 runtime.json 用）。 */
     restartCounts: Map<string, number>;
+    /** 子进程追加 env（NO_BANNER + 渲染决策传播）。 */
+    childEnv: Record<string, string>;
+    /** pretty 模式才加 [uin] 前缀转发（single-line/json 记录自带 account 字段）。 */
+    prefixEnabled: boolean;
     isStopping: () => boolean;
 }
 
-/** 子进程输出前缀转发（stdout/stderr 逐行 `[uin] ` 前缀；pino 行结构化保留在行内）。 */
-function forwardPrefixed(stream: NodeJS.ReadableStream | null, uin: string): void {
+/**
+ * 子进程输出前缀转发（stdout/stderr 逐行）：pretty 模式加 `[uin] ` 前缀
+ * （pino 行结构化保留在行内）；single-line/json 模式记录自身已带结构化
+ * account 字段（json 加前缀会破坏逐行 JSON.parse），原样透传。
+ */
+function forwardPrefixed(
+    stream: NodeJS.ReadableStream | null,
+    uin: string,
+    prefixEnabled: boolean,
+): void {
     if (stream === null) {
         return;
     }
     const rl = createInterface({ input: stream });
     rl.on("line", (line) => {
-        process.stdout.write(`[${uin}] ${line}\n`);
+        process.stdout.write(prefixEnabled ? `[${uin}] ${line}\n` : `${line}\n`);
     });
 }
 
@@ -80,18 +98,26 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
         return;
     }
     const restartCount = ctx.restartCounts.get(acct.qq) ?? 0;
-    logger.info({ qq: acct.qq, pid: process.pid, restartCount }, "启动账号");
+    // 引导细节（2026-10-25 级别重分配）：账号上线由子进程登录日志报告，此处降 debug
+    logger.debug({ qq: acct.qq, pid: process.pid, restartCount }, "启动账号");
     const args = [ctx.entry, "-q", acct.qq, "--data-dir", ctx.dataRoot];
     if (ctx.stubDir !== undefined) {
         args.push("--stub-dir", ctx.stubDir);
     }
     // stdio 管道化（2026-09-08 T8）：逐行前缀转发（多账号输出可辨别），
-    // 替代 inherit——结构化状态（runtime.json：pid/启动时间/重启计数）同步落盘
+    // 替代 inherit——结构化状态（runtime.json：pid/启动时间/重启计数）同步落盘。
+    // env：banner 由 supervisor 统一打（每树至多一次），子进程注入 NO_BANNER；
+    // 渲染决策（format/colorize）按本进程最终控制台形态传播（子进程 stdout 恒 pipe）。
     const child = spawn(process.execPath, args, {
         stdio: ["inherit", "pipe", "pipe"],
+        env: {
+            ...process.env,
+            NAPUKETTO_NO_BANNER: "1",
+            ...ctx.childEnv,
+        },
     });
-    forwardPrefixed(child.stdout, acct.qq);
-    forwardPrefixed(child.stderr, acct.qq);
+    forwardPrefixed(child.stdout, acct.qq, ctx.prefixEnabled);
+    forwardPrefixed(child.stderr, acct.qq, ctx.prefixEnabled);
     ctx.children.set(acct.qq, child);
     writeAccountRuntime(ctx.dataRoot, {
         uin: acct.qq,
@@ -129,18 +155,24 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
     });
 }
 
-/** 停止全部子进程，全部退出后父进程退出（2026-08-07：超时强杀兜底）。 */
+/** 停止全部子进程，全部退出后父进程退出（2026-10-25 优雅化）。
+ *
+ * 优雅路径：写停止哨兵（all）→ 子进程链（boot / self-host）自行有序退出 →
+ * 全部退出后 exit 0（退出码契约：0 = 请求式正常退出）。超时（FORCE_EXIT_MS）
+ * 未退的子进程 kill 兜底（Windows 下为硬杀）后仍 exit 0——关停请求本身是正常路径，
+ * 与崩溃（非 0）区分是契约的核心目标。
+ */
 function stopAll(ctx: SupervisorCtx): void {
     logger.info("收到退出信号，停止全部账号");
-    for (const child of ctx.children.values()) {
-        child.kill();
-    }
-    // 超时强杀（2026-08-07 修复）：子进程不响应 SIGTERM（自建宿主卡死等）时
-    // 父进程死等 setInterval 永不退出——限时后强制退出。
+    writeStopSentinel(ctx.dataRoot, "all");
+    // 超时兜底：子进程不响应（自建宿主卡死等）时强杀残留，父进程不再死等
     const forceTimer = setTimeout(() => {
-        logger.warn("子进程未在限时内退出，强制退出");
-        process.exit(1);
+        for (const child of ctx.children.values()) {
+            child.kill();
+        }
+        process.exit(0);
     }, FORCE_EXIT_MS);
+    forceTimer.unref?.();
     const wait = setInterval(() => {
         if (ctx.children.size === 0) {
             clearInterval(wait);
@@ -164,6 +196,8 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     const children = new Map<string, ChildProcess>();
     const restartCounts = new Map<string, number>();
     let stopping = false;
+    // 渲染决策：按本进程最终控制台形态解析（[log] 配置 + TTY），传播给子进程
+    const logCfg = resolveCliLogConfig(opts.dataDir);
     const ctx: SupervisorCtx = {
         dataRoot,
         entry,
@@ -172,6 +206,8 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         ...(opts.stubDir !== undefined ? { stubDir: opts.stubDir } : {}),
         children,
         restartCounts,
+        childEnv: effectiveConsoleEnv(logCfg),
+        prefixEnabled: effectiveConsoleFormat(logCfg) === "pretty",
         isStopping: () => stopping,
     };
 
@@ -186,7 +222,9 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         startAccount(ctx, acct);
     }
 
-    // 信号转发：停止全部子进程 → 父进程退出
+    // 信号转发：停止全部子进程 → 父进程退出。
+    // SIGBREAK = Windows CTRL_BREAK_EVENT（嵌入式宿主 CREATE_NEW_PROCESS_GROUP +
+    // GenerateConsoleCtrlEvent 可优雅停整树）；另接停止哨兵（宿主/脚本写文件即可）。
     const shutdown = (): void => {
         if (stopping) {
             return;
@@ -196,6 +234,9 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
+    process.on("SIGBREAK", shutdown);
+    // supervisor 不持有账号：仅响应 all/空内容哨兵（单账号哨兵由对应 boot/self-host 自行消费）
+    watchStopSentinel({ dataRoot, onTrigger: shutdown });
 
     // 常驻：直到收到退出信号（stopAll 内 process.exit）
     await new Promise<void>(() => {

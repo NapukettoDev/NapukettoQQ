@@ -71,6 +71,12 @@ export interface LaunchOptions {
      */
     stdio?: StdioOptions;
     /**
+     * 追加注入子进程的环境变量（覆盖同名继承值；值按原样传递，不转 wine 路径）。
+     * cli 用：传播有效控制台渲染决策（NAPUKETTO_LOG_FORMAT/COLORIZE——子进程
+     * stdout 恒为 pipe，TTY 判定失真）与数据根（NAPUTO_DATA_ROOT，停止哨兵用）。
+     */
+    extraEnv?: Record<string, string>;
+    /**
      * 阶段回调（stub 校验/win-node 下载/spawn 提示，2026-08-23 起——下载
      * 313MB 安装包与 win-node 全程静默的坑）。调用方接 logger.info。
      */
@@ -354,6 +360,7 @@ function buildLaunchEnv(options: LaunchOptions, useWine: boolean): Record<string
         ...(options.quickUin !== undefined ? { [ENV.QUICK_UIN]: options.quickUin } : {}),
         ...(options.qrOnly === true ? { [ENV.QR_ONLY]: "1" } : {}),
         ...(options.ipc === true ? { [ENV.IPC]: "1" } : {}),
+        ...(options.extraEnv !== undefined ? options.extraEnv : {}),
     };
     return { ...env, ...optional };
 }
@@ -381,4 +388,6 @@ export const ENV = {
     QR_ONLY: "NAPUTO_QR_ONLY",
     /** IPC 子进程模式（koishi 插件驱动：stdout JSON 行 + stdin action/control）。 */
     IPC: "NAPUTO_IPC",
+    /** 数据根（cli 注入：停止哨兵目录解析用，self-host 不再从 CFG_DIR 反推）。 */
+    DATA_ROOT: "NAPUTO_DATA_ROOT",
 } as const;

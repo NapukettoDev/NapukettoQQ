@@ -6,7 +6,7 @@
  * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
  * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验。
  */
-import { kernelError, resolveDataRoot } from "@napuketto/kernel";
+import { kernelError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
 import { RESERVED_PLACEHOLDER_QINS } from "./config-template.js";
 
 /** 默认自动重启。 */
@@ -42,6 +42,8 @@ export interface CliConfig {
     restartDelayMs: number;
     /** 账号列表（至少一个，qq 必填）。 */
     accounts: CliAccountConfig[];
+    /** [log] 日志配置段（kernel parseLogConfig 解析；未配置段时 undefined = 全缺省）。 */
+    log?: LogConfig;
 }
 
 /** 解析账号内协议段（宽松对象，装配时由 zod schema 严格校验）。 */
@@ -162,6 +164,15 @@ function parseAccount(item: unknown): CliAccountConfig {
     return out;
 }
 
+/**
+ * [log] 段落库净化：format 为 undefined（= 按 TTY 自动）时剔除该键，
+ * 避免 toml 回写（config list/apply 的 stringifyToml）遇到 undefined 值。
+ */
+function stripUndefinedFormat(log: LogConfig): LogConfig {
+    const { format, ...rest } = log;
+    return format === undefined ? rest : { ...rest, format };
+}
+
 /** 手写校验器：主配置 parse（不引入 zod）。 */
 export function parseCliConfig(input: unknown): CliConfig {
     if (typeof input !== "object" || input === null) {
@@ -172,5 +183,14 @@ export function parseCliConfig(input: unknown): CliConfig {
     const autoRestart = parseAutoRestart(raw);
     const restartDelayMs = parseRestartDelayMs(raw);
     const accounts = parseAccounts(raw);
-    return { dataDir, autoRestart, restartDelayMs, accounts };
+    // [log] 段：kernel parseLogConfig 严格校验（非法值报错；未配置段 = undefined）
+    const log =
+        raw["log"] !== undefined ? stripUndefinedFormat(parseLogConfig(raw["log"])) : undefined;
+    return {
+        dataDir,
+        autoRestart,
+        restartDelayMs,
+        accounts,
+        ...(log !== undefined ? { log } : {}),
+    };
 }

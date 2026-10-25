@@ -8,6 +8,17 @@ export type { ConfigFormat, ConfigOptions, ConfigSchema } from "./config.js";
 export { ConfigBase, parseToml, stringifyToml } from "./config.js";
 export type { KernelErrorCode } from "./errors.js";
 export { isKernelError, KERNEL_ERROR_CODES, KernelError, kernelError } from "./errors.js";
+export type {
+    LogConfig,
+    LogEnvSource,
+    LogFileConfig,
+    LogFormat,
+    LogModuleName,
+    TimestampMode,
+} from "./log-config.js";
+export { parseLogConfig } from "./log-config.js";
+export type { ConsoleFormatStreamOptions } from "./log-format.js";
+export { createConsoleFormatStream } from "./log-format.js";
 export type { LoggerOptions, LogLevel } from "./logger.js";
 export { createLogger } from "./logger.js";
 export type { ConfigPathOptions, PathOptions } from "./paths.js";

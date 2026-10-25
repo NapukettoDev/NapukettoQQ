@@ -37,6 +37,31 @@ autoRestart = true
 restartDelayMs = 2000
 
 # ------------------------------------------------------------
+# 日志（[log]，可选——不配置即用缺省：终端 pretty 多行 / 管道 single-line）
+# ------------------------------------------------------------
+# 嵌入式宿主（把 napuketto 打进服务端等场景）推荐：
+#   [log]
+#   format = "single-line"     # 或 "json"（NDJSON，宿主按 level/module 精确路由）
+#   level = "warn"             # 控制台只留警告以上，细节进文件（配 [log.file]）
+#   banner = false
+#
+# [log]
+# format = "pretty"            # pretty | single-line | json（缺省按 TTY 自动）
+# level = "info"               # trace|debug|info|warn|error|fatal（控制台级别）
+# banner = true                # 启动字符画
+# timestamp = "local"          # local | iso8601 | elapsed
+# unboundReceive = true        # false = 未绑定频道的接收行不打（kurobot 握手后生效）
+# [log.levels]                 # 按模块覆盖级别：cli / kernel / loader / ob11
+# # loader = "debug"           # 例：终端上看接收行（默认已降 debug）
+# # ob11 = "debug"             # 例：协议校准数据（含原始 hex）
+# [log.file]                   # 独立文件 sink（可选；级别可低于控制台）
+# # path = "logs/napuketto-console.log"
+# # level = "debug"
+#
+# 环境变量覆盖（优先级高于本文件）：NAPUKETTO_LOG_LEVEL / NAPUKETTO_LOG_FORMAT /
+# NAPUKETTO_NO_BANNER（兼容旧拼写 NAPKETTO_LOG_LEVEL）。
+
+# ------------------------------------------------------------
 # 账号（至少一个，qq 必填）
 # ------------------------------------------------------------
 

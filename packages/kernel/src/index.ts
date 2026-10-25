@@ -48,9 +48,15 @@ export type {
     ConfigOptions,
     ConfigSchema,
     KernelErrorCode,
+    LogConfig,
+    LogEnvSource,
+    LogFileConfig,
+    LogFormat,
     LoggerOptions,
     LogLevel,
+    LogModuleName,
     PathOptions,
+    TimestampMode,
 } from "./infra/index.js";
 export {
     ConfigBase,
@@ -62,6 +68,7 @@ export {
     kernelError,
     MAIN_CONFIG_FILE,
     PathWrapper,
+    parseLogConfig,
     parseToml,
     resolveConfigPath,
     resolveDataRoot,

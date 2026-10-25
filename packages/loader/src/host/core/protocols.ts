@@ -9,7 +9,7 @@
  *  - 非 IPC（cli pnpm start）：照旧装配 OB11/Satori 网络传输。
  */
 import { env } from "../env.js";
-import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
+import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
 import { errMsg, log } from "../util.js";
 import { assembleOb11AndSatori } from "./assemble-protocols.js";
 import { createKernelServices, type KernelServices } from "./kernel-services.js";
@@ -21,14 +21,16 @@ export type { KernelServices } from "./kernel-services.js";
  *
  * 返回 null = 服务未装配（session 缺失 / OB11/Satori 装配失败）——调用方据此判
  * 引导失败。env 未注入 adapter/network 入口时「跳过装配」仍返回服务（合法运行形态，
- * 如纯 kernel 探测），不算失败。
+ * 如纯 kernel 探测），不算失败。logCfg 为日志配置（loader logger 构造与接收行
+ * 过滤用，2026-10-25）。
  */
 export async function startProtocols(
     kernel: KernelLike,
     ctx: CoreContextLike,
     loginResult: LoginResultLike,
+    logCfg?: LogConfigLike,
 ): Promise<KernelServices | null> {
-    const services = await createKernelServices(kernel, ctx, loginResult);
+    const services = await createKernelServices(kernel, ctx, loginResult, logCfg);
     if (services === null) {
         return null;
     }

@@ -40,6 +40,8 @@ const env = {
     NAPKETTO_CONFIG: process.env["NAPKETTO_CONFIG"],
     /** 数据根（kernel 数据目录，cleanCache 用）。 */
     NAPKETTO_DATA: process.env["NAPKETTO_DATA"],
+    /** 数据根（launcher 注入，停止哨兵目录解析用）。 */
+    NAPUTO_DATA_ROOT: process.env["NAPUTO_DATA_ROOT"],
 };
 
 export { env };
