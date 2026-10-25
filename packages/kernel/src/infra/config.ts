@@ -107,11 +107,6 @@ export class ConfigBase<T> {
         return this.value;
     }
 
-    /** 重新从磁盘加载（外部变更后的热更新入口，P2 配置热更新使用）。 */
-    reload(): Promise<T> {
-        return this.load();
-    }
-
     /**
      * 校验纯文本配置（反序列化 + schema 校验，不读写文件；`config validate`
      * 等只读场景用）。错误包装与 load()/save() 完全一致（ConfigError，

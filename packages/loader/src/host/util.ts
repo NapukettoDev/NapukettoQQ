@@ -52,6 +52,21 @@ export function bootstrapExitCode(err: unknown): number {
 }
 
 /**
+ * bootstrap 失败收敛（2026-10-25 退出码契约）：配置校验失败（ConfigError 一族）
+ * 原样重抛——self-host 据此以 78 退出（宿主免重启），链条上任何 catch 都不得
+ * 吞掉；其余失败记日志并收敛 false（引导失败原因见 napuketto-boot.log）。
+ * @param phase 失败阶段标注（日志前缀，如 "lifecycle error" / "import kernel failed"）
+ * @returns 恒 false（调用方直接 `return convergeBootstrapFailure(e, ...)`）
+ */
+export function convergeBootstrapFailure(e: unknown, phase: string): false {
+    if (isConfigError(e)) {
+        throw e;
+    }
+    log(`bootstrap: ${phase}: ${errMsg(e)}`);
+    return false;
+}
+
+/**
  * 逐条处理消息回调参数（onRecvMsg 为消息数组——2026-08-07 运行时实证；
  * 兼容单条对象，过滤无效项）。
  */

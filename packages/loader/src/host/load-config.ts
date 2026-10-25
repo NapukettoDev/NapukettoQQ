@@ -28,7 +28,7 @@ export interface ProtocolSections {
 }
 
 /** 内联来源时 cfgFile 的哨兵值（非文件路径；日志/错误标注里不出现真实路径）。 */
-export const INLINE_CONFIG_SENTINEL = "<inline>";
+const INLINE_CONFIG_SENTINEL = "<inline>";
 
 /** 宽松账号项（TOML [[accounts]] 元素 / JSON accounts 元素）。 */
 interface AccountLike {

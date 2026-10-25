@@ -176,23 +176,44 @@ try {
 
 // 3. kernel 引导（bootstrap.ts 完全复用——登录/initAndStartSession/冒烟/协议装配）
 log("[self-host] 调 bootstrap(state) ...");
+
+/** 引导未完成出口：补发（或不覆盖）failed 状态后退出——运行时失败，exit 1。 */
+function exitBootIncomplete(): never {
+    // 引导未完成（登录失败/服务装配失败/生命周期异常——bootstrap 内部
+    // 不抛错，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log）。
+    // 已发过更具体的 failed（如 NOT_LOGIN）则不覆盖，否则补发通用
+    // failed；随后退出，由 koishi driver 既有重启循环接管（cli 模式
+    // 同样退出——失败留驻只会以假 ready 干扰父进程判断，2026-09-06）。
+    if (shouldSendGenericBootFailed(ipcMode, lastIpcStatusPhase())) {
+        sendStatus("failed", "bootstrap 未完成", {
+            code: "UNKNOWN",
+            message: "bootstrap 未完成，详见 napuketto-boot.log",
+        });
+    }
+    process.exit(1);
+}
+
+/** bootstrap 抛错出口（2026-10-25 退出码契约）：配置校验失败（ConfigError 一族，
+ * 含协议段 seed zod 校验）= 78（EX_CONFIG 惯例，宿主据此免重启）；其余 = 1。
+ * 日志文案不做机器耦合，判定只认错误名。 */
+function exitOnBootstrapError(e: unknown): never {
+    const code = bootstrapExitCode(e);
+    log(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
+    if (ipcMode) {
+        sendStatus("failed", "bootstrap 失败", {
+            code: code === 78 ? "INVALID_PARAM" : "UNKNOWN",
+            message: errMsg(e),
+        });
+    }
+    process.exit(code);
+}
+
 // void：显式忽略 IIFE promise（内部已 try/catch 兜底，不会 reject）
 void (async () => {
     try {
         const ok = await bootstrap(state);
         if (!ok) {
-            // 引导未完成（登录失败/服务装配失败/生命周期异常——bootstrap 内部
-            // 不抛错，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log）。
-            // 已发过更具体的 failed（如 NOT_LOGIN）则不覆盖，否则补发通用
-            // failed；随后退出，由 koishi driver 既有重启循环接管（cli 模式
-            // 同样退出——失败留驻只会以假 ready 干扰父进程判断，2026-09-06）。
-            if (shouldSendGenericBootFailed(ipcMode, lastIpcStatusPhase())) {
-                sendStatus("failed", "bootstrap 未完成", {
-                    code: "UNKNOWN",
-                    message: "bootstrap 未完成，详见 napuketto-boot.log",
-                });
-            }
-            process.exit(1);
+            exitBootIncomplete();
         }
         log("[self-host] bootstrap 完成");
         if (ipcMode) {
@@ -200,17 +221,6 @@ void (async () => {
         }
         // 常驻：协议服务在事件循环上；不 process.exit（业务运行中）
     } catch (e) {
-        // 退出码契约（2026-10-25）：配置校验失败（ConfigError 一族，含协议段
-        // seed zod 校验）= 78（EX_CONFIG 惯例，宿主据此免重启）；其余运行时
-        // 失败 = 1。日志文案不做机器耦合，判定只认错误名。
-        const code = bootstrapExitCode(e);
-        log(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
-        if (ipcMode) {
-            sendStatus("failed", "bootstrap 失败", {
-                code: code === 78 ? "INVALID_PARAM" : "UNKNOWN",
-                message: errMsg(e),
-            });
-        }
-        process.exit(code);
+        exitOnBootstrapError(e);
     }
 })();

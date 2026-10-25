@@ -18,9 +18,9 @@
  */
 import { dirname, join } from "node:path";
 import { env } from "../env.js";
-import type { CoreContextLike, KernelLike } from "../types.js";
-import { errMsg, isConfigError, log, type SharedState } from "../util.js";
-import { type BootstrapEnv, bootstrapWithCore } from "./bootstrap-core.js";
+import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
+import { convergeBootstrapFailure, log, type SharedState } from "../util.js";
+import { type BootstrapEnv, bootstrapWithCore, probeOnce } from "./bootstrap-core.js";
 
 /** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
  * 「请下载最新版」；major.node 解析的 537376818 成功）。自研，参考 NapCat 思路。
@@ -44,33 +44,46 @@ function resolveAppid(kernel: KernelLike, bootEnv: BootstrapEnv): string | numbe
     );
 }
 
-/** 快速登录 + session 初始化（kernel lifecycle 路径）。生命周期方法缺失 → false（无登录态，引导不完整）。 */
-async function quickLoginAndStartSession(
+/** kernel 生命周期能力（quickLogin 可用；initAndStartSession 本就必选）。
+ * 类型谓词：guard 之后直接调用 quickLogin 不需再判空。 */
+interface LifecycleKernel extends KernelLike {
+    quickLogin: NonNullable<KernelLike["quickLogin"]>;
+}
+
+/** kernel 生命周期能力探测（quickLogin / initAndStartSession 是否可用）。 */
+function hasLifecycleFns(kernel: KernelLike): kernel is LifecycleKernel {
+    return (
+        typeof kernel.quickLogin === "function" && typeof kernel.initAndStartSession === "function"
+    );
+}
+
+/** 登录前置：loginConfig 构建并 initConfig（kernel/ctx 能力缺失时跳过，不阻塞登录）。 */
+function initLoginConfig(
     kernel: KernelLike,
     ctx: CoreContextLike,
     Appid: number,
-    bootEnv: BootstrapEnv,
-): Promise<boolean> {
-    if (
-        typeof kernel.quickLogin !== "function" ||
-        typeof kernel.initAndStartSession !== "function"
-    ) {
-        log("bootstrap: kernel missing lifecycle fns (quickLogin/initAndStartSession)");
-        return false;
+    qqVersion: string,
+    dataDir: string,
+): void {
+    if (typeof kernel.buildLoginConfig !== "function" || !ctx.loginService) {
+        return;
     }
-    if (typeof kernel.buildLoginConfig === "function" && ctx.loginService) {
-        const loginCfg = kernel.buildLoginConfig(
-            Appid,
-            bootEnv.qqVersion || "",
-            bootEnv.dataDir || ".",
-        );
-        if (typeof ctx.loginService.initConfig === "function") {
-            ctx.loginService.initConfig(loginCfg);
-            log("bootstrap: loginService.initConfig OK");
-        }
+    const loginCfg = kernel.buildLoginConfig(Appid, qqVersion, dataDir);
+    if (typeof ctx.loginService.initConfig === "function") {
+        ctx.loginService.initConfig(loginCfg);
+        log("bootstrap: loginService.initConfig OK");
     }
-    const loginResult = await kernel.quickLogin(ctx, {});
-    log(`bootstrap: quickLogin OK, uin=${loginResult.uin}, uid=${loginResult.uid}`);
+}
+
+/** NT session 配置构建 + initAndStartSession（登录成功后拉起 session）。 */
+async function buildAndStartSession(
+    kernel: KernelLike,
+    ctx: CoreContextLike,
+    loginResult: LoginResultLike,
+    Appid: number,
+    qqVersion: string,
+    dataDir: string,
+): Promise<void> {
     // 设备指纹 guid：loginService.getMachineGuid()（kernel 原生反射，反风控）。
     const machineGuid =
         typeof kernel.readMachineGuid === "function"
@@ -78,34 +91,37 @@ async function quickLoginAndStartSession(
             : "";
     const sessionConfig = kernel.buildSessionConfig({
         appid: Appid,
-        fullVersion: bootEnv.qqVersion || "",
+        fullVersion: qqVersion,
         selfUin: loginResult.uin,
         selfUid: loginResult.uid,
-        accountPath: bootEnv.dataDir || ".",
-        downloadPath: join(bootEnv.dataDir || ".", "temp"),
+        accountPath: dataDir,
+        downloadPath: join(dataDir, "temp"),
         machineGuid,
     });
     const listener = kernel.createLifecycleSessionListener();
     await kernel.initAndStartSession(ctx, sessionConfig, listener, {
         timeoutMs: 20000,
     });
-    log("bootstrap: session init + startNT OK!");
-    return true;
 }
 
-/** 冒烟探测（NAPUTO_PROBE=1 时运行）。 */
-async function probeRuntime(kernel: KernelLike, ctx: CoreContextLike): Promise<void> {
-    if (env.NAPUTO_PROBE !== "1" || typeof kernel.probeRuntime !== "function") {
-        return;
+/** 快速登录 + session 初始化（kernel lifecycle 路径）。生命周期方法缺失 → false（无登录态，引导不完整）。 */
+async function quickLoginAndStartSession(
+    kernel: KernelLike,
+    ctx: CoreContextLike,
+    Appid: number,
+    bootEnv: BootstrapEnv,
+): Promise<boolean> {
+    if (!hasLifecycleFns(kernel)) {
+        log("bootstrap: kernel missing lifecycle fns (quickLogin/initAndStartSession)");
+        return false;
     }
-    try {
-        const probe = kernel.probeRuntime(ctx);
-        log(
-            `bootstrap: probe done, session=${probe.session ? "ok" : "null"}, services=${Object.keys(probe.services ?? {}).length}`,
-        );
-    } catch (e) {
-        log(`bootstrap: probe error: ${errMsg(e)}`);
-    }
+    const dataDir = bootEnv.dataDir || ".";
+    initLoginConfig(kernel, ctx, Appid, bootEnv.qqVersion, dataDir);
+    const loginResult = await kernel.quickLogin(ctx, {});
+    log(`bootstrap: quickLogin OK, uin=${loginResult.uin}, uid=${loginResult.uid}`);
+    await buildAndStartSession(kernel, ctx, loginResult, Appid, bootEnv.qqVersion, dataDir);
+    log("bootstrap: session init + startNT OK!");
+    return true;
 }
 
 /** 回退：旧装配路径（startNapuketto + 手工 lifecycle）。返回引导是否完整完成。 */
@@ -129,8 +145,61 @@ async function bootstrapFallback(
         `bootstrap: startNapuketto OK, engine=${typeof ctx.engine}, session=${ctx.session !== null}`,
     );
     const loggedIn = await quickLoginAndStartSession(kernel, ctx, Appid as number, bootEnv);
-    await probeRuntime(kernel, ctx);
+    probeOnce(kernel, ctx);
     return loggedIn;
+}
+
+/** kernel 入口能力探测（startNapuketto / NapukettoCore 任一装配入口即可）。 */
+function hasAssemblyEntry(kernel: KernelLike): boolean {
+    return (
+        typeof kernel.startNapuketto === "function" || typeof kernel.NapukettoCore === "function"
+    );
+}
+
+/** 动态 import kernel 入口（未注入 / 导入失败 / 无装配入口 → undefined，调用方收敛 false）。 */
+async function importKernel(): Promise<KernelLike | undefined> {
+    const kernelEntry = env.NAPUTO_KERNEL_ENTRY;
+    if (!kernelEntry) {
+        log("bootstrap: NAPUTO_KERNEL_ENTRY not set");
+        return undefined;
+    }
+    const kernel = (await import(
+        `file://${kernelEntry.replace(/\\/g, "/")}`
+    )) as unknown as KernelLike;
+    log(`bootstrap: kernel imported, keys: ${Object.keys(kernel).join(", ")}`);
+    if (!hasAssemblyEntry(kernel)) {
+        log("bootstrap: kernel 无 startNapuketto/NapukettoCore 导出");
+        return undefined;
+    }
+    return kernel;
+}
+
+/** bootEnv 三元组归一化（env 快照 string | undefined → string）。 */
+function buildBootEnv(): BootstrapEnv {
+    return {
+        qqVersion: env.NAPUTO_QQ_VERSION || "",
+        dataDir: env.NAPUTO_CFG_DIR || "",
+        wrapperPath: env.NAPUTO_WRAPPER_PATH || "",
+    };
+}
+
+/** appid 解析 + 装配路径分发（NapukettoCore 走 core 装配，否则旧 fallback 路径）。 */
+async function dispatchAssembly(
+    kernel: KernelLike,
+    state: SharedState,
+    bootEnv: BootstrapEnv,
+): Promise<boolean> {
+    try {
+        // resolveAppid 失败会抛错（major.node 缺失/解析失败）——显式报错，不再静默回退。
+        const Appid = resolveAppid(kernel, bootEnv);
+        log(`bootstrap: appid=${Appid}（wrapper=${bootEnv.wrapperPath}）`);
+        if (kernel.NapukettoCore !== undefined) {
+            return await bootstrapWithCore(kernel, state, bootEnv, Appid);
+        }
+        return await bootstrapFallback(kernel, state, bootEnv, Appid);
+    } catch (e) {
+        return convergeBootstrapFailure(e, "lifecycle error");
+    }
 }
 
 /**
@@ -141,48 +210,13 @@ async function bootstrapFallback(
  *   失败（ConfigError 契约）重抛，self-host 以 78 区分配置未就绪与运行时崩溃。
  */
 export async function bootstrap(state: SharedState): Promise<boolean> {
-    const kernelEntry = env.NAPUTO_KERNEL_ENTRY;
-    if (!kernelEntry) {
-        log("bootstrap: NAPUTO_KERNEL_ENTRY not set");
-        return false;
-    }
     try {
-        const kernel = (await import(
-            `file://${kernelEntry.replace(/\\/g, "/")}`
-        )) as unknown as KernelLike;
-        log(`bootstrap: kernel imported, keys: ${Object.keys(kernel).join(", ")}`);
-        if (
-            typeof kernel.startNapuketto !== "function" &&
-            typeof kernel.NapukettoCore !== "function"
-        ) {
-            log("bootstrap: kernel 无 startNapuketto/NapukettoCore 导出");
+        const kernel = await importKernel();
+        if (kernel === undefined) {
             return false;
         }
-        const bootEnv: BootstrapEnv = {
-            qqVersion: env.NAPUTO_QQ_VERSION || "",
-            dataDir: env.NAPUTO_CFG_DIR || "",
-            wrapperPath: env.NAPUTO_WRAPPER_PATH || "",
-        };
-        try {
-            // resolveAppid 失败会抛错（major.node 缺失/解析失败）——显式报错，不再静默回退。
-            const Appid = resolveAppid(kernel, bootEnv);
-            log(`bootstrap: appid=${Appid}（wrapper=${bootEnv.wrapperPath}）`);
-            if (kernel.NapukettoCore !== undefined) {
-                return await bootstrapWithCore(kernel, state, bootEnv, Appid);
-            }
-            return await bootstrapFallback(kernel, state, bootEnv, Appid);
-        } catch (e) {
-            // 配置校验失败重抛（ConfigError 契约，2026-10-25）：self-host 据此以
-            // 78 区分「配置未就绪」与运行时崩溃（宿主免重启）；其余失败仍收敛
-            // 为 false 不抛，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log。
-            if (isConfigError(e)) {
-                throw e;
-            }
-            log(`bootstrap: lifecycle error: ${errMsg(e)}`);
-            return false;
-        }
+        return await dispatchAssembly(kernel, state, buildBootEnv());
     } catch (e) {
-        log(`bootstrap: import kernel failed: ${errMsg(e)}`);
-        return false;
+        return convergeBootstrapFailure(e, "import kernel failed");
     }
 }

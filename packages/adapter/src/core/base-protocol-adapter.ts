@@ -61,7 +61,9 @@ export abstract class BaseProtocolAdapter<TConfig> {
 
     /** 配置热更新：重新加载 → 校验 → 协议层处理。 */
     async reload(): Promise<void> {
-        const config = await this.config.reload();
+        // ConfigBase.reload() 原为 load() 的别名（已在 kernel 侧作为死代码删除），
+        // 热更新语义即重新 load，行为不变。
+        const config = await this.config.load();
         await this.hooks.onReload(config);
     }
 

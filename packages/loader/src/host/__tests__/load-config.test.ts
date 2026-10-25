@@ -42,6 +42,8 @@ async function freshLoadConfig(env: Record<string, string | undefined>): Promise
     return await import("../load-config.js");
 }
 
+const ALIAS_CONFIG_KEY = "NAPKETTO_CONFIG_json";
+
 /** kernel 桩：parseToml 返回固定文档（文件分支只走桩，不依赖 smol-toml）。 */
 function stubKernel(doc: Record<string, unknown>): KernelLike {
     return { parseToml: () => doc } as unknown as KernelLike;
@@ -51,6 +53,8 @@ afterEach(() => {
     for (const key of ENV_KEYS) {
         delete process.env[key];
     }
+    // 别名键：POSIX 用例可能中途断言失败，统一兜底清理（Windows 上未设置，删除无害）
+    delete process.env[ALIAS_CONFIG_KEY];
     if (tmp !== "") {
         rmSync(tmp, { recursive: true, force: true });
         tmp = "";
@@ -153,7 +157,9 @@ describe("loadProtocolSections 内联分支", () => {
             cfgFile,
             '[[accounts]]\nqq = "10001"\n[accounts.kurobot]\nurl = "ws://file:9000"\n',
         );
-        setEnv("NAPKETTO_CONFIG_json", JSON.stringify(accountsDoc("ws://inline:9000")));
+        setEnv(ALIAS_CONFIG_KEY, JSON.stringify(accountsDoc("ws://inline:9000")));
+        // 别名不识别 → 走文件形态：NAPKETTO_CONFIG 指向临时文件（env 清理由 afterEach 兜底）
+        setEnv("NAPKETTO_CONFIG", cfgFile);
         vi.resetModules();
         const mod = await import("../load-config.js");
         const sections = mod.loadProtocolSections(
@@ -161,7 +167,7 @@ describe("loadProtocolSections 内联分支", () => {
             "10001",
         );
         expect(sections.cfgFile).toBe(cfgFile);
-        delete process.env["NAPKETTO_CONFIG_json"];
+        expect(sections.kurobotSection).toEqual({ url: "ws://file:9000" });
     });
 });
 

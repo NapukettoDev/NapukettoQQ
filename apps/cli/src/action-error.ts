@@ -12,7 +12,7 @@ import { ConfigError, EXIT_CONFIG_INVALID } from "@napuketto/kernel";
 import { logger } from "./logger.js";
 
 /** 统一错误输出（结构化日志，错误对象经 pino serializer 带堆栈）。 */
-export function reportError(err: unknown): void {
+function reportError(err: unknown): void {
     let message = String(err);
     if (err instanceof Error) {
         const { message: errMessage } = err;

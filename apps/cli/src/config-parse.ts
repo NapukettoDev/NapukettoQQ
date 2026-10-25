@@ -123,15 +123,18 @@ function parseAccounts(raw: Record<string, unknown>): CliAccountConfig[] {
     return accounts;
 }
 
-/** 解析单个账号项（qq 必填；协议段缺省 = 不启用）。 */
-function parseAccount(item: unknown): CliAccountConfig {
-    if (typeof item !== "object" || item === null) {
-        throw configError("主配置 accounts 元素必须是对象");
-    }
-    const { qq, enabled } = item as { qq?: unknown; enabled?: unknown };
+/** 账号 qq 必填校验（非空字符串）。 */
+function parseAccountQq(raw: Record<string, unknown>): string {
+    const qq = raw["qq"];
     if (typeof qq !== "string" || qq === "") {
         throw configError("主配置账号缺少非空 qq");
     }
+    assertValidQqFormat(qq);
+    return qq;
+}
+
+/** qq 格式与占位值校验（5-11 位纯数字；模板占位号显式指路不静默）。 */
+function assertValidQqFormat(qq: string): void {
     if (!QQ_IN_FORMAT_RE.test(qq)) {
         throw configError("主配置账号 qq 必须是 5-11 位纯数字 QQ 号");
     }
@@ -140,14 +143,21 @@ function parseAccount(item: unknown): CliAccountConfig {
             `主配置账号 qq "${qq}" 是模板占位值，请编辑配置文件填入真实 QQ 号后再启动`,
         );
     }
-    const out: CliAccountConfig = { qq };
-    if (enabled !== undefined) {
-        if (typeof enabled !== "boolean") {
-            throw configError("主配置账号 enabled 必须是布尔值");
-        }
-        out.enabled = enabled;
+}
+
+/** 账号 enabled 可选校验（缺省 = 启用；显式给值必须是布尔）。 */
+function applyAccountEnabled(out: CliAccountConfig, enabled: unknown): void {
+    if (enabled === undefined) {
+        return;
     }
-    const raw = item as Record<string, unknown>;
+    if (typeof enabled !== "boolean") {
+        throw configError("主配置账号 enabled 必须是布尔值");
+    }
+    out.enabled = enabled;
+}
+
+/** 账号内协议段装配（onebot11/satori/kurobot 缺省 = 不启用该协议）。 */
+function applyProtocolSections(raw: Record<string, unknown>, out: CliAccountConfig): void {
     const onebot11 = parseProtocolSection(raw, "onebot11");
     if (onebot11 !== undefined) {
         out.onebot11 = onebot11;
@@ -160,6 +170,17 @@ function parseAccount(item: unknown): CliAccountConfig {
     if (kurobot !== undefined) {
         out.kurobot = kurobot;
     }
+}
+
+/** 解析单个账号项（qq 必填；协议段缺省 = 不启用）。 */
+function parseAccount(item: unknown): CliAccountConfig {
+    if (typeof item !== "object" || item === null) {
+        throw configError("主配置 accounts 元素必须是对象");
+    }
+    const raw = item as Record<string, unknown>;
+    const out: CliAccountConfig = { qq: parseAccountQq(raw) };
+    applyAccountEnabled(out, raw["enabled"]);
+    applyProtocolSections(raw, out);
     return out;
 }
 

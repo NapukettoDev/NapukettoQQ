@@ -82,8 +82,8 @@ class CliConfigStore extends ConfigBase<CliConfig> {
     }
 }
 
-/** 读取主配置（缺失自动落模板）。 */
-export async function loadCliConfig(dataRoot: string): Promise<CliConfig> {
+/** 读取主配置（缺失自动落模板；loadCliConfigWithSource 文件分支内部用）。 */
+async function loadCliConfig(dataRoot: string): Promise<CliConfig> {
     const store = new CliConfigStore(dataRoot);
     await ensureConfigTemplate(store.path);
     return await store.load();
@@ -264,8 +264,10 @@ async function validateConfigFile(path: string, dataRoot: string): Promise<void>
 
 /** config validate 选项（--config / --config-json 二选一；无参 = 校验生效配置）。 */
 export interface ConfigValidateOptions {
-    configPath?: string;
-    configJson?: string;
+    /** undefined = 未指定（与 --config-json 互斥）。 */
+    configPath?: string | undefined;
+    /** undefined = 未指定（与 --config-path 互斥）。 */
+    configJson?: string | undefined;
     dataDir?: string;
 }
 
