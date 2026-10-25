@@ -12,14 +12,31 @@
 - 本机配置不入库（`.gitignore`），模板由 cli/scaffold 生成。
 - 不再使用独立 JSON 协议配置文件；`ConfigBase` 仍支持按扩展名读取 JSON，但主配置固定 TOML。
 
-路径解析优先级（kernel `resolveConfigPath`）：
+配置来源优先级（文件形态下仍为单一 TOML；全链路 cli / loader 一致，2026-10-25）：
 
-1. `NAPKETTO_CONFIG` 环境变量（显式完整路径）。
-2. 项目根探测：入口模块向上找 `pnpm-workspace.yaml`；找不到则从 `cwd` 向上找
+1. `NAPKETTO_CONFIG_JSON` 环境变量：内联配置 JSON 文本（见 1.1；最高优先级）。
+2. `NAPKETTO_CONFIG` 环境变量（显式完整路径）。
+3. 项目根探测：入口模块向上找 `pnpm-workspace.yaml`；找不到则从 `cwd` 向上找
    `pnpm-workspace.yaml` 或 `package.json`。
-3. 数据根兜底：`<dataRoot>/napuketto.toml`。
+4. 数据根兜底：`<dataRoot>/napuketto.toml`。
 
-CLI 启动时会把解析结果通过 `NAPKETTO_CONFIG` 注入自建宿主，保证子进程读到同一份配置。
+CLI 启动时会把解析结果通过 `NAPKETTO_CONFIG` 注入自建宿主，保证子进程读到同一份配置
+（内联形态改为经环境变量整树继承，不注入文件路径）。
+
+### 1.1 内联配置 `NAPKETTO_CONFIG_JSON`（嵌入式宿主，2026-10-25）
+
+KuroBridge 等嵌入式宿主每次拉起前整体生成配置，经环境变量喂 JSON 文本（与
+napuketto.toml **同构**：`dataDir` / `autoRestart` / `restartDelayMs` / `accounts[]` /
+`log`，协议段嵌在账号内），消除托管 toml 文件本体。
+
+- 内联生效时不读、不写、不校验任何 toml 文件：跳过模板生成、跳过 `NAPKETTO_CONFIG`
+  路径注入；启动日志打一行 `配置来源: inline（NAPKETTO_CONFIG_JSON）`。
+- 校验失败与文件形态同族（ConfigError，见退出码契约），错误文案指明「内联配置」
+  且不含任何 toml 文件路径。
+- 协议段热更新在内联形态不可用（无文件可重读；seed 模式本就不读盘）。
+- Windows 单环境变量上限 32767 字符（约 32KB），嵌入式配置形状远小于该限；
+  超限宿主退回 `NAPKETTO_CONFIG` 文件形态。
+- 键名精确匹配（Windows 的 process.env 本身大小写不敏感）；空串 / 纯空白视为未设置。
 
 ## 2. 数据根
 
@@ -227,7 +244,8 @@ port = 5501
 
 | 变量 | 作用 |
 |---|---|
-| `NAPKETTO_CONFIG` | 全局配置文件路径（最高优先级） |
+| `NAPKETTO_CONFIG_JSON` | 内联配置 JSON 文本（最高优先级，见 1.1） |
+| `NAPKETTO_CONFIG` | 全局配置文件路径 |
 | `NAPKETTO_DATA` | 数据根 |
 | `NAPUKETTO_LOG_LEVEL` | 日志级别覆盖（全进程链生效；兼容旧拼写 `NAPKETTO_LOG_LEVEL`） |
 | `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖（pretty / single-line / json） |

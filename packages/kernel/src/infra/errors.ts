@@ -58,3 +58,25 @@ export function kernelError(
 export function isKernelError(err: unknown): err is KernelError {
     return err instanceof KernelError;
 }
+
+/**
+ * 配置校验失败（INVALID_PARAM 子型，2026-10-25 嵌入式宿主契约）：仅用于
+ * 「配置未就绪」一族——主配置校验/反序列化、内联配置、协议段 seed 校验。
+ * code 恒为 INVALID_PARAM，协议层错误码映射零涟漪；退出码分类走 instanceof
+ * （CLI/self-host 进程以 EXIT_CONFIG_INVALID 退出），与错误文案完全解耦——
+ * 文案是人读的，退出码是宿主消费的机器契约。
+ */
+export class ConfigError extends KernelError {
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, "INVALID_PARAM", options);
+        this.name = "ConfigError";
+    }
+}
+
+/** 便捷构造：`configError('主配置缺少 accounts', { cause })`。 */
+export function configError(message: string, options?: ErrorOptions): ConfigError {
+    return new ConfigError(message, options);
+}
+
+/** 配置校验失败的进程退出码（UNIX sysexits EX_CONFIG 惯例）。 */
+export const EXIT_CONFIG_INVALID = 78;

@@ -15,7 +15,13 @@ import type { KernelLike } from "../types.js";
 type LogCfgModule = typeof import("../log-cfg.js");
 
 /** 本用例涉及的 env 键（用例内显式置空，隔离宿主环境残留）。 */
-const ENV_KEYS = ["NAPKETTO_CONFIG", "NAPKETTO_DATA", "NAPUTO_CFG_DIR", "NAPUTO_DATA_ROOT"];
+const ENV_KEYS = [
+    "NAPKETTO_CONFIG",
+    "NAPKETTO_CONFIG_JSON",
+    "NAPKETTO_DATA",
+    "NAPUTO_CFG_DIR",
+    "NAPUTO_DATA_ROOT",
+];
 
 let tmp = "";
 
@@ -118,6 +124,56 @@ describe("resolveLoaderLogConfig", () => {
         );
         const cfg = mod.resolveLoaderLogConfig(kernel);
         expect(cfg.level).toBe("warn");
+    });
+});
+
+describe("resolveLoaderLogConfig 内联来源（2026-10-25）", () => {
+    it("内联生效：[log] 段取自 NAPKETTO_CONFIG_JSON，不读任何 toml 文件", async () => {
+        const mod = await freshLogCfg({
+            NAPKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
+            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+        });
+        const parseLogConfig = vi.fn((_section: unknown) => ({
+            level: "debug",
+            banner: false,
+            unboundReceive: true,
+            levels: {},
+        }));
+        // parseToml 桩抛错：若走到文件分支会进 catch 回退缺省，断言即失败
+        const kernel = stubKernel(
+            () => {
+                throw new Error("内联模式不得读文件");
+            },
+            (section) => parseLogConfig(section),
+        );
+        const cfg = mod.resolveLoaderLogConfig(kernel);
+        expect(cfg.level).toBe("debug");
+        expect(cfg.banner).toBe(false);
+        expect(parseLogConfig).toHaveBeenCalledWith({ level: "debug", banner: false });
+    });
+
+    it("内联缺 [log] 段：section 为 undefined 仍走 parseLogConfig（缺省语义）", async () => {
+        const mod = await freshLogCfg({
+            NAPKETTO_CONFIG_JSON: JSON.stringify({ accounts: [] }),
+            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+        });
+        const parseLogConfig = vi.fn((_section: unknown) => mod.defaultLogConfig());
+        const kernel = stubKernel(
+            () => ({}),
+            (section) => parseLogConfig(section),
+        );
+        mod.resolveLoaderLogConfig(kernel);
+        expect(parseLogConfig).toHaveBeenCalledWith(undefined);
+    });
+
+    it("内联 JSON 坏值：回退缺省，不阻塞引导", async () => {
+        const mod = await freshLogCfg({
+            NAPKETTO_CONFIG_JSON: "{not-json",
+            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+        });
+        const cfg = mod.resolveLoaderLogConfig(stubKernel(() => ({})));
+        expect(cfg.level).toBe("info");
+        expect(cfg.banner).toBe(true);
     });
 });
 

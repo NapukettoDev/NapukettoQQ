@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     spawn: vi.fn(),
-    loadCliConfig: vi.fn(),
+    loadCliConfigWithSource: vi.fn(),
     writeStopSentinel: vi.fn(),
     watchStopSentinel: vi.fn(),
     writeSupervisorRuntime: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 vi.mock("./config-cmds.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
-    return { ...actual, loadCliConfig: mocks.loadCliConfig };
+    return { ...actual, loadCliConfigWithSource: mocks.loadCliConfigWithSource };
 });
 vi.mock("@napuketto/loader", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
@@ -104,7 +104,7 @@ beforeEach(() => {
     delete process.env["NAPUKETTO_LOG_COLORIZE"];
     for (const fn of [
         mocks.spawn,
-        mocks.loadCliConfig,
+        mocks.loadCliConfigWithSource,
         mocks.writeStopSentinel,
         mocks.watchStopSentinel,
         mocks.writeSupervisorRuntime,
@@ -137,11 +137,15 @@ afterEach(() => {
 
 /** 配置单账号并启动 supervisor（挂起 promise 属预期，不 await）。 */
 function startWithAccounts(accounts: { qq: string }[], autoRestart: boolean): void {
-    mocks.loadCliConfig.mockResolvedValue({
-        dataDir: tmp,
-        accounts,
-        autoRestart,
-        restartDelayMs: 30,
+    mocks.loadCliConfigWithSource.mockResolvedValue({
+        config: {
+            dataDir: tmp,
+            accounts,
+            autoRestart,
+            restartDelayMs: 30,
+        },
+        source: "file",
+        path: join(tmp, "napuketto.toml"),
     });
     void runSupervisor({ dataDir: tmp });
 }
@@ -195,11 +199,15 @@ describe("runSupervisor 子进程拉起", () => {
 
 describe("runSupervisor 账号退出", () => {
     it("无账号（accounts 为空）：warn 后正常返回", async () => {
-        mocks.loadCliConfig.mockResolvedValue({
-            dataDir: tmp,
-            accounts: [],
-            autoRestart: false,
-            restartDelayMs: 30,
+        mocks.loadCliConfigWithSource.mockResolvedValue({
+            config: {
+                dataDir: tmp,
+                accounts: [],
+                autoRestart: false,
+                restartDelayMs: 30,
+            },
+            source: "file",
+            path: join(tmp, "napuketto.toml"),
         });
         await expect(runSupervisor({ dataDir: tmp })).resolves.toBeUndefined();
         expect(mocks.logger.warn).toHaveBeenCalledWith(expect.stringContaining("没有启用的账号"));
@@ -230,6 +238,27 @@ describe("runSupervisor 账号退出", () => {
                 expect.objectContaining({ uin: "10001", status: "exited", exitCode: 1 }),
             ),
         );
+    });
+
+    it("退出码 78（配置校验失败）：autoRestart 开启也不重启（2026-10-25 契约）", async () => {
+        const child = makeFakeChild(4250);
+        mocks.spawn.mockImplementation(() => child);
+        startWithAccounts([{ qq: "10001" }], true);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+        child.emit("exit", 78, null);
+        await vi.waitFor(() =>
+            expect(mocks.writeAccountRuntime).toHaveBeenCalledWith(
+                tmp,
+                expect.objectContaining({ uin: "10001", status: "exited", exitCode: 78 }),
+            ),
+        );
+        // 不重启：延迟（30ms）后 spawn 仍只发生一次
+        expect(mocks.logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ qq: "10001" }),
+            expect.stringContaining("不自动重启"),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        expect(mocks.spawn).toHaveBeenCalledOnce();
     });
 
     it("spawn error 兜底：logger.error 且不崩进程", async () => {

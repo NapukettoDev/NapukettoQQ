@@ -22,25 +22,36 @@ import {
     resolveConfigPath,
     resolveDataRoot,
 } from "@napuketto/kernel";
+import { readInlineConfigText } from "./config-inline.js";
 
 /** 已解析日志配置缓存（preAction 首次解析后固定；-d 后续变化不影响已构造 logger）。 */
 let cachedConfig: LogConfig | null = null;
 /** 解析配置时用的数据根（[log.file] 相对路径展开基准）。 */
 let cachedDataRoot: string = resolveDataRoot();
 
-/** 同步解析日志配置（toml [log] 段 + env 覆盖）。损坏/缺失配置回退缺省（不阻塞启动：
- * 配置的严格校验由 loadCliConfig 主路径负责报错）。 */
+/** 同步解析日志配置（内联 > toml 文件的 [log] 段 + env 覆盖）。损坏/缺失配置回退缺省
+ * （不阻塞启动：配置的严格校验由 loadCliConfig 主路径负责报错）。内联生效时不读
+ * 任何 toml 文件（嵌入式契约，2026-10-25）。 */
 export function resolveCliLogConfig(dataDir?: string): LogConfig {
     if (cachedConfig !== null) {
         return cachedConfig;
     }
     cachedDataRoot = resolveDataRoot(dataDir);
     let section: unknown;
-    try {
-        const configPath = resolveConfigPath({ dataRoot: cachedDataRoot });
-        section = parseToml(readFileSync(configPath, "utf8"))["log"];
-    } catch {
-        section = undefined;
+    const inlineText = readInlineConfigText();
+    if (inlineText !== undefined) {
+        try {
+            section = (JSON.parse(inlineText) as Record<string, unknown>)["log"];
+        } catch {
+            section = undefined;
+        }
+    } else {
+        try {
+            const configPath = resolveConfigPath({ dataRoot: cachedDataRoot });
+            section = parseToml(readFileSync(configPath, "utf8"))["log"];
+        } catch {
+            section = undefined;
+        }
     }
     try {
         cachedConfig = parseLogConfig(section, process.env);

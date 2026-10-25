@@ -6,6 +6,8 @@
  * [log] 段（2026-10-25）：经 kernel parseLogConfig 严格校验入 CliConfig.log，
  * 未配置段时无 log 字段；format 未配置时剔除 undefined 键（toml 回写安全）。
  */
+
+import { ConfigError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { parseCliConfig } from "./config-parse.js";
 
@@ -32,6 +34,16 @@ describe("parseCliConfig accounts.qq 校验", () => {
 
     it("拒绝占位值 123456", () => {
         expect(() => parseCliConfig(configWithQq("123456"))).toThrow(/占位值/);
+    });
+
+    it("校验错误一概 ConfigError（exit 78 一族，2026-10-25 退出码契约）", () => {
+        try {
+            parseCliConfig(configWithQq("123456"));
+            expect.unreachable("应抛出 ConfigError");
+        } catch (err) {
+            expect(err).toBeInstanceOf(ConfigError);
+        }
+        expect(() => parseCliConfig({})).toThrow(ConfigError);
     });
 
     it("拒绝占位值 654321", () => {
