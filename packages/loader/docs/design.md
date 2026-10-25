@@ -366,6 +366,21 @@ packages/loader/
 
 ---
 
+## 8.1 内联配置与退出码 78（2026-10-25 嵌入式契约）
+
+主配置来源优先级全链统一：`NAPKETTO_CONFIG_JSON`（内联 JSON，与 napuketto.toml
+同构）> `NAPKETTO_CONFIG`（文件）> `NAPUTO_CFG_DIR` 兜底。内联分支
+（`load-config.ts` 的 `readInlineConfigDoc`）零 toml 文件读取，`cfgFile` 返回哨兵
+`"<inline>"`（仅作来源标注；seed 模式本就不读盘，协议段热更新内联形态不可用），
+`log-cfg.ts` 的 `[log]` 段同源。引导链对内联坏值宽松（记日志回退文件形态）——
+cli 主路径已在拉起前完整校验并以 78 退出，宽松只服务绕过 cli 的直跑场景。
+
+退出码：协议段 seed 的 zod 校验失败（`assemble-protocols.ts` 的 `parseSeed`）包装为
+`ConfigError`（loader 不静态依赖 kernel，按错误名 `ConfigError` 复刻契约），
+沿 `startProtocols` → `bootstrap` 重抛（唯二重抛点），`self-host.ts` 以 78
+（EX_CONFIG）退出——宿主据此区分「配置未就绪」与运行时崩溃（1），supervisor
+识别 78 不守护重启。
+
 ## 9. IPC 模式与 OB11 容器可选装配（2026-08-27）
 
 `src/host/ipc/`：koishi 插件子进程模式（`NAPUTO_IPC=1`，stdout JSON 行 + stdin

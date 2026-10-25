@@ -38,6 +38,8 @@ const env = {
     NAPUTO_PROBE: process.env["NAPUTO_PROBE"],
     /** 全局 TOML 配置显式路径（优先级最高）。 */
     NAPKETTO_CONFIG: process.env["NAPKETTO_CONFIG"],
+    /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPKETTO_CONFIG 文件，2026-10-25）。 */
+    NAPKETTO_CONFIG_JSON: process.env["NAPKETTO_CONFIG_JSON"],
     /** 数据根（kernel 数据目录，cleanCache 用）。 */
     NAPKETTO_DATA: process.env["NAPKETTO_DATA"],
     /** 数据根（launcher 注入，停止哨兵目录解析用）。 */

@@ -10,7 +10,7 @@
  */
 import { env } from "../env.js";
 import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { errMsg, isConfigError, log } from "../util.js";
 import { assembleOb11AndSatori } from "./assemble-protocols.js";
 import { createKernelServices, type KernelServices } from "./kernel-services.js";
 
@@ -41,9 +41,12 @@ export async function startProtocols(
     try {
         services.stopAdapters = await assembleOb11AndSatori(kernel, services, loginResult);
     } catch (e) {
-        // cli 模式跑宿主就是为了 OB11/Satori 服务——装配失败留驻无意义，
-        // 返回 null 让引导判失败退出（2026-09-06 起不再 fail-soft）。
         log(`bootstrap: 协议装配失败: ${errMsg(e)}`);
+        // 配置校验失败重抛（ConfigError 契约，2026-10-25）：沿 bootstrap 链传给
+        // self-host 以 78 退出（宿主免重启）；其余装配失败仍收敛为 null 判引导失败。
+        if (isConfigError(e)) {
+            throw e;
+        }
         return null;
     }
     return services;

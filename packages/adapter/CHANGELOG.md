@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [a120cdd]
+  - @napuketto/kernel@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

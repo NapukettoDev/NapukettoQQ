@@ -230,8 +230,8 @@ async function runSmokeIfEnabled(
     }
 }
 
-/** 探测模式（NAPUTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
-function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
+/** 立即探测一次（NAPUTO_PROBE=1）：fallback / core 两处引导路径共用的探测原语。 */
+export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
     if (env.NAPUTO_PROBE !== "1" || typeof kernel.probeRuntime !== "function") {
         return;
     }
@@ -240,22 +240,30 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
         log(
             `bootstrap: probe done, session=${probe.session ? "ok" : "null"}, services=${Object.keys(probe.services ?? {}).length}`,
         );
-        setTimeout(() => {
-            try {
-                if (typeof kernel.probeRuntime !== "function") {
-                    return;
-                }
-                const late = kernel.probeRuntime(ctx, "napuketto-probe-late.json");
-                log(
-                    `bootstrap: probe-late done, session=${late.session ? "ok" : "null"}, services=${Object.keys(late.services ?? {}).length}`,
-                );
-            } catch (e2) {
-                log(`bootstrap: probe-late error: ${errMsg(e2)}`);
-            }
-        }, 35000);
     } catch (e) {
         log(`bootstrap: probe error: ${errMsg(e)}`);
     }
+}
+
+/** 探测模式（NAPUTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
+function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
+    if (env.NAPUTO_PROBE !== "1") {
+        return;
+    }
+    probeOnce(kernel, ctx);
+    setTimeout(() => {
+        try {
+            if (typeof kernel.probeRuntime !== "function") {
+                return;
+            }
+            const late = kernel.probeRuntime(ctx, "napuketto-probe-late.json");
+            log(
+                `bootstrap: probe-late done, session=${late.session ? "ok" : "null"}, services=${Object.keys(late.services ?? {}).length}`,
+            );
+        } catch (e2) {
+            log(`bootstrap: probe-late error: ${errMsg(e2)}`);
+        }
+    }, 35000);
 }
 
 /** NapukettoCore.create 选项（[log] 段 + env 折叠；IPC 模式关 console）。 */

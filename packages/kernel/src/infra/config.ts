@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
-import { KernelError } from "./errors.js";
+import { ConfigError } from "./errors.js";
 
 /** 配置文本格式。 */
 export type ConfigFormat = "json" | "toml";
@@ -101,15 +101,19 @@ export class ConfigBase<T> {
                 await this.save(this.defaults);
                 return this.value;
             }
-            throw new KernelError(`读取配置文件失败: ${this.path}`, "UNKNOWN", { cause: err });
+            throw new ConfigError(`读取配置文件失败: ${this.path}`, { cause: err });
         }
         this.value = this.parse(raw);
         return this.value;
     }
 
-    /** 重新从磁盘加载（外部变更后的热更新入口，P2 配置热更新使用）。 */
-    reload(): Promise<T> {
-        return this.load();
+    /**
+     * 校验纯文本配置（反序列化 + schema 校验，不读写文件；`config validate`
+     * 等只读场景用）。错误包装与 load()/save() 完全一致（ConfigError，
+     * 文案含 this.path），保证 validate 与运行时校验逐字一致。
+     */
+    parseText(raw: string): T {
+        return this.parse(raw);
     }
 
     /** 校验并落盘（原子写：临时文件 + rename），随后更新内存。 */
@@ -138,24 +142,20 @@ export class ConfigBase<T> {
         return JSON.parse(raw) as unknown;
     }
 
-    /** 反序列化 + schema 校验，错误统一包装为 KernelError。 */
+    /** 反序列化 + schema 校验，错误统一包装为 ConfigError（配置未就绪一族）。 */
     private parse(raw: string): T {
         let input: unknown;
         try {
             input = this.deserialize(raw);
         } catch (err) {
-            throw new KernelError(
-                `配置文件 ${this.format.toUpperCase()} 解析失败: ${this.path}`,
-                "INVALID_PARAM",
-                { cause: err },
-            );
+            throw new ConfigError(`配置文件 ${this.format.toUpperCase()} 解析失败: ${this.path}`, {
+                cause: err,
+            });
         }
         try {
             return this.schema.parse(input);
         } catch (err) {
-            throw new KernelError(`配置文件校验失败: ${this.path}`, "INVALID_PARAM", {
-                cause: err,
-            });
+            throw new ConfigError(`配置文件校验失败: ${this.path}`, { cause: err });
         }
     }
 }
