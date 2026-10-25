@@ -230,11 +230,14 @@ jobs:
             # 匹配不到文件时 npm 会静默忽略（0.0.36–0.0.38 由此发出不可用包），
             # 故按 npm pack --dry-run 的真实清单断言，缺件即终止发布；files 条目
             # 本身被改坏（DLL 不进清单）时同样在此拦下。
+            # ⚠️ 必须收 2>&1：npm 的 notice 清单（含文件列表）走 stderr，stdout
+            # 只有 tarball 文件名一行——只重定向 stdout 会拿到空清单误拦（run
+            # 40169866167 实测：DLL 已入包，守卫却报缺件）。
             - if: steps.bump.outputs.changed == 'true'
               name: 校验 loader 打包产物（stub DLL 必须入包）
               working-directory: packages/loader
               run: |
-                  npm pack --dry-run > "$RUNNER_TEMP/loader-pack.txt"
+                  npm pack --dry-run > "$RUNNER_TEMP/loader-pack.txt" 2>&1
                   cat "$RUNNER_TEMP/loader-pack.txt"
                   grep -q 'native/build/stub-test-env/QQNT.dll' "$RUNNER_TEMP/loader-pack.txt" || {
                       echo "::error::@napuketto/loader 打包清单缺少 native/build/stub-test-env/QQNT.dll（submodule 未检出或 files 失效），已阻止发布。"
