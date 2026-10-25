@@ -235,6 +235,8 @@ export interface RawElement {
     videoElement?: VideoElement;
     fileElement?: FileElement;
     grayTipElement?: GrayTipElement;
+    /** ARK 卡片元素（elementType=10 ARK，小程序/分享卡片，2026-10-25 B 站卡片实测）。bytesData 为卡片 JSON 字符串；其余字段待探测校准。 */
+    arkElement?: { bytesData: string };
     /** 合并转发元素（elementType=16 MULTI_FORWARD）。 */
     multiForwardMsgElement?: {
         resId: string;

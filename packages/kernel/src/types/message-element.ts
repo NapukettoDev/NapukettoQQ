@@ -154,6 +154,21 @@ function replyToCanonical(reply: ReplyElement | undefined): CanonicalElement {
     return { type: "reply", messageId: reply.replayMsgId };
 }
 
+/**
+ * ARK 元素 → canonical json（小程序/分享卡片，2026-10-25）。
+ *
+ * bytesData 是卡片 JSON 字符串，原样透传不解析重组——OB11 json 段 data.data
+ * 保持原始载荷（go-cqhttp/NapCat 生态一致），title/url 由下游自行 parse。
+ * bytesData 缺失/为空时维持 unknown 兜底：空 json 段无信息量，保留 raw 供探测。
+ */
+function arkToCanonical(ark: { bytesData: string } | undefined, el: RawElement): CanonicalElement {
+    const bytes = ark?.bytesData;
+    if (bytes === undefined || bytes === "") {
+        return { type: "unknown", raw: el };
+    }
+    return { type: "json", raw: bytes };
+}
+
 /** 单个 NT 元素 → canonical（接收方向，宽容：无法表达回 unknown，不抛错）。 */
 function toCanonicalElement(el: RawElement): CanonicalElement {
     switch (el.elementType) {
@@ -171,6 +186,8 @@ function toCanonicalElement(el: RawElement): CanonicalElement {
             return fileToCanonical(el.fileElement);
         case ElementType.REPLY:
             return replyToCanonical(el.replyElement);
+        case ElementType.ARK:
+            return arkToCanonical(el.arkElement, el);
         default:
             return { type: "unknown", raw: el };
     }

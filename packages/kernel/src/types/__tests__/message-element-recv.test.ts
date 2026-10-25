@@ -6,6 +6,7 @@
  *  - TEXT：at all/单/我 → at；普通 → text
  *  - PIC/PTT/VIDEO/FILE：path 兜底（url 可选）
  *  - FACE/REPLY：id 转字符串
+ *  - ARK：bytesData JSON 字符串原样透传 → json；缺失/空 → unknown
  *  - 未知 elementType → unknown（宽容不抛）
  *  - 子元素缺失 → 默认空值 canonical
  */
@@ -256,6 +257,31 @@ describe("toCanonicalElements", () => {
         expect(toCanonicalElements(makeMsg([{ elementType: ElementType.REPLY }]))).toEqual([
             { type: "reply", messageId: "" },
         ]);
+    });
+
+    it("ARK bytesData → canonical json 原样透传（小程序卡片，2026-10-25）", () => {
+        // B 站分享卡片实测形态：bytesData = 卡片 JSON 字符串
+        const bytesData = JSON.stringify({
+            app: "com.tencent.miniapp",
+            prompt: "[小程序]猛男料理",
+            meta: { detail_1: { title: "猛男料理" } },
+        });
+        expect(
+            toCanonicalElements(
+                makeMsg([{ elementType: ElementType.ARK, arkElement: { bytesData } }]),
+            ),
+        ).toEqual([{ type: "json", raw: bytesData }]);
+    });
+
+    it("ARK bytesData 缺失/为空 → unknown 兜底（保留 raw 供探测）", () => {
+        expect(toCanonicalElements(makeMsg([{ elementType: ElementType.ARK }]))).toEqual([
+            { type: "unknown", raw: { elementType: ElementType.ARK } },
+        ]);
+        expect(
+            toCanonicalElements(
+                makeMsg([{ elementType: ElementType.ARK, arkElement: { bytesData: "" } }]),
+            ),
+        ).toEqual([{ type: "unknown", raw: { elementType: 10, arkElement: { bytesData: "" } } }]);
     });
 
     it("未知 elementType → unknown（宽容不抛）", () => {

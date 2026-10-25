@@ -313,3 +313,25 @@ canonical video（`test3.mp4` 640×360 10s + `test3.png` 缩略图），返回
 参数、`prepareSendElements` 增加 video 分支）；kernel 全量 242 用例、koishi 插件
 244 用例、`pnpm check`、`pnpm -r build` 均通过。
 
+
+## 9. ARK 卡片接收（小程序/分享卡片，2026-10-25）
+
+**背景**：B 站分享等 QQ 小程序卡片在 NT 侧是 `elementType: 10 (ARK)` 元素
+（`arkElement.bytesData` 装卡片 JSON 字符串）。此前 `toCanonicalElement` 的
+switch 只认 TEXT/PIC/FACE/PTT/VIDEO/FILE/REPLY 七类，ARK 落 `unknown` 兜底：
+OB11 侧 `canonicalToSegment` 映射表无 `unknown` 键整段静默丢弃（纯卡片消息
+message 数组为空），koishi 侧渲染 `[unknown]` 占位（2026-10-25 线上实测）。
+
+**方案**：`toCanonicalElement` 加 `case ElementType.ARK` → canonical
+`{ type: "json", raw: bytesData }`——卡片 JSON 字符串**原样透传**，不解析重组
+（OB11 `json` 段 `data.data` 保持原始载荷，与 go-cqhttp/NapCat 生态一致，
+title/url 由下游自行 parse；adapter 侧 `rawToString` 对字符串原样放行，映射
+早已就绪，kernel 是唯一断点）。`bytesData` 缺失/为空时维持 `unknown` 兜底
+（无 payload 可表达，保留 raw 供探测）。
+
+**契约**：`RawElement.arkElement?: { bytesData: string }`——wrapper 事实接口的
+最小自研描述（2026-10-25 B 站小程序卡片实测），其余字段待真实样本探测后补。
+
+**其余仍落 unknown 的元素类型**（GRAY_TIP 8 / MFACE 11 / LIVE_GIFT 12 /
+STRUCT_LONG_MSG 13 / MARKDOWN 14 / GIPHY 15 / INLINE_KEYBOARD 17 等）待有
+真实样本按「运行时探测」原则（ADR-006）逐个补。
