@@ -64,6 +64,24 @@ export interface LoadedCliConfig {
     path?: string;
 }
 
+/** 生效配置来源（内联优先；只解析来源，不读文件、不落模板）。 */
+export type ResolvedCliConfigSource =
+    | { source: "inline"; text: string }
+    | { source: "file"; path: string; dataRoot: string };
+
+/**
+ * 解析生效配置来源（loadCliConfigWithSource 与 config validate 无参分支共用）：
+ * 内联非空 → inline；否则按 kernel resolveConfigPath 解析文件路径，并带回数据根。
+ */
+export function resolveCliConfigSource(opts: { dataDir?: string } = {}): ResolvedCliConfigSource {
+    const inlineText = readInlineConfigText();
+    if (inlineText !== undefined) {
+        return { source: "inline", text: inlineText };
+    }
+    const dataRoot = resolveDataRoot(opts.dataDir);
+    return { source: "file", path: resolveConfigPath({ dataRoot }), dataRoot };
+}
+
 /** 「配置来源」日志每进程至多一行（autoStart 与 runSupervisor 各加载一次）。 */
 let sourceLogged = false;
 
@@ -76,17 +94,15 @@ let sourceLogged = false;
 export async function loadCliConfigWithSource(
     opts: { dataDir?: string } = {},
 ): Promise<LoadedCliConfig> {
-    const inlineText = readInlineConfigText();
-    if (inlineText !== undefined) {
-        const config = parseInlineConfig(inlineText);
+    const resolved = resolveCliConfigSource(opts);
+    if (resolved.source === "inline") {
+        const config = parseInlineConfig(resolved.text);
         if (!sourceLogged) {
             sourceLogged = true;
             logger.info("配置来源: inline（NAPKETTO_CONFIG_JSON）");
         }
         return { config, source: "inline" };
     }
-    const dataRoot = resolveDataRoot(opts.dataDir);
-    const configPath = resolveConfigPath({ dataRoot });
-    const config = await loadCliConfig(dataRoot);
-    return { config, source: "file", path: configPath };
+    const config = await loadCliConfig(resolved.dataRoot);
+    return { config, source: "file", path: resolved.path };
 }

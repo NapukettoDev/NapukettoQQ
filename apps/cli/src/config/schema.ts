@@ -9,12 +9,14 @@
  * 内联与文件两形态共用本校验器）。
  */
 import { configError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
-import { RESERVED_PLACEHOLDER_QINS } from "./template.js";
+
+/** 保留占位 QQ 号（模板默认值）：必须替换为真实 QQ 号，否则启动校验报错。 */
+export const RESERVED_PLACEHOLDER_QINS = ["123456", "654321"] as const;
 
 /** 默认自动重启。 */
 const DEFAULT_AUTO_RESTART = true;
-/** 默认重启延迟（毫秒）。 */
-const DEFAULT_RESTART_DELAY_MS = 2000;
+/** 默认重启延迟（毫秒；supervisor 显式 -q 场景复用，避免两处常量漂移）。 */
+export const DEFAULT_RESTART_DELAY_MS = 2000;
 
 /** QQ 号格式：纯数字 5-11 位（QQ 号合法范围，勿写死 11 位）。 */
 const QQ_IN_FORMAT_RE = /^\d{5,11}$/;

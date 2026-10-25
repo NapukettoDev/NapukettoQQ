@@ -9,7 +9,7 @@
  * taskkill /T /F，杀 boot 进程树连带 self-host 孙进程）+ detached 重启。
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 
@@ -170,9 +170,4 @@ export function aggregateStatus(
         restartCount: r.restartCount ?? 0,
         exitCode: r.exitCode,
     }));
-}
-
-/** 数据根目录存在性（诊断输出用）。 */
-export function dataRootExists(dataRoot: string): boolean {
-    return existsSync(dataRoot);
 }

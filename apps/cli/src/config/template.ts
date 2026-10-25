@@ -6,9 +6,7 @@
  * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
  * dataDir 不再写死（缺省 = 项目根/.napuketto，跨平台），模板保持可移植。
  */
-
-/** 保留占位 QQ 号（模板默认值）：必须替换为真实 QQ 号，否则启动校验报错。 */
-export const RESERVED_PLACEHOLDER_QINS = ["123456", "654321"] as const;
+import { RESERVED_PLACEHOLDER_QINS } from "./schema.js";
 
 export function configTemplate(): string {
     return `# ============================================================

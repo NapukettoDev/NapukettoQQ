@@ -43,13 +43,12 @@ import {
     configError,
     kernelError,
     parseToml,
-    resolveConfigPath,
     resolveDataRoot,
     stringifyToml,
 } from "@napuketto/kernel";
-import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "../config/inline.js";
+import { type ConfigSource, parseInlineConfig } from "../config/inline.js";
 import { type CliConfig, parseCliConfig } from "../config/schema.js";
-import { CliConfigStore, defaultCliConfig } from "../config/store.js";
+import { CliConfigStore, defaultCliConfig, resolveCliConfigSource } from "../config/store.js";
 import { configTemplate } from "../config/template.js";
 import { logger } from "../logger.js";
 
@@ -200,7 +199,7 @@ export interface ConfigValidateOptions {
     dataDir?: string;
 }
 
-/** config validate 结果（stdout 单行摘要由 index.ts 渲染；测试断言返回值）。 */
+/** config validate 结果（stdout 单行摘要由 cli/program.ts 渲染；测试断言返回值）。 */
 export interface ConfigValidateResult {
     source: ConfigSource;
     /** file 来源的配置路径（inline 为 undefined）。 */
@@ -219,22 +218,20 @@ export async function cmdConfigValidate(
     if (configPath !== undefined && configJson !== undefined) {
         throw kernelError("config validate：--config 与 --config-json 只能二选一", "INVALID_PARAM");
     }
-    const dataRoot = resolveDataRoot(opts.dataDir);
     if (configJson !== undefined) {
         parseInlineConfig(configJson);
         return { source: "inline" };
     }
     if (configPath !== undefined) {
-        await validateConfigFile(configPath, dataRoot);
+        await validateConfigFile(configPath, resolveDataRoot(opts.dataDir));
         return { source: "file", path: configPath };
     }
     // 无参：校验当前生效配置（内联优先；文件缺失按配置缺失报 78，不落模板）
-    const inlineText = readInlineConfigText();
-    if (inlineText !== undefined) {
-        parseInlineConfig(inlineText);
+    const resolved = resolveCliConfigSource(opts);
+    if (resolved.source === "inline") {
+        parseInlineConfig(resolved.text);
         return { source: "inline" };
     }
-    const path = resolveConfigPath({ dataRoot });
-    await validateConfigFile(path, dataRoot);
-    return { source: "file", path };
+    await validateConfigFile(resolved.path, resolved.dataRoot);
+    return { source: "file", path: resolved.path };
 }

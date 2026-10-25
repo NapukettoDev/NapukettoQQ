@@ -13,7 +13,11 @@ import process from "node:process";
 import { createInterface } from "node:readline";
 import { EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
-import type { CliAccountConfig, CliConfig } from "../config/schema.js";
+import {
+    type CliAccountConfig,
+    type CliConfig,
+    DEFAULT_RESTART_DELAY_MS,
+} from "../config/schema.js";
 import { loadCliConfigWithSource } from "../config/store.js";
 import {
     effectiveConsoleEnv,
@@ -23,8 +27,6 @@ import {
 } from "../logger.js";
 import { writeAccountRuntime, writeSupervisorRuntime } from "./state.js";
 
-/** 默认重启延迟（毫秒）。 */
-const DEFAULT_RESTART_DELAY_MS = 2000;
 /** 退出轮询间隔（毫秒）。 */
 const EXIT_POLL_MS = 100;
 /** 子进程优雅退出时限（毫秒）：哨兵/信号后子进程自行停止，超时强杀兜底。 */
