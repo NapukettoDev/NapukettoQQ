@@ -185,7 +185,7 @@ npm 包发布，`files` 含 `templates/`），运行时 `scaffold.ts` 读取 + `
   `napuketto config init` 与脚手架生成配置，示例文件与 cli 内置模板/脚手架
   模板三处重复维护，无人阅读，冗余。
 
-- 模板与 `apps/cli/src/config-cmds.ts` 的 `configTemplate()` 保持一致（双维护，
+- 模板与 `apps/cli/src/config/template.ts` 的 `configTemplate()` 保持一致（双维护，
   模板极少变更）；脚手架生成后用户首次启动，cli 检测到配置已存在不会覆盖。
 
 ## 6. 启动序列（脚手架运行时）
