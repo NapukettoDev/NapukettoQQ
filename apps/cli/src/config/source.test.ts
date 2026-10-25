@@ -1,5 +1,6 @@
 /**
- * config-inline.test.ts：内联配置（NAPKETTO_CONFIG_JSON）单测（2026-10-25 嵌入式契约）。
+ * source.test.ts：内联配置（NAPKETTO_CONFIG_JSON）与配置来源优先级单测
+ * （2026-10-25 嵌入式契约）。
  *
  * 覆盖：读取边角（未设置 / 空串 / 纯空白回退文件；键名精确访问）、内联校验错误
  * 一概 ConfigError 且文案不含任何 toml 文件路径、加载优先级矩阵（内联 > 文件，
@@ -15,10 +16,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("./logger.js", () => ({ logger: mocks.logger }));
+vi.mock("../logger.js", () => ({ logger: mocks.logger }));
 
-import { loadCliConfigWithSource } from "./config-cmds.js";
-import { parseInlineConfig, readInlineConfigText } from "./config-inline.js";
+import { parseInlineConfig, readInlineConfigText } from "./inline.js";
+import { loadCliConfigWithSource } from "./store.js";
 
 /** 合法内联文档（单账号，qq 由调用方指定）。 */
 function inlineDoc(qq: string): Record<string, unknown> {

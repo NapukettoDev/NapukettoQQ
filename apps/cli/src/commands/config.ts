@@ -28,6 +28,9 @@
  * 配置文件路径解析见 kernel `resolveConfigPath`（NAPKETTO_CONFIG 显式 > 项目根探测 > 数据根兜底）；
  * 校验器为手写 parse（适配 kernel ConfigBase 的 ConfigSchema 形状）；
  * 协议段由对应协议包的 zod schema 校验（boot 装配时按登录账号 uin 从 accounts 取段作 seed）。
+ *
+ * 2026-10-25 模块收拢：store/默认值/来源加载移入 config/store.ts，本文件只保留
+ * 4 个子命令实现与只读校验。
  */
 import type { Dirent } from "node:fs";
 import { mkdirSync, readdirSync } from "node:fs";
@@ -40,89 +43,14 @@ import {
     configError,
     kernelError,
     parseToml,
-    resolveConfigPath,
     resolveDataRoot,
     stringifyToml,
 } from "@napuketto/kernel";
-import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "./config-inline.js";
-import { type CliConfig, parseCliConfig } from "./config-parse.js";
-import { configTemplate } from "./config-template.js";
-import { logger } from "./logger.js";
-
-/** 主配置默认值（dataRoot 为当前解析的数据根 = 项目根/.napuketto）。 */
-function defaultCliConfig(dataRoot: string): CliConfig {
-    return {
-        dataDir: dataRoot,
-        autoRestart: true,
-        restartDelayMs: 2000,
-        accounts: [],
-    };
-}
-
-/** 配置文件缺失 → 生成带注释模板（首次启动自动生成默认配置）。 */
-async function ensureConfigTemplate(path: string): Promise<void> {
-    try {
-        await access(path);
-    } catch {
-        mkdirSync(dirname(path), { recursive: true });
-        await writeFile(path, `${configTemplate()}\n`, "utf8");
-        logger.info({ path }, "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）");
-    }
-}
-
-/** 主配置 store（读/写/校验；.toml 后缀 → smol-toml 序列化）。
- * 配置文件在项目根（resolveConfigPath），dataRoot 仅作兜底与 dataDir 默认值。 */
-class CliConfigStore extends ConfigBase<CliConfig> {
-    constructor(dataRoot: string) {
-        super({
-            path: resolveConfigPath({ dataRoot }),
-            schema: { parse: parseCliConfig } satisfies ConfigSchema<CliConfig>,
-            defaults: defaultCliConfig(dataRoot),
-        });
-    }
-}
-
-/** 读取主配置（缺失自动落模板；loadCliConfigWithSource 文件分支内部用）。 */
-async function loadCliConfig(dataRoot: string): Promise<CliConfig> {
-    const store = new CliConfigStore(dataRoot);
-    await ensureConfigTemplate(store.path);
-    return await store.load();
-}
-
-/** 已加载主配置（含来源；启动路径与 config validate 共用）。 */
-export interface LoadedCliConfig {
-    config: CliConfig;
-    source: ConfigSource;
-    /** file 来源的配置文件路径；inline 无文件为 undefined。 */
-    path?: string;
-}
-
-/** 「配置来源」日志每进程至多一行（autoStart 与 runSupervisor 各加载一次）。 */
-let sourceLogged = false;
-
-/**
- * 加载主配置（内联优先，2026-10-25 嵌入式契约）：
- * NAPKETTO_CONFIG_JSON 非空 → 内存文档校验（不读 / 不写 / 不校验任何 toml
- * 文件），打一行来源日志；否则现行文件链路（缺失自动落模板）。校验失败两形态
- * 同为 ConfigError（exit 78），文案区别只在来源标注。
- */
-export async function loadCliConfigWithSource(
-    opts: { dataDir?: string } = {},
-): Promise<LoadedCliConfig> {
-    const inlineText = readInlineConfigText();
-    if (inlineText !== undefined) {
-        const config = parseInlineConfig(inlineText);
-        if (!sourceLogged) {
-            sourceLogged = true;
-            logger.info("配置来源: inline（NAPKETTO_CONFIG_JSON）");
-        }
-        return { config, source: "inline" };
-    }
-    const dataRoot = resolveDataRoot(opts.dataDir);
-    const configPath = resolveConfigPath({ dataRoot });
-    const config = await loadCliConfig(dataRoot);
-    return { config, source: "file", path: configPath };
-}
+import { type ConfigSource, parseInlineConfig } from "../config/inline.js";
+import { type CliConfig, parseCliConfig } from "../config/schema.js";
+import { CliConfigStore, defaultCliConfig, resolveCliConfigSource } from "../config/store.js";
+import { configTemplate } from "../config/template.js";
+import { logger } from "../logger.js";
 
 /** CliConfig → 普通对象（smol-toml stringify 入参）。 */
 function toRecord(config: CliConfig): Record<string, unknown> {
@@ -271,7 +199,7 @@ export interface ConfigValidateOptions {
     dataDir?: string;
 }
 
-/** config validate 结果（stdout 单行摘要由 index.ts 渲染；测试断言返回值）。 */
+/** config validate 结果（stdout 单行摘要由 cli/program.ts 渲染；测试断言返回值）。 */
 export interface ConfigValidateResult {
     source: ConfigSource;
     /** file 来源的配置路径（inline 为 undefined）。 */
@@ -290,22 +218,20 @@ export async function cmdConfigValidate(
     if (configPath !== undefined && configJson !== undefined) {
         throw kernelError("config validate：--config 与 --config-json 只能二选一", "INVALID_PARAM");
     }
-    const dataRoot = resolveDataRoot(opts.dataDir);
     if (configJson !== undefined) {
         parseInlineConfig(configJson);
         return { source: "inline" };
     }
     if (configPath !== undefined) {
-        await validateConfigFile(configPath, dataRoot);
+        await validateConfigFile(configPath, resolveDataRoot(opts.dataDir));
         return { source: "file", path: configPath };
     }
     // 无参：校验当前生效配置（内联优先；文件缺失按配置缺失报 78，不落模板）
-    const inlineText = readInlineConfigText();
-    if (inlineText !== undefined) {
-        parseInlineConfig(inlineText);
+    const resolved = resolveCliConfigSource(opts);
+    if (resolved.source === "inline") {
+        parseInlineConfig(resolved.text);
         return { source: "inline" };
     }
-    const path = resolveConfigPath({ dataRoot });
-    await validateConfigFile(path, dataRoot);
-    return { source: "file", path };
+    await validateConfigFile(resolved.path, resolved.dataRoot);
+    return { source: "file", path: resolved.path };
 }

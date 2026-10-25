@@ -22,7 +22,7 @@ import {
     resolveConfigPath,
     resolveDataRoot,
 } from "@napuketto/kernel";
-import { readInlineConfigText } from "./config-inline.js";
+import { isInlineConfigActive, readInlineConfigSection } from "./config/inline.js";
 
 /** 已解析日志配置缓存（preAction 首次解析后固定；-d 后续变化不影响已构造 logger）。 */
 let cachedConfig: LogConfig | null = null;
@@ -38,13 +38,9 @@ export function resolveCliLogConfig(dataDir?: string): LogConfig {
     }
     cachedDataRoot = resolveDataRoot(dataDir);
     let section: unknown;
-    const inlineText = readInlineConfigText();
-    if (inlineText !== undefined) {
-        try {
-            section = (JSON.parse(inlineText) as Record<string, unknown>)["log"];
-        } catch {
-            section = undefined;
-        }
+    if (isInlineConfigActive()) {
+        // 宽松口径（config/inline 单一实现）：坏内联文档 → undefined，不阻塞日志构造
+        section = readInlineConfigSection("log");
     } else {
         try {
             const configPath = resolveConfigPath({ dataRoot: cachedDataRoot });

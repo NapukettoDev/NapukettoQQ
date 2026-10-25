@@ -1,5 +1,5 @@
 /**
- * runtime-state.test.ts：运行时状态文件 + 运维原语单测（2026-09-08 T8）。
+ * state.test.ts：运行时状态文件 + 运维原语单测（2026-09-08 T8）。
  *
  * 覆盖：路径计算、状态读写 roundtrip、损坏文件容错、listAccountRuntimes
  * 目录扫描、isPidAlive（自身 pid / 不存在 pid）、aggregateStatus 的
@@ -22,7 +22,7 @@ import {
     supervisorStatePath,
     writeAccountRuntime,
     writeSupervisorRuntime,
-} from "./runtime-state.js";
+} from "./state.js";
 
 let tmpRoot = "";
 

@@ -1,5 +1,5 @@
 /**
- * action-error.test.ts：CLI 退出码契约单测（2026-10-25）。
+ * error.test.ts：CLI 退出码契约单测（2026-10-25）。
  *
  * handleActionError 按错误类型设退出码：ConfigError → 78（EX_CONFIG 惯例，
  * 宿主消费，免重启）；其余 → 1（运行时崩溃，现状不回退）。判定只认类型，
@@ -9,11 +9,11 @@ import process from "node:process";
 import { ConfigError, KernelError } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./logger.js", () => ({
+vi.mock("../logger.js", () => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { handleActionError } from "./action-error.js";
+import { handleActionError } from "./error.js";
 
 afterEach(() => {
     process.exitCode = 0;

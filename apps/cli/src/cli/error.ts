@@ -9,7 +9,7 @@
  */
 import process from "node:process";
 import { ConfigError, EXIT_CONFIG_INVALID } from "@napuketto/kernel";
-import { logger } from "./logger.js";
+import { logger } from "../logger.js";
 
 /** 统一错误输出（结构化日志，错误对象经 pino serializer 带堆栈）。 */
 function reportError(err: unknown): void {

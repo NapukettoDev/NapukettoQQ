@@ -1,5 +1,5 @@
 /**
- * config-parse.test.ts：主配置手写校验器单测（占位 QQ 号护栏；[log] 段接入）。
+ * schema.test.ts：主配置手写校验器单测（占位 QQ 号护栏；[log] 段接入）。
  *
  * 覆盖 accounts.qq 校验：纯数字 5-11 位、拒绝模板占位值（123456 / 654321）、
  * 拒绝非数字 / 超长 / 过短。dataDir 显式传入，避免 resolveDataRoot 触发文件系统探测。
@@ -9,7 +9,7 @@
 
 import { ConfigError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { parseCliConfig } from "./config-parse.js";
+import { parseCliConfig } from "./schema.js";
 
 /** 构造最小合法主配置（含单个账号，qq 由调用方指定）。 */
 function configWithQq(qq: string): Record<string, unknown> {

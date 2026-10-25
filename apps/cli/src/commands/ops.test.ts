@@ -1,7 +1,7 @@
 /**
- * ops-commands.test.ts：status / stop / restart 运维命令单测（2026-10-25 优雅化）。
+ * ops.test.ts：status / stop / restart 运维命令单测（2026-10-25 优雅化）。
  *
- * runtime-state / 哨兵 / logger 全部注入假实现；覆盖：status 聚合输出、
+ * runtime/state / 哨兵 / logger 全部注入假实现；覆盖：status 聚合输出、
  * stop -q（无运行时拒绝 / 哨兵优先 + 等优雅退出 + 清哨兵）、stop 全量
  * （supervisor 哨兵 + 残留账号兜底树杀）、超时树杀兜底（fake timers 压缩
  * 8s 等待）、restart detached 拉起参数。
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AccountRuntime } from "./runtime-state.js";
+import type { AccountRuntime } from "../runtime/state.js";
 
 const mocks = vi.hoisted(() => ({
     writeStopSentinel: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock("@napuketto/loader", async (importOriginal) => {
         removeStopSentinel: mocks.removeStopSentinel,
     };
 });
-vi.mock("./runtime-state.js", async (importOriginal) => {
+vi.mock("../runtime/state.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
@@ -46,12 +46,12 @@ vi.mock("./runtime-state.js", async (importOriginal) => {
         spawnDetached: mocks.spawnDetached,
     };
 });
-vi.mock("./logger.js", async (importOriginal) => {
+vi.mock("../logger.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, logger: mocks.logger };
 });
 
-import { cmdRestart, cmdStatus, cmdStop } from "./ops-commands.js";
+import { cmdRestart, cmdStatus, cmdStop } from "./ops.js";
 
 let tmp = "";
 

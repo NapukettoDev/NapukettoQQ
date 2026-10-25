@@ -236,7 +236,7 @@ host = "127.0.0.1"
 port = 5501
 ```
 
-完整带注释模板见 `apps/cli/src/config-template.ts`，或运行 `napuketto config init` 查看。
+完整带注释模板见 `apps/cli/src/config/template.ts`，或运行 `napuketto config init` 查看。
 
 ## 9. 环境变量
 

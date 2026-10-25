@@ -19,6 +19,7 @@ type CliLoggerModule = typeof import("./logger.js");
 
 const ENV_KEYS = [
     "NAPKETTO_CONFIG",
+    "NAPKETTO_CONFIG_JSON",
     "NAPKETTO_DATA",
     "NAPUKETTO_LOG_LEVEL",
     "NAPKETTO_LOG_LEVEL",
@@ -87,6 +88,18 @@ describe("resolveCliLogConfig", () => {
         expect(cfg.format).toBe("single-line");
         expect(cfg.timestamp).toBe("iso8601");
         expect(cfg.banner).toBe(false);
+    });
+
+    it("内联配置生效：[log] 段取自 NAPKETTO_CONFIG_JSON（不读 toml）", async () => {
+        const configPath = join(freshDir(), "不存在.toml");
+        const mod = await freshCliLogger({
+            NAPKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
+            NAPKETTO_CONFIG: configPath,
+        });
+        const cfg = mod.resolveCliLogConfig();
+        expect(cfg.level).toBe("debug");
+        expect(cfg.banner).toBe(false);
+        expect(existsSync(configPath)).toBe(false);
     });
 
     it("env 覆盖 toml（NAPUKETTO_LOG_LEVEL / LOG_FORMAT / NO_BANNER）", async () => {
