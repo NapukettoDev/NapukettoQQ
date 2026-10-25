@@ -124,8 +124,11 @@ describe("resolveLoaderLogConfig", () => {
 describe("resolveLogFilePath", () => {
     it("绝对路径直传", async () => {
         const mod = await freshLogCfg({ NAPUTO_DATA_ROOT: freshDir() });
-        expect(mod.resolveLogFilePath("D:\\logs\\a.log")).toBe("D:\\logs\\a.log");
         expect(mod.resolveLogFilePath("/var/log/a.log")).toBe("/var/log/a.log");
+        const winPath = "D:\\logs\\a.log";
+        if (process.platform === "win32") {
+            expect(mod.resolveLogFilePath(winPath)).toBe(winPath);
+        }
     });
 
     it("相对路径基准：NAPUTO_DATA_ROOT 优先", async () => {
