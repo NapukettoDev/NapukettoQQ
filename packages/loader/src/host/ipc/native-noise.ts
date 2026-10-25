@@ -9,6 +9,8 @@
  *    失败的加载警告（无害，纯噪音）
  *  - `loaded [mmkv.*] with N key-values`：MMKV 初始化完成行（野生日志，风格三，
  *    无统一前缀/时间戳，过滤）
+ *  - `:N::loadFromFile> loading [mmkv.*] with crc`：MMKV 载入变体行
+ *    （2026-10-25 补：`loading` 拼写与 `loaded` 并存，此前漏过滤外泄到宿主控制台）
  *
  * 边界：只处理「整条」噪音行；原生输出插进 JSON 协议行字节中间的撕裂不归这里管
  * （IPC 路径由 status 重播与脏行诊断兜底，见 ipc-sender.ts / koishi 插件 client）。
@@ -16,7 +18,7 @@
 import { IPC_VERSION } from "./ipc-types.js";
 
 const NATIVE_NOISE =
-    /<MMKV|<MemoryFile_Win32|<MMKV_IO|loadSymbolFromShell|getNodeGetJsListApi|get symbol failed|loaded \[mmkv/i;
+    /<MMKV|<MemoryFile_Win32|<MMKV_IO|loadSymbolFromShell|getNodeGetJsListApi|get symbol failed|loaded \[mmkv|loadFromFile> loading \[mmkv/i;
 
 /** IPC 协议行前缀（encodeIpcMessage 走 JSON.stringify 无空白，前缀恒定）。 */
 const IPC_LINE_PREFIX = `{"v":${IPC_VERSION}`;

@@ -60,10 +60,27 @@ import { assembleOb11Transports } from "./transport.js";
 /** 毫秒 → 秒（Unix 时间戳）。 */
 const MS_TO_SEC = 1000;
 
+/**
+ * info/warn 级 raw 字段截断上限（2026-10-25 输出内容治理）：hex/base64/JSON
+ * 原文对运行状态无信息量，保留前缀定位 + 缺省长度；完整值仅在 debug 级
+ * （[log.levels].ob11 = "debug"）与日志文件中出现。
+ */
+const RAW_INFO_LIMIT = 64;
+
+/** raw 字段截断：超限截断 + 缺省长度标注（…(+N)）。 */
+function truncRaw(value: string | undefined, keep = RAW_INFO_LIMIT): string {
+    if (value === undefined) {
+        return "";
+    }
+    return value.length <= keep ? value : `${value.slice(0, keep)}…(+${value.length - keep})`;
+}
+
 /** 最小 logger 面（校准日志用：未知事件形状打 raw JSON；缺省静默）。 */
 export interface AdapterLoggerLike {
     warn(obj: unknown, msg?: string): void;
     info(obj: unknown, msg?: string): void;
+    /** 校准数据（2026-10-25 级别重分配：info → debug；此面必须支持）。 */
+    debug(obj: unknown, msg?: string): void;
 }
 
 /** 适配器构造参数（api 相关字段继承 OneBotApiOptions，P2-16 聚合）。 */
@@ -256,7 +273,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 const items = narrowOfflineFiles(arg);
                 if (items === null) {
                     this.calibLogger?.warn(
-                        { raw: JSON.stringify(arg)?.slice(0, 2000) },
+                        { raw: truncRaw(JSON.stringify(arg)) },
                         "ob11: onRecvOfflineFileMsg 未知参数形状",
                     );
                     return;
@@ -274,7 +291,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 const blobs = narrowSysMsgBlobs(arg);
                 if (blobs === null) {
                     this.calibLogger?.warn(
-                        { raw: JSON.stringify(arg)?.slice(0, 2000) },
+                        { raw: truncRaw(JSON.stringify(arg)) },
                         "ob11: onRecvSysMsg 未知参数形状",
                     );
                     return;
@@ -284,10 +301,10 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 }
             }),
         );
-        // 在线文件：raw 校准日志（OB11 无对应通知类型）
+        // 在线文件：raw 校准日志（OB11 无对应通知类型；debug 级，2026-10-25）
         this.unsubscribes.push(
             this.msgChannel.on("Msg/onRecvOnlineFileMsg", (arg) => {
-                this.calibLogger?.info(
+                this.calibLogger?.debug(
                     { raw: JSON.stringify(arg)?.slice(0, 2000) },
                     "ob11: onRecvOnlineFileMsg raw（校准数据）",
                 );
@@ -304,11 +321,11 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 }),
             );
             // 群精华列表变化（c3，2026-09-10）：raw 校准日志（OB11 group_essence
-            // 候选源；真实 payload 到达后回填翻译）
+            // 候选源；真实 payload 到达后回填翻译；debug 级，2026-10-25）
             this.unsubscribes.push(
                 this.groupChannel.on("Group/onGroupEssenceListChange", (arg) => {
-                    this.calibLogger?.info(
-                        { raw: JSON.stringify(arg)?.slice(0, 2000) },
+                    this.calibLogger?.debug(
+                        { raw: truncRaw(JSON.stringify(arg)) },
                         "ob11: onGroupEssenceListChange raw（group_essence 校准数据）",
                     );
                 }),
@@ -322,7 +339,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                     if (reqs === null) {
                         // 未知形状：raw 日志积累校准数据（T10 实测后回填 narrowBuddyReqs）
                         this.calibLogger?.warn(
-                            { raw: JSON.stringify(arg)?.slice(0, 2000) },
+                            { raw: truncRaw(JSON.stringify(arg)) },
                             "ob11: onBuddyReqChange 未知参数形状",
                         );
                         return;
@@ -337,7 +354,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 this.unsubscribes.push(
                     this.friendChannel.on(evt, (arg) => {
                         this.calibLogger?.info(
-                            { raw: JSON.stringify(arg)?.slice(0, 2000) },
+                            { raw: truncRaw(JSON.stringify(arg)) },
                             `ob11: ${evt} raw（friend_add 校准数据）`,
                         );
                     }),
@@ -384,7 +401,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         const tree = decodeProtoTree(blob);
         if (tree === null) {
             this.calibLogger?.warn(
-                { raw: toHex(blob).slice(0, 1024) },
+                { raw: truncRaw(toHex(blob).slice(0, 1024)) },
                 "ob11: onRecvSysMsg protobuf 解码失败",
             );
             return;
@@ -399,7 +416,9 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             }
             // 提取失败：降级校准日志（不硬广播半成品事件）
         }
-        this.calibLogger?.info(
+        // 校准遥测（协议逆向用）：info/warn 级不出（2026-10-25 级别重分配 + 截断），
+        // debug 级保留全量字段（含 raw hex）供校准采集
+        this.calibLogger?.debug(
             {
                 verdict: rec.kind,
                 msgType: env.msgType,

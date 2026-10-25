@@ -27,6 +27,7 @@ import {
     checkInstanceLock,
     registerLockCleanup,
 } from "../../instance-lock.js";
+import { installSignalShutdown, requestShutdown, watchStopSentinel } from "../../shutdown.js";
 import { env } from "../env.js";
 import {
     enableIpc,
@@ -38,6 +39,31 @@ import { createState, errMsg, log } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 
 const state = createState();
+
+// 优雅关停接入（2026-10-25 生命周期契约）：
+//  - 信号：SIGINT/SIGTERM/SIGBREAK（Windows CTRL_BREAK_EVENT 可达——嵌入式宿主
+//    CREATE_NEW_PROCESS_GROUP + GenerateConsoleCtrlEvent 优雅停整树）
+//  - 停止哨兵：<数据根>/napuketto.stop（宿主/脚本写文件即可，零 win32 依赖；
+//    mtime 晚于进程启动才触发，账号内容匹配 basename(NAPUTO_CFG_DIR)）
+//  - 编排：关停钩子（bootstrapWithCore 注册：适配器停止 → IPC 面 → 桥/缓存
+//    退订）→ exit 0（0 = 请求式正常退出，与崩溃区分）
+installSignalShutdown();
+{
+    const dataRoot = env.NAPUTO_DATA_ROOT;
+    if (dataRoot !== undefined && dataRoot !== "") {
+        const account =
+            env.NAPUTO_CFG_DIR !== undefined && env.NAPUTO_CFG_DIR !== ""
+                ? (env.NAPUTO_CFG_DIR.split(/[\\/]/).filter(Boolean).pop() ?? "default")
+                : "default";
+        watchStopSentinel({
+            dataRoot,
+            account,
+            onTrigger: () => {
+                void requestShutdown("停止哨兵");
+            },
+        });
+    }
+}
 
 // IPC 子进程模式（NAPUTO_IPC=1，koishi 插件驱动）：stdout 专用于 JSON 行协议
 const ipcMode = env.NAPUTO_IPC === "1";

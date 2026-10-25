@@ -135,9 +135,14 @@ export async function assembleOb11AndSatori(
             friendChannel: services.friendChannel,
             // OB11 friend_add 源（B2，2026-09-08）：好友缓存快照 diff 通道
             buddyCacheEvents: (services.buddyCache as { events: unknown } | undefined)?.events,
-            // 校准日志（pino 实例，未知事件形状 raw JSON）
-            logger: services.logger as
-                | { warn(obj: unknown, msg?: string): void; info(obj: unknown, msg?: string): void }
+            // 校准日志（loader logger 的 ob11 子 logger：module=ob11，级别随
+            // [log.levels].ob11；2026-10-25 校准数据已降 debug + raw 截断）
+            logger: services.calibLogger as
+                | {
+                      warn(obj: unknown, msg?: string): void;
+                      info(obj: unknown, msg?: string): void;
+                      debug(obj: unknown, msg?: string): void;
+                  }
                 | undefined,
             msgApi: services.msgApi,
             groupApi: services.groupApi,
@@ -228,6 +233,9 @@ export async function assembleOb11AndSatori(
                 msgChannel: channel,
                 msgApi: services.msgApi,
                 self: services.self,
+                // 接收行绑定过滤（P1-7）：握手/绑定表更新时填充，未绑定频道的
+                // 接收行按 [log].unboundReceive 决定是否打印
+                receiveFilter: services.receiveFilter,
                 // 连接生命周期 / 握手被拒等日志（pino 实例，最小面）
                 logger: services.logger as
                     | {

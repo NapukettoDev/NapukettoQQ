@@ -9,8 +9,16 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "../env.js";
-import { setupMsgLogging } from "../msg-log.js";
-import type { CoreContextLike, EventChannelLike, KernelLike, LoginResultLike } from "../types.js";
+import { resolveLogFilePath } from "../log-cfg.js";
+import { type ReceiveLogFilter, setupMsgLogging } from "../msg-log.js";
+import type {
+    CoreContextLike,
+    EventChannelLike,
+    KernelLike,
+    LogConfigLike,
+    LoggerLike,
+    LoginResultLike,
+} from "../types.js";
 import { errMsg, log } from "../util.js";
 
 /** kernel 业务服务集合（引导装配产物，协议/IPC 共用）。 */
@@ -39,6 +47,17 @@ export interface KernelServices {
     webApi: unknown;
     /** 登录账号自身信息（login.getSelf）。 */
     self: { uin: string; nickname: string };
+    /**
+     * ob11 校准日志（loader logger 派生，module=ob11；2026-10-25 模块级别
+     * 覆盖 [log.levels].ob11 经 child level 生效）。老 kernel 无 child 时回退主 logger。
+     */
+    calibLogger: LoggerLike;
+    /**
+     * 接收行绑定过滤 holder（2026-10-25 P1-7）：kurobot 握手拿到绑定表后填充
+     * current（返回该频道是否绑定）；[log].unboundReceive=false 时未绑定频道的
+     * 接收行不打。null = 无绑定信息（不过滤）。
+     */
+    receiveFilter: ReceiveLogFilter;
     /** wrapper session（诊断用：IPC 动作表枚举/触发原生服务）。 */
     session: unknown;
     /** wrapper engine（诊断用：initLog 等初始化方法验证）。 */
@@ -60,11 +79,57 @@ export interface KernelServices {
     stopAdapters?: () => Promise<void>;
 }
 
+/** 静默 logger（kernel.createLogger 不可用时的兜底）。 */
+const NOOP_LOGGER: LoggerLike = {
+    info: () => {
+        // 静默兜底
+    },
+    warn: () => {
+        // 静默兜底
+    },
+    error: () => {
+        // 静默兜底
+    },
+    debug: () => {
+        // 静默兜底
+    },
+};
+
+/** loader logger 构造参数（[log] 段 + IPC/文件路径折叠）。 */
+function buildLoaderLoggerOptions(
+    logCfg: LogConfigLike | undefined,
+    consoleEnabled: boolean,
+    logFile: string,
+    account: string,
+): {
+    console: boolean;
+    file: string;
+    fileLevel?: string;
+    level?: string;
+    format?: string;
+    timestamp?: string;
+    colorize?: boolean;
+    base: Record<string, unknown>;
+} {
+    const loaderLevel = logCfg?.levels.loader ?? logCfg?.level;
+    return {
+        console: consoleEnabled,
+        file: logFile,
+        ...(logCfg?.file !== undefined ? { fileLevel: logCfg.file.level } : {}),
+        ...(loaderLevel !== undefined ? { level: loaderLevel } : {}),
+        ...(logCfg?.format !== undefined ? { format: logCfg.format } : {}),
+        ...(logCfg?.timestamp !== undefined ? { timestamp: logCfg.timestamp } : {}),
+        ...(logCfg?.colorize !== undefined ? { colorize: logCfg.colorize } : {}),
+        base: { name: "loader", account },
+    };
+}
+
 /** 登录成功后创建 kernel 业务服务（channel/bridge/cache/apis）。失败返回 null。 */
 export async function createKernelServices(
     kernel: KernelLike,
     ctx: CoreContextLike,
     loginResult: LoginResultLike,
+    logCfg?: LogConfigLike,
 ): Promise<KernelServices | null> {
     // IPC 模式关 console：子进程 stdout 专用于 JSON 行协议，pino-pretty 并发写
     // 会撕裂协议行（2026-09-06「能收不能发」事故根因，消息日志经此 logger 每
@@ -72,16 +137,28 @@ export async function createKernelServices(
     // logs/loader.log（cli 模式 2026-09-10 起同样落盘：poke/Buddy 校准等诊断
     // 数据此前仅 IPC 模式留存，cli 模式全丢）；cli 模式 console 输出保持不变。
     // 消息纯文本另有 napuketto-boot.log 兜底（见 msg-log.ts）。
+    // 2026-10-25 日志可配置化：级别/格式/时间戳/颜色接 [log] 段 + env
+    //（boot 经 NAPUKETTO_LOG_FORMAT/COLORIZE 传播顶层控制台决策）；[log.file]
+    // 配置时改写该独立 sink（否则沿用 loader.log）。
     const ipcMode = env.NAPUTO_IPC === "1";
     const logFile =
-        env.NAPUTO_CFG_DIR !== undefined
-            ? join(env.NAPUTO_CFG_DIR, "logs", "loader.log")
-            : join(tmpdir(), "napuketto-loader.log");
-    const logger = kernel.createLogger?.({
-        console: !ipcMode,
-        file: logFile,
-        base: { name: "loader" },
-    });
+        logCfg?.file !== undefined
+            ? resolveLogFilePath(logCfg.file.path)
+            : env.NAPUTO_CFG_DIR !== undefined
+              ? join(env.NAPUTO_CFG_DIR, "logs", "loader.log")
+              : join(tmpdir(), "napuketto-loader.log");
+    const logger = kernel.createLogger?.(
+        buildLoaderLoggerOptions(logCfg, !ipcMode, logFile, loginResult.uin),
+    );
+    // ob11 校准子 logger：module=ob11（json/结构化通道可按模块路由），级别
+    // [log.levels].ob11 独立可调（默认随全局——校准数据已降 debug）
+    const ob11Level = logCfg?.levels.ob11;
+    const calibLogger: LoggerLike | undefined =
+        logger !== undefined && typeof logger.child === "function"
+            ? ob11Level !== undefined
+                ? logger.child({ module: "ob11" }, { level: ob11Level })
+                : logger.child({ module: "ob11" })
+            : logger;
     const session = ctx.session;
     if (!session) {
         log("bootstrap: session 为空，无法创建 kernel 服务");
@@ -92,8 +169,17 @@ export async function createKernelServices(
     const bridge = new kernel.MsgBridge(session, channel);
     bridge.register();
     // 控制台消息日志（NapCat 同款：收到消息打印到控制台；渲染逻辑见 msg-log.ts）。
-    // 返回退订函数（软重登重装配时清理）。
-    const offMsgLogging = setupMsgLogging(kernel, channel, logger, !ipcMode);
+    // 返回退订函数（软重登重装配时清理）。接收行已降 debug（2026-10-25 级别
+    // 重分配）；[log].unboundReceive=false 时按 kurobot 绑定表过滤未绑定频道。
+    // 接收行颜色：IPC 关；colorize 决策传播（env）缺省保持彩色（终端现状）。
+    const receiveFilter: ReceiveLogFilter = { current: null };
+    const offMsgLogging = setupMsgLogging(
+        kernel,
+        channel,
+        logger,
+        !ipcMode && (logCfg?.colorize ?? true),
+        logCfg?.unboundReceive === false ? receiveFilter : undefined,
+    );
     // kernel APIs
     const groupApi = new kernel.GroupApi(session);
     // channel 传入 MsgApi：sendMsg 后等 onMsgInfoListUpdate 确认（NapCat 式，2026-08-11）
@@ -162,6 +248,8 @@ export async function createKernelServices(
         profileLikeApi,
         webApi,
         self: { uin: loginResult.uin, nickname: loginResult.nick ?? "" },
+        calibLogger: calibLogger ?? NOOP_LOGGER,
+        receiveFilter,
         session,
         engine: ctx.engine,
         // util：wrapper exports 上的 NodeQQNTWrapperUtil（诊断用原生 copyFile）

@@ -18,7 +18,7 @@ import { resolveDataRoot } from "@napuketto/kernel";
 import { Command } from "commander";
 import { runSingleAccount } from "./boot.js";
 import { cmdConfigApply, cmdConfigInit, cmdConfigList, loadCliConfig } from "./config-cmds.js";
-import { logger } from "./logger.js";
+import { logger, resolveCliLogConfig } from "./logger.js";
 import { cmdRestart, cmdStatus, cmdStop } from "./ops-commands.js";
 import { runSupervisor } from "./supervisor.js";
 
@@ -236,8 +236,6 @@ function registerMainAction(program: Command): void {
 
 /** 入口：注册全部子命令与主命令后解析。 */
 function main(): void {
-    // 启动字符画（每次 cli 启动打印）
-    process.stdout.write(`${BANNER}\n`);
     const program = new Command();
     program
         .name("napuketto")
@@ -257,6 +255,16 @@ function main(): void {
             "--stub-dir <dir>",
             "stub QQNT.dll 目录（自建宿主 PATH 前置，缺省 loader/native/stub-test-env，Git Submodule）",
         );
+
+    // 启动字符画（每次 cli 启动、首个 action 前打印；受 [log].banner / NAPUKETTO_NO_BANNER
+    // 控制——supervisor 派生的子进程被注入 NO_BANNER，每树至多一次）。preAction 时机
+    // 才能拿到已解析的 -d 数据根（banner 决策需读对配置文件）。
+    program.hook("preAction", () => {
+        const cfg = resolveCliLogConfig(rootDataDir(program).dataDir);
+        if (cfg.banner) {
+            process.stdout.write(`${BANNER}\n`);
+        }
+    });
 
     registerConfigCommands(program);
     registerSupervisorCommand(program);

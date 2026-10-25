@@ -49,8 +49,20 @@ export interface KurobotAdapterOptions {
     msgApi: KurobotMsgApi;
     /** 当前登录账号（自消息过滤 + hello peerId）。 */
     self: { uin: string; nickname: string };
+    /**
+     * 接收行绑定过滤 holder（2026-10-25 P1-7）：握手/绑定表更新时填充 current
+     * （群频道按绑定表判定，私聊恒放行）；停止/终止时清空（null = 不过滤）。
+     * 与 loader msg-log 的 ReceiveLogFilter 结构契约（adapter 包不依赖 loader，
+     * 自研同构描述）。
+     */
+    receiveFilter?: ReceiveLogFilterHolder;
     /** 日志（缺省静默）。 */
     logger?: KurobotLoggerAlias;
+}
+
+/** 接收行绑定过滤 holder（loader ReceiveLogFilter 同构契约）。 */
+export interface ReceiveLogFilterHolder {
+    current: ((peerUin: string, isGroup: boolean) => boolean) | null;
 }
 
 /** 适配器日志面（复用连接层最小面）。 */
@@ -64,6 +76,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
     private readonly msgApi: KurobotMsgApi;
     private readonly selfUin: string;
     private readonly log: KurobotLoggerAlias;
+    private readonly receiveFilter: ReceiveLogFilterHolder | undefined;
     private connection: KurobotConnection | null = null;
     private unsubscribe: (() => void) | null = null;
     /** 当前生效配置（收链路取 commandPrefix 等；onStart/onReload 刷新）。 */
@@ -90,6 +103,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         this.msgApi = opts.msgApi;
         this.selfUin = String(opts.self.uin);
         this.log = opts.logger;
+        this.receiveFilter = opts.receiveFilter;
     }
 
     /** 最近一帧 status 快照（仅缓存；无帧时 null）。 */
@@ -155,6 +169,14 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         await this.startKurobot(config);
     }
 
+    /** 同步接收行过滤判定到 holder（绑定集变更后调用；私聊恒放行）。 */
+    private syncReceiveFilter(): void {
+        if (this.receiveFilter === undefined) {
+            return;
+        }
+        this.receiveFilter.current = (peerUin, isGroup) => !isGroup || this.bindings.has(peerUin);
+    }
+
     /** 停止：退订 + 关连接 + 清 pending 表。 */
     private async stopAll(): Promise<void> {
         this.unsubscribeAll();
@@ -162,6 +184,9 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         this.connection = null;
         this.pendingCommands.clear();
         this.pendingQueries.clear();
+        if (this.receiveFilter !== undefined) {
+            this.receiveFilter.current = null;
+        }
     }
 
     /** 握手成功：绑定集整体替换为服务端快照 + 清上一连接的 pending 表。 */
@@ -169,12 +194,16 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         this.pendingCommands.clear();
         this.pendingQueries.clear();
         this.bindings = new Set(ack.channelBindings);
+        this.syncReceiveFilter();
     }
 
-    /** 连接永久停止（1002/1008/hello_ack 拒绝）：清 pending（绑定集留给下次握手覆盖）。 */
+    /** 连接永久停止（1002/1008/hello_ack 拒绝）：清 pending 与接收过滤（绑定集留给下次握手覆盖）。 */
     private onEnded(reason: ConnectionEndedReason): void {
         this.pendingCommands.clear();
         this.pendingQueries.clear();
+        if (this.receiveFilter !== undefined) {
+            this.receiveFilter.current = null;
+        }
         this.log?.error({ reason }, "kurobot: 连接终止");
     }
 
@@ -228,6 +257,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
                 return;
             case "bindings_updated":
                 this.bindings = new Set(msg.body.channelBindings);
+                this.syncReceiveFilter();
                 this.log?.info({ bindings: msg.body.channelBindings }, "kurobot: 绑定表已更新");
                 return;
             case "command_result": {
@@ -264,6 +294,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         }
         if (kind === "bindings" && isStringArray(body.data)) {
             this.bindings = new Set(body.data);
+            this.syncReceiveFilter();
             return;
         }
         this.log?.debug({ kind, data: body.data }, "kurobot: 查询结果已记录");

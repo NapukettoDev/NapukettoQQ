@@ -87,6 +87,18 @@ export {
     QqReleasesError,
     resolveDownloadUrl,
 } from "./qq-releases.js";
+// 优雅关停（停止哨兵 + 关停钩子 + 信号接入；supervisor / cli boot / self-host 共用）
+export type { StopSentinelWatchOptions } from "./shutdown.js";
+export {
+    installSignalShutdown,
+    registerShutdownHook,
+    removeStopSentinel,
+    requestShutdown,
+    STOP_SENTINEL_FILENAME,
+    stopSentinelPath,
+    watchStopSentinel,
+    writeStopSentinel,
+} from "./shutdown.js";
 export type { WinNodeInfo } from "./win-node.js";
 export { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "./win-node.js";
 export type { SpawnCommand } from "./wine.js";

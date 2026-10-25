@@ -25,9 +25,26 @@ napuketto restart -q <uin>       # 重启单账号
 
 - 状态来源：`<数据根>/<uin>/runtime.json`、`<数据根>/supervisor.json`；读取时用 pid 存活
   探测修正，不只看文件里的 `running`。
-- `stop`/`restart` 在 Windows 用 `taskkill /T /F` 树杀（连带 self-host 孙进程）；POSIX 只向
-  boot 进程发 SIGTERM，必要时按 `runtime.json` 里的 self-host pid 另行清理。
+- `stop`/`restart`（2026-10-25 优雅化）：先写**停止哨兵** `<数据根>/napuketto.stop`
+  （`stop -q` 写目标账号，无 `-q` 写 all）→ 等进程链自行有序退出（退出码 0）→
+  限时（8s）未退的残留按 `runtime.json` pid 树杀兜底（Windows `taskkill /T /F`，
+  POSIX SIGTERM）。
 - `restart` 是 detached 拉起，日志不再接当前终端；到账号目录的 `logs/` 查看。
+
+### 2.1 优雅关停契约（嵌入式宿主 / 脚本适用）
+
+三层常驻进程（supervisor / boot / self-host）支持两种优雅停触发，宿主可任选：
+
+1. **停止哨兵**（推荐，零平台依赖）：向 `<数据根>/napuketto.stop` 写文件，内容为
+   目标账号 uin 或 `all`（空文件等同 all）。mtime 晚于进程启动才触发（陈旧哨兵
+   无效，守护重启不误杀），每进程至多触发一次。
+2. **信号**：SIGINT / SIGTERM / SIGBREAK。Windows 下 CTRL_BREAK_EVENT 以 SIGBREAK
+   到达——宿主以 `CREATE_NEW_PROCESS_GROUP` 拉起后可用
+   `GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid)` 优雅停整树。
+
+退出码契约：`0` = 请求式正常退出（哨兵/信号触发的有序关停，含内部清理：协议
+适配器停止、事件桥退订、日志落盘）；非 `0` = 引导失败或运行时致命。
+`taskkill /F` 强杀仍产出退出码 1（无法区分崩溃，宿主应优先用哨兵通道）。
 
 ## 3. 日志与状态文件
 

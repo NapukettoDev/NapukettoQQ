@@ -26,9 +26,11 @@ import {
     launchSelfHost,
     type QqInstallInfo,
     resolveQqFiles,
+    watchStopSentinel,
+    writeStopSentinel,
 } from "@napuketto/loader";
 import QRCode from "qrcode";
-import { logger } from "./logger.js";
+import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "./logger.js";
 import { writeAccountRuntime } from "./runtime-state.js";
 
 /** 单账号启动选项。 */
@@ -51,6 +53,9 @@ async function packageEntry(pkg: string): Promise<string> {
 
 /** QR 透出标记行前缀（loader bootstrap-core 非 IPC 模式输出，cli 解析终端渲染）。 */
 const QR_LINE_PREFIX = "NAPUTO_QR ";
+
+/** 优雅停等待上限（毫秒）：超时 kill 兜底（Windows 下为硬杀）。 */
+const GRACEFUL_STOP_TIMEOUT_MS = 10_000;
 
 /**
  * 逐行转发子进程输出到父进程，过滤原生噪音。
@@ -145,14 +150,18 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
 
     const stubDir = opts.stubDir ?? process.env["NAPUTO_STUB_DIR"] ?? defaultStubDir();
 
-    // 启动信息走结构化日志（时间戳 + 级别 + pid + 元数据，与 kernel 子进程格式一致）
-    logger.info({ qqVersion: qq.version, qqPath: qq.qqPath, source: qq.source }, "QQ 文件来源");
-    logger.info({ dataDir: cfgDir }, "数据目录");
-    logger.info("自建宿主引导（标准 node + stub QQNT.dll）");
+    // 启动信息走结构化日志（时间戳 + 级别 + pid + 元数据，与 kernel 子进程格式一致）。
+    // 2026-10-25 级别重分配：引导细节降 debug（banner 之外的定位/路径细节对运行
+    // 状态无信息量），致命错误与登录/退出生命周期保持 info 及以上。
+    logger.debug({ qqVersion: qq.version, qqPath: qq.qqPath, source: qq.source }, "QQ 文件来源");
+    logger.debug({ dataDir: cfgDir }, "数据目录");
+    logger.debug("自建宿主引导（标准 node + stub QQNT.dll）");
 
     // 唯一启动路径：自建宿主（2026-08-07 用户拍板，路线 B 淘汰）
     // stdio 接管 stdout/stderr：过滤 MMKV / 符号查找失败等原生噪音，其余转发
     // configPath：全局配置文件（项目根 napuketto.toml），注入 NAPKETTO_CONFIG 供装配链读取
+    // extraEnv：传播有效控制台渲染决策（子进程 stdout 恒 pipe，TTY 判定失真）+
+    // 数据根（NAPUTO_DATA_ROOT，self-host 停止哨兵目录）
     // ⚠️ P2（2026-08-12）：launchSelfHost 变 async（linux 场景需下载 win-node）
     const { child } = await launchSelfHost({
         qq,
@@ -166,6 +175,10 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
         configPath: resolveConfigPath({ dataRoot }),
         selfHost: true,
         stdio: ["inherit", "pipe", "pipe"],
+        extraEnv: {
+            ...effectiveConsoleEnv(resolveCliLogConfig(opts.dataDir)),
+            NAPUTO_DATA_ROOT: dataRoot,
+        },
         ...(opts.qq !== undefined ? { quickUin: opts.qq } : {}),
         ...(stubDir !== undefined ? { stubDir } : {}),
     });
@@ -188,10 +201,40 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
         status: "running",
     });
 
+    // 优雅关停编排（2026-10-25 生命周期契约）：触发后等 self-host 经自身哨兵/信号
+    // 处理自行退出（exit 0），10s 未退则 kill 兜底（Windows 下为硬杀）——
+    // boot 进程随后随 child 退出自然返回（退出码 0 = 请求式正常退出）。
+    const account = opts.qq ?? "default";
+    let stopArmed = false;
+    const armGracefulStop = (reason: string): void => {
+        if (stopArmed) {
+            return;
+        }
+        stopArmed = true;
+        logger.info({ account, reason }, "收到停止请求，等待自建宿主退出");
+        const fallback = setTimeout(() => {
+            if (child.exitCode === null && !child.killed) {
+                logger.warn({ account }, "自建宿主未在限时内退出，强制结束");
+                child.kill();
+            }
+        }, GRACEFUL_STOP_TIMEOUT_MS);
+        fallback.unref?.();
+    };
+    watchStopSentinel({ dataRoot, account, onTrigger: () => armGracefulStop("停止哨兵") });
+    const onSignal = (signal: string): void => {
+        // 写哨兵覆盖非控制台信号场景（self-host 同目录观察同一文件）；终端
+        // Ctrl+C 下 self-host 也会直接收到 SIGINT，双路径收敛
+        writeStopSentinel(dataRoot, account);
+        armGracefulStop(`信号 ${signal}`);
+    };
+    process.on("SIGINT", () => onSignal("SIGINT"));
+    process.on("SIGTERM", () => onSignal("SIGTERM"));
+    process.on("SIGBREAK", () => onSignal("SIGBREAK"));
+
     // 常驻：等待自建宿主进程退出
     await new Promise<void>((resolve) => {
         child.on("exit", (code) => {
-            logger.info({ code }, "自建宿主进程退出");
+            logger.info({ code, graceful: stopArmed }, "自建宿主进程退出");
             writeAccountRuntime(dataRoot, {
                 uin: opts.qq ?? "default",
                 pid: process.pid,

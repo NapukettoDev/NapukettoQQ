@@ -109,6 +109,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
     function makeWithRequestChannels(logger?: {
         warn(obj: unknown, msg?: string): void;
         info(obj: unknown, msg?: string): void;
+        debug(obj: unknown, msg?: string): void;
     }): {
         adapter: NapukettoOneBot11Adapter;
         msg: ReturnType<typeof captureChannel>;
@@ -182,7 +183,8 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
     it("onBuddyReqChange 未知参数形状静默跳过（校准 logger 可选）", async () => {
         const warn = vi.fn();
         const info = vi.fn();
-        const { adapter, friend, events } = makeWithRequestChannels({ warn, info });
+        const debug = vi.fn();
+        const { adapter, friend, events } = makeWithRequestChannels({ warn, info, debug });
         await adapter.subscribeOnly();
         friend.handlers.get("Buddy/onBuddyReqChange")?.({ unexpected: true });
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -417,11 +419,13 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
         events: unknown[];
         warn: ReturnType<typeof vi.fn>;
         info: ReturnType<typeof vi.fn>;
+        debug: ReturnType<typeof vi.fn>;
     } {
         const msg = captureChannel();
         const events: unknown[] = [];
         const warn = vi.fn();
         const info = vi.fn();
+        const debug = vi.fn();
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
             config: new ProtocolConfig({
@@ -432,40 +436,47 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
             }),
             broadcaster: { emit: (e: unknown) => events.push(e) } as unknown as EventBroadcaster,
             msgChannel: msg.channel,
-            logger: { warn, info },
+            logger: { warn, info, debug },
         });
-        return { adapter, msg, events, warn, info };
+        return { adapter, msg, events, warn, info, debug };
     }
 
-    it("528/382 sysmsg 批：解码成功但不广播，打结构化校准日志（识别表空）", async () => {
-        const { adapter, msg, events, warn, info } = makeSysMsgHarness();
+    it("528/382 sysmsg 批：解码成功但不广播，校准日志降 debug（识别表空）", async () => {
+        const { adapter, msg, events, warn, info, debug } = makeSysMsgHarness();
         await adapter.subscribeOnly();
         msg.handlers.get("Msg/onRecvSysMsg")?.([[...blob528()]]);
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(events).toHaveLength(0);
         expect(warn).not.toHaveBeenCalled();
-        expect(info).toHaveBeenCalledTimes(1);
-        const payload = info.mock.calls[0]?.[0] as { verdict?: string; msgType?: number };
+        // 2026-10-25 级别重分配：校准遥测 info → debug（info 级不再出现）
+        expect(info).not.toHaveBeenCalled();
+        expect(debug).toHaveBeenCalledTimes(1);
+        const payload = debug.mock.calls[0]?.[0] as { verdict?: string; msgType?: number };
         expect(payload.verdict).toBe("observed_unnamed");
         expect(payload.msgType).toBe(528);
     });
 
-    it("未知参数形状 → warn 且不广播", async () => {
+    it("未知参数形状 → warn（raw 截断）且不广播", async () => {
         const { adapter, msg, events, warn } = makeSysMsgHarness();
         await adapter.subscribeOnly();
-        msg.handlers.get("Msg/onRecvSysMsg")?.({ unexpected: true });
+        // 长 payload（> 64 字符）触发 warn 级截断
+        msg.handlers.get("Msg/onRecvSysMsg")?.({ unexpected: "x".repeat(200) });
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(warn).toHaveBeenCalledTimes(1);
+        const payload = warn.mock.calls[0]?.[0] as { raw?: string };
+        // warn 级 raw 截断：64 字符前缀 + …(+N) 标注
+        expect(payload.raw).toMatch(/^.{1,64}…\(\+\d+\)$/);
         expect(events).toHaveLength(0);
     });
 
     it("合法字节块但 wire 畸形 → 解码失败 warn 且不广播", async () => {
-        const { adapter, msg, events, warn, info } = makeSysMsgHarness();
+        const { adapter, msg, events, warn, info, debug } = makeSysMsgHarness();
         await adapter.subscribeOnly();
         msg.handlers.get("Msg/onRecvSysMsg")?.([[0x00]]); // field 0 顶层非法
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(warn).toHaveBeenCalledTimes(1);
         expect(info).not.toHaveBeenCalled();
+        expect(debug).not.toHaveBeenCalled();
         expect(events).toHaveLength(0);
     });
 });

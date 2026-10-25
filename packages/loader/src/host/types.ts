@@ -24,6 +24,10 @@ export interface LoggerLike {
     info(obj: unknown, msg?: string): void;
     warn(obj: unknown, msg?: string): void;
     error(obj: unknown, msg?: string): void;
+    /** 2026-10-25 级别重分配：接收行/校准数据降 debug。 */
+    debug(obj: unknown, msg?: string): void;
+    /** 派生子 logger（ob11 校准模块等；options.level 覆盖级别）。 */
+    child?(bindings: Record<string, unknown>, options?: { level?: string }): LoggerLike;
 }
 
 /** 群 API 最小面（uin↔uid 双向映射）。 */
@@ -109,6 +113,18 @@ export interface ProbeResultLike {
     services?: Record<string, unknown>;
 }
 
+/** [log] 配置解析结果最小面（kernel parseLogConfig 返回值，字段语义见 kernel）。 */
+export interface LogConfigLike {
+    level: string;
+    format?: string;
+    banner: boolean;
+    timestamp?: string;
+    unboundReceive: boolean;
+    levels: Partial<Record<"cli" | "kernel" | "loader" | "ob11", string>>;
+    file?: { path: string; level: string };
+    colorize?: boolean;
+}
+
 /**
  * 与 @napuketto/kernel 的最小交互面。
  * 可选成员 = 老 kernel 兼容路径（startNapuketto/quickLogin 等回退分支）；
@@ -122,6 +138,13 @@ export interface KernelLike {
             logLevel?: string | undefined;
             /** IPC 模式传 false：stdout 专用于 JSON 行协议，console 流会撕裂协议行。 */
             consoleLog?: boolean;
+            /** 控制台格式/时间戳/颜色 + 文件级别/路径 + 账号标注（2026-10-25 日志可配置化）。 */
+            logFormat?: string;
+            logTimestamp?: string;
+            logColorize?: boolean;
+            logFileLevel?: string;
+            logFile?: string;
+            account?: string;
         }): CoreLike;
     };
     startNapuketto?: (options: {
@@ -157,12 +180,18 @@ export interface KernelLike {
     ChatType: Record<"GROUP" | "C2C", number>;
     toCanonicalElements(msg: unknown): CanonicalElementLike[];
     parseToml(raw: string): Record<string, unknown>;
+    /** [log] 段解析（toml [log] 原对象 + env 快照 → LogConfigLike；老 kernel 缺失走缺省）。 */
+    parseLogConfig?: (section: unknown, env?: Record<string, string | undefined>) => LogConfigLike;
     // 日志（ADR-007）：kernel createLogger，loader 引导进程自建实例
     // （IPC 模式 console:false + file 落盘——stdout 专用于 JSON 行协议）
     createLogger?: (opts: {
         level?: string;
         console?: boolean;
         file?: string;
+        fileLevel?: string;
+        format?: string;
+        timestamp?: string;
+        colorize?: boolean;
         base?: Record<string, unknown>;
     }) => LoggerLike;
     NTEventChannel: new (name: string) => EventChannelLike;

@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 import process from "node:process";
+import { registerShutdownHook } from "../../shutdown.js";
 import { env } from "../env.js";
 import {
     attachIpcServices,
@@ -17,6 +18,7 @@ import {
     sendStatus,
     startIpcServer,
 } from "../ipc/index.js";
+import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-cfg.js";
 import type { CoreContextLike, CoreLike, KernelLike, LoginResultLike } from "../types.js";
 import { errMsg, log, type SharedState } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
@@ -256,6 +258,31 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
     }
 }
 
+/** NapukettoCore.create 选项（[log] 段 + env 折叠；IPC 模式关 console）。 */
+function buildCoreCreateOptions(
+    logCfg: ReturnType<typeof resolveLoaderLogConfig>,
+    bootEnv: BootstrapEnv,
+): Parameters<NonNullable<KernelLike["NapukettoCore"]>["create"]>[0] {
+    return {
+        paths: { dataRoot: bootEnv.dataDir },
+        logLevel: logCfg.levels.kernel ?? logCfg.level,
+        ...(logCfg.format !== undefined ? { logFormat: logCfg.format } : {}),
+        ...(logCfg.timestamp !== undefined ? { logTimestamp: logCfg.timestamp } : {}),
+        ...(logCfg.colorize !== undefined ? { logColorize: logCfg.colorize } : {}),
+        ...(logCfg.file !== undefined
+            ? {
+                  logFile: resolveLogFilePath(logCfg.file.path),
+                  logFileLevel: logCfg.file.level,
+              }
+            : {}),
+        ...(env.NAPUTO_QUICK_UIN !== undefined ? { account: env.NAPUTO_QUICK_UIN } : {}),
+        // IPC 模式关 console：stdout 专用于 JSON 行协议，pino-pretty 并发写会
+        // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
+        // logs/napuketto.log 不受影响，cli 模式 console 输出不变
+        ...(env.NAPUTO_IPC === "1" ? { consoleLog: false } : {}),
+    };
+}
+
 /** NapukettoCore 装配路径：create → attachWrapper → 登录 → 激活 → 协议 → 探测。
  * @returns 引导是否完整完成（协议服务装配成功 = true；登录失败/服务装配失败等
  *   静默收敛为 false，具体原因见 napuketto-boot.log）。 */
@@ -265,19 +292,15 @@ export async function bootstrapWithCore(
     bootEnv: BootstrapEnv,
     Appid: string | number,
 ): Promise<boolean> {
+    // 日志配置（napuketto.toml [log] 段 + env 覆盖；失败回退缺省）——kernel 与
+    // loader 两个 logger 的格式/级别/时间戳统一从这里来（2026-10-25 日志可配置化）
+    const logCfg = resolveLoaderLogConfig(kernel);
     // 装配层路径：NapukettoCore.create → attachWrapper → login
     const coreCtor = kernel.NapukettoCore;
     if (coreCtor === undefined) {
         return false;
     }
-    const core: CoreLike = coreCtor.create({
-        paths: { dataRoot: bootEnv.dataDir },
-        logLevel: "info",
-        // IPC 模式关 console：stdout 专用于 JSON 行协议，pino-pretty 并发写会
-        // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
-        // logs/napuketto.log 不受影响，cli 模式 console 输出不变
-        ...(env.NAPUTO_IPC === "1" ? { consoleLog: false } : {}),
-    });
+    const core: CoreLike = coreCtor.create(buildCoreCreateOptions(logCfg, bootEnv));
 
     // ⭐ IPC 模式：登录前就启动 stdin 服务端（只含 login.refreshQr 动作）。
     // 否则登录中（waiting_scan）前端刷新/control 指令堆积在 pipe 缓冲区，
@@ -327,6 +350,8 @@ export async function bootstrapWithCore(
     let services: KernelServices | null = null;
     let stopIpcServices: (() => void) | null = null;
     let stopOb11Bridge: (() => void) | null = null;
+    // 关停钩子一次性注册守卫（软重登重装配不重复注册）
+    let shutdownHooksRegistered = false;
 
     /**
      * 装配链尾部（登录成功后；初次引导与软重登共用）。
@@ -354,7 +379,7 @@ export async function bootstrapWithCore(
         // 协议装配：IPC 模式返回 kernel 服务（bootstrap 装配 ipc-server），非 IPC
         // 装配 OB11/Satori。null = 服务未装配——引导判失败，由 self-host 决定补发
         // failed 并退出（服务未装配的常驻进程只会以假 ready 干扰父进程）。
-        const newServices = await startProtocols(kernel, ctx, loginResult);
+        const newServices = await startProtocols(kernel, ctx, loginResult, logCfg);
         if (newServices === null) {
             log("bootstrap: 协议服务装配失败，引导中止");
             return false;
@@ -368,6 +393,23 @@ export async function bootstrapWithCore(
             stopOb11Bridge = await attachOb11IpcBridge(ipcActions, newServices);
         }
         services = newServices;
+        // 优雅关停钩子（哨兵/信号触发，2026-10-25）：与软重登清理同一顺序——
+        // 协议消费方 → IPC 附加面 → kernel 桥/缓存/消息日志。逆序执行
+        // （registerShutdownHook 语义），故按清理顺序的反向注册；软重登重装配
+        // 不重复注册（守卫一次性），钩子读闭包变量取最新装配面。
+        if (!shutdownHooksRegistered) {
+            shutdownHooksRegistered = true;
+            registerShutdownHook(() => {
+                services?.dispose();
+            });
+            registerShutdownHook(() => {
+                stopIpcServices?.();
+                stopOb11Bridge?.();
+            });
+            registerShutdownHook(() => {
+                return services?.stopAdapters?.();
+            });
+        }
         return true;
     };
 

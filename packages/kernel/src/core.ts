@@ -20,9 +20,11 @@ import { type CoreContext, createCoreContext } from "./context.js";
 import {
     createLogger,
     kernelError,
+    type LogFormat,
     type LogLevel,
     type PathOptions,
     PathWrapper,
+    type TimestampMode,
 } from "./infra/index.js";
 import {
     type LoginResult,
@@ -51,8 +53,18 @@ export interface NapukettoCoreOptions {
     logLevel?: LogLevel;
     /** 文件日志路径；不传则默认 `logs/napuketto.log`（父目录自动创建）。 */
     logFile?: string;
+    /** 文件目的地级别（可低于控制台级别；缺省同 logLevel）。 */
+    logFileLevel?: LogLevel;
     /** 是否输出 console，默认 true。 */
     consoleLog?: boolean;
+    /** 控制台格式（缺省按 TTY 自动：TTY pretty / pipe single-line）。 */
+    logFormat?: LogFormat;
+    /** 时间戳渲染模式，默认 local。 */
+    logTimestamp?: TimestampMode;
+    /** 控制台颜色（缺省自动）。 */
+    logColorize?: boolean;
+    /** 账号标注（记录结构化 account 字段；快速登录目标账号，登录前已知时传入）。 */
+    account?: string;
 }
 
 /** 登录进度（IPC 子进程模式经 onLoginProgress 转发；koishi 插件展示二维码/状态用）。 */
@@ -118,9 +130,16 @@ export class NapukettoCore {
             level: opts.logLevel ?? "info",
             console: opts.consoleLog ?? true,
             file: opts.logFile ?? paths.file("logs", "napuketto.log"),
+            ...(opts.logFileLevel !== undefined ? { fileLevel: opts.logFileLevel } : {}),
+            ...(opts.logFormat !== undefined ? { format: opts.logFormat } : {}),
+            ...(opts.logTimestamp !== undefined ? { timestamp: opts.logTimestamp } : {}),
+            ...(opts.logColorize !== undefined ? { colorize: opts.logColorize } : {}),
             // base.name 用 pino 保留字段（logger name）：pino-pretty 渲染为 (kernel/pid)
             // 元数据头，不占属性行；cli/loader 同款，三来源可区分
-            base: { name: "kernel" },
+            base: {
+                name: "kernel",
+                ...(opts.account !== undefined ? { account: opts.account } : {}),
+            },
         });
         return new NapukettoCore(createCoreContext({ logger, paths }));
     }

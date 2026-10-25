@@ -65,6 +65,42 @@ CLI 启动时会把解析结果通过 `NAPKETTO_CONFIG` 注入自建宿主，保
 `config apply` 用外部文件做**顶层合并**（`{ ...existing, ...patch }`）后整体校验写回；
 `config list` 打印当前有效配置与账号目录清单。
 
+### 3.1 日志段 `[log]`（2026-10-25 日志可配置化）
+
+不配置该段即用缺省：控制台格式按 TTY 自动（终端 = pretty 多行彩色，与历史行为
+一致；管道/重定向 = single-line 单行无色），全局级别 info，启动 banner 打印。
+
+```toml
+[log]
+format = "single-line"     # pretty | single-line | json（缺省按 TTY 自动）
+level = "info"             # trace|debug|info|warn|error|fatal（控制台级别）
+banner = true              # 启动字符画（supervisor 派生子进程自动不再打）
+timestamp = "local"        # local=[HH:MM:ss.l] | iso8601=2026-10-25T16:01:33.294+08:00 | elapsed=+123.456s
+unboundReceive = true      # false = 未绑定频道的接收行不打（kurobot 握手拿到绑定表后生效）
+
+[log.levels]               # 按模块覆盖级别，模块：cli / kernel / loader / ob11
+# loader = "debug"         # 例：终端上看接收行（2026-10-25 起接收行默认降 debug）
+# ob11 = "debug"           # 例：协议校准数据（含原始 hex，逆向/校准采集用）
+
+[log.file]                 # 可选独立文件 sink（相对路径按数据根展开）
+# path = "logs/napuketto-console.log"
+# level = "debug"          # 文件级别可低于控制台（控制台干净与排查信息兼得）
+```
+
+- **pretty**：pino-pretty 多行彩色（终端现状）。
+- **single-line**：一条记录一行，字段内联 `key=value`：
+  `[16:20:41.481] INFO (cli/14344): 启动账号 service=cli qq=3567141148`。
+- **json**：NDJSON，每行一个完整对象，可逐行 `JSON.parse`：
+  `{"time":"...+08:00","level":"info","module":"loader","account":"3567141148","pid":27256,"msg":"..."}`
+  （`module` = logger 来源 cli/kernel/loader/ob11；`account` = 登录账号，已知时才有）。
+- 级别重分配（默认生效，CHANGELOG 列出）：ob11 校准遥测（含 raw hex）与
+  `loader | 接收` 行降 debug；QQ 文件来源/数据目录等引导细节降 debug；
+  账号上线、QR 状态、握手结果、致命错误保持 info 及以上。warn 级 raw 字段
+  截断为 64 字符 + `…(+N)`，完整值在 debug 级。
+- 时间戳统一取单调墙钟（`performance.timeOrigin + performance.now()`）：
+  QQNT 原生层会在部分回调窗口内篡改进程 `Date`（实测 onRecvSysMsg 期间记录
+  时间冻结为假值），单调钟不受影响，三层（cli/kernel/loader）同源。
+
 ## 4. 账号
 
 ```toml
@@ -193,7 +229,10 @@ port = 5501
 |---|---|
 | `NAPKETTO_CONFIG` | 全局配置文件路径（最高优先级） |
 | `NAPKETTO_DATA` | 数据根 |
-| `NAPKETTO_LOG_LEVEL` | CLI 日志级别（kernel/loader 文件日志仍为 info） |
+| `NAPUKETTO_LOG_LEVEL` | 日志级别覆盖（全进程链生效；兼容旧拼写 `NAPKETTO_LOG_LEVEL`） |
+| `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖（pretty / single-line / json） |
+| `NAPUKETTO_NO_BANNER` | `1`/`true` = 关启动字符画 |
+| `NAPUKETTO_LOG_COLORIZE` | `1`/`0` 颜色覆盖（CLI 顶层向管道子进程传播用） |
 | `NAPUTO_QQ_PATH` | 本机 QQ 安装路径（`QQ.exe`） |
 | `NAPUTO_QQ_FILES` | 显式 QQ 文件根（含 `versions/` 结构） |
 | `NAPUTO_QQ_URL` | 覆盖 QQ 安装包下载地址 |
