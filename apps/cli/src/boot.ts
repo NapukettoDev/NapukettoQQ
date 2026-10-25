@@ -30,6 +30,7 @@ import {
     writeStopSentinel,
 } from "@napuketto/loader";
 import QRCode from "qrcode";
+import { isInlineConfigActive } from "./config-inline.js";
 import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "./logger.js";
 import { writeAccountRuntime } from "./runtime-state.js";
 
@@ -160,6 +161,8 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
     // 唯一启动路径：自建宿主（2026-08-07 用户拍板，路线 B 淘汰）
     // stdio 接管 stdout/stderr：过滤 MMKV / 符号查找失败等原生噪音，其余转发
     // configPath：全局配置文件（项目根 napuketto.toml），注入 NAPKETTO_CONFIG 供装配链读取
+    //   内联配置生效（NAPKETTO_CONFIG_JSON）时不解析、不注入——子进程经 env 继承
+    //   内联文本，装配链按同一优先级读取；避免项目根探测出无关路径注入孙进程。
     // extraEnv：传播有效控制台渲染决策（子进程 stdout 恒 pipe，TTY 判定失真）+
     // 数据根（NAPUTO_DATA_ROOT，self-host 停止哨兵目录）
     // ⚠️ P2（2026-08-12）：launchSelfHost 变 async（linux 场景需下载 win-node）
@@ -172,7 +175,7 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
         // 子进程 cwd 指向数据根：QQ 原生层 fallback 落盘（guild1.db 等）
         // 落在专门的数据目录，不污染项目根（实测 08-07）。
         cwd: dataRoot,
-        configPath: resolveConfigPath({ dataRoot }),
+        ...(isInlineConfigActive() ? {} : { configPath: resolveConfigPath({ dataRoot }) }),
         selfHost: true,
         stdio: ["inherit", "pipe", "pipe"],
         extraEnv: {

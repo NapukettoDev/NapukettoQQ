@@ -60,8 +60,11 @@ export type {
 } from "./infra/index.js";
 export {
     ConfigBase,
+    ConfigError,
+    configError,
     createLogger,
     DEFAULT_DATA_ROOT_NAME,
+    EXIT_CONFIG_INVALID,
     isKernelError,
     KERNEL_ERROR_CODES,
     KernelError,

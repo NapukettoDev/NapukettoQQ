@@ -64,6 +64,13 @@ IPC event 消息（koishi 插件消费）；协议模式由 adapter 订阅。
 
 ## 3. apis/（12 个，统一错误语义 ADR-009）
 
+infra 层错误契约（2026-10-25 嵌入式退出码）：`ConfigError extends KernelError`
+（`code` 恒 `INVALID_PARAM`，`name` 恒 `ConfigError`）标记「配置未就绪」一族——
+`ConfigBase` 的反序列化/校验失败与 cli `parseCliConfig` 全部校验错误；CLI 与
+self-host 据此以 78（EX_CONFIG）退出，与运行时崩溃（非 0 非 78）区分，宿主免重启。
+`ConfigBase.parseText(raw)` 提供只读的"反序列化+校验"（`config validate` 用，
+不落模板），错误包装与 `load()`/`save()` 逐字一致。
+
 成功返业务值 / 失败抛 `KernelError`（类型化错误码，协议层映射表消费）。
 本次接线相关：
 

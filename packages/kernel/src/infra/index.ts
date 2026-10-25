@@ -7,7 +7,15 @@
 export type { ConfigFormat, ConfigOptions, ConfigSchema } from "./config.js";
 export { ConfigBase, parseToml, stringifyToml } from "./config.js";
 export type { KernelErrorCode } from "./errors.js";
-export { isKernelError, KERNEL_ERROR_CODES, KernelError, kernelError } from "./errors.js";
+export {
+    ConfigError,
+    configError,
+    EXIT_CONFIG_INVALID,
+    isKernelError,
+    KERNEL_ERROR_CODES,
+    KernelError,
+    kernelError,
+} from "./errors.js";
 export type {
     LogConfig,
     LogEnvSource,

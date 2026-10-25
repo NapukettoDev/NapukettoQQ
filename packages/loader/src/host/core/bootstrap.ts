@@ -19,7 +19,7 @@
 import { dirname, join } from "node:path";
 import { env } from "../env.js";
 import type { CoreContextLike, KernelLike } from "../types.js";
-import { errMsg, log, type SharedState } from "../util.js";
+import { errMsg, isConfigError, log, type SharedState } from "../util.js";
 import { type BootstrapEnv, bootstrapWithCore } from "./bootstrap-core.js";
 
 /** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
@@ -137,7 +137,8 @@ async function bootstrapFallback(
  * 核心引导：import kernel → 装配 → 登录 → 替换 session → 等待就绪 → 协议装配。
  * @returns 引导是否完整完成（IPC 模式 = 协议服务装配成功；各失败路径静默收敛为
  *   false 而非抛错，具体原因记录在 NAPUTO_CFG_DIR 下 napuketto-boot.log——
- *   调用方 self-host 依此决定 ready/failed 与进程去留）。
+ *   调用方 self-host 依此决定 ready/failed 与进程去留）。唯一例外：配置校验
+ *   失败（ConfigError 契约）重抛，self-host 以 78 区分配置未就绪与运行时崩溃。
  */
 export async function bootstrap(state: SharedState): Promise<boolean> {
     const kernelEntry = env.NAPUTO_KERNEL_ENTRY;
@@ -171,6 +172,12 @@ export async function bootstrap(state: SharedState): Promise<boolean> {
             }
             return await bootstrapFallback(kernel, state, bootEnv, Appid);
         } catch (e) {
+            // 配置校验失败重抛（ConfigError 契约，2026-10-25）：self-host 据此以
+            // 78 区分「配置未就绪」与运行时崩溃（宿主免重启）；其余失败仍收敛
+            // 为 false 不抛，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log。
+            if (isConfigError(e)) {
+                throw e;
+            }
             log(`bootstrap: lifecycle error: ${errMsg(e)}`);
             return false;
         }

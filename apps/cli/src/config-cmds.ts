@@ -37,12 +37,14 @@ import process from "node:process";
 import type { ConfigSchema } from "@napuketto/kernel";
 import {
     ConfigBase,
+    configError,
     kernelError,
     parseToml,
     resolveConfigPath,
     resolveDataRoot,
     stringifyToml,
 } from "@napuketto/kernel";
+import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "./config-inline.js";
 import { type CliConfig, parseCliConfig } from "./config-parse.js";
 import { configTemplate } from "./config-template.js";
 import { logger } from "./logger.js";
@@ -85,6 +87,41 @@ export async function loadCliConfig(dataRoot: string): Promise<CliConfig> {
     const store = new CliConfigStore(dataRoot);
     await ensureConfigTemplate(store.path);
     return await store.load();
+}
+
+/** 已加载主配置（含来源；启动路径与 config validate 共用）。 */
+export interface LoadedCliConfig {
+    config: CliConfig;
+    source: ConfigSource;
+    /** file 来源的配置文件路径；inline 无文件为 undefined。 */
+    path?: string;
+}
+
+/** 「配置来源」日志每进程至多一行（autoStart 与 runSupervisor 各加载一次）。 */
+let sourceLogged = false;
+
+/**
+ * 加载主配置（内联优先，2026-10-25 嵌入式契约）：
+ * NAPKETTO_CONFIG_JSON 非空 → 内存文档校验（不读 / 不写 / 不校验任何 toml
+ * 文件），打一行来源日志；否则现行文件链路（缺失自动落模板）。校验失败两形态
+ * 同为 ConfigError（exit 78），文案区别只在来源标注。
+ */
+export async function loadCliConfigWithSource(
+    opts: { dataDir?: string } = {},
+): Promise<LoadedCliConfig> {
+    const inlineText = readInlineConfigText();
+    if (inlineText !== undefined) {
+        const config = parseInlineConfig(inlineText);
+        if (!sourceLogged) {
+            sourceLogged = true;
+            logger.info("配置来源: inline（NAPKETTO_CONFIG_JSON）");
+        }
+        return { config, source: "inline" };
+    }
+    const dataRoot = resolveDataRoot(opts.dataDir);
+    const configPath = resolveConfigPath({ dataRoot });
+    const config = await loadCliConfig(dataRoot);
+    return { config, source: "file", path: configPath };
 }
 
 /** CliConfig → 普通对象（smol-toml stringify 入参）。 */
@@ -197,4 +234,76 @@ export async function cmdConfigApply(file: string, opts: { dataDir?: string }): 
     logger.info({ path: store.path }, "全局配置已更新");
     // TOML 内容为功能输出（机器可读），保持原样 stdout，不做日志包装
     process.stdout.write(`${stringifyToml(toRecord(next))}\n`);
+}
+
+/** 读取配置文件文本（validate 纯只读：ENOENT 不落模板，按「配置缺失」报 ConfigError）。 */
+async function readConfigTextForValidate(path: string): Promise<string> {
+    try {
+        return await readFile(path, "utf8");
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            throw configError(`配置文件不存在: ${path}`);
+        }
+        throw configError(`读取配置文件失败: ${path}`, { cause: err });
+    }
+}
+
+/**
+ * 校验配置文件（与运行时同构：ConfigBase.parseText 反序列化 + 校验，报错文案
+ * 含路径且与 loadCliConfig 主路径逐字一致；格式按扩展名推断，同 ConfigBase）。
+ */
+async function validateConfigFile(path: string, dataRoot: string): Promise<void> {
+    const raw = await readConfigTextForValidate(path);
+    const store = new ConfigBase<CliConfig>({
+        path,
+        schema: { parse: parseCliConfig } satisfies ConfigSchema<CliConfig>,
+        defaults: defaultCliConfig(dataRoot),
+    });
+    store.parseText(raw);
+}
+
+/** config validate 选项（--config / --config-json 二选一；无参 = 校验生效配置）。 */
+export interface ConfigValidateOptions {
+    configPath?: string;
+    configJson?: string;
+    dataDir?: string;
+}
+
+/** config validate 结果（stdout 单行摘要由 index.ts 渲染；测试断言返回值）。 */
+export interface ConfigValidateResult {
+    source: ConfigSource;
+    /** file 来源的配置路径（inline 为 undefined）。 */
+    path?: string;
+}
+
+/**
+ * config validate：校验配置（exit 0 = 合法；exit 78 = 校验失败，ConfigError 一族；
+ * --config 与 --config-json 同给 = 用法错误，exit 1）。纯只读——文件形态不落模板
+ * （无参形态文件缺失按配置缺失报 78），不触碰数据目录。
+ */
+export async function cmdConfigValidate(
+    opts: ConfigValidateOptions,
+): Promise<ConfigValidateResult> {
+    const { configPath, configJson } = opts;
+    if (configPath !== undefined && configJson !== undefined) {
+        throw kernelError("config validate：--config 与 --config-json 只能二选一", "INVALID_PARAM");
+    }
+    const dataRoot = resolveDataRoot(opts.dataDir);
+    if (configJson !== undefined) {
+        parseInlineConfig(configJson);
+        return { source: "inline" };
+    }
+    if (configPath !== undefined) {
+        await validateConfigFile(configPath, dataRoot);
+        return { source: "file", path: configPath };
+    }
+    // 无参：校验当前生效配置（内联优先；文件缺失按配置缺失报 78，不落模板）
+    const inlineText = readInlineConfigText();
+    if (inlineText !== undefined) {
+        parseInlineConfig(inlineText);
+        return { source: "inline" };
+    }
+    const path = resolveConfigPath({ dataRoot });
+    await validateConfigFile(path, dataRoot);
+    return { source: "file", path };
 }

@@ -5,8 +5,10 @@
  * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
  * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
  * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验。
+ * 全部校验错误为 ConfigError（2026-10-25 嵌入式退出码契约：CLI exit 78 一族，
+ * 内联与文件两形态共用本校验器）。
  */
-import { kernelError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
+import { configError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
 import { RESERVED_PLACEHOLDER_QINS } from "./config-template.js";
 
 /** 默认自动重启。 */
@@ -56,7 +58,7 @@ function parseProtocolSection(
         return;
     }
     if (typeof section !== "object" || section === null) {
-        throw kernelError(`主配置账号 ${key} 段必须是对象`, "INVALID_PARAM");
+        throw configError(`主配置账号 ${key} 段必须是对象`);
     }
     return section as Record<string, unknown>;
 }
@@ -71,7 +73,7 @@ function parseDataDir(raw: Record<string, unknown>): string {
         return resolveDataRoot();
     }
     if (typeof raw["dataDir"] !== "string" || raw["dataDir"] === "") {
-        throw kernelError("主配置 dataDir 必须是非空字符串", "INVALID_PARAM");
+        throw configError("主配置 dataDir 必须是非空字符串");
     }
     return raw["dataDir"];
 }
@@ -82,7 +84,7 @@ function parseAutoRestart(raw: Record<string, unknown>): boolean {
         return DEFAULT_AUTO_RESTART;
     }
     if (typeof raw["autoRestart"] !== "boolean") {
-        throw kernelError("主配置 autoRestart 必须是布尔值", "INVALID_PARAM");
+        throw configError("主配置 autoRestart 必须是布尔值");
     }
     return raw["autoRestart"];
 }
@@ -97,7 +99,7 @@ function parseRestartDelayMs(raw: Record<string, unknown>): number {
         !Number.isInteger(raw["restartDelayMs"]) ||
         raw["restartDelayMs"] <= 0
     ) {
-        throw kernelError("主配置 restartDelayMs 必须是正整数", "INVALID_PARAM");
+        throw configError("主配置 restartDelayMs 必须是正整数");
     }
     return raw["restartDelayMs"];
 }
@@ -105,15 +107,13 @@ function parseRestartDelayMs(raw: Record<string, unknown>): number {
 /** 解析 accounts（必须至少一个账号，qq 必填）。 */
 function parseAccounts(raw: Record<string, unknown>): CliAccountConfig[] {
     if (raw["accounts"] === undefined) {
-        throw kernelError(
+        throw configError(
             "主配置缺少 accounts（必须至少一个账号）；首次启动已生成模板，请编辑后重试",
-            "INVALID_PARAM",
         );
     }
     if (!Array.isArray(raw["accounts"]) || raw["accounts"].length === 0) {
-        throw kernelError(
+        throw configError(
             "主配置 accounts 必须是非空数组（至少一个 QQ 账号）；首次启动已生成模板，请编辑后重试",
-            "INVALID_PARAM",
         );
     }
     const accounts: CliAccountConfig[] = [];
@@ -126,25 +126,24 @@ function parseAccounts(raw: Record<string, unknown>): CliAccountConfig[] {
 /** 解析单个账号项（qq 必填；协议段缺省 = 不启用）。 */
 function parseAccount(item: unknown): CliAccountConfig {
     if (typeof item !== "object" || item === null) {
-        throw kernelError("主配置 accounts 元素必须是对象", "INVALID_PARAM");
+        throw configError("主配置 accounts 元素必须是对象");
     }
     const { qq, enabled } = item as { qq?: unknown; enabled?: unknown };
     if (typeof qq !== "string" || qq === "") {
-        throw kernelError("主配置账号缺少非空 qq", "INVALID_PARAM");
+        throw configError("主配置账号缺少非空 qq");
     }
     if (!QQ_IN_FORMAT_RE.test(qq)) {
-        throw kernelError("主配置账号 qq 必须是 5-11 位纯数字 QQ 号", "INVALID_PARAM");
+        throw configError("主配置账号 qq 必须是 5-11 位纯数字 QQ 号");
     }
     if (RESERVED_PLACEHOLDER_QINS.some((placeholder) => placeholder === qq)) {
-        throw kernelError(
+        throw configError(
             `主配置账号 qq "${qq}" 是模板占位值，请编辑配置文件填入真实 QQ 号后再启动`,
-            "INVALID_PARAM",
         );
     }
     const out: CliAccountConfig = { qq };
     if (enabled !== undefined) {
         if (typeof enabled !== "boolean") {
-            throw kernelError("主配置账号 enabled 必须是布尔值", "INVALID_PARAM");
+            throw configError("主配置账号 enabled 必须是布尔值");
         }
         out.enabled = enabled;
     }
@@ -173,10 +172,23 @@ function stripUndefinedFormat(log: LogConfig): LogConfig {
     return format === undefined ? rest : { ...rest, format };
 }
 
-/** 手写校验器：主配置 parse（不引入 zod）。 */
+/**
+ * [log] 段解析（kernel parseLogConfig 错误归一为 ConfigError）：日志段非法同属
+ * 「配置未就绪」一族（exit 78）；错误文案保持 kernel 原文（主配置 log.xxx ...）。
+ */
+function parseLogSection(input: unknown): LogConfig {
+    try {
+        return parseLogConfig(input);
+    } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw configError(`主配置 [log] 段非法: ${detail}`, { cause: err });
+    }
+}
+
+/** 手写校验器：主配置 parse（不引入 zod）。全部校验错误为 ConfigError（exit 78 一族）。 */
 export function parseCliConfig(input: unknown): CliConfig {
     if (typeof input !== "object" || input === null) {
-        throw kernelError("主配置必须是对象", "INVALID_PARAM");
+        throw configError("主配置必须是对象");
     }
     const raw = input as Record<string, unknown>;
     const dataDir = parseDataDir(raw);
@@ -185,7 +197,7 @@ export function parseCliConfig(input: unknown): CliConfig {
     const accounts = parseAccounts(raw);
     // [log] 段：kernel parseLogConfig 严格校验（非法值报错；未配置段 = undefined）
     const log =
-        raw["log"] !== undefined ? stripUndefinedFormat(parseLogConfig(raw["log"])) : undefined;
+        raw["log"] !== undefined ? stripUndefinedFormat(parseLogSection(raw["log"])) : undefined;
     return {
         dataDir,
         autoRestart,

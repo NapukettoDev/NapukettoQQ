@@ -8,7 +8,9 @@
  *   - 单账号：-q <uin> → runSingleAccount（自建宿主：标准 node + stub QQNT.dll，不拉起 QQ）
  *   - 多账号：-q A -q B 或 supervisor 子命令 → runSupervisor（子进程编排）
  *   - 无 -q：读全局配置 accounts（至少一个，账号必填）→ supervisor 拉起全部启用账号
- *   - config 子命令：init / list / apply（主配置管理）
+ *   - config 子命令：init / list / apply / validate（主配置管理）
+ *   - 退出码契约（2026-10-25）：0 = 请求式优雅关停；78 = 配置校验失败（ConfigError
+ *     一族，宿主消费，免重启）；其余错误 = 1（handleActionError 统一出口）
  *
  * 路线 B（拉起 QQ + 注入）已淘汰（2026-08-07 用户拍板），相关入口已移除。
  */
@@ -16,9 +18,16 @@
 import process from "node:process";
 import { resolveDataRoot } from "@napuketto/kernel";
 import { Command } from "commander";
+import { handleActionError } from "./action-error.js";
 import { runSingleAccount } from "./boot.js";
-import { cmdConfigApply, cmdConfigInit, cmdConfigList, loadCliConfig } from "./config-cmds.js";
-import { logger, resolveCliLogConfig } from "./logger.js";
+import {
+    cmdConfigApply,
+    cmdConfigInit,
+    cmdConfigList,
+    cmdConfigValidate,
+    loadCliConfigWithSource,
+} from "./config-cmds.js";
+import { resolveCliLogConfig } from "./logger.js";
 import { cmdRestart, cmdStatus, cmdStop } from "./ops-commands.js";
 import { runSupervisor } from "./supervisor.js";
 
@@ -37,16 +46,6 @@ const BANNER = [
     "/_/ |_/\\__,_/ .___/\\__,_/_/|_|\\___/\\__/\\__/\\____/\\___\\_\\___\\_\\ ",
     "           /_/                                                 ",
 ].join("\n");
-
-/** 统一错误输出（结构化日志，错误对象经 pino serializer 带堆栈）。 */
-function reportError(err: unknown): void {
-    let message = String(err);
-    if (err instanceof Error) {
-        const { message: errMessage } = err;
-        message = errMessage;
-    }
-    logger.error({ err }, message);
-}
 
 /** 构造可选 dataDir 参数（exactOptionalPropertyTypes 不允许显式 undefined）。 */
 function withDataDir(dataDir: string | undefined): { dataDir?: string } {
@@ -71,8 +70,7 @@ function registerConfigCommands(program: Command): void {
             try {
                 await cmdConfigInit(rootDataDir(program));
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
     configCmd
@@ -82,8 +80,7 @@ function registerConfigCommands(program: Command): void {
             try {
                 await cmdConfigList(rootDataDir(program));
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
     configCmd
@@ -93,8 +90,33 @@ function registerConfigCommands(program: Command): void {
             try {
                 await cmdConfigApply(file, rootDataDir(program));
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
+            }
+        });
+    // config validate（2026-10-25）：宿主拉起前预检；exit 0 合法 / 78 校验失败
+    // （与运行时同一校验器与错误文案）/ 1 用法错误。纯只读（文件缺失不落模板）。
+    configCmd
+        .command("validate")
+        .description(
+            "校验配置（--config <path> / --config-json <json> 二选一；无参 = 校验生效配置）",
+        )
+        .option("--config <path>", "待校验配置文件路径（.toml/.json 按扩展名解析）")
+        .option("--config-json <json>", "待校验内联配置 JSON 文本")
+        .action(async (opts: { config?: string; configJson?: string }) => {
+            try {
+                const result = await cmdConfigValidate({
+                    ...(opts.config !== undefined ? { configPath: opts.config } : {}),
+                    ...(opts.configJson !== undefined ? { configJson: opts.configJson } : {}),
+                    ...rootDataDir(program),
+                });
+                // 校验结果为功能输出（宿主 grep 消费），保持原样 stdout 单行
+                process.stdout.write(
+                    result.source === "inline"
+                        ? "配置校验通过（来源: inline）\n"
+                        : `配置校验通过（来源: file ${result.path}）\n`,
+                );
+            } catch (err) {
+                handleActionError(err);
             }
         });
 }
@@ -108,8 +130,7 @@ function registerSupervisorCommand(program: Command): void {
             try {
                 await runSupervisor(rootDataDir(program));
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
 }
@@ -126,8 +147,7 @@ function registerOpsCommands(program: Command): void {
                     ...(opts.qq !== undefined ? { qq: opts.qq } : {}),
                 });
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
     program
@@ -142,8 +162,7 @@ function registerOpsCommands(program: Command): void {
                     ...(opts.qq !== undefined ? { qq: opts.qq } : {}),
                 });
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
     program
@@ -156,8 +175,7 @@ function registerOpsCommands(program: Command): void {
                     ...(opts.qq !== undefined ? { qq: opts.qq } : {}),
                 });
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         });
 }
@@ -190,10 +208,12 @@ async function runSingleAccountBranch(
 }
 
 /** 无 -q 时：读全局配置 accounts（账号必填，2026-08-08 拍板），supervisor 拉起全部启用账号。
- * 不再有「配置为空 → 交互式单账号登录」老路径：缺账号直接报错提示编辑模板。 */
+ * 不再有「配置为空 → 交互式单账号登录」老路径：缺账号直接报错提示编辑模板。
+ * 配置加载内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78。 */
 async function autoStart(opts: { dataDir?: string; stubDir?: string }): Promise<void> {
-    const dataRoot = resolveDataRoot(opts.dataDir);
-    const config = await loadCliConfig(dataRoot);
+    const { config } = await loadCliConfigWithSource(
+        opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {},
+    );
     if (config.accounts.length === 0) {
         // parseCliConfig 已强制至少一个，此处防御
         throw new Error("主配置没有账号，请编辑 napuketto.toml 填写 [[accounts]] 段");
@@ -227,8 +247,7 @@ function registerMainAction(program: Command): void {
                     await runSupervisor(supOpts);
                 }
             } catch (err) {
-                reportError(err);
-                process.exitCode = 1;
+                handleActionError(err);
             }
         },
     );

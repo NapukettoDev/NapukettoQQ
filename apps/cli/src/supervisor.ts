@@ -11,9 +11,9 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import { createInterface } from "node:readline";
-import { resolveDataRoot } from "@napuketto/kernel";
+import { EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
-import { loadCliConfig } from "./config-cmds.js";
+import { loadCliConfigWithSource } from "./config-cmds.js";
 import type { CliAccountConfig, CliConfig } from "./config-parse.js";
 import {
     effectiveConsoleEnv,
@@ -130,6 +130,21 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
     child.on("exit", (code, signal) => {
         ctx.children.delete(acct.qq);
         logger.info({ qq: acct.qq, code, signal: signal ?? "none" }, "账号退出");
+        if (code === EXIT_CONFIG_INVALID) {
+            // 配置校验失败（2026-10-25 退出码契约）：配置不修，重启无意义——
+            // 不进守护重启，落 runtime exited 供 status 消费。
+            logger.error({ qq: acct.qq, code }, "账号因配置校验失败退出（78），不自动重启");
+            writeAccountRuntime(ctx.dataRoot, {
+                uin: acct.qq,
+                pid: child.pid ?? 0,
+                startedAt: new Date().toISOString(),
+                kind: "supervisor-child",
+                status: "exited",
+                exitCode: code,
+                restartCount,
+            });
+            return;
+        }
         if (!ctx.isStopping() && ctx.autoRestart) {
             // 守护：延迟重启（关闭信号到达前无限重试，由 SIGINT/SIGTERM 终止）
             ctx.restartCounts.set(acct.qq, restartCount + 1);
@@ -185,7 +200,10 @@ function stopAll(ctx: SupervisorCtx): void {
 /** 运行 supervisor（多账号编排）。 */
 export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
-    const config = await loadCliConfig(dataRoot);
+    // 内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78
+    const { config } = await loadCliConfigWithSource(
+        opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {},
+    );
     const accounts = resolveAccounts(opts, config);
     if (accounts.length === 0) {
         logger.warn("supervisor：没有启用的账号（主配置 accounts 为空或全部禁用）");

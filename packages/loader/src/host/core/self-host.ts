@@ -35,7 +35,7 @@ import {
     sendStatus,
     shouldSendGenericBootFailed,
 } from "../ipc/index.js";
-import { createState, errMsg, log } from "../util.js";
+import { bootstrapExitCode, createState, errMsg, log } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 
 const state = createState();
@@ -200,10 +200,17 @@ void (async () => {
         }
         // 常驻：协议服务在事件循环上；不 process.exit（业务运行中）
     } catch (e) {
-        log(`[self-host] bootstrap 失败: ${errMsg(e)}`);
+        // 退出码契约（2026-10-25）：配置校验失败（ConfigError 一族，含协议段
+        // seed zod 校验）= 78（EX_CONFIG 惯例，宿主据此免重启）；其余运行时
+        // 失败 = 1。日志文案不做机器耦合，判定只认错误名。
+        const code = bootstrapExitCode(e);
+        log(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
         if (ipcMode) {
-            sendStatus("failed", "bootstrap 失败", { code: "UNKNOWN", message: errMsg(e) });
+            sendStatus("failed", "bootstrap 失败", {
+                code: code === 78 ? "INVALID_PARAM" : "UNKNOWN",
+                message: errMsg(e),
+            });
         }
-        process.exit(1);
+        process.exit(code);
     }
 })();
