@@ -162,8 +162,8 @@ describe("runSupervisor 子进程拉起", () => {
         expect(args).toContain("-q");
         expect(args).toContain("10001");
         expect(args).toContain(tmp);
-        expect(opts.env.NAPUKETTO_NO_BANNER).toBe("1");
-        expect(opts.env.NAPUKETTO_LOG_FORMAT).toBe("pretty");
+        expect(opts.env["NAPUKETTO_NO_BANNER"]).toBe("1");
+        expect(opts.env["NAPUKETTO_LOG_FORMAT"]).toBe("pretty");
         expect(mocks.writeSupervisorRuntime).toHaveBeenCalledOnce();
     });
 
@@ -174,7 +174,7 @@ describe("runSupervisor 子进程拉起", () => {
         startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         const opts = mocks.spawn.mock.calls[0]?.[2] as { env: Record<string, string> };
-        expect(opts.env.NAPUKETTO_LOG_FORMAT).toBe("single-line");
+        expect(opts.env["NAPUKETTO_LOG_FORMAT"]).toBe("single-line");
         const outSpy = spyStdoutPassthrough();
         child.stdout.write("raw-json-line\n");
         await vi.waitFor(() => expect(outSpy).toHaveBeenCalledWith("raw-json-line\n"));

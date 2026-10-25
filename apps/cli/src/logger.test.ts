@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import type { LogConfig } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type CliLoggerModule = typeof import("./logger.js");
@@ -127,11 +128,17 @@ describe("resolveCliLogConfig", () => {
 });
 
 describe("effectiveConsoleFormat / effectiveConsoleEnv", () => {
-    const baseConfig = { level: "info", banner: true, unboundReceive: true, levels: {} } as never;
+    const baseConfig: LogConfig = {
+        level: "info",
+        banner: true,
+        timestamp: "local",
+        unboundReceive: true,
+        levels: {},
+    };
 
     it("format 显式配置：不随 TTY 变化", async () => {
         const mod = await freshCliLogger({});
-        const cfg = { ...baseConfig, format: "json" } as never;
+        const cfg: LogConfig = { ...baseConfig, format: "json" };
         expect(mod.effectiveConsoleFormat(cfg)).toBe("json");
     });
 
@@ -159,7 +166,7 @@ describe("effectiveConsoleFormat / effectiveConsoleEnv", () => {
     it("colorize 显式 false：pretty 也不着色", async () => {
         const mod = await freshCliLogger({});
         Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
-        const cfg = { ...baseConfig, colorize: false } as never;
+        const cfg: LogConfig = { ...baseConfig, colorize: false };
         expect(mod.effectiveConsoleEnv(cfg)).toEqual({
             NAPUKETTO_LOG_FORMAT: "pretty",
             NAPUKETTO_LOG_COLORIZE: "0",
@@ -181,10 +188,10 @@ describe("LazyCliLogger 懒构造", () => {
         const written = writeSpy.mock.calls.map((c) => String(c[0])).join("");
         const line = written.trimEnd().split("\n").at(-1);
         const parsed = JSON.parse(line ?? "") as Record<string, unknown>;
-        expect(parsed.module).toBe("cli");
-        expect(parsed.level).toBe("debug");
-        expect(parsed.msg).toBe("调试行");
-        expect(parsed.seq).toBe(7);
+        expect(parsed["module"]).toBe("cli");
+        expect(parsed["level"]).toBe("debug");
+        expect(parsed["msg"]).toBe("调试行");
+        expect(parsed["seq"]).toBe(7);
     });
 
     it("缺省 info 级别：debug 被过滤不输出", async () => {
