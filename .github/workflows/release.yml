@@ -7,7 +7,8 @@
 # 一处被改坏就能拿着 token 发这 7 个包的任意版本。
 #
 #   prepare  消费 changeset → 构建 → 测试 → 推送版本提交 → 打包 artifact
-#            （contents: read；推送用 GitHub App token，**无** id-token）
+#            （contents: read；检出（含私有 native submodule）与推送版本提交
+#              共用 App token，**无** id-token）
 #   publish  解包 artifact → 逐包 npm publish
 #            （id-token: write + environment 审批，**无** contents 写权限）
 #
@@ -37,6 +38,14 @@
 # test 都在它前面跑），理论上可被污染的构建期代码窃取：`.git/hooks/pre-push`
 # 就是现成通道，故推送用 `-c core.hooksPath=/dev/null` 显式禁用 hook；剩余面
 # 靠 CODEOWNERS 对构建文件的强制复核兜底。
+#
+# App token 单枚复用（NapukettoBot，Contents: Read and write，安装到 NapukettoQQ
+# 与私有仓 Napuketto-Native 两仓）：checkout（含闭源 submodule 检出）与推版本
+# 提交共用。token 在 install 之前铸造——被污染的构建期代码理论上可窃取一枚能推
+# main 的凭证；接受面：token 1 小时有效（≥ job timeout 45 分钟）、推送步骤显式
+# 禁用 hook、CODEOWNERS 对构建文件强制复核。（读写隔离需另建只读 App——GitHub
+# App 权限按 App 级生效无法对单仓降级，而 actions/checkout 主仓与 submodule 只
+# 接受单一 token——组织决定复用现有单 App。）
 #
 # 为什么 publish 不跑 pnpm install：`release:publish` 只做 registry 比对、
 # workspace:* 改写与逐包 npm publish，只用到 node: 内建模块与 npm CLI，不需要
@@ -73,11 +82,14 @@
 #   2. 该 Environment 的 Deployment branches 必须限制为 main：workflow_dispatch
 #      是在「被 dispatch 的那个 ref」上取 workflow 文件的，不限制的话，有写权限
 #      者可以在分支上改本文件后 dispatch，借 environment 拿到 OIDC。
-#   3. 建一个 GitHub App（Repository permissions 只给 Contents: Read and write，
-#      Webhook 关掉，仅安装到 NapukettoDev/NapukettoQQ），把 Client ID 存成仓库
-#      variable `RELEASE_APP_CLIENT_ID`（Client ID 非敏感）、私钥存成 secret
-#      `RELEASE_APP_PRIVATE_KEY`，并把它加进主分支 ruleset 的 bypass 名单
-#      （模式 `exempt`）。GITHUB_TOKEN 进不了该名单，这一步没有替代品。
+#   3. GitHub App NapukettoBot（Repository permissions 只给 Contents: Read and
+#      write，Webhook 关掉），安装到 NapukettoDev/NapukettoQQ **与** 私有仓
+#      NapukettoDev/Napuketto-Native（闭源 submodule packages/loader/native 的
+#      检出需要）。Client ID 存成仓库 variable `RELEASE_APP_CLIENT_ID`（Client ID
+#      非敏感）、私钥存成 secret `RELEASE_APP_PRIVATE_KEY`，并把 App 加进主分支
+#      ruleset 的 bypass 名单（模式 `exempt`）。GITHUB_TOKEN 进不了该名单，这一步
+#      没有替代品。漏装 Napuketto-Native 时铸 token 一步即报错，且每次触发
+#      （含空转运行）都会撞上。
 #   4. 开启 require_code_owner_review（CODEOWNERS 已覆盖 .github/workflows/**、
 #      tooling/release/**、.changeset/**、package.json、pnpm-lock.yaml）。
 #   5. npm 侧各包信任配置：repository=NapukettoDev/NapukettoQQ、
@@ -118,13 +130,47 @@ jobs:
         outputs:
             changed: ${{ steps.bump.outputs.changed }}
         steps:
-            # persist-credentials: false —— checkout 默认把 GITHUB_TOKEN 写进
-            # .git/config 并一直生效；推送已改用 App token，留着这份凭证会让
-            # 请求头里的身份归属变得不确定。本 job 其余步骤都不需要它。
+            # App 配置缺失时早失败：否则会先消费 changeset、跑完构建测试，才在
+            # create-github-app-token 处报难懂的错。App 需同时安装到 NapukettoQQ
+            # 与私有仓 Napuketto-Native（submodule 检出），漏装时铸 token 一步
+            # 立即报错，且每次触发（含空转运行）都会撞上。
+            - name: 检查发布 App 配置
+              env:
+                  APP_CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+              run: |
+                  if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+                      echo "::error::缺少发布 App 配置：请先设置仓库 variable RELEASE_APP_CLIENT_ID 与 secret RELEASE_APP_PRIVATE_KEY（见 docs/guides/release.md §3.1）。"
+                      exit 1
+                  fi
+
+            # 取 NapukettoBot App token（1 小时有效 ≥ job timeout 45 分钟，末段
+            # 推送不会过期）：checkout 主仓与私有 submodule packages/loader/native
+            # （Napuketto-Native，闭源 stub）及后面的版本提交推送共用一枚——
+            # actions/checkout 只接受单一 token，单 App 复用由组织决定（接受面见
+            # 文首「App token 单枚复用」段）。用 client-id 而不是 app-id：v3 的
+            # action.yml 给 app-id 标了弃用提示。无条件执行：checkout 在 bump
+            # 判定之前，无法按 changed 剪枝。
+            - id: app-token
+              uses: actions/create-github-app-token@v3
+              with:
+                  client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  repositories: NapukettoQQ,Napuketto-Native
+
+            # persist-credentials: false —— checkout 默认把 token 写进 .git/config
+            # 并一直生效（这里是 App token，不再是 GITHUB_TOKEN）；留着这份
+            # 凭证会让请求头里的身份归属变得不确定。本 job 其余步骤都不需要它。
+            # submodules: recursive —— loader 包 files 里的 native/build/stub-test-env
+            # 只存在于私有 submodule 中，CI 上不检出则该条目匹配不到文件、npm 打包
+            # 静默丢件（0.0.36–0.0.38 事故：stub DLL 缺失，零配置自建宿主必挂），
+            # 下方「校验 loader 打包产物」守卫兜底。
             - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   persist-credentials: false
+                  token: ${{ steps.app-token.outputs.token }}
+                  submodules: recursive
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v6
@@ -136,18 +182,6 @@ jobs:
               with:
                   node-version: 24
                   cache: pnpm
-
-            # App 配置缺失时早失败：否则会先消费 changeset、跑完构建测试，
-            # 才在 create-github-app-token 处报一句难懂的错。
-            - name: 检查发布 App 配置
-              env:
-                  APP_CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
-                  APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-              run: |
-                  if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-                      echo "::error::缺少发布 App 配置：请先设置仓库 variable RELEASE_APP_CLIENT_ID 与 secret RELEASE_APP_PRIVATE_KEY（见 docs/guides/release.md §3）。"
-                      exit 1
-                  fi
 
             - name: 安装依赖
               run: pnpm install --frozen-lockfile
@@ -191,21 +225,26 @@ jobs:
               name: 构建（发布产物 dist）
               run: pnpm release:build
 
+            # 打包守卫：@napuketto/loader 的 files 依赖 submodule 产物
+            # native/build/stub-test-env/QQNT.dll。磁盘存在 ≠ 会进包——files 条目
+            # 匹配不到文件时 npm 会静默忽略（0.0.36–0.0.38 由此发出不可用包），
+            # 故按 npm pack --dry-run 的真实清单断言，缺件即终止发布；files 条目
+            # 本身被改坏（DLL 不进清单）时同样在此拦下。
+            - if: steps.bump.outputs.changed == 'true'
+              name: 校验 loader 打包产物（stub DLL 必须入包）
+              working-directory: packages/loader
+              run: |
+                  npm pack --dry-run > "$RUNNER_TEMP/loader-pack.txt"
+                  cat "$RUNNER_TEMP/loader-pack.txt"
+                  grep -q 'native/build/stub-test-env/QQNT.dll' "$RUNNER_TEMP/loader-pack.txt" || {
+                      echo "::error::@napuketto/loader 打包清单缺少 native/build/stub-test-env/QQNT.dll（submodule 未检出或 files 失效），已阻止发布。"
+                      exit 1
+                  }
+
             # 发布前测试：复用根 test 口径，避免在 YAML 里另写一份
             - if: steps.bump.outputs.changed == 'true'
               name: 发布前测试
               run: pnpm release:test
-
-            # 取 App installation token（1 小时有效）。用 client-id 而不是 app-id：
-            # v3 的 action.yml 给 app-id 标了弃用提示，README 亦推荐 client-id。
-            # repositories 显式限定：不写的话 token 会覆盖该 App 安装到的所有仓库。
-            - if: steps.bump.outputs.changed == 'true' && !inputs.skip-version
-              id: app-token
-              uses: actions/create-github-app-token@v3
-              with:
-                  client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-                  repositories: NapukettoQQ
 
             # HEAD:main 而非 main：runner 上未必存在名为 main 的本地分支。
             # 三点讲究：
