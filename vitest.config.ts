@@ -23,8 +23,19 @@ export default defineConfig({
             // lcov（lcov.info）供 CI 上传 Codecov；json 供 fallow health 消费
             reporter: ["json", "lcov", "text-summary"],
             // fallow health --coverage 读 istanbul 格式 json（json 报告默认即此格式）
-            // 只统计生产代码（排除测试文件自身）
-            exclude: ["**/*.test.ts", "**/*.test-d.ts"],
+            // 只统计本仓生产代码（排除测试文件自身）。注意 exclude 是整体覆盖默认
+            // 列表而非追加——2026-10-25 修正：此前只写测试文件模式，把 vitest
+            // 默认排除（node_modules / dist 等）顶掉了，第三方依赖被计入分母，
+            // 整体覆盖率被严重稀释（Codecov 同吃此数据）。
+            exclude: [
+                "coverage/**",
+                "**/node_modules/**",
+                "**/dist/**",
+                "packages/*/test?(s)/**",
+                "**/*.test.ts",
+                "**/*.test-d.ts",
+                "**/*.d.ts",
+            ],
         },
     },
 });
