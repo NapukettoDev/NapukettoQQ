@@ -7,7 +7,7 @@
  *  - waitFor 过滤与超时
  */
 import { describe, expect, it, vi } from "vitest";
-import { NTEventChannel } from "./event-channel.js";
+import { NTEventChannel } from "../event-channel.js";
 
 /** 测试用 Listener 类型（type 别名：TS 对对象字面量做隐式索引签名，满足 ListenerShape 约束）。 */
 type TestListener = {
