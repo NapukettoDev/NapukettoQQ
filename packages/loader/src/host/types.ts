@@ -183,15 +183,17 @@ export interface KernelLike {
     /** [log] 段解析（toml [log] 原对象 + env 快照 → LogConfigLike；老 kernel 缺失走缺省）。 */
     parseLogConfig?: (section: unknown, env?: Record<string, string | undefined>) => LogConfigLike;
     // 日志（ADR-007）：kernel createLogger，loader 引导进程自建实例
-    // （IPC 模式 console:false + file 落盘——stdout 专用于 JSON 行协议）
+    // （IPC 模式 console:false + file 落盘——stdout 专用于 JSON 行协议）；
+    // 可选属性带 | undefined（kernel Optional 约定：装配层可直传可能为
+    // undefined 的 [log] 字段，免条件展开）
     createLogger?: (opts: {
-        level?: string;
+        level?: string | undefined;
         console?: boolean;
         file?: string;
-        fileLevel?: string;
-        format?: string;
-        timestamp?: string;
-        colorize?: boolean;
+        fileLevel?: string | undefined;
+        format?: string | undefined;
+        timestamp?: string | undefined;
+        colorize?: boolean | undefined;
         base?: Record<string, unknown>;
     }) => LoggerLike;
     NTEventChannel: new (name: string) => EventChannelLike;

@@ -12,7 +12,7 @@ import { isAbsolute, join } from "node:path";
 import { env } from "./env.js";
 import type { KernelLike, LogConfigLike } from "./types.js";
 
-/** 缺省（kernel parseLogConfig 缺省值的最小面镜像）。 */
+/** 缺省（kernel parseLogConfig 缺省值的最小面镜像；未配置/解析失败兜底）。 */
 export function defaultLogConfig(): LogConfigLike {
     return {
         level: "info",
@@ -38,7 +38,7 @@ export function resolveLoaderLogConfig(kernel: KernelLike): LogConfigLike {
 }
 
 /** [log.file] 相对路径展开基准（数据根：NAPUTO_DATA_ROOT > NAPKETTO_DATA > CFG_DIR 父目录）。 */
-export function logFileBaseDir(): string {
+function logFileBaseDir(): string {
     if (env.NAPUTO_DATA_ROOT !== undefined && env.NAPUTO_DATA_ROOT !== "") {
         return env.NAPUTO_DATA_ROOT;
     }

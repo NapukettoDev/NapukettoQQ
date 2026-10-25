@@ -16,6 +16,7 @@ import process from "node:process";
 import {
     createLogger,
     type LogConfig,
+    type LogFormat,
     parseLogConfig,
     parseToml,
     resolveConfigPath,
@@ -51,13 +52,22 @@ export function resolveCliLogConfig(dataDir?: string): LogConfig {
 }
 
 /**
+ * 顶层进程的最终控制台格式（[log] format 显式优先，否则按 TTY 自动：
+ * 终端 pretty / 管道 single-line）。supervisor 的前缀转发决策同源。
+ */
+export function effectiveConsoleFormat(cfg: LogConfig): LogFormat {
+    const isTty = process.stdout.isTTY === true;
+    return cfg.format ?? (isTty ? "pretty" : "single-line");
+}
+
+/**
  * 顶层进程的有效控制台渲染决策（传播给子进程）：
  * 子进程 stdout 恒为 pipe（TTY 判定失真），由本进程按最终控制台形态决定
  * format/colorize 并经 env 注入（NAPUKETTO_LOG_FORMAT/NAPUKETTO_LOG_COLORIZE）。
  */
 export function effectiveConsoleEnv(cfg: LogConfig): Record<string, string> {
     const isTty = process.stdout.isTTY === true;
-    const format = cfg.format ?? (isTty ? "pretty" : "single-line");
+    const format = effectiveConsoleFormat(cfg);
     const colorize = cfg.colorize ?? (format === "pretty" && isTty);
     return {
         NAPUKETTO_LOG_FORMAT: format,
@@ -83,25 +93,28 @@ export interface CliLogger {
     fatal(obj: unknown, msg?: string): void;
 }
 
+/** cli logger 构造参数（[log] 段折叠；file/fileLevel 成对生效，其余直传 undefined）。 */
+function cliLoggerOptions(cfg: LogConfig): Parameters<typeof createLogger>[0] {
+    return {
+        level: cfg.levels.cli ?? cfg.level,
+        format: cfg.format,
+        timestamp: cfg.timestamp,
+        colorize: cfg.colorize,
+        file: cfg.file !== undefined ? resolveLogFilePath(cfg.file.path) : undefined,
+        fileLevel: cfg.file?.level,
+        // name=cli：与 kernel/loader 统一（pretty 渲染 (cli/pid) 头，
+        // json 通道作 module 字段），service 保留作进程来源过滤
+        base: { name: "cli", service: "cli" },
+    };
+}
+
 /** 懒构造 cli 进程日志（name 渲染为 (cli/pid) 元数据头，文件 JSON 保留 name 字段可过滤）。 */
 class LazyCliLogger implements CliLogger {
     #inner: CliLogger | null = null;
 
     #ensure(): CliLogger {
         if (this.#inner === null) {
-            const cfg = resolveCliLogConfig();
-            this.#inner = createLogger({
-                level: cfg.levels.cli ?? cfg.level,
-                ...(cfg.format !== undefined ? { format: cfg.format } : {}),
-                ...(cfg.timestamp !== undefined ? { timestamp: cfg.timestamp } : {}),
-                ...(cfg.colorize !== undefined ? { colorize: cfg.colorize } : {}),
-                ...(cfg.file !== undefined
-                    ? { file: resolveLogFilePath(cfg.file.path), fileLevel: cfg.file.level }
-                    : {}),
-                // name=cli：与 kernel/loader 统一（pretty 渲染 (cli/pid) 头，
-                // json 通道作 module 字段），service 保留作进程来源过滤
-                base: { name: "cli", service: "cli" },
-            });
+            this.#inner = createLogger(cliLoggerOptions(resolveCliLogConfig()));
         }
         return this.#inner;
     }

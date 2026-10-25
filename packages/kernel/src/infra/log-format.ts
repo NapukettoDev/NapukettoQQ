@@ -56,7 +56,7 @@ function pad2(n: number): string {
 }
 
 /** 单调墙钟毫秒 → 本地时区 ISO8601（+08:00 形态；new Date(epoch) 构造不受 Date.now 篡改影响）。 */
-export function isoLocalTime(epochMs: number): string {
+function isoLocalTime(epochMs: number): string {
     const d = new Date(epochMs);
     const offsetMinutes = -d.getTimezoneOffset();
     const sign = offsetMinutes >= 0 ? "+" : "-";
@@ -70,7 +70,7 @@ export function isoLocalTime(epochMs: number): string {
 }
 
 /** 单调墙钟毫秒 → 本地时分秒（与 pino-pretty SYS:HH:MM:ss.l 一致的短格式）。 */
-export function localShortTime(epochMs: number): string {
+function localShortTime(epochMs: number): string {
     const d = new Date(epochMs);
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${String(
         d.getMilliseconds(),
@@ -78,7 +78,7 @@ export function localShortTime(epochMs: number): string {
 }
 
 /** 单调墙钟毫秒 → 进程内相对秒（+123.456s）。 */
-export function elapsedLabel(epochMs: number, timeOriginMs: number): string {
+function elapsedLabel(epochMs: number, timeOriginMs: number): string {
     return `+${((epochMs - timeOriginMs) / 1000).toFixed(3)}s`;
 }
 
@@ -149,24 +149,32 @@ function renderJsonLine(record: Record<string, unknown>, ctx: RenderContext): st
     return `${JSON.stringify(jsonLine)}\n`;
 }
 
+/** single-line 元数据头：(name/pid)，无 name 时 (pid)。 */
+function renderMeta(record: Record<string, unknown>): string {
+    const pid = record["pid"] ?? "-";
+    const name = record["name"];
+    return typeof name === "string" ? `(${name}/${pid})` : `(${pid})`;
+}
+
+/** single-line 附加字段：非保留键按 k=v 内联（无字段时空串）。 */
+function renderKvFields(record: Record<string, unknown>): string {
+    const fields: string[] = [];
+    for (const [key, value] of Object.entries(record)) {
+        if (!RESERVED_KEYS.has(key)) {
+            fields.push(`${key}=${inlineValue(value)}`);
+        }
+    }
+    return fields.length > 0 ? ` ${fields.join(" ")}` : "";
+}
+
 /** single-line 渲染：[时间] LEVEL (name/pid): 消息 k=v k=v（级别大写与 pretty 一致）。 */
 function renderSingleLine(record: Record<string, unknown>, ctx: RenderContext): string {
     const label = levelLabel(record["level"]);
     const msg = typeof record["msg"] === "string" ? record["msg"] : "";
     const time = renderTime(record["time"], ctx.timestamp, false, ctx.timeOriginMs);
     const labelUpper = label.toUpperCase();
-    const pid = record["pid"];
-    const name = record["name"];
-    const headerName = typeof name === "string" ? name : undefined;
-    const meta = headerName !== undefined ? `(${headerName}/${pid ?? "-"})` : `(${pid ?? "-"})`;
-    const fields: string[] = [];
-    for (const [key, value] of Object.entries(record)) {
-        if (RESERVED_KEYS.has(key)) {
-            continue;
-        }
-        fields.push(`${key}=${inlineValue(value)}`);
-    }
-    const fieldsSuffix = fields.length > 0 ? ` ${fields.join(" ")}` : "";
+    const meta = renderMeta(record);
+    const fieldsSuffix = renderKvFields(record);
     if (ctx.useColor) {
         const color = LEVEL_COLORS[label.toLowerCase()] ?? "";
         return `${DIM}[${time}]${RESET} ${color}${labelUpper}${RESET} ${DIM}${meta}:${RESET} ${msg}${fieldsSuffix}\n`;

@@ -18,7 +18,7 @@ export type {
 } from "./log-config.js";
 export { parseLogConfig } from "./log-config.js";
 export type { ConsoleFormatStreamOptions } from "./log-format.js";
-export { createConsoleFormatStream, isoLocalTime } from "./log-format.js";
+export { createConsoleFormatStream } from "./log-format.js";
 export type { LoggerOptions, LogLevel } from "./logger.js";
 export { createLogger } from "./logger.js";
 export type { ConfigPathOptions, PathOptions } from "./paths.js";

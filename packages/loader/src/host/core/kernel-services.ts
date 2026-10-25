@@ -9,7 +9,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "../env.js";
-import { resolveLogFilePath } from "../log-cfg.js";
+import { defaultLogConfig, resolveLogFilePath } from "../log-cfg.js";
 import { type ReceiveLogFilter, setupMsgLogging } from "../msg-log.js";
 import type {
     CoreContextLike,
@@ -95,31 +95,25 @@ const NOOP_LOGGER: LoggerLike = {
     },
 };
 
-/** loader logger 构造参数（[log] 段 + IPC/文件路径折叠）。 */
+/** loader logger 构造参数类型（KernelLike.createLogger 入参）。 */
+type LoaderLoggerOptions = Parameters<NonNullable<KernelLike["createLogger"]>>[0];
+
+/** loader logger 构造参数（[log] 段 + IPC/文件路径折叠；直传 undefined，免条件展开）。 */
 function buildLoaderLoggerOptions(
     logCfg: LogConfigLike | undefined,
     consoleEnabled: boolean,
     logFile: string,
     account: string,
-): {
-    console: boolean;
-    file: string;
-    fileLevel?: string;
-    level?: string;
-    format?: string;
-    timestamp?: string;
-    colorize?: boolean;
-    base: Record<string, unknown>;
-} {
-    const loaderLevel = logCfg?.levels.loader ?? logCfg?.level;
+): LoaderLoggerOptions {
+    const cfg = logCfg ?? defaultLogConfig();
     return {
         console: consoleEnabled,
         file: logFile,
-        ...(logCfg?.file !== undefined ? { fileLevel: logCfg.file.level } : {}),
-        ...(loaderLevel !== undefined ? { level: loaderLevel } : {}),
-        ...(logCfg?.format !== undefined ? { format: logCfg.format } : {}),
-        ...(logCfg?.timestamp !== undefined ? { timestamp: logCfg.timestamp } : {}),
-        ...(logCfg?.colorize !== undefined ? { colorize: logCfg.colorize } : {}),
+        fileLevel: cfg.file?.level,
+        level: cfg.levels.loader ?? cfg.level,
+        format: cfg.format,
+        timestamp: cfg.timestamp,
+        colorize: cfg.colorize,
         base: { name: "loader", account },
     };
 }

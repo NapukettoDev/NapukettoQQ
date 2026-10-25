@@ -15,7 +15,12 @@ import { resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
 import { loadCliConfig } from "./config-cmds.js";
 import type { CliAccountConfig, CliConfig } from "./config-parse.js";
-import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "./logger.js";
+import {
+    effectiveConsoleEnv,
+    effectiveConsoleFormat,
+    logger,
+    resolveCliLogConfig,
+} from "./logger.js";
 import { writeAccountRuntime, writeSupervisorRuntime } from "./runtime-state.js";
 
 /** 默认重启延迟（毫秒）。 */
@@ -193,8 +198,6 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     let stopping = false;
     // 渲染决策：按本进程最终控制台形态解析（[log] 配置 + TTY），传播给子进程
     const logCfg = resolveCliLogConfig(opts.dataDir);
-    const isTty = process.stdout.isTTY === true;
-    const effectiveFormat = logCfg.format ?? (isTty ? "pretty" : "single-line");
     const ctx: SupervisorCtx = {
         dataRoot,
         entry,
@@ -204,7 +207,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         children,
         restartCounts,
         childEnv: effectiveConsoleEnv(logCfg),
-        prefixEnabled: effectiveFormat === "pretty",
+        prefixEnabled: effectiveConsoleFormat(logCfg) === "pretty",
         isStopping: () => stopping,
     };
 

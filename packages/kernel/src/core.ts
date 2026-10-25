@@ -50,21 +50,21 @@ export interface NapukettoCoreOptions {
     /** 数据根 / 账号（透传给 PathWrapper，见 ADR-016）。 */
     paths?: PathOptions;
     /** 日志级别，默认 info。 */
-    logLevel?: LogLevel;
+    logLevel?: LogLevel | undefined;
     /** 文件日志路径；不传则默认 `logs/napuketto.log`（父目录自动创建）。 */
-    logFile?: string;
+    logFile?: string | undefined;
     /** 文件目的地级别（可低于控制台级别；缺省同 logLevel）。 */
-    logFileLevel?: LogLevel;
+    logFileLevel?: LogLevel | undefined;
     /** 是否输出 console，默认 true。 */
-    consoleLog?: boolean;
+    consoleLog?: boolean | undefined;
     /** 控制台格式（缺省按 TTY 自动：TTY pretty / pipe single-line）。 */
-    logFormat?: LogFormat;
+    logFormat?: LogFormat | undefined;
     /** 时间戳渲染模式，默认 local。 */
-    logTimestamp?: TimestampMode;
+    logTimestamp?: TimestampMode | undefined;
     /** 控制台颜色（缺省自动）。 */
-    logColorize?: boolean;
+    logColorize?: boolean | undefined;
     /** 账号标注（记录结构化 account 字段；快速登录目标账号，登录前已知时传入）。 */
-    account?: string;
+    account?: string | undefined;
 }
 
 /** 登录进度（IPC 子进程模式经 onLoginProgress 转发；koishi 插件展示二维码/状态用）。 */
@@ -126,20 +126,18 @@ export class NapukettoCore {
     static create(opts: NapukettoCoreOptions = {}): NapukettoCore {
         const paths = new PathWrapper(opts.paths);
         paths.ensure();
+        // base.name 用 pino 保留字段（logger name）：pino-pretty 渲染为 (kernel/pid)
+        // 元数据头，不占属性行；cli/loader 同款，三来源可区分。account 未知时
+        // 序列化层自然丢弃 undefined，无需条件展开。
         const logger = createLogger({
             level: opts.logLevel ?? "info",
             console: opts.consoleLog ?? true,
             file: opts.logFile ?? paths.file("logs", "napuketto.log"),
-            ...(opts.logFileLevel !== undefined ? { fileLevel: opts.logFileLevel } : {}),
-            ...(opts.logFormat !== undefined ? { format: opts.logFormat } : {}),
-            ...(opts.logTimestamp !== undefined ? { timestamp: opts.logTimestamp } : {}),
-            ...(opts.logColorize !== undefined ? { colorize: opts.logColorize } : {}),
-            // base.name 用 pino 保留字段（logger name）：pino-pretty 渲染为 (kernel/pid)
-            // 元数据头，不占属性行；cli/loader 同款，三来源可区分
-            base: {
-                name: "kernel",
-                ...(opts.account !== undefined ? { account: opts.account } : {}),
-            },
+            fileLevel: opts.logFileLevel,
+            format: opts.logFormat,
+            timestamp: opts.logTimestamp,
+            colorize: opts.logColorize,
+            base: { name: "kernel", account: opts.account },
         });
         return new NapukettoCore(createCoreContext({ logger, paths }));
     }
@@ -191,29 +189,30 @@ export class NapukettoCore {
         }
 
         // 2. 登录：快速登录（优先）→ QR 回退。登录成功前不碰 session。
-        let loginResult: LoginResult;
-        try {
-            const quickOpts: QuickLoginOptions = {};
-            if (opts.quickUin !== undefined) {
-                quickOpts.uin = opts.quickUin;
-            }
-            if (opts.quickLoginTimeoutMs !== undefined) {
-                quickOpts.quickLoginTimeoutMs = opts.quickLoginTimeoutMs;
-            }
-            loginResult = await quickLogin(wrapper, quickOpts);
-            this.ctx.logger.info({ uin: loginResult.uin, uid: loginResult.uid }, "快速登录成功");
-        } catch (err) {
-            if (opts.qrFallback !== true) {
-                throw err;
-            }
-            loginResult = await this.loginByQr(opts);
-        }
+        const loginResult = await this.loginQuickFirst(wrapper, opts);
 
         // 3. 登录成功即返回。QQ 登录后重建 session（Proxy 捕获新实例），由 boot.cjs
         // 登录成功后 setSession 替换，再自行等待 session 就绪（waitSessionReady）。
         // 不在 login 内等待——替换发生在 login 返回之后，这里等不到。
         this.ctx.login = loginResult;
         return loginResult;
+    }
+
+    /** 快速登录优先，失败按 qrFallback 决定是否回退 QR（QR 应直接出码，见 loginByQr 注）。 */
+    private async loginQuickFirst(
+        wrapper: WrapperContext,
+        opts: CoreLoginOptions,
+    ): Promise<LoginResult> {
+        try {
+            const result = await quickLogin(wrapper, buildQuickLoginOptions(opts));
+            this.ctx.logger.info({ uin: result.uin, uid: result.uid }, "快速登录成功");
+            return result;
+        } catch (err) {
+            if (opts.qrFallback !== true) {
+                throw err;
+            }
+            return await this.loginByQr(opts);
+        }
     }
 
     /**
@@ -281,10 +280,7 @@ export class NapukettoCore {
             session.start();
 
             await waitQrLoggedIn(session);
-            const self = session.selfInfo;
-            if (self === null) {
-                throw kernelError("QR 登录成功但 selfInfo 为空", "INVALID_STATE");
-            }
+            const self = requireQrSelfInfo(session);
             return { uin: self.uin, uid: self.uid, nick: self.nick };
         } finally {
             session.stop();
@@ -306,10 +302,18 @@ export class NapukettoCore {
             opts.onLoginProgress?.({ state: "waiting_scan", qr });
         });
         session.onStateChange((state) => {
-            this.ctx.logger.info({ state }, "QR 登录状态");
-            const message = state === "failed" ? (session.failureReason ?? undefined) : undefined;
-            opts.onLoginProgress?.({ state, ...(message !== undefined ? { message } : {}) });
+            this.forwardQrState(session, opts, state);
         });
+    }
+
+    /** QR 状态转发：日志 + onLoginProgress（failed 附 failureReason）。 */
+    private forwardQrState(
+        session: QrLoginSession,
+        opts: CoreLoginOptions,
+        state: LoginState,
+    ): void {
+        this.ctx.logger.info({ state }, "QR 登录状态");
+        opts.onLoginProgress?.(qrProgressEvent(state, session.failureReason ?? undefined));
     }
 
     /** 停止：日志收尾（资源清理留给 P2 常驻管理）。 */
@@ -326,6 +330,33 @@ function writeQrCodePng(filePath: string, pngBase64: string): void {
     } catch {
         // 写失败不阻塞登录（cli 仍可打印 URL）
     }
+}
+
+/** CoreLoginOptions → quickLogin 参数（仅取快速登录相关两键，QR 键不透传）。 */
+function buildQuickLoginOptions(opts: CoreLoginOptions): QuickLoginOptions {
+    const quickOpts: QuickLoginOptions = {};
+    if (opts.quickUin !== undefined) {
+        quickOpts.uin = opts.quickUin;
+    }
+    if (opts.quickLoginTimeoutMs !== undefined) {
+        quickOpts.quickLoginTimeoutMs = opts.quickLoginTimeoutMs;
+    }
+    return quickOpts;
+}
+
+/** QR 登录终态后的 selfInfo 提取（空值按登录失败抛出）。 */
+function requireQrSelfInfo(session: QrLoginSession): SelfInfo {
+    const self = session.selfInfo;
+    if (self === null) {
+        throw kernelError("QR 登录成功但 selfInfo 为空", "INVALID_STATE");
+    }
+    return self;
+}
+
+/** QR 进度事件折叠（failed 附 failureReason 为 message，其余不带 message 键）。 */
+function qrProgressEvent(state: LoginState, reason: string | undefined): LoginProgress {
+    const message = state === "failed" ? reason : undefined;
+    return { state, ...(message !== undefined ? { message } : {}) };
 }
 
 /** 等待 QR 登录终态：logged_in resolve，failed reject。 */

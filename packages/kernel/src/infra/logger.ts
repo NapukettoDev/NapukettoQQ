@@ -60,29 +60,36 @@ function toSingle(streams: Array<{ stream: pino.DestinationStream }>): pino.Dest
 /** 日志级别（pino 标准级别 + silent）。 */
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
 
+/**
+ * 可选属性统一带 `| undefined`（2026-10-25）：exactOptionalPropertyTypes 下
+ * 纯直传调用点（装配层透传 LogConfig 字段）可写 `format: cfg.format` 一类
+ * 直赋值，免去逐字段条件展开（展开链是复杂度热点）。
+ */
+type Optional<T> = T | undefined;
+
 export interface LoggerOptions {
     /** 控制台级别，默认 `info`。 */
-    level?: LogLevel;
+    level?: Optional<LogLevel>;
     /** 是否输出到 console，默认 true。 */
-    console?: boolean;
+    console?: Optional<boolean>;
     /** 文件日志路径；不传则不写文件（父目录自动创建）。 */
-    file?: string;
+    file?: Optional<string>;
     /** 文件目的地级别（缺省同 level；可低于控制台级别保留排查信息）。 */
-    fileLevel?: LogLevel;
+    fileLevel?: Optional<LogLevel>;
     /**
      * 输出格式，默认按 TTY 自动：TTY = pretty（终端体验不变）/ pipe = single-line
      * （嵌入式逐行转发友好）。显式指定后不受 TTY 影响。
      */
-    format?: LogFormat;
+    format?: Optional<LogFormat>;
     /** 时间戳渲染模式（local/iso8601/elapsed），默认 local。 */
-    timestamp?: TimestampMode;
+    timestamp?: Optional<TimestampMode>;
     /** 控制台颜色（缺省自动：pretty 且 TTY 才着色）。 */
-    colorize?: boolean;
+    colorize?: Optional<boolean>;
     /** 控制台目的地（缺省 process.stdout；测试注入用）。 */
-    destination?: NodeJS.WriteStream;
+    destination?: Optional<NodeJS.WriteStream>;
     /** 附加基础字段（如 `{ name: 'kernel' }`），自动保留 pid；name 用 pino 保留字段
      * （logger name），pino-pretty 渲染为 `(name/pid)` 元数据头。 */
-    base?: Record<string, unknown>;
+    base?: Optional<Record<string, unknown>>;
     /** 追加的敏感字段路径（默认内置 token/票据等，见 DEFAULT_REDACT_PATHS）。 */
     redact?: string[];
 }
