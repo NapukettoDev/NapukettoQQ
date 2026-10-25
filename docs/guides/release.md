@@ -45,18 +45,29 @@ on:
 
 ## 3. 一次性仓库配置（非代码）
 
-### 3.1 GitHub App（版本提交直推 main）
+### 3.1 GitHub App（NapukettoBot：检出 submodule + 版本提交直推 main）
 
-1. 组织设置 → Developer settings → GitHub Apps → New GitHub App：
-   Repository permissions 只给 **Contents: Read and write**；Webhook 关闭；仅安装到
-   `NapukettoDev/NapukettoQQ`。
-2. Client ID 存为仓库 variable `RELEASE_APP_CLIENT_ID`；私钥存为 secret
+1. 组织设置 → Developer settings → GitHub Apps：`NapukettoBot`（Repository permissions
+   只给 **Contents: Read and write**；Webhook 关闭）。
+2. 安装到 `NapukettoDev/NapukettoQQ` **与** `NapukettoDev/Napuketto-Native`——后者是
+   私有 submodule `packages/loader/native`（闭源 stub；loader 包 `files` 里的
+   `native/build/stub-test-env` 只有它能提供）。不检出则该条目匹配不到文件，npm 打包
+   **静默丢件**——0.0.36–0.0.38 事故（stub DLL 缺失，零配置自建宿主必挂），流水线另有
+   `npm pack --dry-run` 打包守卫兜底。
+3. Client ID 存为仓库 variable `RELEASE_APP_CLIENT_ID`；私钥存为 secret
    `RELEASE_APP_PRIVATE_KEY`。
-3. 把 App 加进主分支 ruleset 的 **bypass 名单**，模式 `exempt`。
+4. 把 App 加进主分支 ruleset 的 **bypass 名单**，模式 `exempt`。
 
 > bypass 的语义是“免于该 ruleset 的全部规则”，不是“只免签名”。App 被滥用即可往 main 推
 > 任意内容（绕过 PR、merge queue、签名）。它只出现在 `prepare`，推送时用
 > `git -c core.hooksPath=/dev/null` 禁用 hook；剩余面靠 CODEOWNERS 兜底。
+
+> 为什么单 App 复用而不是再建一个只读检出 App：GitHub App 权限按 App 级生效，无法对
+> 单仓降级，而 `actions/checkout` 主仓与 submodule 只接受单一 token，读写隔离只能靠
+> 第二个 App。组织决定复用现有 `NapukettoBot`——代价是这枚能推 main 的 token 在
+> `pnpm install` 之前就铸造（checkout 需要），被污染的构建期代码理论上可窃取它；缓解：
+> token 1 小时有效（≥ job timeout 45 分钟）、推送步骤禁用 hook、CODEOWNERS 对构建文件
+> 强制复核。
 
 ### 3.2 Environment
 
@@ -158,3 +169,6 @@ npm 登录态 + 2FA（`--otp=` / `NAPKETTO_NPM_OTP`）。仅用于演练与排�
 - `publish` 的 `id-token: write` 不可下放到 `prepare`；`environment: release` 不可删
   （npm 的 claim 会校验，且它是“合并 ≠ 上线”的唯一保证）。
 - GitHub App 的 bypass 是整套规则集的豁免，不是单条规则；私钥只应存在于 Actions secret。
+- App token 在 `pnpm install` 之前铸造（checkout 私有 submodule 需要）：被污染的构建期
+  代码理论上可窃取一枚能推 main 的短时（1 小时）凭证——这是单 App 复用的接受面，缓解是
+  推送步骤禁用 hook 与 CODEOWNERS 强制复核。
