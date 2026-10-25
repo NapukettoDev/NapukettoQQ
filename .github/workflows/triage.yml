@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026-present Napuketto contributors.
+
+# 自动分诊流水线
+#
+# 三个独立 job：
+# - triage-issue 新 issue 自动分诊：assign 给仓库维护者并打「needs triage」
+#   作为待处理队列的初始状态；类型 label（bug / feature 等）由维护者分诊
+#   时补上。assignee 写死 Oppenheymu（repository_owner 是组织名
+#   NapukettoDev，不能作 assignee）；issue 与 PR 两侧均为单人首责，与
+#   CODEOWNERS 的单人 owner 一致。
+# - assign-pr 新 PR 自动 assign 给 CODEOWNERS 里的 owner（现为单人）。挂
+#   pull_request_target 而非 pull_request：fork PR 在 pull_request 事件下
+#   拿到的 GITHUB_TOKEN 是只读的（除非仓库开启 "Send write tokens to
+#   workflows from pull requests"），assign 必然 403，而 fork PR 正是本仓的
+#   主要协作形态。pull_request_target 在 base 上下文授予写权限，对 fork PR
+#   同样可用。安全前提：本 job 不 checkout PR 的 head 代码，只经 gh 调 API，
+#   PR 内容不进入执行路径——改这个 job 时不得破坏该前提。
+#   同样跳过 Dependabot PR（理由见 label-pr）。
+# - label-pr 按 .github/labeler.yml 的路径规则自动打「范围」与「文档」
+#   label，只增不减（sync-labels 关闭）。Dependabot PR 显式跳过：由
+#   Dependabot 触发的 workflow 按 fork 处理（secrets 不可用、GITHUB_TOKEN
+#   只读），此处声明的 pull-requests: write 会被降级，actions/labeler 必然
+#   失败；Dependabot PR 的标签改由 .github/dependabot.yml 的 labels 字段
+#   直接指定。
+
+name: Triage
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # 只为 assign-pr 存在：该事件在 base 上下文运行且授予写权限，
+  # 是 fork PR 唯一能 assign 的入口；types 收窄到 opened，重新指派无意义。
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  triage-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 自动指派并标记待分诊
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "Oppenheymu" \
+            --add-label "needs triage"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  assign-pr:
+    if: github.event_name == 'pull_request_target' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: 自动指派维护者
+        run: |
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "Oppenheymu"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  label-pr:
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: 按路径自动打标
+        uses: actions/labeler@v7
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: false
