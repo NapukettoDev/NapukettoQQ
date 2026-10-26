@@ -140,6 +140,30 @@ git tag -l 'create-napukettoqq@*'   # tag 应与 npm 版本一一对应
 `dist.attestations` 存在即该版本经 OIDC 发布并带 provenance（来源 commit 与 workflow 可在
 npmjs.com 包页面核验）。
 
+### 4.1 GitHub Releases 只发里程碑
+
+Releases 页**不是**每次 bump 都发。本仓没有整仓版本号——7 个包版本各自独立，root
+`package.json` 的 `1.0.0` 是占位、从没 bump 过，硬凑一个 `v0.4.x` 只会得到第二个对不上任何
+包版本的 `v0.1.0`。所以两层分工：
+
+- **per-package tag 是机器面**：`<包名>@<版本>`，由发布链自动打，负责「npm 版本 ↔ 提交」的
+  对应；同一批发布的所有 per-package tag 指向同一个版本提交（如 `f9c4896` 上同时挂着
+  kernel@0.4.0 / adapter@0.4.1 / loader@0.2.0 / cli@0.3.0 / create@0.2.53），整棵树的状态
+  已被完整记录。
+- **Releases 页是人的面**：只在里程碑发一条，tag 用 `milestone-<线>`（如 `milestone-0.4`），
+  不冒充版本号；正文给版本对照表 + 主题化亮点，并设为 Latest，免得首页一直挂着上一个里程碑。
+
+发里程碑（一次性人工，不动流水线）：
+
+```bash
+git tag -a milestone-0.4 -m "0.4 里程碑：……" <版本提交>
+git push origin refs/tags/milestone-0.4
+gh release create milestone-0.4 --verify-tag --latest \
+  --title "0.4 里程碑：……" --notes-file notes.md
+```
+
+历史遗留的 `v0.1.0` 是单包时代手工打的，与当时的任何包版本都对不上，保留不动。
+
 ## 5. 补发与排障
 
 - **publish 失败**：重跑 `workflow_dispatch`（changeset 已消费时置 `skip-version=true`），
