@@ -10,7 +10,8 @@
 3. [architecture/runtime.md](architecture/runtime.md)——自建宿主启动链、登录与 session、调用与事件数据流。
 4. [guides/configuration.md](guides/configuration.md)——`napuketto.toml` 字段、路径解析、环境变量。
 5. 按需读协议文档：[OneBot 11](protocols/onebot11.md)、[Satori](protocols/satori.md)、
-   [KuroBot](protocols/kurobot.md)。
+   [KuroBot](protocols/kurobot.md)；[Milky](protocols/milky.md) 是**未实现的规划稿**，
+   动手前再读。
 6. 对应包的 `docs/design.md`——模块级设计、实测结论与实现细节（见下方“包内设计书”）。
 
 做运维、排障或发版时直接读对应的指南，不必从头开始。
@@ -29,6 +30,7 @@
 | [protocols/onebot11.md](protocols/onebot11.md) | OB11 传输、动作面、事件面、ID 映射、已接线与待校准项 |
 | [protocols/satori.md](protocols/satori.md) | Satori HTTP RPC / WS 事件、动作与 501、元素编解码、ID 映射 |
 | [protocols/kurobot.md](protocols/kurobot.md) | KuroBridge WS 客户端、连接状态机、QQ ↔ MC 映射、配置与限制 |
+| [protocols/milky.md](protocols/milky.md) | **未实现**：Milky 1.3.0 实施规划、65 接口 × kernel 覆盖、21 事件 × 数据源、装配接缝、P0–P2 顺序 |
 
 ## 包内设计书
 
