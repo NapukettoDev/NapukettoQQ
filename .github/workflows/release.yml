@@ -6,8 +6,9 @@
 # token 同处一个 job**。package.json 的脚本、tsdown 配置都是构建期执行的代码，
 # 一处被改坏就能拿着 token 发这 7 个包的任意版本。
 #
-#   prepare  消费 changeset → 构建 → 测试 → 推送版本提交 → 打包 artifact
-#            （contents: read；检出（含私有 native submodule）与推送版本提交
+#   prepare  消费 changeset → 构建 → 测试 → 打 per-package tag + 推送版本提交
+#            → 打包 artifact
+#            （contents: read；检出（含私有 native submodule）与推送版本提交/tag
 #              共用 App token，**无** id-token）
 #   publish  解包 artifact → 逐包 npm publish
 #            （id-token: write + environment 审批，**无** contents 写权限）
@@ -21,6 +22,13 @@
 #
 # 为什么推送排在构建与测试之后：推送是最后一步，构建或测试失败则 main 上不会
 # 留下「版本已升、包却没发出去」的提交。
+#
+# 为什么 tag 也在这一步打：tag 曾经长期缺位（只有手工打的 v0.1.0，且对不上任何
+# 包版本），根因就是发布链里没有「打 tag」这一环——不写进流水线，手工补必然再次
+# 漂移。形态用 changesets 的 per-package 约定 `<包名>@<版本>`（如
+# @napuketto/kernel@0.4.0）：7 个包版本各自独立，整仓单版本 `v0.4.x` 只能表达
+# 其中 1 个。tag 与版本提交同批推送，因此 `git checkout <tag>` 拿到的就是该版本
+# 的发布树。仓库规则集限制「单次 push 最多 5 个 ref」，故 tag 按 5 个一批推。
 #
 # 为什么推送要用 GitHub App 的 installation token（而不是默认 GITHUB_TOKEN）：
 # main 由 ruleset「保护主分支」保护（pull_request / merge_queue /
@@ -249,19 +257,55 @@ jobs:
               name: 发布前测试
               run: pnpm release:test
 
-            # HEAD:main 而非 main：runner 上未必存在名为 main 的本地分支。
-            # 三点讲究：
+            # 打 tag 与推送版本提交放在同一步：两者共用同一枚 App token，且 tag 必须
+            # 跟着版本提交一起离开 runner（tag 指向的就是这份提交）。
+            #
+            # tag 形态由 changesets 决定——`<包名>@<版本>`，如 @napuketto/kernel@0.4.0。
+            # 不做整仓单版本 `v0.4.1`：7 个包版本各自独立，单 tag 只能表达其中 1 个
+            # （历史遗留的 v0.1.0 就与实际包版本对不上）。`changeset git-tag` 只给
+            # 「本地还没有」的 tag 打，补发重跑幂等；它同时按 git tag 的规范打成
+            # 带注释 tag（`git tag <名> -m`）。
+            #
+            # 推送的老讲究：
+            #   · HEAD:main 而非 main：runner 上未必存在名为 main 的本地分支。
             #   · 凭证走 env + shell 变量，不把 token 内联进 run（脚本原文进日志）。
             #   · 用完整 URL 而非 git remote，绕开 .git/config 里的 remote 配置。
             #   · core.hooksPath 指向空处以禁用 hook：构建期代码若被污染，塞一个
             #     .git/hooks/pre-push 就能在这个步骤里读到 GH_TOKEN 并外传。
-            # skip-version 时不推：那次运行没有新提交可推（补发场景）。
+            #
+            # tag 分 5 个一批推：仓库规则集限制「单次 push 最多 5 个 ref」
+            # （GH013 `Pushes can not update more than 5 branches or tags`），
+            # 一次 bump 7 个包必超限，只能分批。顺序是先推 main 再推 tag——tag 指向
+            # 的提交一定已在远端，否则等于发布了远端不存在的提交。
+            # skip-version 时不打 tag 也不推：那次运行没有新版本（补发场景，tag 已在
+            # 上一轮随版本提交推过）。
             - if: steps.bump.outputs.changed == 'true' && !inputs.skip-version
-              name: 推送版本提交
+              name: 打 tag 并推送版本提交
               env:
                   GH_TOKEN: ${{ steps.app-token.outputs.token }}
               run: |
-                  git -c core.hooksPath=/dev/null push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+                  set -euo pipefail
+                  remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+                  # 用前后快照取「本次真正新增的 tag」：直接解析 changeset 的输出要处理
+                  # 颜色转义，且「已存在 → 跳过」的条目不该进推送清单。
+                  before=$(git tag -l | sort)
+                  pnpm exec changeset git-tag
+                  after=$(git tag -l | sort)
+                  comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") > "$RUNNER_TEMP/new-tags.txt"
+                  echo "本次新增 tag："
+                  cat "$RUNNER_TEMP/new-tags.txt"
+
+                  git -c core.hooksPath=/dev/null push "$remote" HEAD:main
+
+                  mapfile -t tags < "$RUNNER_TEMP/new-tags.txt"
+                  for ((i = 0; i < ${#tags[@]}; i += 5)); do
+                      refspecs=()
+                      for tag in "${tags[@]:i:5}"; do
+                          refspecs+=("refs/tags/${tag}:refs/tags/${tag}")
+                      done
+                      git -c core.hooksPath=/dev/null push "$remote" "${refspecs[@]}"
+                  done
 
             # 打包给 publish job；node_modules 与 .git 都不需要
             - if: steps.bump.outputs.changed == 'true'

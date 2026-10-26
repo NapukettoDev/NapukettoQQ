@@ -11,7 +11,7 @@
 
 | job | 职责 | 权限 |
 |---|---|---|
-| `prepare` | 消费 changeset（`pnpm release:version`）→ 构建 → 测试 → 用 GitHub App token 推送版本提交 → 打包 artifact | `contents: read`；**无** `id-token` |
+| `prepare` | 消费 changeset（`pnpm release:version`）→ 构建 → 测试 → 打 per-package git tag 并用 GitHub App token 推送版本提交与 tag → 打包 artifact | `contents: read`；**无** `id-token` |
 | `publish` | 解包 artifact → `node tooling/release/release-npm.ts` 逐包发布 | `id-token: write` + `environment: release` 审批；**无** contents 写权限 |
 
 设计约束：
@@ -19,6 +19,11 @@
 - **构建期代码与 OIDC token 分处两个 job**：package.json 脚本、tsdown 配置都是构建期执行的
   代码，不能和发布 token 同处。`publish` 不跑 `pnpm install`，只用 `node:` 内建模块与 npm CLI。
 - **先构建测试、后推送**：失败则 main 上不会留下“版本已升、包却没发”的提交。
+- **tag 与版本提交同批推送**：推送前跑 `changeset git-tag`，打 `<包名>@<版本>`
+  （如 `@napuketto/kernel@0.4.0`）。7 个包版本各自独立，整仓单版本 `v0.4.x` 只能表达
+  其中一个——历史遗留的 `v0.1.0` 就与实际包版本对不上。tag 是带注释 tag，只给“本地还
+  没有”的版本打，补发重跑幂等。仓库规则集限制“单次 push 最多 5 个 ref”，故 tag 按 5 个
+  一批推（一次 bump 7 个包会超限）。
 - **推送用 GitHub App installation token**：默认 `GITHUB_TOKEN` 推 `main` 会被 ruleset 以
   `GH013` 拒绝，且无法加入 bypass 名单。App 的模式须为 `Always` 或 `exempt`。
 - **版本先落 main、发布待审批**：`prepare` 不挂 environment；包要等 `release` 环境批准才上线。
@@ -119,7 +124,8 @@ merge queue 只认在队列临时 ref 上跑出来的检查。
 ## 4. 日常发布
 
 1. 功能 PR 随改动带 `.changeset/<名字>.md`，合并进 main。
-2. Release 工作流自动触发：`prepare` 消费 changeset、构建、测试、推送版本提交。
+2. Release 工作流自动触发：`prepare` 消费 changeset、构建、测试、推送版本提交，并给本次
+   bump 的包打 `<包名>@<版本>` tag 一起推送。
 3. `publish` 停在 `environment: release` 审批。**审批前看清本次运行的 commit 与 workflow
    内容**——`prepare` 持 App token，若构建期代码被污染，可能已向 main 推过东西。
 4. 批准后逐包发布。registry 中已存在的版本自动跳过，因此重跑幂等。
@@ -128,15 +134,48 @@ merge queue 只认在队列临时 ref 上跑出来的检查。
 ```bash
 npm view @napuketto/kernel version dist.attestations --json
 npm view create-napukettoqq version --json
+git tag -l 'create-napukettoqq@*'   # tag 应与 npm 版本一一对应
 ```
 
 `dist.attestations` 存在即该版本经 OIDC 发布并带 provenance（来源 commit 与 workflow 可在
 npmjs.com 包页面核验）。
 
+### 4.1 GitHub Releases 只发里程碑
+
+Releases 页**不是**每次 bump 都发。本仓没有整仓版本号——7 个包版本各自独立，root
+`package.json` 的 `1.0.0` 是占位、从没 bump 过，硬凑一个 `v0.4.x` 只会得到第二个对不上任何
+包版本的 `v0.1.0`。所以两层分工：
+
+- **per-package tag 是机器面**：`<包名>@<版本>`，由发布链自动打，负责「npm 版本 ↔ 提交」的
+  对应；同一批发布的所有 per-package tag 指向同一个版本提交（如 `f9c4896` 上同时挂着
+  kernel@0.4.0 / adapter@0.4.1 / loader@0.2.0 / cli@0.3.0 / create@0.2.53），整棵树的状态
+  已被完整记录。
+- **Releases 页是人的面**：只在里程碑发一条，tag 用 `milestone-<线>`（如 `milestone-0.4`），
+  不冒充版本号；正文给版本对照表 + 主题化亮点，并设为 Latest，免得首页一直挂着上一个里程碑。
+
+发里程碑（一次性人工，不动流水线）：
+
+```bash
+git tag -a milestone-0.4 -m "0.4 里程碑：……" <版本提交>
+git push origin refs/tags/milestone-0.4
+gh release create milestone-0.4 --verify-tag --latest \
+  --title "0.4 里程碑：……" --notes-file notes.md
+```
+
+历史遗留的 `v0.1.0` 是单包时代手工打的，与当时的任何包版本都对不上，保留不动。
+
 ## 5. 补发与排障
 
 - **publish 失败**：重跑 `workflow_dispatch`（changeset 已消费时置 `skip-version=true`），
   registry 比对只发剩余版本。不要手动 `npm publish`。
+- **tag 缺失 / 推送被 `GH013` 拒绝**：报文 `Pushes can not update more than 5 branches or
+  tags` 是规则集的“单批 ref 上限”（发布链已按 5 个一批推 tag）。注意 `skip-version` 补发
+  路径**不打 tag**：若某轮在“推 tag”一步失败，补发只补包，tag 要手工补齐——
+
+  ```bash
+  pnpm exec changeset git-tag                    # 幂等，只打本地还没有的版本
+  git push origin refs/tags/<包名>@<版本>          # 单次 ≤5 个 ref，超了会被拒
+  ```
 - **ENEEDAUTH `need auth`**：OIDC 模式下不代表没登录。npm 用 id_token 换包级 token，失败时
   只在 verbose 日志里写原因。看
   `POST 404 .../oidc/token/exchange/package/<包名>`：
@@ -168,6 +207,9 @@ npm 登录态 + 2FA（`--otp=` / `NAPKETTO_NPM_OTP`）。仅用于演练与排�
   `tooling/release/**`、`.changeset/**` 等于改发布权，CODEOWNERS 已覆盖。
 - `publish` 的 `id-token: write` 不可下放到 `prepare`；`environment: release` 不可删
   （npm 的 claim 会校验，且它是“合并 ≠ 上线”的唯一保证）。
+- tag 与 `main` 同由 `prepare` 的 App token 推送。手工推 tag 只用于补历史这类一次性操作，
+  日常发版不要手动打 tag——否则 tag 与 npm 版本会再次脱节（2026-10-26 补历史前就是这个
+  状态：只有 `v0.1.0`，且对不上任何包版本）。
 - GitHub App 的 bypass 是整套规则集的豁免，不是单条规则；私钥只应存在于 Actions secret。
 - App token 在 `pnpm install` 之前铸造（checkout 私有 submodule 需要）：被污染的构建期
   代码理论上可窃取一枚能推 main 的短时（1 小时）凭证——这是单 App 复用的接受面，缓解是
