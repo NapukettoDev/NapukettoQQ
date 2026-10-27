@@ -31,9 +31,10 @@
 | ADR-022 | 版本管理用 Changesets；GitHub Release 的 repo tag 与包版本解耦 | 手工改版本；repo tag 锚定包版本 | 多包联动 bump 自动化；各包独立版本、独立发布 |
 | ADR-023 | Koishi 适配器独立成仓 | 继续 submodule + 主仓 workspace 双身份 | submodule 只适合源码保密边界；独立发布单元需要自己的 lockfile/CI/版本节奏 |
 | ADR-024 | 自建宿主为唯一运行路线（标准 Node + stub `QQNT.dll`） | 注入 QQ 主进程 / utilityProcess worker / 载具激活 `cpp_impl` | 无 QQ 进程与 UI、内存可控、部署简单；登录→READY→收发→协议装配已全链路验证 |
+| ADR-025 | 新增 Milky 协议适配器（**规划中，未实现**），目标 1.3.0，与 OB11/Satori/KuroBot 并行 | 用 Milky 替换 OB11；先全量迁移再保留双协议；参考/移植 GPL 系实现 | 语义天然对齐 kernel（消息段替代 CQ 码、原生 `message_seq`、`message_scene` 三值）；规范 MIT 且机读（OpenAPI/JSON Schema/IR 可生成类型），实现成本低于 OB11；跨 Minor 有兼容契约。三家实现全 GPL（含 GPL-2.0-only 的 LLBot）→ 只读规范、不读源码。详见 `docs/protocols/milky.md` |
 
 编号说明：文档或代码中出现的 **ADR-026 / ADR-030 属于姊妹项目 KuroAdapter / KuroBridge**，
-不是本仓编号。本仓编号 001~024 连续。
+不是本仓编号。本仓编号 001~025 连续。
 
 ## 已废止路线（只留结论）
 

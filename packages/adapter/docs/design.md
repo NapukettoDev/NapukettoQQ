@@ -325,3 +325,9 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
   渲染模板（含 death 空串、1500 截断、command_result error 分支）。
 - **适配器级**：假服务端 + ProtocolConfig seed + 桩 msgChannel/msgApi 跑通
   QQ→MC chat/command 与 MC→QQ 渲染回群全链路。
+
+## 9. Milky（未实现，规划中）
+
+Milky 协议适配器的实施方案（目标 1.3.0、65 接口 × kernel 覆盖、21 事件 × 数据源、
+装配接缝、P0–P2 顺序）见 `docs/protocols/milky.md`。**实现前先在本文件补对应设计
+（目录结构 / `/event` 的 SSE+WS 分流 / 错误映射 / 类型生成方式），再动代码。**
