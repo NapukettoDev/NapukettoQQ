@@ -4,7 +4,7 @@
  * message_id → msgId + peer（MessageUnique 反查）→ 拉消息 → OB11 消息信息结构。
  */
 
-import { toCanonicalElements } from "@napuketto/kernel";
+import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
@@ -24,7 +24,10 @@ const getMsgSchema = z.object({
 type GetMsgPayload = z.infer<typeof getMsgSchema>;
 
 /** get_msg 依赖（OneBotApi 视图，由装配方注入）。 */
-export type GetMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uidToUin">;
+export type GetMsgDeps = Pick<
+    OneBotApi,
+    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRole"
+>;
 
 /** 获取消息详情（P2-10 接 kernel fetchMsgsByMsgId）。 */
 export class GetMsgAction extends BaseAction<GetMsgPayload, OB11MessageInfo> {
@@ -56,8 +59,14 @@ export class GetMsgAction extends BaseAction<GetMsgPayload, OB11MessageInfo> {
                 // uid 解析失败：at 原样（uid）
             }
         }
+        // 群消息查发送者角色（GroupCache 缓存优先；失败回退缺省 member）
+        const senderRole =
+            msg.chatType === ChatType.GROUP
+                ? await this.deps.groupMemberRole(msg.peerUid, msg.senderUid)
+                : undefined;
         const ctx: ReceiveTranslateContext = {
             ...(uidToUin !== undefined ? { uidToUin } : {}),
+            ...(senderRole !== undefined ? { senderRole } : {}),
             msgIdToOb11Id: (m) => this.deps.messageUnique.getMessageId(m),
         };
         return toOb11MessageInfo(msg, this.deps.messageUnique, ctx);

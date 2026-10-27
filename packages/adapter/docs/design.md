@@ -55,6 +55,11 @@ Group/onGroupEssenceListChange   →  subscribe()（c3，2026-09-10）→  仅 r
     数据源积累入口）。
 - **校准 logger**：`OneBot11AdapterOptions.logger`（warn/info 最小面），
   装配方传 pino 实例；缺省静默。
+- **sender.role 群缓存判定（2026-10-28）**：群消息事件与 get_msg/历史消息的
+  `sender.role` 经 `OneBotApi.groupMemberRole(s)` 查 kernel `GroupCache`
+  （缓存优先，缺失惰性回填整表/单查）判定 owner/admin；查询失败或未装配缓存
+  回退缺省 `"member"`，不阻塞上报。角色经 `ReceiveTranslateContext.senderRole`
+  注入，翻译层保持纯函数（ADR-008）。
 - **c3 扩展源（2026-09-10，`helper/notice-extra.ts`）**：五无源事件探测轮产物
   （证据矩阵见 kernel design.md §1「c3 新接线」）：
   - **offline_file**：源 = kernel `Msg/onRecvOfflineFileMsg`（字符串簇 + RTTI

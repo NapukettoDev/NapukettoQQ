@@ -10,7 +10,6 @@
 
 import type {
     FriendApi,
-    GroupApi,
     GroupCache,
     GroupNotifyApi,
     MsgApi,
@@ -20,6 +19,8 @@ import type {
     TicketApi,
     WebApi,
 } from "@napuketto/kernel";
+import { GroupApi } from "@napuketto/kernel";
+import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
 
 /** 系统类本地回调（get_version_info / clean_cache / download_file / 进程控制用）。 */
@@ -131,5 +132,41 @@ export class OneBotApi {
     /** uid→uin 转换（委托 groupApi；notice/grayTip 用）。 */
     uidToUin(uids: string[]): Promise<Map<string, string>> {
         return this.groupApi.uidToUin(uids);
+    }
+
+    /**
+     * 群成员角色（GroupCache 缓存优先，缺失惰性回填；sender.role 判定用）。
+     * 未装配缓存 / 成员不在群 / 查询失败 → undefined（调用方回退缺省 "member"，
+     * 不阻塞消息上报）。
+     */
+    async groupMemberRole(groupCode: string, uid: string): Promise<GroupSenderRole | undefined> {
+        if (this.groupCache === undefined) {
+            return undefined;
+        }
+        try {
+            const member = await this.groupCache.getMember(groupCode, uid);
+            return member === undefined ? undefined : GroupApi.roleToString(member.role);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * 群成员角色表（历史消息批量用：一次整表读取，uid → role）。
+     * 失败语义同 groupMemberRole。
+     */
+    async groupMemberRoles(groupCode: string): Promise<Map<string, GroupSenderRole> | undefined> {
+        if (this.groupCache === undefined) {
+            return undefined;
+        }
+        try {
+            const out = new Map<string, GroupSenderRole>();
+            for (const member of await this.groupCache.getMembers(groupCode)) {
+                out.set(member.uid, GroupApi.roleToString(member.role));
+            }
+            return out;
+        } catch {
+            return undefined;
+        }
     }
 }

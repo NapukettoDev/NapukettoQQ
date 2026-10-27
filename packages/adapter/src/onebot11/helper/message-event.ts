@@ -58,7 +58,8 @@ export function toOb11MessageEvent(
         const sender: GroupSender = {
             user_id: userId,
             nickname: msg.sendNickName,
-            role: "member", // P2-3: 接 kernel cache 判定 owner/admin
+            // 发送者角色由调用方经 ctx 注入（GroupCache 查询在协议边界，翻译纯函数）
+            role: ctx.senderRole ?? "member",
         };
         if (msg.sendMemberName !== undefined) {
             sender.card = msg.sendMemberName;
