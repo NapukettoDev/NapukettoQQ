@@ -16,7 +16,7 @@ import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi } from "./api.js";
 import { milkyConfigSchema } from "./config.js";
 import { MessageSeqIndex } from "./helper/seq-index.js";
-import { assembleMilkyTransports, MilkyEventHub } from "./transport.js";
+import { assembleMilkyTransports } from "./transport.js";
 
 const PORT = 36221;
 const TOKEN = "test-token";
@@ -38,7 +38,6 @@ function stubApi(): MilkyApi {
 }
 
 const broadcaster = new EventBroadcaster();
-const hub = new MilkyEventHub();
 const set = assembleMilkyTransports({
     config: milkyConfigSchema.parse({
         enabled: true,
@@ -48,7 +47,6 @@ const set = assembleMilkyTransports({
     }),
     broadcaster,
     registry: createMilkyActionRegistry({ api: stubApi() }),
-    hub,
 });
 
 afterAll(async () => {

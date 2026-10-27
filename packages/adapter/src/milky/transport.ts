@@ -48,35 +48,51 @@ export interface MilkyTransportSet {
 
 /**
  * Milky 事件枢纽：SSE 客户端 + WS 客户端集合，send 即广播。
- * 传输适配器面（open/close no-op）只为注册 EventBroadcaster——生命周期随
- * HttpServer。WS 入帧忽略（规范：/event 为纯事件推送通道）。
+ * 传输适配器面（open/close/send，EventBroadcaster 多态派发）——生命周期随
+ * HttpServer。连接注册经 attachTo 挂到 HttpServer 注入点（本类内部闭环）；
+ * WS 入帧忽略（规范：/event 为纯事件推送通道）。
  */
-export class MilkyEventHub implements TransportAdapter {
+class MilkyEventHub implements TransportAdapter {
     private readonly sseClients = new Set<SseClientHandle>();
     private readonly sockets = new Set<WebSocket>();
 
-    /** 注册 SSE 客户端（返回退订函数）。 */
-    addSse(handle: SseClientHandle): () => void {
-        this.sseClients.add(handle);
-        return () => {
-            this.sseClients.delete(handle);
+    /** 把 /event 的 SSE（onRawRequest）与 WS 升级（onUpgrade）挂到 HTTP server。 */
+    attachTo(server: HttpServer, config: MilkyConfig): void {
+        server.onRawRequest = (ctx) => {
+            if (ctx.path !== EVENT_PATH || ctx.method !== "GET") {
+                return undefined;
+            }
+            if (!config.eventModes.includes("sse")) {
+                return new Response("event mode sse disabled", { status: 404 });
+            }
+            return createSseResponse((client) => {
+                this.sseClients.add(client);
+                return () => {
+                    this.sseClients.delete(client);
+                };
+            });
         };
-    }
-
-    /** 注册 WS 客户端（断开/出错自动移除；入帧忽略）。 */
-    addSocket(socket: WebSocket): () => void {
-        this.sockets.add(socket);
-        const remove = (): void => {
-            this.sockets.delete(socket);
+        server.onUpgrade = (req, accept, reject) => {
+            if (pathnameOf(req.url) !== EVENT_PATH) {
+                return;
+            }
+            if (!config.eventModes.includes("ws")) {
+                reject(404, "event mode ws disabled");
+                return;
+            }
+            if (config.token !== "" && !tokenMatches(req, config.token)) {
+                reject(401, "unauthorized");
+                return;
+            }
+            accept((socket) => {
+                this.sockets.add(socket);
+                const remove = (): void => {
+                    this.sockets.delete(socket);
+                };
+                socket.on("close", remove);
+                socket.on("error", remove);
+            });
         };
-        socket.on("close", remove);
-        socket.on("error", remove);
-        return remove;
-    }
-
-    /** 当前连接数（SSE + WS，测试/观测用）。 */
-    get connections(): number {
-        return this.sseClients.size + this.sockets.size;
     }
 
     /** 广播事件（EventBroadcaster emit 入口）。 */
@@ -111,7 +127,7 @@ export class MilkyEventHub implements TransportAdapter {
 }
 
 /** SSE 客户端句柄（network SseClient + 显式关闭）。 */
-export interface SseClientHandle {
+interface SseClientHandle {
     send(data: string, event?: string): void;
     close(): void;
 }
@@ -121,10 +137,10 @@ export function assembleMilkyTransports(opts: {
     config: MilkyConfig;
     broadcaster: EventBroadcaster;
     registry: ActionRegistry<MilkyAction<unknown, unknown>>;
-    hub: MilkyEventHub;
     logger?: MilkyLoggerLike;
 }): MilkyTransportSet {
-    const { config, broadcaster, registry, hub, logger } = opts;
+    const { config, broadcaster, registry, logger } = opts;
+    const hub = new MilkyEventHub();
     const token = config.token;
     const authorize = token !== "" ? makeMilkyAuthorize(token) : undefined;
 
@@ -133,31 +149,7 @@ export function assembleMilkyTransports(opts: {
         port: config.port,
         ...(authorize !== undefined ? { authorize } : {}),
     });
-    server.onRawRequest = (ctx, _req) => {
-        if (ctx.path !== EVENT_PATH || ctx.method !== "GET") {
-            return undefined;
-        }
-        if (!config.eventModes.includes("sse")) {
-            return new Response("event mode sse disabled", { status: 404 });
-        }
-        return createSseResponse((client) => hub.addSse(client));
-    };
-    server.onUpgrade = (req, accept, reject) => {
-        if (pathnameOf(req.url) !== EVENT_PATH) {
-            return;
-        }
-        if (!config.eventModes.includes("ws")) {
-            reject(404, "event mode ws disabled");
-            return;
-        }
-        if (token !== "" && !tokenMatches(req, token)) {
-            reject(401, "unauthorized");
-            return;
-        }
-        accept((socket) => {
-            hub.addSocket(socket);
-        });
-    };
+    hub.attachTo(server, config);
     server.onPathRequest = (ctx, req, respond) => {
         handleMilkyHttpRequest(ctx, req, respond, registry);
     };

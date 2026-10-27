@@ -21,9 +21,7 @@ import type {
     OutgoingSegment,
     SendMessageOutput,
 } from "../types.js";
-import type { MilkyErrorCodeMap } from "./base-action.js";
-import { MilkyAction } from "./base-action.js";
-import { milkyErrorCodeMap } from "./error-map.js";
+import { MilkyApiAction } from "./base-action.js";
 
 /**
  * OutgoingSegment 宽松校验：入口只保证「{type, data}」形状，字段级转换在
@@ -37,20 +35,12 @@ const sendMessageFields = { message: z.array(outgoingSegmentSchema).min(1) } as 
 const recallFields = { message_seq: z.number().int().min(0) } as const;
 
 /** send_private_message：发送私聊消息。 */
-export class SendPrivateMessageAction extends MilkyAction<
+export class SendPrivateMessageAction extends MilkyApiAction<
     { user_id: number; message: OutgoingSegment[] },
     SendMessageOutput
 > {
     readonly name = "send_private_message";
     readonly schema = z.object({ user_id: z.number().int().min(10001), ...sendMessageFields });
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(payload: {
         user_id: number;
@@ -62,20 +52,12 @@ export class SendPrivateMessageAction extends MilkyAction<
 }
 
 /** send_group_message：发送群聊消息。 */
-export class SendGroupMessageAction extends MilkyAction<
+export class SendGroupMessageAction extends MilkyApiAction<
     { group_id: number; message: OutgoingSegment[] },
     SendMessageOutput
 > {
     readonly name = "send_group_message";
     readonly schema = z.object({ group_id: z.number().int().min(10001), ...sendMessageFields });
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(payload: {
         group_id: number;
@@ -87,7 +69,7 @@ export class SendGroupMessageAction extends MilkyAction<
 }
 
 /** get_message：获取单条消息（seq → msgId 反查 + 实体回填）。 */
-export class GetMessageAction extends MilkyAction<
+export class GetMessageAction extends MilkyApiAction<
     { message_scene: MessageScene; peer_id: number; message_seq: number },
     GetMessageOutput
 > {
@@ -97,14 +79,6 @@ export class GetMessageAction extends MilkyAction<
         peer_id: z.number().int().min(10001),
         message_seq: z.number().int().min(0),
     });
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(payload: {
         message_scene: MessageScene;
@@ -130,10 +104,10 @@ export class GetMessageAction extends MilkyAction<
         msg: RawMessage,
     ): Promise<IncomingMessage> {
         const ctx: ReceiveTranslateContext = { selfUin: this.api.self.uin };
-        if (scene === "group" && this.api.groupCache !== undefined) {
+        if (scene === "group") {
             const [detail, member] = await Promise.all([
-                this.api.groupCache.getGroupDetail(peer.peerUid).catch(() => undefined),
-                this.api.groupCache.getMember(peer.peerUid, msg.senderUid).catch(() => undefined),
+                this.api.groupCache?.getGroupDetail(peer.peerUid).catch(() => undefined),
+                this.api.groupCache?.getMember(peer.peerUid, msg.senderUid).catch(() => undefined),
             ]);
             ctx.groupEntity = toGroupEntity(detail, peer.peerUid);
             ctx.groupMemberEntity = toGroupMemberEntity(member, peer.peerUid, msg.senderUin);
@@ -143,20 +117,12 @@ export class GetMessageAction extends MilkyAction<
 }
 
 /** recall_private_message：撤回私聊消息。 */
-export class RecallPrivateMessageAction extends MilkyAction<
+export class RecallPrivateMessageAction extends MilkyApiAction<
     { user_id: number; message_seq: number },
     Record<string, never>
 > {
     readonly name = "recall_private_message";
     readonly schema = z.object({ user_id: z.number().int().min(10001), ...recallFields });
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(payload: {
         user_id: number;
@@ -169,20 +135,12 @@ export class RecallPrivateMessageAction extends MilkyAction<
 }
 
 /** recall_group_message：撤回群消息。 */
-export class RecallGroupMessageAction extends MilkyAction<
+export class RecallGroupMessageAction extends MilkyApiAction<
     { group_id: number; message_seq: number },
     Record<string, never>
 > {
     readonly name = "recall_group_message";
     readonly schema = z.object({ group_id: z.number().int().min(10001), ...recallFields });
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(payload: {
         group_id: number;
@@ -224,36 +182,51 @@ async function resolveElements(
     atUins: string[],
     api: MilkyApi,
 ): Promise<CanonicalElement[]> {
-    let uinToUid: Map<string, string> | undefined;
-    if (atUins.length > 0) {
-        try {
-            uinToUid = await api.uinToUid(atUins);
-        } catch {
-            // 转换失败：at 原样（uin），交 QQ 端判断
-        }
-    }
+    const uinToUid = await resolveAtUins(atUins, api);
     const out: CanonicalElement[] = [];
     for (const el of elements) {
-        if (el.type === "at" && el.target !== "all") {
-            const uid = uinToUid?.get(el.target) ?? el.target;
-            out.push({ ...el, target: uid });
-            continue;
-        }
-        if (
-            (el.type === "image" || el.type === "voice" || el.type === "video") &&
-            isRemoteUri(el.path)
-        ) {
-            out.push({ ...el, path: await resolveMediaUri(el.path, api.mediaDir) });
-            continue;
-        }
-        out.push(el);
+        out.push(await resolveElement(el, uinToUid, api));
     }
     return out;
 }
 
-/** 远程媒体 URI（需异步落盘才能进 kernel 发送预处理）。 */
-function isRemoteUri(path: string): boolean {
+/** at uin→uid 批量转换（失败返回 undefined：at 原样 uin，交 QQ 端判断）。 */
+async function resolveAtUins(
+    atUins: string[],
+    api: MilkyApi,
+): Promise<Map<string, string> | undefined> {
+    if (atUins.length === 0) {
+        return undefined;
+    }
+    try {
+        return await api.uinToUid(atUins);
+    } catch {
+        return undefined;
+    }
+}
+
+/** 单元素解析：at 目标替换 / 远程媒体 URI 落盘 / 其余原样。 */
+async function resolveElement(
+    el: CanonicalElement,
+    uinToUid: Map<string, string> | undefined,
+    api: MilkyApi,
+): Promise<CanonicalElement> {
+    if (el.type === "at" && el.target !== "all") {
+        return { ...el, target: uinToUid?.get(el.target) ?? el.target };
+    }
+    if (isRemoteMediaUri(el)) {
+        const media = el as Extract<CanonicalElement, { type: "image" | "voice" | "video" }>;
+        return { ...media, path: await resolveMediaUri(media.path, api.mediaDir) };
+    }
+    return el;
+}
+
+/** 远程媒体元素（image/voice/video 且 path 为需落盘的 URI）。 */
+function isRemoteMediaUri(el: CanonicalElement): boolean {
     return (
-        path.startsWith("http://") || path.startsWith("https://") || path.startsWith("base64://")
+        (el.type === "image" || el.type === "voice" || el.type === "video") &&
+        (el.path.startsWith("http://") ||
+            el.path.startsWith("https://") ||
+            el.path.startsWith("base64://"))
     );
 }

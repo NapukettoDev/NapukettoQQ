@@ -174,9 +174,6 @@ export interface MilkyEvent<TData = unknown> {
     data: TData;
 }
 
-/** message_receive 事件载荷 = IncomingMessage。 */
-export type MessageReceiveData = IncomingMessage;
-
 /** message_recall 事件载荷。 */
 export interface MessageRecallData {
     message_scene: MessageScene;

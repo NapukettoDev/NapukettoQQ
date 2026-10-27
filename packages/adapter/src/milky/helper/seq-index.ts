@@ -10,11 +10,11 @@
  */
 import type { ChatType, RawMessage } from "@napuketto/kernel";
 
-/** 单方向最大条目数。 */
-const MAX_ENTRIES = 4096;
+/** 单方向最大条目数（测试用例引用容量语义）。 */
+export const MAX_ENTRIES = 4096;
 
-/** msgId → seq 元信息（reply 段回填 / 撤回事件用）。 */
-export interface SeqMeta {
+/** msgId → seq 元信息（collectReplyMeta 回填用）。 */
+interface SeqMeta {
     seq: number;
     senderUin: string;
     timeSec: number;
@@ -46,9 +46,25 @@ export class MessageSeqIndex {
         return this.seqToMsg.get(this.key(chatType, peerUid, seq));
     }
 
-    /** msgId → seq 元信息（reply 段回填用）。 */
-    resolveMeta(msgId: string): SeqMeta | undefined {
-        return this.msgToMeta.get(msgId);
+    /**
+     * 批量回填 reply 引用元信息（msgId → Milky reply 段 data 所需三元组）。
+     * 未命中的 id 不进表（翻译层按 0 兜底）。
+     */
+    collectReplyMeta(
+        msgIds: string[],
+    ): Map<string, { messageSeq: number; senderId: number; time: number }> {
+        const out = new Map<string, { messageSeq: number; senderId: number; time: number }>();
+        for (const id of msgIds) {
+            const m = this.msgToMeta.get(id);
+            if (m !== undefined) {
+                out.set(id, {
+                    messageSeq: m.seq,
+                    senderId: Number(m.senderUin) || 0,
+                    time: m.timeSec,
+                });
+            }
+        }
+        return out;
     }
 
     /** key 规则（chatType 数值 + peerUid + seq；peerUid 群聊=群号，C2C=uid）。 */

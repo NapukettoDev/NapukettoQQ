@@ -4,7 +4,10 @@
  * 规范语义：-400 = 参数解析失败、-403 = 未登录；其余业务错误为自定负数
  * （规范允许），取常见 HTTP 语义近似值便于应用端排查。
  */
-import type { MilkyErrorCodeMap } from "./base-action.js";
+import type { KernelErrorCode } from "@napuketto/kernel";
+
+/** KernelErrorCode → Milky retcode 映射表（-400/-403 规范语义，其余自定负数）。 */
+export type MilkyErrorCodeMap = Record<KernelErrorCode, number>;
 
 export const milkyErrorCodeMap: MilkyErrorCodeMap = {
     SEND_FAILED: -500,

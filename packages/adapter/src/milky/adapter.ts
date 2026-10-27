@@ -9,23 +9,22 @@
  * 不起传输）。翻译为纯函数（ADR-008）：实体回填 / ID 转换在广播路径异步取得
  * 后经 ctx 注入。
  */
-import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
+import type { CanonicalElement, MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
-import { forEachRawMessage } from "../core/raw-message.js";
+import { subscribeRawMessages } from "../core/raw-message.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/entities.js";
-import type { ReplyMeta } from "./helper/segments.js";
 import { MessageSeqIndex } from "./helper/seq-index.js";
 import {
     type ReceiveTranslateContext,
     toMessageRecallEvent,
     toMessageReceiveEvent,
 } from "./helper/translate.js";
-import { assembleMilkyTransports, MilkyEventHub, type MilkyLoggerLike } from "./transport.js";
+import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
 
 /** 适配器构造参数（api 相关字段继承 MilkyApiOptions）。 */
 export interface MilkyAdapterOptions extends MilkyApiOptions {
@@ -74,12 +73,10 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         }
         const broadcaster = this.getBroadcaster();
         if (broadcaster !== undefined) {
-            const hub = new MilkyEventHub();
             const set = assembleMilkyTransports({
                 config,
                 broadcaster,
                 registry: this.registry,
-                hub,
                 ...(this.calibLogger !== undefined ? { logger: this.calibLogger } : {}),
             });
             this.stopTransports = set.close;
@@ -112,10 +109,8 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             return;
         }
         this.unsubscribes.push(
-            this.msgChannel.on("Msg/onRecvMsg", (msgs) => {
-                forEachRawMessage(msgs, (msg) => {
-                    void this.handleIncoming(msg);
-                });
+            subscribeRawMessages(this.msgChannel, (msg) => {
+                void this.handleIncoming(msg);
             }),
         );
     }
@@ -149,68 +144,80 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
 
     /** message_receive 组装：at uid→uin + reply 回填 + 群实体回填（全部 fail-soft）。 */
     private async buildMessageReceiveEvent(msg: RawMessage): Promise<unknown> {
-        const ctx: ReceiveTranslateContext = { selfUin: this.api.self.uin };
         const elements = toCanonicalElements(msg);
-        // at uid → uin（mention.user_id）
+        const ctx: ReceiveTranslateContext = { selfUin: this.api.self.uin };
+        await this.fillMentionUids(elements, ctx);
+        this.fillReplyMeta(elements, ctx);
+        await this.fillGroupEntities(msg, ctx);
+        return toMessageReceiveEvent(msg, ctx);
+    }
+
+    /** at uid → uin 批量转换（mention.user_id 用；失败 mention 段跳过）。 */
+    private async fillMentionUids(
+        elements: CanonicalElement[],
+        ctx: ReceiveTranslateContext,
+    ): Promise<void> {
         const atUids = elements
             .filter((el) => el.type === "at" && el.target !== "all")
             .map((el) => (el as { target: string }).target);
-        if (atUids.length > 0) {
-            try {
-                ctx.uidToUin = await this.api.uidToUin(atUids);
-            } catch {
-                // 转换失败：mention 段跳过
-            }
+        if (atUids.length === 0) {
+            return;
         }
-        // reply 引用回填（seqIndex 命中即用；未命中不强查）
+        try {
+            ctx.uidToUin = await this.api.uidToUin(atUids);
+        } catch {
+            // 转换失败：mention 段跳过
+        }
+    }
+
+    /** reply 引用元信息回填（seqIndex 命中即用；未命中不强查）。 */
+    private fillReplyMeta(elements: CanonicalElement[], ctx: ReceiveTranslateContext): void {
         const replyIds = elements
             .filter((el) => el.type === "reply")
             .map((el) => (el as { messageId: string }).messageId);
-        if (replyIds.length > 0) {
-            const meta = new Map<string, ReplyMeta>();
-            for (const id of replyIds) {
-                const m = this.seqIndex.resolveMeta(id);
-                if (m !== undefined) {
-                    meta.set(id, {
-                        messageSeq: m.seq,
-                        senderId: Number(m.senderUin) || 0,
-                        time: m.timeSec,
-                    });
-                }
-            }
-            if (meta.size > 0) {
-                ctx.replyMeta = meta;
-            }
+        const meta = this.seqIndex.collectReplyMeta(replyIds);
+        if (meta.size > 0) {
+            ctx.replyMeta = meta;
         }
-        // 群场景实体回填（缓存优先，失败最小实体兜底）
-        if (msg.chatType === ChatType.GROUP && this.api.groupCache !== undefined) {
-            const [detail, member] = await Promise.all([
-                this.api.groupCache.getGroupDetail(msg.peerUid).catch(() => undefined),
-                this.api.groupCache.getMember(msg.peerUid, msg.senderUid).catch(() => undefined),
-            ]);
-            ctx.groupEntity = toGroupEntity(detail, msg.peerUid);
-            ctx.groupMemberEntity = toGroupMemberEntity(member, msg.peerUid, msg.senderUin);
+    }
+
+    /** 群场景实体回填（GroupCache 缓存优先，失败最小实体兜底）。 */
+    private async fillGroupEntities(msg: RawMessage, ctx: ReceiveTranslateContext): Promise<void> {
+        if (msg.chatType !== ChatType.GROUP || this.api.groupCache === undefined) {
+            return;
         }
-        return toMessageReceiveEvent(msg, ctx);
+        const [detail, member] = await Promise.all([
+            this.api.groupCache.getGroupDetail(msg.peerUid).catch(() => undefined),
+            this.api.groupCache.getMember(msg.peerUid, msg.senderUid).catch(() => undefined),
+        ]);
+        ctx.groupEntity = toGroupEntity(detail, msg.peerUid);
+        ctx.groupMemberEntity = toGroupMemberEntity(member, msg.peerUid, msg.senderUin);
     }
 
     /** message_recall 组装（非撤回 grayTip 返回 null 静默）。 */
     private async buildRecallEvent(msg: RawMessage): Promise<unknown> {
-        const operatorUid = msg.elements.find(
-            (el) => el.grayTipElement?.revokeElement !== undefined,
-        )?.grayTipElement?.revokeElement?.operatorUid;
-        const ctx: { selfUin: string; uidToUin?: Map<string, string> } = {
+        const uidToUin = await this.resolveOperatorUin(msg);
+        return toMessageRecallEvent(msg, {
             selfUin: this.api.self.uin,
-        };
-        if (operatorUid !== undefined && operatorUid !== "") {
-            try {
-                ctx.uidToUin = await this.api.uidToUin([operatorUid]);
-            } catch {
-                // 转换失败：operator_id 兜底 0
-            }
-        }
-        return toMessageRecallEvent(msg, ctx);
+            ...(uidToUin !== undefined ? { uidToUin } : {}),
+        });
     }
+
+    /** 撤回操作者 uid → uin（未撤回/转换失败返回 undefined，operator_id 兜底 0）。 */
+    private resolveOperatorUin(msg: RawMessage): Promise<Map<string, string> | undefined> {
+        const operatorUid = findRevokeOperatorUid(msg);
+        if (operatorUid === undefined) {
+            return Promise.resolve(undefined);
+        }
+        return this.api.uidToUin([operatorUid]).catch(() => undefined);
+    }
+}
+
+/** 撤回 grayTip 的操作者 uid（非撤回消息返回 undefined）。 */
+function findRevokeOperatorUid(msg: RawMessage): string | undefined {
+    const uid = msg.elements.find((el) => el.grayTipElement?.revokeElement !== undefined)
+        ?.grayTipElement?.revokeElement?.operatorUid;
+    return uid === undefined || uid === "" ? undefined : uid;
 }
 
 /** 是否含 grayTip 元素（与 OB11 收链路同判据）。 */

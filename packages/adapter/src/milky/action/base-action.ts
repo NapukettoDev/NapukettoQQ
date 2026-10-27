@@ -5,8 +5,10 @@
  * retcode=-400（规范），不复用 OB11 的 400/1400 语义。
  * 响应信封由 transport 组装（status/retcode/data/message）。
  */
-import { isKernelError, type KernelErrorCode } from "@napuketto/kernel";
+import { isKernelError } from "@napuketto/kernel";
 import type { ZodType } from "zod";
+import type { MilkyApi } from "../api.js";
+import { type MilkyErrorCodeMap, milkyErrorCodeMap } from "./error-map.js";
 
 /** Milky 动作结果（retcode 为规范负数族；transport 原样组装信封）。 */
 export interface MilkyActionResult<T> {
@@ -15,9 +17,6 @@ export interface MilkyActionResult<T> {
     data: T | null;
     message: string;
 }
-
-/** KernelErrorCode → Milky retcode 映射表（-400/-403 规范语义，其余自定负数）。 */
-export type MilkyErrorCodeMap = Record<KernelErrorCode, number>;
 
 /** zod 错误摘要（单行，issues 取前 3 条）。 */
 function zodSummary(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
@@ -60,5 +59,19 @@ export abstract class MilkyAction<TPayload, TReturn> {
                 message: err instanceof Error ? err.message : "未知错误",
             };
         }
+    }
+}
+
+/**
+ * 持 MilkyApi 的动作基类：api 注入 + 统一错误映射表（milkyErrorCodeMap）收拢，
+ * 动作子类只写 name / schema / _handle。
+ */
+export abstract class MilkyApiAction<TPayload, TReturn> extends MilkyAction<TPayload, TReturn> {
+    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
+    protected readonly api: MilkyApi;
+
+    constructor(api: MilkyApi) {
+        super();
+        this.api = api;
     }
 }

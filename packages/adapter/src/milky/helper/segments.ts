@@ -89,100 +89,121 @@ function videoToIncoming(el: Extract<CanonicalElement, { type: "video" }>): Inco
     };
 }
 
+/** 按类型分发的段映射器表（键 = canonical type；缺项 = 跳过）。 */
+const INCOMING_MAPPERS: Partial<
+    Record<
+        CanonicalElement["type"],
+        (el: never, ctx: ReceiveSegmentContext) => IncomingSegment | null
+    >
+> = {
+    text: (el: Extract<CanonicalElement, { type: "text" }>) => ({
+        type: "text",
+        data: { text: el.text },
+    }),
+    at: atToIncoming,
+    face: (el: Extract<CanonicalElement, { type: "face" }>) => ({
+        type: "face",
+        data: { face_id: el.id, is_large: false },
+    }),
+    reply: replyToIncoming,
+    image: imageToIncoming,
+    voice: voiceToIncoming,
+    video: videoToIncoming,
+    file: fileToIncoming,
+    forward: forwardToIncoming,
+    json: (el: Extract<CanonicalElement, { type: "json" }>) => ({
+        type: "light_app",
+        data: { app_name: parseAppName(el.raw), json_payload: rawToPayload(el.raw) },
+    }),
+    xml: (el: Extract<CanonicalElement, { type: "xml" }>) => ({
+        type: "xml",
+        data: { service_id: 0, xml_payload: rawToPayload(el.raw) },
+    }),
+};
+
 function canonicalToIncomingSegment(
     el: CanonicalElement,
     ctx: ReceiveSegmentContext,
 ): IncomingSegment | null {
-    switch (el.type) {
-        case "text":
-            return { type: "text", data: { text: el.text } };
-        case "at": {
-            if (el.target === "all") {
-                return { type: "mention_all", data: {} };
-            }
-            const uin = ctx.uidToUin?.get(el.target) ?? el.target;
-            const userId = toUserId(uin);
-            if (userId === undefined) {
-                return null;
-            }
-            return { type: "mention", data: { user_id: userId, name: el.display ?? "" } };
-        }
-        case "face":
-            return { type: "face", data: { face_id: el.id, is_large: false } };
-        case "reply": {
-            const meta = ctx.replyMeta?.get(el.messageId);
-            return {
-                type: "reply",
-                data: {
-                    message_seq: meta?.messageSeq ?? 0,
-                    sender_id: meta?.senderId ?? 0,
-                    sender_name: null,
-                    time: meta?.time ?? 0,
-                    segments: [],
-                },
-            };
-        }
-        case "image":
-            return imageToIncoming(el);
-        case "voice":
-            return voiceToIncoming(el);
-        case "video":
-            return videoToIncoming(el);
-        case "file":
-            return {
-                type: "file",
-                data: {
-                    file_id: el.path,
-                    file_name: el.name ?? "",
-                    file_size: el.size ?? 0,
-                },
-            };
-        case "forward":
-            return {
-                type: "forward",
-                data: {
-                    forward_id: el.messageIds[0] ?? "",
-                    title: "",
-                    preview: [],
-                    summary: "",
-                },
-            };
-        case "json":
-            return {
-                type: "light_app",
-                data: { app_name: parseAppName(el.raw), json_payload: rawToPayload(el.raw) },
-            };
-        case "xml":
-            return {
-                type: "xml",
-                data: { service_id: 0, xml_payload: rawToPayload(el.raw) },
-            };
-        case "unknown":
-            return null;
-        default:
-            return null;
+    const mapper = INCOMING_MAPPERS[el.type];
+    // unknown / 未映射类型：跳过（规范兼容性要求）
+    return mapper === undefined ? null : mapper(el as never, ctx);
+}
+
+/** canonical at → mention / mention_all（uid→uin 失败跳过该段）。 */
+function atToIncoming(
+    el: Extract<CanonicalElement, { type: "at" }>,
+    ctx: ReceiveSegmentContext,
+): IncomingSegment | null {
+    if (el.target === "all") {
+        return { type: "mention_all", data: {} };
     }
+    const uin = ctx.uidToUin?.get(el.target) ?? el.target;
+    const userId = toUserId(uin);
+    if (userId === undefined) {
+        return null;
+    }
+    return { type: "mention", data: { user_id: userId, name: el.display ?? "" } };
+}
+
+/** canonical reply → reply 段（引用元信息经 ctx 回填，未命中全 0 兜底）。 */
+function replyToIncoming(
+    el: Extract<CanonicalElement, { type: "reply" }>,
+    ctx: ReceiveSegmentContext,
+): IncomingSegment {
+    const meta = ctx.replyMeta?.get(el.messageId);
+    return {
+        type: "reply",
+        data: {
+            message_seq: meta?.messageSeq ?? 0,
+            sender_id: meta?.senderId ?? 0,
+            sender_name: null,
+            time: meta?.time ?? 0,
+            segments: [],
+        },
+    };
+}
+
+/** canonical file → file 段。 */
+function fileToIncoming(el: Extract<CanonicalElement, { type: "file" }>): IncomingSegment {
+    return {
+        type: "file",
+        data: {
+            file_id: el.path,
+            file_name: el.name ?? "",
+            file_size: el.size ?? 0,
+        },
+    };
+}
+
+/** canonical forward → forward 段（title/preview/summary 无 canonical 来源，空兜底）。 */
+function forwardToIncoming(el: Extract<CanonicalElement, { type: "forward" }>): IncomingSegment {
+    return {
+        type: "forward",
+        data: {
+            forward_id: el.messageIds[0] ?? "",
+            title: "",
+            preview: [],
+            summary: "",
+        },
+    };
 }
 
 /** json 载荷 → 小程序名（spec app_name：JSON 顶层 app 字段，取不到空串）。 */
 function parseAppName(raw: unknown): string {
+    let obj: unknown = raw;
     if (typeof raw === "string") {
         try {
-            const obj: unknown = JSON.parse(raw);
-            if (typeof obj === "object" && obj !== null && "app" in obj) {
-                const app = (obj as Record<string, unknown>)["app"];
-                return typeof app === "string" ? app : "";
-            }
+            obj = JSON.parse(raw);
         } catch {
             return "";
         }
+    }
+    if (typeof obj !== "object" || obj === null || !("app" in obj)) {
         return "";
     }
-    if (typeof raw === "object" && raw !== null && "app" in raw) {
-        const app = (raw as Record<string, unknown>)["app"];
-        return typeof app === "string" ? app : "";
-    }
-    return "";
+    const app = (obj as Record<string, unknown>)["app"];
+    return typeof app === "string" ? app : "";
 }
 
 /** canonical json/xml raw → 字符串载荷（字符串原样，其余 JSON 序列化）。 */
@@ -274,7 +295,7 @@ function resolveUriToPathPlaceholder(uri: string): string {
 const FILE_URI_PREFIX_RE = /^file:\/\//;
 
 /** file:// URI → 平台路径（Windows 盘符兼容）。 */
-export function fileUriToPath(uri: string): string {
+function fileUriToPath(uri: string): string {
     try {
         return fileURLToPath(uri);
     } catch {

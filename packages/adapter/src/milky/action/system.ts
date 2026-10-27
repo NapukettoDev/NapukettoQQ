@@ -5,29 +5,18 @@
  * 固定 "1.3"（目标协议版本 1.3.0），qq_protocol_type 固定 windows（自建宿主）。
  */
 import { z } from "zod";
-import type { MilkyApi } from "../api.js";
 import type { GetImplInfoOutput, GetLoginInfoOutput } from "../types.js";
-import type { MilkyErrorCodeMap } from "./base-action.js";
-import { MilkyAction } from "./base-action.js";
-import { milkyErrorCodeMap } from "./error-map.js";
+import { MilkyApiAction } from "./base-action.js";
 
 /** Milky 协议版本（docs/protocols/milky.md：目标 1.3.0）。 */
-export const MILKY_VERSION = "1.3";
+const MILKY_VERSION = "1.3";
 
 const emptySchema = z.object({}).strict();
 
 /** get_login_info：获取登录信息。 */
-export class GetLoginInfoAction extends MilkyAction<Record<string, never>, GetLoginInfoOutput> {
+export class GetLoginInfoAction extends MilkyApiAction<Record<string, never>, GetLoginInfoOutput> {
     readonly name = "get_login_info";
     readonly schema = emptySchema;
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(): Promise<GetLoginInfoOutput> {
         return { uin: Number(this.api.self.uin), nickname: this.api.self.nickname };
@@ -35,17 +24,9 @@ export class GetLoginInfoAction extends MilkyAction<Record<string, never>, GetLo
 }
 
 /** get_impl_info：获取协议端信息（版本协商）。 */
-export class GetImplInfoAction extends MilkyAction<Record<string, never>, GetImplInfoOutput> {
+export class GetImplInfoAction extends MilkyApiAction<Record<string, never>, GetImplInfoOutput> {
     readonly name = "get_impl_info";
     readonly schema = emptySchema;
-    protected readonly errorCodeMap: MilkyErrorCodeMap = milkyErrorCodeMap;
-
-    private readonly api: MilkyApi;
-
-    constructor(api: MilkyApi) {
-        super();
-        this.api = api;
-    }
 
     protected async _handle(): Promise<GetImplInfoOutput> {
         return {
