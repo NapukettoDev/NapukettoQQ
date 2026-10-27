@@ -50,6 +50,17 @@ interface Onebot11ModuleLike {
     };
 }
 
+/** adapter 包 milky 子路径最小面（@napuketto/adapter，动态 import）。 */
+interface MilkyModuleLike {
+    milkyConfigSchema: { parse(input: unknown): unknown };
+    NapukettoMilkyAdapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+    };
+}
+
 /** adapter 包 satori 子路径最小面（@napuketto/adapter，动态 import）。 */
 interface SatoriModuleLike {
     satoriConfigSchema: { parse(input: unknown): unknown };
@@ -103,6 +114,7 @@ export async function assembleOb11AndSatori(
         };
     }
     try {
+        const milkyAdapters: Array<{ stop(): Promise<void> }> = [];
         const network = (await import(
             `file://${networkEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as NetworkModuleLike;
@@ -111,6 +123,7 @@ export async function assembleOb11AndSatori(
         const onebot11Entry = adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
         const satoriEntry = adapterEntry.replace(INDEX_MJS_RE, "satori/index.mjs");
         const kurobotEntry = adapterEntry.replace(INDEX_MJS_RE, "kurobot/index.mjs");
+        const milkyEntry = adapterEntry.replace(INDEX_MJS_RE, "milky/index.mjs");
         const coreEntry = adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
         const adapter = (await import(
             `file://${onebot11Entry.replace(BACKSLASH_RE, "/")}`
@@ -121,6 +134,9 @@ export async function assembleOb11AndSatori(
         const kurobotAdapter = (await import(
             `file://${kurobotEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as KurobotModuleLike;
+        const milkyAdapter = (await import(
+            `file://${milkyEntry.replace(BACKSLASH_RE, "/")}`
+        )) as unknown as MilkyModuleLike;
         const adapterCore = (await import(
             `file://${coreEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as AdapterCoreModuleLike;
@@ -129,10 +145,8 @@ export async function assembleOb11AndSatori(
         const broadcaster = new network.EventBroadcaster();
         // 全局 TOML 配置段：按登录账号 uin 从 accounts 取 [onebot11] / [satori] 段作 seed
         // （2026-08-08 结构拍板：协议配置嵌在账号内；未配置协议的账号不装配对应协议）。
-        const { cfgFile, ob11Section, satoriSection, kurobotSection } = loadProtocolSections(
-            kernel,
-            loginResult.uin,
-        );
+        const { cfgFile, ob11Section, satoriSection, kurobotSection, milkySection } =
+            loadProtocolSections(kernel, loginResult.uin);
         const ob11Config = new adapterCore.ProtocolConfig({
             path: cfgFile,
             schema: adapter.ob11ConfigSchema,
@@ -269,12 +283,49 @@ export async function assembleOb11AndSatori(
             await kurobot.start();
             log("bootstrap: kurobot adapter started");
         }
+
+        // Milky 协议（P0，2026-10-28）：段 enabled=true 才生效（enabled 缺省 false
+        // = 空转不占端口）。单端口 HTTP（/api + /event SSE/WS）+ WebHook。
+        if (Object.keys(milkySection).length > 0) {
+            const milkyConfig = new adapterCore.ProtocolConfig({
+                path: cfgFile,
+                schema: milkyAdapter.milkyConfigSchema,
+                defaults: milkyAdapter.milkyConfigSchema.parse({}),
+                seed: parseSeed("milky", milkyAdapter.milkyConfigSchema, milkySection),
+            });
+            const milky = new milkyAdapter.NapukettoMilkyAdapter({
+                config: milkyConfig,
+                broadcaster,
+                msgChannel: channel,
+                msgApi: services.msgApi,
+                groupApi: services.groupApi,
+                friendApi: services.friendApi,
+                profileApi: services.profileApi,
+                self: services.self,
+                groupCache,
+                qqVersion: env.NAPUTO_QQ_VERSION || "unknown",
+                // 发送远程媒体 URI 的下载缓存目录（与 OB11 download_file 同目录）
+                mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
+                logger: services.calibLogger as
+                    | {
+                          warn(obj: unknown, msg?: string): void;
+                          info(obj: unknown, msg?: string): void;
+                      }
+                    | undefined,
+            }) as { start(): Promise<unknown>; stop(): Promise<void> };
+            await milky.start();
+            log("bootstrap: milky adapter started");
+            milkyAdapters.push(milky);
+        }
         return async () => {
             // 适配器 stop 幂等（started 标志守卫）：传输关闭 + kernel 事件退订
             await ob11.stop();
             await satori.stop();
             if (kurobot !== null) {
                 await kurobot.stop();
+            }
+            for (const milky of milkyAdapters) {
+                await milky.stop();
             }
         };
     } catch (e) {

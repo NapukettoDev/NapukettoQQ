@@ -22,7 +22,7 @@ export const DEFAULT_RESTART_DELAY_MS = 2000;
 const QQ_IN_FORMAT_RE = /^\d{5,11}$/;
 
 /** 协议段键（宽松对象，装配时 zod 严格校验）。 */
-type ProtocolKey = "onebot11" | "satori" | "kurobot";
+type ProtocolKey = "onebot11" | "satori" | "kurobot" | "milky";
 
 /** 账号配置项（qq 必填；协议段缺省 = 该账号不启用对应协议）。 */
 export interface CliAccountConfig {
@@ -34,6 +34,8 @@ export interface CliAccountConfig {
     satori?: Record<string, unknown>;
     /** Kurobot 协议段（与 kurobotConfigSchema 对应，宽松对象，装配时 zod 校验）。 */
     kurobot?: Record<string, unknown>;
+    /** Milky 协议段（与 milkyConfigSchema 对应，宽松对象，装配时 zod 校验）。 */
+    milky?: Record<string, unknown>;
 }
 
 /** 主配置（跨账号，全局单文件 TOML）。 */
@@ -158,7 +160,7 @@ function applyAccountEnabled(out: CliAccountConfig, enabled: unknown): void {
     out.enabled = enabled;
 }
 
-/** 账号内协议段装配（onebot11/satori/kurobot 缺省 = 不启用该协议）。 */
+/** 账号内协议段装配（onebot11/satori/kurobot/milky 缺省 = 不启用该协议）。 */
 function applyProtocolSections(raw: Record<string, unknown>, out: CliAccountConfig): void {
     const onebot11 = parseProtocolSection(raw, "onebot11");
     if (onebot11 !== undefined) {
@@ -171,6 +173,10 @@ function applyProtocolSections(raw: Record<string, unknown>, out: CliAccountConf
     const kurobot = parseProtocolSection(raw, "kurobot");
     if (kurobot !== undefined) {
         out.kurobot = kurobot;
+    }
+    const milky = parseProtocolSection(raw, "milky");
+    if (milky !== undefined) {
+        out.milky = milky;
     }
 }
 

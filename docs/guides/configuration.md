@@ -194,7 +194,31 @@ enabled = true        # 可选，默认 true；supervisor 只拉起启用的账�
 模板占位符：`{player}`、`{content}`、`{message}`；未知占位符原样保留。所有发群文本超过
 1500 个 UTF-16 码元时截断并追加 `…(截断)`。
 
-## 8. 最小示例
+## 8. Milky 段（P0）
+
+账号段存在且 `enabled = true` 才启用；不写 = 不启用。单端口 HTTP：`POST /api/:api`
+调用动作，`GET /event` 推送事件（按 `Upgrade: websocket` 头分流 WS，否则 SSE）。
+目标协议版本 Milky 1.3.0。
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `enabled` | boolean | `false` | 启用开关（false = 装配空转，不占端口） |
+| `host` | string | `"127.0.0.1"` | 监听地址 |
+| `port` | int | `3001` | 监听端口（/api 与 /event 同端口） |
+| `token` | string | `""` | access_token；空 = 不校验（仅限内网） |
+| `eventModes` | 数组 | `["sse", "ws"]` | /event 允许的连接形态 |
+| `webhooks` | 数组 | `[]` | 额外事件推送地址（WebHook POST，请求头带 Bearer token） |
+| `cacheDir` | string | 无 | 发送远程媒体 URI（http(s)/base64）的下载缓存目录；缺省 = 远程媒体发送不可用 |
+
+鉴权：`Authorization: Bearer <token>`，SSE/WS 允许 `?access_token=` 查询参数兜底；
+失败 HTTP 401。错误码：-400 参数解析失败、-403 未登录、其余业务错误自定负数；
+未知 API HTTP 404（空 body）、Content-Type 不符 415。
+
+P0 动作面（9）：get_login_info / get_impl_info / send_private_message /
+send_group_message / get_message / recall_private_message / recall_group_message /
+get_friend_list / get_group_list。事件（2）：message_receive / message_recall。
+
+## 9. 最小示例
 
 ```toml
 autoRestart = true
@@ -238,7 +262,7 @@ port = 5501
 
 完整带注释模板见 `apps/cli/src/config/template.ts`，或运行 `napuketto config init` 查看。
 
-## 9. 环境变量
+## 10. 环境变量
 
 用户可设置的：
 

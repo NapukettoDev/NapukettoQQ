@@ -1,7 +1,7 @@
 {
     "name": "@napuketto/adapter",
     "version": "0.4.2",
-    "description": "Protocol adapters (OneBot11 / Satori) for NapukettoQQ",
+    "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
     "type": "module",
     "files": [
         "dist"
@@ -30,6 +30,10 @@
         "./kurobot": {
             "types": "./dist/kurobot/index.d.mts",
             "import": "./dist/kurobot/index.mjs"
+        },
+        "./milky": {
+            "types": "./dist/milky/index.d.mts",
+            "import": "./dist/milky/index.mjs"
         }
     },
     "tsdown": {
@@ -38,7 +42,8 @@
             "src/core/index.ts",
             "src/onebot11/index.ts",
             "src/satori/index.ts",
-            "src/kurobot/index.ts"
+            "src/kurobot/index.ts",
+            "src/milky/index.ts"
         ]
     },
     "scripts": {
