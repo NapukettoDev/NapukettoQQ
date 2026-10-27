@@ -57,6 +57,8 @@ export interface SendMessageElement {
     picElement?: PicElement;
     pttElement?: PttElement;
     videoElement?: VideoElement;
+    /** ARK 卡片（小程序/分享卡片）；bytesData 为卡片 JSON 字符串（与接收侧 RawElement 同字段名，2026-10-25 实测）。 */
+    arkElement?: { bytesData: string };
 }
 
 /** 消息服务：apis/msg 用到的核心方法面。 */

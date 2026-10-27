@@ -198,7 +198,23 @@ export function toCanonicalElements(msg: RawMessage): CanonicalElement[] {
     return msg.elements.map(toCanonicalElement);
 }
 
-/** canonical 元素 → NT 发送元素（text/at/face/image/voice/reply 核心五类）。 */
+/**
+ * canonical json → ARK bytesData 字符串：字符串原样透传（OB11 json 段 /
+ * satori 发送链给的已是卡片 JSON 文本），其余值 JSON 序列化。
+ * 与接收方向 arkToCanonical 对称（bytesData 字段名 2026-10-25 真实消息实测）。
+ */
+function jsonToArkBytes(raw: unknown): string {
+    if (typeof raw === "string") {
+        return raw;
+    }
+    try {
+        return JSON.stringify(raw) ?? "";
+    } catch (err) {
+        throw kernelError(`json 元素序列化失败: ${String(err)}`, "INVALID_PARAM");
+    }
+}
+
+/** canonical 元素 → NT 发送元素（text/at/face/image/voice/reply 核心 + json ARK 透传）。 */
 export function toSendElements(elements: CanonicalElement[]): SendMessageElement[] {
     const out: SendMessageElement[] = [];
     for (const el of elements) {
@@ -249,9 +265,17 @@ export function toSendElements(elements: CanonicalElement[]): SendMessageElement
                     "视频发送需经 MsgApi 预处理（prepareVideoElement）",
                     "INVALID_PARAM",
                 );
+            case "json":
+                // ARK 卡片透传（elementType=10）：bytesData 装卡片 JSON 字符串，
+                // 与接收方向 arkToCanonical 对称；wrapper 对缺省字段容忍（djinni
+                // 转换缺省字段为默认值）。发送失败走 KernelError 语义，不崩溃。
+                out.push({
+                    elementType: ElementType.ARK,
+                    arkElement: { bytesData: jsonToArkBytes(el.raw) },
+                });
+                break;
             case "file":
             case "forward":
-            case "json":
             case "xml":
             case "unknown":
                 throw kernelError(`发送元素 ${el.type} 暂不支持（P2-2 探测后补）`, "INVALID_PARAM");
