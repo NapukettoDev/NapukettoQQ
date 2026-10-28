@@ -3,8 +3,9 @@
  *
  * 锁定 canonical → NT 发送元素的映射规则：
  *  - text / at（all 与单目标）/ face / image / voice / reply 六类核心
+ *  - json → ARK 透传（bytesData 字符串原样 / 对象 JSON 序列化）
  *  - at 的 display 兜底 "@"、atType 区分 all(1)/单(2)
- *  - 不支持的 video/file/forward/json/xml/unknown → 抛 KernelError
+ *  - 不支持的 video/file/forward/xml/unknown → 抛 KernelError
  */
 import { describe, expect, it } from "vitest";
 import { isKernelError } from "../../infra/index.js";
@@ -92,12 +93,26 @@ describe("toSendElements", () => {
         ]);
     });
 
+    it("json → ARK 元素（bytesData 字符串透传，对象 JSON 序列化）", () => {
+        expect(toSendElements([{ type: "json", raw: '{"app":"com.test.app"}' }])).toEqual([
+            {
+                elementType: ElementType.ARK,
+                arkElement: { bytesData: '{"app":"com.test.app"}' },
+            },
+        ]);
+        expect(toSendElements([{ type: "json", raw: { app: "com.test.app" } }])).toEqual([
+            {
+                elementType: ElementType.ARK,
+                arkElement: { bytesData: '{"app":"com.test.app"}' },
+            },
+        ]);
+    });
+
     it("不支持的类型抛 KernelError", () => {
         const unsupported = [
             { type: "video" as const, path: "/v.mp4" },
             { type: "file" as const, path: "/f.bin" },
             { type: "forward" as const, messageIds: ["m1"] },
-            { type: "json" as const, raw: {} },
             { type: "xml" as const, raw: "<a/>" },
             { type: "unknown" as const, raw: {} },
         ];

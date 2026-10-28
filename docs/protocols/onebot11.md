@@ -153,8 +153,9 @@
 - `group_essence` 只有原始日志，没有翻译事件。
 - `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip 的 `msgSeq`，与消息事件的
   `MessageUnique` int32 映射不是同一空间，不能直接按它反查原消息。
-- 通用 `send_msg` 的 canonical 发送只覆盖 text / at / face / image / voice / reply，以及经
-  `MsgApi` 预处理的 video；`file` / `forward` / `json` / `xml` 不走通用发送（合并转发用专用
+- 通用 `send_msg` 的 canonical 发送覆盖 text / at / face / image / voice / reply /
+  json（ARK 卡片透传，`bytesData` 装卡片 JSON 字符串），以及经
+  `MsgApi` 预处理的 video；`file` / `forward` / `xml` 不走通用发送（合并转发用专用
   动作，群文件用群文件动作）。
 - IPC 桥模式只启动接收链路（`subscribeOnly`）：不装配 HTTP/WS、不起心跳、不广播 lifecycle；
   动作名整表挂到 IPC 动作表供外部驱动调用。

@@ -339,6 +339,14 @@ title/url 由下游自行 parse；adapter 侧 `rawToString` 对字符串原样�
 **契约**：`RawElement.arkElement?: { bytesData: string }`——wrapper 事实接口的
 最小自研描述（2026-10-25 B 站小程序卡片实测），其余字段待真实样本探测后补。
 
+**发送方向（2026-10-28）**：`toSendElements` 加 `case "json"` → 发送元素
+`{ elementType: ARK, arkElement: { bytesData } }`，与接收方向对称。
+bytesData 来源：canonical json.raw 为字符串时原样透传（OB11 `send_msg` json 段
+与 satori 发送链给的已是卡片 JSON 文本），其余值 JSON 序列化（循环引用抛
+KernelError INVALID_PARAM）。字段名与接收侧同源（同一 wrapper 事实）；发送
+失败走 KernelError 语义。`xml` / `file` / `forward` 仍不支持（判别字段未探测 /
+有专用动作）。
+
 **其余仍落 unknown 的元素类型**（GRAY_TIP 8 / MFACE 11 / LIVE_GIFT 12 /
 STRUCT_LONG_MSG 13 / MARKDOWN 14 / GIPHY 15 / INLINE_KEYBOARD 17 等）待有
 真实样本按「运行时探测」原则（ADR-006）逐个补。
