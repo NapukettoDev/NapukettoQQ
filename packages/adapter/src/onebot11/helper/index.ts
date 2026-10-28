@@ -22,6 +22,7 @@ export {
     collectReceiveNeeds,
     cqMessageToCanonical,
     cqMessageToSegments,
+    type GroupSenderRole,
     type ReceiveTranslateContext,
     type SendTranslateContext,
     segmentsToCanonical,

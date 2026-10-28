@@ -438,6 +438,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     /**
      * 广播消息事件（P2-19：接收方向 ID 转换）。
      * 收集 at uid → 一次批量 uidToUin → 构造上下文 → 翻译广播。
+     * 群消息另查发送者角色（GroupCache 缓存优先，失败回退缺省 member）。
      * 翻译失败退化为原样（不阻塞上报）。
      */
     private async broadcastMessageEvent(msg: RawMessage): Promise<void> {
@@ -451,8 +452,13 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 // uid 解析失败：at 原样（uid），不阻塞事件上报
             }
         }
+        const senderRole =
+            msg.chatType === ChatType.GROUP
+                ? await this.oneBotApi.groupMemberRole(msg.peerUid, msg.senderUid)
+                : undefined;
         const ctx: ReceiveTranslateContext = {
             ...(uidToUin !== undefined ? { uidToUin } : {}),
+            ...(senderRole !== undefined ? { senderRole } : {}),
             msgIdToOb11Id: (msgId) => this.oneBotApi.messageUnique.getMessageId(msgId),
         };
         this.broadcastEvent(

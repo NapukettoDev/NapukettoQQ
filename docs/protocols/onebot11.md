@@ -82,7 +82,9 @@
 ### 4.1 消息事件
 
 - `message_type=group`：`sub_type=normal`；`group_id`、`user_id`、`sender`（nickname/card/
-  role）、`message`、`raw_message`、`font`。
+  role）、`message`、`raw_message`、`font`。`sender.role` 接 kernel `GroupCache` 判定
+  owner/admin/member（缓存优先，缺失惰性回填；查询失败回退 `member`，不阻塞上报）；
+  `get_msg` / 历史消息返回结构同口径。
 - `message_type=private`：`sub_type=friend` 或 `group`（临时会话）。
 - `message` 格式由 `messagePostFormat` 决定：`array`（消息段数组）或 `string`（CQ 码）；
   `raw_message` 始终是 CQ 码字符串。
@@ -149,7 +151,6 @@
 - sysmsg 识别表为空：`group_card` / `group_title` / `group_sign` 暂不广播，等真实样本登记规则。
 - `offline_file`、poke、好友申请的部分 payload 字段仍是“防御性收窄 + 校准日志”状态。
 - `group_essence` 只有原始日志，没有翻译事件。
-- 消息事件的 `sender.role` 目前固定为 `"member"`，尚未接群缓存判定 owner/admin。
 - `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip 的 `msgSeq`，与消息事件的
   `MessageUnique` int32 映射不是同一空间，不能直接按它反查原消息。
 - 通用 `send_msg` 的 canonical 发送只覆盖 text / at / face / image / voice / reply，以及经

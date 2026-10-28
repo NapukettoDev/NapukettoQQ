@@ -48,7 +48,8 @@ export function toOb11MessageInfo(
     if (msg.chatType === ChatType.GROUP) {
         info.group_id = Number(msg.peerUid);
         const { sender } = info;
-        sender.role = "member";
+        // 发送者角色由调用方经 ctx 注入（GroupCache 查询在协议边界，翻译纯函数）
+        sender.role = ctx.senderRole ?? "member";
         if (msg.sendMemberName !== undefined) {
             sender.card = msg.sendMemberName;
         }

@@ -51,11 +51,16 @@ export function segmentsToCanonical(segments: OB11MessageSegment[]): CanonicalEl
  * canonical 的 at.target 是 NT uid、reply.messageId 是 NT 雪花 msgId，
  * OB11 需要 uin / OB11 message_id。
  */
+/** OB11 sender.role 值域（群聊；私聊 sender 无 role）。 */
+export type GroupSenderRole = "owner" | "admin" | "member";
+
 export interface ReceiveTranslateContext {
     /** uid → uin 映射（at 段目标转换；缺省不转换）。 */
     uidToUin?: Map<string, string>;
     /** NT msgId → OB11 message_id（reply 段转换；缺省不转换）。 */
     msgIdToOb11Id?: (msgId: string) => number | undefined;
+    /** 群消息发送者角色（owner/admin，来自 GroupCache；缺省 member）。私聊忽略。 */
+    senderRole?: GroupSenderRole;
 }
 
 /**

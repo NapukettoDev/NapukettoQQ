@@ -5,18 +5,22 @@
  * - fetchAndTranslateHistory：拉取历史消息 → at uid 批量转换 → OB11 消息信息数组
  */
 
-import { type ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
+import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { z } from "zod";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import {
     collectReceiveNeeds,
+    type GroupSenderRole,
     type ReceiveTranslateContext,
     toOb11MessageInfo,
 } from "../../helper/index.js";
 import type { OB11MessageInfo } from "../../types/index.js";
 
 /** 历史消息依赖（OneBotApi 视图，由装配方注入）。 */
-export type MsgHistoryDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uidToUin">;
+export type MsgHistoryDeps = Pick<
+    OneBotApi,
+    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRoles"
+>;
 
 /** 默认历史消息条数。 */
 const DEFAULT_HISTORY_COUNT = 20;
@@ -50,6 +54,7 @@ function resolveStartMsgId(
 /**
  * 拉取历史消息并翻译为 OB11 消息信息数组。
  * 收集全部消息 at uid → 一次批量 uidToUin → 上下文注入（P2-19）。
+ * 群聊另取发送者角色表（GroupCache 一次整表读取，失败回退缺省 member）。
  */
 export async function fetchAndTranslateHistory(
     peer: { chatType: ChatType; peerUid: string },
@@ -86,7 +91,17 @@ export async function fetchAndTranslateHistory(
         ...(uidToUin !== undefined ? { uidToUin } : {}),
         msgIdToOb11Id: (m) => deps.messageUnique.getMessageId(m),
     };
+    let senderRoles: Map<string, GroupSenderRole> | undefined;
+    if (peer.chatType === ChatType.GROUP) {
+        senderRoles = await deps.groupMemberRoles(peer.peerUid);
+    }
     return {
-        messages: msgs.map((msg) => toOb11MessageInfo(msg, deps.messageUnique, ctx)),
+        messages: msgs.map((msg) => {
+            const role = senderRoles?.get(msg.senderUid);
+            return toOb11MessageInfo(msg, deps.messageUnique, {
+                ...ctx,
+                ...(role !== undefined ? { senderRole: role } : {}),
+            });
+        }),
     };
 }
