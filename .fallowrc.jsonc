@@ -69,7 +69,7 @@
         // 静态分析追不到接口调用点（2026-10-28 Milky 事件枢纽同款）
         {
             "implements": "TransportAdapter",
-            "members": ["*"]
+            "members": ["send", "open", "close"]
         },
         {
             "implements": "NodeIGlobalAdapter",

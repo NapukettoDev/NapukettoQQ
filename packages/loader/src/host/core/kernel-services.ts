@@ -45,8 +45,8 @@ export interface KernelServices {
     profileApi: unknown;
     profileLikeApi: unknown;
     webApi: unknown;
-    /** 登录账号自身信息（login.getSelf）。 */
-    self: { uin: string; nickname: string };
+    /** 登录账号自身信息（login.getSelf；uid 供 Milky target_user_uid 等）。 */
+    self: { uin: string; nickname: string; uid: string };
     /**
      * ob11 校准日志（loader logger 派生，module=ob11；2026-10-25 模块级别
      * 覆盖 [log.levels].ob11 经 child level 生效）。老 kernel 无 child 时回退主 logger。
@@ -241,7 +241,7 @@ export async function createKernelServices(
         profileApi,
         profileLikeApi,
         webApi,
-        self: { uin: loginResult.uin, nickname: loginResult.nick ?? "" },
+        self: { uin: loginResult.uin, nickname: loginResult.nick ?? "", uid: loginResult.uid },
         calibLogger: calibLogger ?? NOOP_LOGGER,
         receiveFilter,
         session,

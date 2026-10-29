@@ -115,10 +115,10 @@ describe("sendMilkyMessage", () => {
 });
 
 describe("createMilkyActionRegistry", () => {
-    it("P0 九动作名齐", () => {
+    it("P0 九动作名齐（保持注册表前缀；P1 面 42 动作另测）", () => {
         const { api } = makeApi();
         const registry = createMilkyActionRegistry({ api });
-        expect(registry.names).toEqual([
+        expect(registry.names.slice(0, 9)).toEqual([
             "get_login_info",
             "get_impl_info",
             "send_private_message",

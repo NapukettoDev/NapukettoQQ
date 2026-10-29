@@ -70,4 +70,21 @@ describe("MessageSeqIndex", () => {
             `m${MAX_ENTRIES + 9}`,
         );
     });
+
+    it("转发索引：recordForward / resolveForward（空 resId 忽略）", () => {
+        const index = new MessageSeqIndex();
+        index.recordForward("res-1", {
+            chatType: ChatType.GROUP,
+            peerUid: "10001",
+            msgId: "m1",
+        });
+        expect(index.resolveForward("res-1")).toEqual({
+            chatType: ChatType.GROUP,
+            peerUid: "10001",
+            msgId: "m1",
+        });
+        index.recordForward("", { chatType: ChatType.GROUP, peerUid: "x", msgId: "y" });
+        expect(index.resolveForward("")).toBeUndefined();
+        expect(index.resolveForward("res-2")).toBeUndefined();
+    });
 });

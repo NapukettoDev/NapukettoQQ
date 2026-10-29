@@ -194,7 +194,7 @@ enabled = true        # 可选，默认 true；supervisor 只拉起启用的账�
 模板占位符：`{player}`、`{content}`、`{message}`；未知占位符原样保留。所有发群文本超过
 1500 个 UTF-16 码元时截断并追加 `…(截断)`。
 
-## 8. Milky 段（P0）
+## 8. Milky 段（P1）
 
 账号段存在且 `enabled = true` 才启用；不写 = 不启用。单端口 HTTP：`POST /api/:api`
 调用动作，`GET /event` 推送事件（按 `Upgrade: websocket` 头分流 WS，否则 SSE）。
@@ -214,9 +214,23 @@ enabled = true        # 可选，默认 true；supervisor 只拉起启用的账�
 失败 HTTP 401。错误码：-400 参数解析失败、-403 未登录、其余业务错误自定负数；
 未知 API HTTP 404（空 body）、Content-Type 不符 415。
 
-P0 动作面（9）：get_login_info / get_impl_info / send_private_message /
-send_group_message / get_message / recall_private_message / recall_group_message /
-get_friend_list / get_group_list。事件（2）：message_receive / message_recall。
+动作面（P1，49 个）：P0 的 9 个 + 资料/票据（get_user_profile / get_friend_info /
+set_avatar / set_nickname / set_bio / get_cookies / get_csrf_token）+ 好友操作
+（send_profile_like / delete_friend / get_friend_requests / accept/reject_friend_request）+
+消息（get_history_messages / get_forwarded_messages / mark_message_as_read）+ 群管
+（get_group_info / get_group_member_list / get_group_member_info / set_group_name /
+set_group_member_card / set_group_member_admin / set_group_member_mute /
+set_group_whole_mute / kick_group_member / quit_group）+ 精华与表态
+（get_group_essence_messages / set_group_essence_message / send_group_message_reaction）+
+群通知（get_group_notifications / accept/reject_group_request /
+accept/reject_group_invitation）+ 群文件（get_group_files / move_group_file /
+rename_group_file / delete_group_file / persist_group_file / create_group_folder /
+delete_group_folder）。
+
+事件（P1，15 个）：message_receive / message_recall / friend_request /
+group_join_request / group_invited_join_request / group_invitation /
+group_member_increase / group_member_decrease / group_mute / group_whole_mute /
+group_name_change / group_disband / friend_nudge / group_nudge / group_file_upload。
 
 ## 9. 最小示例
 
