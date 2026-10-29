@@ -8,7 +8,7 @@
 import type { GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { MilkyApi } from "../api.js";
+import { findBuddyReq, findGroupNotify, MilkyApi } from "../api.js";
 import { MessageSeqIndex } from "../helper/seq-index.js";
 import type { GroupNotificationEntity } from "../types.js";
 import { createMilkyActionRegistry } from "./index.js";
@@ -42,7 +42,9 @@ function makeApi(stubs: { notifies?: GroupNotify[]; essence?: unknown[]; files?:
                     async (uids: string[]) => new Map(uids.map((u) => [u, u.replace("uid-", "")])),
                 ),
             },
-            friendApi: {},
+            friendApi: {
+                getBuddyReqList: vi.fn(async () => []),
+            },
             profileApi: {},
             profileLikeApi: {},
             ticketApi: {},
@@ -288,5 +290,43 @@ describe("P1 动作 schema", () => {
             .get("get_history_messages")
             ?.handle({ peer_id: 10001, limit: 20 });
         expect(result?.retcode).toBe(-400);
+    });
+});
+
+describe("findGroupNotify / findBuddyReq", () => {
+    it("findGroupNotify：先非可疑命中", async () => {
+        const notifyObj = notify(GroupNotifyMsgType.REQUEST_JOIN_NEED_ADMINI_STRATOR_PASS);
+        const { api } = makeApi({ notifies: [notifyObj] });
+        const hit = await findGroupNotify(api, "88001");
+        expect(hit.seq).toBe("88001");
+    });
+
+    it("findGroupNotify：非可疑未命中 → 可疑屏兜底", async () => {
+        const notifyObj = notify(GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS);
+        const { api } = makeApi({});
+        const spy = vi
+            .spyOn(api.groupNotifyApi, "getSingleScreenNotifies")
+            .mockImplementation(async (doubt: boolean) => (doubt ? [notifyObj] : []));
+        const hit = await findGroupNotify(api, "88001");
+        expect(hit.seq).toBe("88001");
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it("findGroupNotify：两屏都未命中 → NOT_FOUND", async () => {
+        const { api } = makeApi({});
+        await expect(findGroupNotify(api, "999")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("findBuddyReq：按 friendUid 匹配；未命中 NOT_FOUND", async () => {
+        const { api } = makeApi({});
+        const spy = vi
+            .spyOn(api.friendApi, "getBuddyReqList")
+            .mockResolvedValue([{ reqTime: "1760000000", friendUid: "uid-20002" }] as never);
+        const hit = await findBuddyReq(api, "uid-20002");
+        expect(hit.friendUid).toBe("uid-20002");
+        await expect(findBuddyReq(api, "uid-99999")).rejects.toMatchObject({
+            code: "NOT_FOUND",
+        });
+        expect(spy).toHaveBeenCalledTimes(2);
     });
 });
