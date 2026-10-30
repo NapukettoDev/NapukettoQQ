@@ -20,7 +20,13 @@ import { getMainSession } from "../session-resolver.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize, shapeKeyGetters } from "./probe-serialize.js";
 import { probeEngineCalls, probeExportCtors, probeLoginService } from "./probe-services.js";
-import { listMethods, tryCall } from "./probe-utils.js";
+import {
+    countNonNullServices,
+    listMethods,
+    type ProbeSessionCandidate,
+    pickPrimaryCandidate,
+    tryCall,
+} from "./probe-utils.js";
 
 /** 枚举候选 sessionId（nt_0..nt_9 / gpro_0..gpro_9）找 QQ 已 init 的 session。 */
 function enumerateSessionIds(ctx: WrapperContext): Record<string, unknown> {
@@ -109,27 +115,45 @@ function extractSessionIds(ids: { ok: boolean; value?: unknown }): string[] {
     if (!(ids.ok && ids.value instanceof Map)) {
         return [];
     }
-    const out: string[] = [];
-    for (const [k, v] of ids.value) {
-        out.push(typeof v === "string" ? v : String(k));
-    }
-    return out;
+    return [...ids.value].map(([k, v]) => sessionIdOfEntry(k, v));
 }
 
-/** 用真实 sessionId 取主 session（getNTWrapperSession(nt_x)）并记录方法面。 */
-function probeSessionById(ctx: WrapperContext, id: string): unknown {
+/** 单条 sessionIds 项（Map 值是字符串直接用，否则退化键名）。 */
+function sessionIdOfEntry(k: unknown, v: unknown): string {
+    return typeof v === "string" ? v : String(k);
+}
+
+/** session 实例方法面（空值记 null）。 */
+function sessionFace(session: unknown): Record<string, unknown> | null {
+    return session !== null && session !== undefined
+        ? {
+              methods: listMethods(session),
+              ownKeys: Object.getOwnPropertyNames(session),
+          }
+        : null;
+}
+
+/** 未知异常 → 错误消息字符串。 */
+function errMsgString(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+}
+
+/** try getNTWrapperSession(id) → session 方法面（fn 缺失记 null，失败记 error）。 */
+function trySessionFace(ctx: WrapperContext, id: string): unknown {
     const fn = getNTWrapperSessionFn(ctx);
     if (fn === null) {
         return null;
     }
     try {
-        const value = fn.call(ctx.exports.NodeIQQNTWrapperSession, id);
-        return value
-            ? { methods: listMethods(value), ownKeys: Object.getOwnPropertyNames(value) }
-            : null;
+        return sessionFace(fn.call(ctx.exports.NodeIQQNTWrapperSession, id));
     } catch (e) {
-        return { error: e instanceof Error ? e.message : String(e) };
+        return { error: errMsgString(e) };
     }
+}
+
+/** 用真实 sessionId 取主 session（getNTWrapperSession(nt_x)）并记录方法面。 */
+function probeSessionById(ctx: WrapperContext, id: string): unknown {
+    return trySessionFace(ctx, id);
 }
 
 /** 兜底：候选名字 getNTWrapperSession（无 Map 数据时）。 */
@@ -144,44 +168,63 @@ function probeByNameFallback(ctx: WrapperContext): Record<string, unknown> {
 
 /** 探测单个候选名（getNTWrapperSession(name)，记录方法面或错误）。 */
 function probeSessionByName(ctx: WrapperContext, name: string): unknown {
-    try {
-        const fn = getNTWrapperSessionFn(ctx);
-        if (fn === null) {
-            return null;
-        }
-        const value = fn.call(ctx.exports.NodeIQQNTWrapperSession, name);
-        return value
-            ? { methods: listMethods(value), ownKeys: Object.getOwnPropertyNames(value) }
-            : null;
-    } catch (e) {
-        return { error: e instanceof Error ? e.message : String(e) };
-    }
+    return trySessionFace(ctx, name);
 }
 
-/** 探测 startup session 链路：create() → start() → getSessionIdList → getNTWrapperSession。 */
-function probeStartup(ctx: WrapperContext): Record<string, unknown> | null {
+/** StartupSessionWrapper 可用性判定（缺 create 方法视为不可用）。 */
+function startupWrapper(ctx: WrapperContext): { create?: () => unknown } | null {
     const startup = ctx.exports.NodeIQQNTStartupSessionWrapper as unknown as {
         create?: () => unknown;
     } | null;
-    if (startup === null || typeof startup.create !== "function") {
-        return null;
-    }
-    const out: Record<string, unknown> = { staticMethods: listMethods(startup) };
-    const created = tryCall(startup, "create");
-    out["create"] = created.ok
+    return startup === null || typeof startup.create !== "function" ? null : startup;
+}
+
+/** create() 调用结果面（成功记实例方法面 + 序列化值，失败记 error）。 */
+function createFace(created: {
+    ok: boolean;
+    value?: unknown;
+    error?: string;
+}): Record<string, unknown> {
+    return created.ok
         ? {
               methods: created.value ? listMethods(created.value) : [],
               value: serialize(created.value),
           }
         : { error: created.error };
+}
+
+/** create 成功时并入实例链探测结果。 */
+function assignCreatedChain(
+    out: Record<string, unknown>,
+    ctx: WrapperContext,
+    created: { ok: boolean; value?: unknown },
+): void {
     if (created.ok && created.value) {
         Object.assign(out, probeCreatedChain(ctx, created.value));
     }
+}
+
+/** 无 Map 数据时并入候选名兜底结果。 */
+function assignNameFallback(out: Record<string, unknown>, ctx: WrapperContext): void {
+    if (out["sessionIds"] !== undefined) {
+        return;
+    }
+    out["getNTWrapperSession"] = probeByNameFallback(ctx);
+}
+
+/** 探测 startup session 链路：create() → start() → getSessionIdList → getNTWrapperSession。 */
+function probeStartup(ctx: WrapperContext): Record<string, unknown> | null {
+    const startup = startupWrapper(ctx);
+    if (startup === null) {
+        return null;
+    }
+    const out: Record<string, unknown> = { staticMethods: listMethods(startup) };
+    const created = tryCall(startup, "create");
+    out["create"] = createFace(created);
+    assignCreatedChain(out, ctx, created);
     out["enumSessionIds"] = enumerateSessionIds(ctx);
     // 无 Map 数据时兜底：候选名字
-    if (out["sessionIds"] === undefined) {
-        out["getNTWrapperSession"] = probeByNameFallback(ctx);
-    }
+    assignNameFallback(out, ctx);
     return out;
 }
 
@@ -206,35 +249,79 @@ function findMainProbeId(sessionIds: string[]): string | undefined {
     return sessionIds.find((id) => id.startsWith("nt_")) ?? sessionIds[0];
 }
 
-/** 探测 session 与 service 方法（优先复用 QQ 主 session）。 */
+/** 探测 session 与 service 方法（候选中选服务实例最多者为主目标）。
+ *  自建宿主下 QQ 主 session 未被 init（get*Service 恒 null，2026-10-31 实测
+ *  napuketto-probe-late.json 全服务空），kernel 自建 session 已带 adapter init
+ *  服务可用——主目标按 countNonNullServices 评分选取，并列保持主 session 优先。 */
 function probeSession(ctx: WrapperContext): Record<string, unknown> {
     const out: Record<string, unknown> = {};
-    const session = pickProbeSession(ctx, out);
-    out["session"] = session
-        ? { methods: listMethods(session), ownKeys: Object.getOwnPropertyNames(session) }
-        : null;
-    if (session !== null && session !== undefined) {
-        out["services"] = collectServiceGetters(session);
+    const candidates = collectProbeCandidates(ctx).map(scoreCandidate);
+    const primary = pickPrimaryCandidate(candidates);
+    out["sessionSource"] = primary.source;
+    out["session"] = sessionFace(primary.session);
+    if (primary.session !== null && primary.session !== undefined) {
+        out["services"] = collectServiceGetters(primary.session);
+    }
+    if (candidates.length > 1) {
+        out["sessionAlternates"] = alternateFaces(candidates, primary);
     }
     return out;
 }
 
-/** 选探测目标 session：优先 QQ 主 session（getMainSession），回退 ctx.session。 */
-function pickProbeSession(ctx: WrapperContext, out: Record<string, unknown>): unknown {
+/** 候选收集原始形态（评分前）。 */
+interface ProbeSessionSource {
+    source: string;
+    session: unknown;
+}
+
+/** 候选评分（非空服务实例数）。 */
+function scoreCandidate(candidate: ProbeSessionSource): ProbeSessionCandidate {
+    return { ...candidate, serviceNonNull: countNonNullServices(candidate.session) };
+}
+
+/** 落选候选的概要面（方法数 + 评分，诊断用）。 */
+function alternateFaces(
+    candidates: ProbeSessionCandidate[],
+    primary: ProbeSessionCandidate,
+): Record<string, unknown>[] {
+    return candidates
+        .filter((candidate) => candidate !== primary)
+        .map((candidate) => ({
+            source: candidate.source,
+            methodCount: listMethods(candidate.session).length,
+            serviceNonNull: candidate.serviceNonNull,
+        }));
+}
+
+/** 收集候选 session：QQ 主 session（若可得）在前 + kernel 自建 session 去重补充。 */
+function collectProbeCandidates(ctx: WrapperContext): ProbeSessionSource[] {
+    const candidates: ProbeSessionSource[] = [];
+    pushMainCandidate(ctx, candidates);
+    pushOwnCandidate(ctx, candidates);
+    return candidates;
+}
+
+/** 并入 QQ 主 session 候选（枚举失败静默跳过）。 */
+function pushMainCandidate(ctx: WrapperContext, out: ProbeSessionSource[]): void {
     try {
         const main = getMainSession(ctx);
         if (main !== null) {
-            out["sessionSource"] = "mainSession(getNTWrapperSession)";
-            return main;
+            out.push({ source: "mainSession(getNTWrapperSession)", session: main });
         }
     } catch {
-        // fallthrough
+        // 主 session 枚举失败：只剩 own-create 候选
     }
-    if (ctx.session !== null) {
-        out["sessionSource"] = "own-create";
-        return ctx.session;
+}
+
+/** 并入 kernel 自建 session 候选（与已有候选同一实例时去重）。 */
+function pushOwnCandidate(ctx: WrapperContext, out: ProbeSessionSource[]): void {
+    if (ctx.session === null) {
+        return;
     }
-    return null;
+    if (out.some((candidate) => candidate.session === ctx.session)) {
+        return;
+    }
+    out.push({ source: "own-create", session: ctx.session });
 }
 
 /** 收集 session 的 get*Service getter 方法面与返回形状。 */

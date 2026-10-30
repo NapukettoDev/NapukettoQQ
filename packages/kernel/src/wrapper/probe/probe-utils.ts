@@ -63,3 +63,47 @@ export function tryCall(
         return { ok: false, error: message };
     }
 }
+
+/** 服务 getter 判定（get*Service 命名约定）。 */
+export function isServiceGetter(name: string): boolean {
+    return name.startsWith("get") && name.endsWith("Service");
+}
+
+/** 探测 session 候选（来源标签 + 实例 + 非空服务计数）。 */
+export interface ProbeSessionCandidate {
+    source: string;
+    session: unknown;
+    /** 非空服务实例数（countNonNullServices 评分，主探测目标选取依据）。 */
+    serviceNonNull: number;
+}
+
+/** 非空服务实例计数（逐个调用 get*Service 数非空返回；候选可用度评分）。
+ *  自建宿主下 QQ 主 session 未被 init，get*Service 恒 null（2026-10-31 实测
+ *  napuketto-probe-late.json），kernel 自建 session 服务可用——主目标按此评分选取。 */
+export function countNonNullServices(session: unknown): number {
+    if (session === null || session === undefined) {
+        return 0;
+    }
+    let count = 0;
+    for (const name of listMethods(session)) {
+        if (!isServiceGetter(name)) {
+            continue;
+        }
+        const call = tryCall(session, name);
+        if (call.ok && call.value !== null && call.value !== undefined) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+/** 主探测目标选取：服务实例最多者优先，评分并列保持候选顺序（主 session 在前）。 */
+export function pickPrimaryCandidate(candidates: ProbeSessionCandidate[]): ProbeSessionCandidate {
+    let best = candidates[0];
+    for (const candidate of candidates.slice(1)) {
+        if (best !== undefined && candidate.serviceNonNull > best.serviceNonNull) {
+            best = candidate;
+        }
+    }
+    return best ?? { source: "own-create", session: null, serviceNonNull: 0 };
+}
