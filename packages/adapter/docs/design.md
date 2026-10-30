@@ -1,4 +1,4 @@
-# @napuketto/adapter 设计书（2026-09-08 首版：覆盖 onebot11 事件链 / onReload / get-media / satori 媒体）
+# @napuketto/adapter 设计书（2026-09-08 首版：覆盖 onebot11 事件链 / onReload / get-media / satori 媒体；2026-10-28 增 milky P0）
 
 > 协议适配器容器（ADR-013）：core 框架（BaseProtocolAdapter/ActionRegistry/
 > ProtocolConfig）+ onebot11 + satori。只认识 kernel 的 API/事件/缓存，不认识
@@ -336,3 +336,43 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
 Milky 协议适配器的实施方案（目标 1.3.0、65 接口 × kernel 覆盖、21 事件 × 数据源、
 装配接缝、P0–P2 顺序）见 `docs/protocols/milky.md`。**实现前先在本文件补对应设计
 （目录结构 / `/event` 的 SSE+WS 分流 / 错误映射 / 类型生成方式），再动代码。**
+
+## 9. milky 协议适配器（P0，2026-10-28）
+
+> 协议说明与覆盖清单见 `docs/protocols/milky.md`（Milky 1.3.0）。第四个协议适配器，
+> 单端口 HTTP（`POST /api/:api` + `GET /event` SSE/WS）+ WebHook，`@napuketto/adapter/milky`
+> 子路径导出（ADR-014）。`[accounts.milky]` 段存在且 `enabled=true` 才生效。
+
+### 9.1 结构与决策
+
+- **类型层**：`types.ts` 手写 P0 子集（SSOT = 官方 JSON Schema 1.3.0，MIT，逐字段自研
+  描述；未参考 GPL 实现源码）。P1 扩面时评估 `@saltify/milky-protocol` + `milkygen` 生成。
+- **动作基类**：`action/base-action.ts` 与 OB11 `BaseAction` 分离——Milky 信封无 echo、
+  参数失败恒 -400（规范）。错误映射 `error-map.ts`：-400 参数 / -403 未登录（规范），
+  其余自定负数（-404 NOT_FOUND / -405 PERMISSION_DENIED / -409 INVALID_STATE /
+  -500 SEND_FAILED·UNKNOWN / -504 TIMEOUT）。
+- **seq↔msgId**（milky.md §5 方案二）：`helper/seq-index.ts` 双向映射（接收链路 record，
+  FIFO 4096 封顶）；`get_message` / recall 反查未命中扫近段历史（fetchMessages 60 条）
+  兜底。kernel 不动。
+- **发送核心**（`action/message.ts` sendMilkyMessage）：OutgoingSegment → canonical
+  （未知段跳过 = 规范兼容性；forward 显式报错 P1）→ at uin→uid 批量 → 远程媒体 URI
+  落盘（`helper/media-uri.ts`：file:// 同步 / base64:// 解码落盘探扩展名 / http(s)://
+  media downloadUrl；未配 cacheDir 报错）→ sendMessage → 回查 msgSeq/time（发送输出
+  必需 message_seq，sendMessage 只回 msgId）。
+- **事件**（`helper/translate.ts` 纯函数）：message_receive 三场景（group 场景 schema
+  要求 group/group_member 实体——GroupCache 缓存优先 fail-soft 最小实体；friend 场景
+  friend 实体 peerName 兜底）；message_recall（grayTip REVOKE，sender_id 取
+  RawMessage.senderUin 待真实事件校准）。at uid→uin、reply 引用回填（seqIndex 反查）
+  在广播路径异步取得后经 ctx 注入。自消息不上报（P0 固定）。
+- **传输**（`transport.ts`）：network 2026-10-28 新原语承接——SSE（`createSseResponse`，
+  `event: milky_event` 帧）走 `HttpServer.onRawRequest`，同端口 WS 升级走
+  `HttpServer.onUpgrade`（token 校验含 `?access_token=` 查询参数兜底），WebHook 走
+  `HttpClient`（Bearer 头）。事件枢纽 `MilkyEventHub` 注册 EventBroadcaster，send =
+  SSE/WS 广播。HTTP 语义：401 鉴权 / 404 未知 API（空 body）/ 415 Content-Type /
+  200 规范信封。
+
+### 9.2 测试
+
+`helper/translate.test.ts`（10 例：三场景形状 / 段映射 / 回填 / unknown 跳过）、
+`action/message.test.ts`（7 例：发送链 canonical 断言 / 输出映射 / -400 / 注册表）、
+`transport.test.ts`（7 例，真端口：信封 / 404 / 415 / 401 / SSE 推送 / WS 升级）。

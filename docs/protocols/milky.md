@@ -1,12 +1,36 @@
-# Milky 协议（未实现 · 实施规划）
+# Milky 协议（P0 已实现 · 规划稿）
 
-> **状态：未实现**（2026-10-26 立项规划）。本文件是实施方案与覆盖清单，不是现状描述；
-> 实现落地后按 `docs/README.md` 的维护约定改写为现状文档。
+> **状态：P0 已实现**（2026-10-28 落地，见 §9 P0 清单勾选与 §P0 落地面）。
+> §6/§7/§9 的 P1/P2 部分仍是实施方案与覆盖清单，不是现状描述；全部落地后按
+> `docs/README.md` 的维护约定改写为现状文档。
 >
 > **目标协议版本：Milky 1.3.0**（2026-08-07 发布）。`get_impl_info` 上报
 > `milky_version = "1.3"`。
 >
 > 一句话定位：**第四个协议适配器，与 OB11 / Satori / KuroBot 并行，不替代任何现有协议。**
+
+## 0. P0 落地面（2026-10-28，PR 待合并）
+
+- **传输**（`@napuketto/network` 新原语）：SSE 事件流（`createSseResponse`）+
+  `HttpServer` 流式响应注入点（`onRawRequest`）与同端口 WS 升级注入点（`onUpgrade`）；
+  404/401 支持空 body 响应。
+- **适配器**（`packages/adapter/src/milky/`，`@napuketto/adapter/milky` 子路径导出）：
+  单端口 HTTP（`POST /api/:api` 规范信封 + 401/404/415 语义；`GET /event` SSE/WS）+
+  WebHook 推送（HttpClient，Bearer 头）。类型层 = Milky 1.3 JSON Schema 的自研描述
+  （P0 子集，SSOT 与版本写死文件头，未参考 GPL 实现）。
+- **动作 9 个**：get_login_info / get_impl_info / send_private_message /
+  send_group_message / get_message / recall_private_message / recall_group_message /
+  get_friend_list / get_group_list。错误映射：-400 参数失败（规范）/-403 未登录（规范）/
+  其余自定负数（error-map.ts）。
+- **事件 2 个**：message_receive（三场景，实体 best-effort 回填）/ message_recall
+  （grayTip REVOKE）。自消息不上报（固定）。
+- **seq↔msgId**（§5 未决问题之二）：**adapter 侧方案（方案二）**——
+  `MessageSeqIndex` 双向映射（接收链路登记，FIFO 4096 封顶），`get_message`/撤回
+  反查未命中时扫近段历史兜底；kernel 不动。
+- **装配**：loader `assemble-protocols`（段非空才装配）/ `load-config`（`milkySection`）/
+  cli `config schema + template` / create 脚手架模板。
+- **测试**：翻译层 10 例 + 动作链 7 例 + 传输集成 7 例（真端口：信封/404/415/401/
+  SSE 推送/WS 升级）+ network 原语 7 例。
 
 ## 1. 为什么做
 
@@ -283,18 +307,20 @@ webhooks = []             # 额外事件推送地址，可多个
 
 ## 9. 实施顺序
 
-### P0（骨架，能连通、能收发一条消息）
+### P0（骨架，能连通、能收发一条消息）——已落地（2026-10-28）
 
-1. `network` 加 SSE 原语 + 单测。
-2. `packages/adapter/src/milky/`：配置 schema、HTTP server（`/api` + 鉴权 + 错误映射）、
-   `/event`（SSE 优先，WS 次之）。
-3. 类型层：`@saltify/milky-protocol` + `milkygen` 生成 Zod；只取 P0 用到的子集。
-4. 接口：`get_login_info`、`get_impl_info`、`send_private_message`、`send_group_message`、
+1. [x] `network` 加 SSE 原语 + 单测（另含 `HttpServer` 流式响应/同端口 WS 升级注入点）。
+2. [x] `packages/adapter/src/milky/`：配置 schema、HTTP server（`/api` + 鉴权 + 错误映射）、
+   `/event`（SSE 与 WS 同端口并存）。
+3. [x] 类型层：P0 子集**手写自研描述**（SSOT = 官方 JSON Schema，MIT；未走
+   `@saltify/milky-protocol` + `milkygen` 依赖/生成链，P1 扩面时再评估切换）。
+4. [x] 接口：`get_login_info`、`get_impl_info`、`send_private_message`、`send_group_message`、
    `get_message`、`recall_*`、`get_friend_list`、`get_group_list`。
-5. 事件：`message_receive`、`message_recall`。
-6. 装配接缝 + 配置模板 + 文档。
+5. [x] 事件：`message_receive`、`message_recall`。
+6. [x] 装配接缝 + 配置模板 + 文档。
 
-验收：`koishi-plugin-adapter-milky` 能连上、收到消息、发回消息、撤回成功。
+验收（本仓侧）：单测/集成全绿；`koishi-plugin-adapter-milky` 实机连通属独立仓库，
+待宿主联调。
 
 ### P1（可用面）
 

@@ -148,6 +148,20 @@ port = 3001
 # # pingIntervalMs = 15000               # 可选：应用层心跳间隔（毫秒，须 < 30000）
 # # chatTemplate = "[{player}] {content}"    # 游戏聊天渲染模板
 # # joinTemplate = "{player} 加入了服务器"    # 玩家进服模板
+
+# ------------------------------------------------------------
+# Milky 协议（P0）
+# ------------------------------------------------------------
+# 账号内写 [accounts.milky] 段且 enabled = true 即启用；不写 = 不启用。
+# 单端口 HTTP：POST /api/:api 调用动作 + GET /event 事件推送（SSE / WS）。
+# [accounts.milky]
+# enabled = true                         # 启用开关（false = 不生效）
+# host = "127.0.0.1"                     # 监听地址
+# port = 3001                            # 监听端口（/api 与 /event 同端口）
+# # token = ""                           # 可选：access_token（空 = 不校验，仅限内网）
+# # eventModes = ["sse", "ws"]           # /event 允许的连接形态
+# # webhooks = []                        # 可选：额外事件推送地址（WebHook POST）
+# # cacheDir = "cache"                   # 可选：发送远程媒体 URI 的下载缓存目录
 # # leaveTemplate = "{player} 离开了服务器"   # 玩家退服模板
 # # deathTemplate = "{player} {message}"     # 玩家死亡模板（空消息显示「死亡了」）
 `;

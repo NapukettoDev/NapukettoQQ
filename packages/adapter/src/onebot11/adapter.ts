@@ -25,7 +25,7 @@ import {
     BaseProtocolAdapter,
     type ProtocolConfig,
 } from "../core/index.js";
-import { forEachRawMessage } from "../core/raw-message.js";
+import { subscribeRawMessages } from "../core/raw-message.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/index.js";
 import { OneBotApi } from "./api/index.js";
@@ -237,33 +237,31 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }
         // onRecvMsg 回调参数为消息数组（2026-08-07 运行时实证）——遍历逐条翻译。
         this.unsubscribes.push(
-            this.msgChannel.on("Msg/onRecvMsg", (msgs) => {
-                forEachRawMessage(msgs, (msg) => {
-                    // grayTip（系统事件）→ notice；否则 → 消息事件
-                    if (hasGrayTip(msg)) {
-                        this.broadcastNotice(msg).catch(() => {
-                            // notice 翻译失败静默（grayTip 解析宽容）
-                        });
+            subscribeRawMessages(this.msgChannel, (msg) => {
+                // grayTip（系统事件）→ notice；否则 → 消息事件
+                if (hasGrayTip(msg)) {
+                    this.broadcastNotice(msg).catch(() => {
+                        // notice 翻译失败静默（grayTip 解析宽容）
+                    });
+                    return;
+                }
+                // 自身消息：默认不上报（OB11 规范行为；reportSelfMessage=true 时上报）
+                if (!this.reportSelfMessage && String(msg.senderUin) === this.selfUin) {
+                    return;
+                }
+                // 群文件报形式开关（B4）：on = group_upload notice 替代 message 事件
+                if (
+                    this.groupUploadAsNotice &&
+                    msg.chatType === ChatType.GROUP &&
+                    hasFileElement(msg)
+                ) {
+                    const notice = toGroupUpload(msg, this.selfUin);
+                    if (notice !== null) {
+                        this.broadcastEvent(notice);
                         return;
                     }
-                    // 自身消息：默认不上报（OB11 规范行为；reportSelfMessage=true 时上报）
-                    if (!this.reportSelfMessage && String(msg.senderUin) === this.selfUin) {
-                        return;
-                    }
-                    // 群文件报形式开关（B4）：on = group_upload notice 替代 message 事件
-                    if (
-                        this.groupUploadAsNotice &&
-                        msg.chatType === ChatType.GROUP &&
-                        hasFileElement(msg)
-                    ) {
-                        const notice = toGroupUpload(msg, this.selfUin);
-                        if (notice !== null) {
-                            this.broadcastEvent(notice);
-                            return;
-                        }
-                    }
-                    void this.broadcastMessageEvent(msg);
-                });
+                }
+                void this.broadcastMessageEvent(msg);
             }),
         );
         // 离线文件（c3，2026-09-10）：Msg/onRecvOfflineFileMsg → OB11 offline_file
@@ -491,15 +489,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 广播群系统通知 → OB11 group request 事件（批量 uidToUin 后翻译，纯函数）。 */
     private async broadcastGroupRequests(notifies: unknown[]): Promise<void> {
-        const uids: string[] = [];
-        for (const n of notifies) {
-            const notify = n as { user1?: { uid?: unknown }; user2?: { uid?: unknown } };
-            for (const u of [notify.user1, notify.user2]) {
-                if (typeof u?.uid === "string" && u.uid !== "") {
-                    uids.push(u.uid);
-                }
-            }
-        }
+        const uids = collectGroupNotifyUids(notifies);
         let uidToUin = new Map<string, string>();
         if (uids.length > 0) {
             try {
@@ -582,4 +572,18 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }
         respond(result);
     }
+}
+
+/** 收集群系统通知涉及的 uid（user1/user2 双方，空 uid 跳过）。 */
+function collectGroupNotifyUids(notifies: unknown[]): string[] {
+    const uids: string[] = [];
+    for (const n of notifies) {
+        const notify = n as { user1?: { uid?: unknown }; user2?: { uid?: unknown } };
+        for (const u of [notify.user1, notify.user2]) {
+            if (typeof u?.uid === "string" && u.uid !== "") {
+                uids.push(u.uid);
+            }
+        }
+    }
+    return uids;
 }

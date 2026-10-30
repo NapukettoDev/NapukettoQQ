@@ -7,7 +7,7 @@
  * ProtocolConfig 来源标注；seed 模式本就不读盘，协议段热更新在内联形态不可用）。
  *
  * 全局配置：**协议配置嵌在账号内**——accounts 数组每项含 [onebot11] / [satori] /
- * [kurobot] 段，登录成功后按账号 uin 找到对应项，取其段作 seed（zod 校验）。
+ * [kurobot] / [milky] 段，登录成功后按账号 uin 找到对应项，取其段作 seed（zod 校验）。
  * （ConfigBase seed 模式：load() 直接用内存值，不再读写独立协议文件）
  *
  * 内联分支宽松（解析失败回退文件形态并记日志，不阻塞引导）：cli 主路径已在
@@ -19,12 +19,13 @@ import { env } from "./env.js";
 import type { KernelLike } from "./types.js";
 import { errMsg, log } from "./util.js";
 
-/** 协议配置段（账号内 [onebot11] / [satori] / [kurobot]，宽松对象，装配时 zod 校验）。 */
+/** 协议配置段（账号内 [onebot11] / [satori] / [kurobot] / [milky]，宽松对象，装配时 zod 校验）。 */
 export interface ProtocolSections {
     cfgFile: string;
     ob11Section: Record<string, unknown>;
     satoriSection: Record<string, unknown>;
     kurobotSection: Record<string, unknown>;
+    milkySection: Record<string, unknown>;
 }
 
 /** 内联来源时 cfgFile 的哨兵值（非文件路径；日志/错误标注里不出现真实路径）。 */
@@ -36,12 +37,13 @@ interface AccountLike {
     onebot11?: unknown;
     satori?: unknown;
     kurobot?: unknown;
+    milky?: unknown;
 }
 
 /** 账号内取协议段（宽松对象，装配时 zod 校验）。 */
 function sectionOf(
     account: AccountLike,
-    key: "onebot11" | "satori" | "kurobot",
+    key: "onebot11" | "satori" | "kurobot" | "milky",
 ): Record<string, unknown> | undefined {
     const section = account[key];
     if (section !== undefined && section !== null && typeof section === "object") {
@@ -76,10 +78,11 @@ export function readInlineConfigDoc(): Record<string, unknown> | undefined {
 function extractSections(
     accounts: unknown,
     uin?: string,
-): Pick<ProtocolSections, "ob11Section" | "satoriSection" | "kurobotSection"> {
+): Pick<ProtocolSections, "ob11Section" | "satoriSection" | "kurobotSection" | "milkySection"> {
     let ob11Section: Record<string, unknown> = {};
     let satoriSection: Record<string, unknown> = {};
     let kurobotSection: Record<string, unknown> = {};
+    let milkySection: Record<string, unknown> = {};
     if (Array.isArray(accounts)) {
         const mine = accounts.find(
             (item): item is AccountLike =>
@@ -91,9 +94,10 @@ function extractSections(
             ob11Section = sectionOf(mine, "onebot11") ?? {};
             satoriSection = sectionOf(mine, "satori") ?? {};
             kurobotSection = sectionOf(mine, "kurobot") ?? {};
+            milkySection = sectionOf(mine, "milky") ?? {};
         }
     }
-    return { ob11Section, satoriSection, kurobotSection };
+    return { ob11Section, satoriSection, kurobotSection, milkySection };
 }
 
 /**
@@ -107,10 +111,14 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
         return { cfgFile: INLINE_CONFIG_SENTINEL, ...extractSections(inlineDoc["accounts"], uin) };
     }
     const cfgFile = env.NAPKETTO_CONFIG || join(env.NAPUTO_CFG_DIR || ".", "napuketto.toml");
-    let sections: Pick<ProtocolSections, "ob11Section" | "satoriSection" | "kurobotSection"> = {
+    let sections: Pick<
+        ProtocolSections,
+        "ob11Section" | "satoriSection" | "kurobotSection" | "milkySection"
+    > = {
         ob11Section: {},
         satoriSection: {},
         kurobotSection: {},
+        milkySection: {},
     };
     try {
         const raw = readFileSync(cfgFile, "utf8");

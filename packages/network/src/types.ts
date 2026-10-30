@@ -1,10 +1,11 @@
 /**
  * @napuketto/network 核心接口（ADR-002）
  *
- * 协议无关的传输原语：HTTP server/client、WS server/client、泛型广播总线。
- * 不 import 任何协议包；事件类型完全泛型化。
+ * 协议无关的传输原语：HTTP server/client、WS server/client、泛型广播总线、
+ * SSE 事件流原语。不 import 任何协议包；事件类型完全泛型化。
  * 路由分发外置为 `onRequest` 注入点，由协议层（onebot 等）提供。
  */
+import type { WebSocket } from "ws";
 
 /**
  * 请求上下文：供鉴权钩子使用的原始请求信息。
@@ -39,12 +40,33 @@ export interface TransportAdapter {
 
 /**
  * HTTP 路由上下文（协议无关，Satori RPC 等按路径分发的协议用）。
- * `path` 为请求路径（如 /v1/message.create），`method` 为 HTTP 方法。
+ * `path` 为请求路径（如 /v1/message.create），`method` 为 HTTP 方法；
+ * `headers` 供协议层做 Content-Type 等检查（onPathRequest 场景）。
  */
 export interface HttpRouteContext {
     path: string;
     method: string;
+    headers?: Record<string, string | undefined>;
 }
+
+/**
+ * 流式/原始响应注入点（协议无关，SSE 等无 JSON body 的端点用）。
+ * 返回 Response 即短路（跳过 JSON 解析与常规分发）；返回 undefined 继续
+ * 常规流程（JSON 解析 → onPathRequest/onRequest）。同步判定，不做异步。
+ */
+export type RawRequestHook = (ctx: HttpRouteContext, req: RequestContext) => Response | undefined;
+
+/**
+ * 同端口 WS 升级注入点（协议无关，Milky /event 等用）。
+ * accept 把升级后的 WS 连接交协议层收发；reject 以 HTTP 状态码拒绝（socket 直毁）。
+ * 升级请求不走 authorize 钩子（升级握手无标准响应通道），鉴权由协议层在
+ * 钩子内按 ctx 自行判定（token 头或 access_token 查询参数）。
+ */
+export type WsUpgradeHook = (
+    req: RequestContext,
+    accept: (onSocket: (socket: WebSocket) => void) => void,
+    reject: (status: number, reason?: string) => void,
+) => void;
 
 /** 服务器公共选项。 */
 export interface ServerOptions {

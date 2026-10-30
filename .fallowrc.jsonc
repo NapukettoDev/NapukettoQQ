@@ -64,6 +64,13 @@
     "usedClassMembers": [
         "name",
         "schema",
+        "protocol",
+        // TransportAdapter：EventBroadcaster 多态派发（send/open/close/onRequest），
+        // 静态分析追不到接口调用点（2026-10-28 Milky 事件枢纽同款）
+        {
+            "implements": "TransportAdapter",
+            "members": ["*"]
+        },
         {
             "implements": "NodeIGlobalAdapter",
             "members": [
@@ -104,6 +111,7 @@
         "packages/adapter/src/core/base-protocol-adapter.ts",
         "packages/adapter/src/core/action-registry.ts",
         "packages/adapter/src/satori/action/base-action.ts",
+        "packages/adapter/src/milky/action/base-action.ts",
         "packages/adapter/src/onebot11/event/index.ts",
         "packages/adapter/src/onebot11/helper/index.ts",
         "packages/adapter/src/onebot11/helper/codec/index.ts",

@@ -7,17 +7,21 @@
 export { EventBroadcaster } from "./broadcaster.js";
 export { HttpClient } from "./http-client.js";
 export { HttpServer } from "./http-server.js";
+export type { SseClient, SseHandler } from "./sse.js";
+export { createSseResponse } from "./sse.js";
 export type {
     AuthorizeHook,
     HttpClientOptions,
     HttpRouteContext,
     HttpServerOptions,
+    RawRequestHook,
     RequestContext,
     Respond,
     ServerOptions,
     TransportAdapter,
     WsClientOptions,
     WsServerOptions,
+    WsUpgradeHook,
 } from "./types.js";
 export { WsClient } from "./ws-client.js";
 export { WsServer } from "./ws-server.js";
