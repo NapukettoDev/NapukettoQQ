@@ -68,8 +68,9 @@ export function readAccountRuntime(dataRoot: string, uin: string): AccountRuntim
     return readJson(runtimeStatePath(dataRoot, uin)) as AccountRuntime | null;
 }
 
-/** 写 supervisor 运行时状态。 */
+/** 写 supervisor 运行时状态（数据根缺省时自动创建——首次在新目录 start 不再 ENOENT）。 */
 export function writeSupervisorRuntime(dataRoot: string, state: SupervisorRuntime): void {
+    mkdirSync(dataRoot, { recursive: true });
     writeFileSync(supervisorStatePath(dataRoot), `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
