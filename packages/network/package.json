@@ -1,6 +1,6 @@
 {
     "name": "@napuketto/network",
-    "version": "0.0.3",
+    "version": "0.1.0",
     "description": "Network layer of NapukettoQQ",
     "type": "module",
     "files": [
