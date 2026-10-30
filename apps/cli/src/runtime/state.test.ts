@@ -78,6 +78,16 @@ describe("runtime-state 读写", () => {
         });
     });
 
+    it("supervisor 状态首写自动建数据根（新目录 start 不再 ENOENT）", () => {
+        const root = join(tempDir(), "fresh-root");
+        writeSupervisorRuntime(root, { pid: 43, startedAt: "t", accounts: [] });
+        expect(readSupervisorRuntime(root)).toEqual({
+            pid: 43,
+            startedAt: "t",
+            accounts: [],
+        });
+    });
+
     it("损坏 JSON 容错返回 null", () => {
         const root = tempDir();
         mkdirSync(join(root, "10002"), { recursive: true });
