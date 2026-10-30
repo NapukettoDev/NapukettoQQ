@@ -14,8 +14,10 @@ import {
 } from "@napuketto/kernel";
 import type {
     GroupEntity,
+    GroupFileUploadData,
     GroupMemberEntity,
     IncomingMessage,
+    IncomingSegment,
     MessageRecallData,
     MilkyEvent,
 } from "../types.js";
@@ -35,6 +37,11 @@ export interface ReceiveTranslateContext extends ReceiveSegmentContext {
     groupEntity?: GroupEntity;
     /** group 场景：群成员实体（缺省最小实体）。 */
     groupMemberEntity?: GroupMemberEntity;
+    /**
+     * 合并转发段（P1）：adapter 从 RawMessage 的 multiForwardMsgElement 提取
+     * resId 后预构建（canonical 不承载 MULTI_FORWARD），追加到段尾。
+     */
+    forwardSegments?: IncomingSegment[];
 }
 
 /** chatType → message_scene。 */
@@ -64,6 +71,9 @@ export function toMessageReceiveEvent(
         ...(ctx.uidToUin !== undefined ? { uidToUin: ctx.uidToUin } : {}),
         ...(ctx.replyMeta !== undefined ? { replyMeta: ctx.replyMeta } : {}),
     });
+    if (ctx.forwardSegments !== undefined) {
+        segments.push(...ctx.forwardSegments);
+    }
     const scene = chatTypeToScene(msg.chatType);
     const time = Math.floor(Number(msg.msgTime) / MS_TO_SEC);
     let data: IncomingMessage;
@@ -137,6 +147,32 @@ export function toMessageRecallEvent(
             sender_id: Number(msg.senderUin),
             operator_id: Number(operatorUin) || 0,
             display_suffix: revoke.wording ?? "",
+        },
+    };
+}
+
+/** 群文件上传事件（群场景文件消息 → group_file_upload，替代 message_receive）。 */
+export function toGroupFileUploadEvent(
+    msg: RawMessage,
+    selfUin: string,
+): MilkyEvent<GroupFileUploadData> | null {
+    if (msg.chatType !== ChatType.GROUP) {
+        return null;
+    }
+    const file = msg.elements.find((el) => el.fileElement !== undefined)?.fileElement;
+    if (file === undefined) {
+        return null;
+    }
+    return {
+        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        self_id: Number(selfUin),
+        event_type: "group_file_upload",
+        data: {
+            group_id: Number(msg.peerUid),
+            user_id: Number(msg.senderUin) || 0,
+            file_id: file.fileUuid ?? file.fileName ?? "",
+            file_name: file.fileName ?? "",
+            file_size: Number(file.fileSize ?? 0),
         },
     };
 }

@@ -10,7 +10,12 @@
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import type { GroupEntity, GroupMemberEntity } from "../types.js";
-import { chatTypeToScene, toMessageRecallEvent, toMessageReceiveEvent } from "./translate.js";
+import {
+    chatTypeToScene,
+    toGroupFileUploadEvent,
+    toMessageRecallEvent,
+    toMessageReceiveEvent,
+} from "./translate.js";
 
 /** 构造 RawMessage（text 元素，其余最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {
@@ -241,5 +246,42 @@ describe("chatTypeToScene", () => {
         expect(chatTypeToScene(ChatType.GROUP)).toBe("group");
         expect(chatTypeToScene(ChatType.C2C)).toBe("friend");
         expect(chatTypeToScene(ChatType.C2C_TEMP)).toBe("temp");
+    });
+});
+
+describe("toGroupFileUploadEvent", () => {
+    it("群场景文件消息 → group_file_upload（fileUuid 优先）", () => {
+        const msg = makeMsg({
+            elements: [
+                {
+                    elementType: 3,
+                    fileElement: {
+                        fileName: "a.zip",
+                        fileSize: "2048",
+                        fileUuid: "uuid-1",
+                    },
+                },
+            ],
+        });
+        const event = toGroupFileUploadEvent(msg, "10000");
+        expect(event).toMatchObject({
+            event_type: "group_file_upload",
+            self_id: 10000,
+            data: {
+                group_id: 10001,
+                user_id: 90001,
+                file_id: "uuid-1",
+                file_name: "a.zip",
+                file_size: 2048,
+            },
+        });
+    });
+
+    it("非群场景返回 null（守卫在翻译函数内，friend 文件消息走 message_receive）", () => {
+        const msg = makeMsg({
+            chatType: ChatType.C2C,
+            elements: [{ elementType: 3, fileElement: { fileName: "a.zip", fileSize: "2048" } }],
+        });
+        expect(toGroupFileUploadEvent(msg, "10000")).toBeNull();
     });
 });

@@ -489,16 +489,10 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 广播群系统通知 → OB11 group request 事件（批量 uidToUin 后翻译，纯函数）。 */
     private async broadcastGroupRequests(notifies: unknown[]): Promise<void> {
-        const uids = collectGroupNotifyUids(notifies);
-        let uidToUin = new Map<string, string>();
-        if (uids.length > 0) {
-            try {
-                uidToUin = await this.oneBotApi.uidToUin(uids);
-            } catch {
-                // uid 解析失败：退化为 uid 数值（不阻塞请求上报）
-            }
-        }
-        const ctx: RequestTranslateContext = { selfUin: this.selfUin, uidToUin };
+        const ctx: RequestTranslateContext = {
+            selfUin: this.selfUin,
+            uidToUin: await this.uidToUinMap(collectGroupNotifyUids(notifies)),
+        };
         for (const n of notifies) {
             const event = toOb11GroupRequestEvent(n as GroupNotify, ctx);
             if (event !== null) {
@@ -509,18 +503,26 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 广播好友申请 → OB11 friend request 事件（批量 uidToUin 后翻译，纯函数）。 */
     private async broadcastFriendRequests(reqs: BuddyReq[]): Promise<void> {
-        const uids = reqs.map((r) => r.friendUid).filter((uid) => uid !== "");
-        let uidToUin = new Map<string, string>();
-        if (uids.length > 0) {
-            try {
-                uidToUin = await this.oneBotApi.uidToUin(uids);
-            } catch {
-                // uid 解析失败：退化为 uid 数值（不阻塞请求上报）
-            }
-        }
-        const ctx: RequestTranslateContext = { selfUin: this.selfUin, uidToUin };
+        const ctx: RequestTranslateContext = {
+            selfUin: this.selfUin,
+            uidToUin: await this.uidToUinMap(
+                reqs.map((r) => r.friendUid).filter((uid) => uid !== ""),
+            ),
+        };
         for (const req of reqs) {
             this.broadcastEvent(toOb11FriendRequestEvent(req, ctx));
+        }
+    }
+
+    /** uid 批量 → uin（失败退空 Map：翻译层退化为 uid 数值，不阻塞请求上报）。 */
+    private async uidToUinMap(uids: string[]): Promise<Map<string, string>> {
+        if (uids.length === 0) {
+            return new Map();
+        }
+        try {
+            return await this.oneBotApi.uidToUin(uids);
+        } catch {
+            return new Map();
         }
     }
 

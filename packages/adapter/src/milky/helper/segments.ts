@@ -1,11 +1,13 @@
 /**
  * Milky 消息段 ↔ canonical 元素转换（纯函数，ADR-008）
  *
- * 接收方向：canonical → IncomingSegment（规范 14 种中 P0 映射 12 种；
- * market_face / markdown 无 canonical 对应，unknown 一律跳过——规范兼容性
- * 要求「数组中未知项跳过」）。
- * 发送方向：OutgoingSegment → canonical（10 种中 P0 映射 9 种；forward 发送
- * 走专用内核链路，P0 显式报错不静默跳过）。
+ * 接收方向：canonical → IncomingSegment（规范 14 种中映射 12 种；market_face /
+ * markdown 无 canonical 对应（MFACE/MARKDOWN 原始元素形状未探测），unknown 一律
+ * 跳过——规范兼容性要求「数组中未知项跳过」）。forward 接收段不经 canonical：
+ * kernel 无 MULTI_FORWARD 分支，adapter 从 RawMessage 提取 resId 后经
+ * incomingForwardSegment + ctx 注入。
+ * 发送方向：OutgoingSegment → canonical（10 种中映射 9 种；forward 发送需要
+ * kernel 组装任意内容的新转发（未探测），显式报错不静默跳过）。
  */
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
@@ -110,7 +112,6 @@ const INCOMING_MAPPERS: Partial<
     voice: voiceToIncoming,
     video: videoToIncoming,
     file: fileToIncoming,
-    forward: forwardToIncoming,
     json: (el: Extract<CanonicalElement, { type: "json" }>) => ({
         type: "light_app",
         data: { app_name: parseAppName(el.raw), json_payload: rawToPayload(el.raw) },
@@ -176,13 +177,18 @@ function fileToIncoming(el: Extract<CanonicalElement, { type: "file" }>): Incomi
     };
 }
 
-/** canonical forward → forward 段（title/preview/summary 无 canonical 来源，空兜底）。 */
-function forwardToIncoming(el: Extract<CanonicalElement, { type: "forward" }>): IncomingSegment {
+/**
+ * 合并转发 → forward 段（P1）。
+ * 接收方向 canonical 不承载 MULTI_FORWARD（kernel toCanonicalElement 无此分支），
+ * 由 adapter 从 RawMessage 提取 resId 后调用本函数经 ctx 注入（翻译保持纯函数）。
+ * title 取 NT fileName（转发卡片标题语义）。
+ */
+export function incomingForwardSegment(resId: string, title: string): IncomingSegment {
     return {
         type: "forward",
         data: {
-            forward_id: el.messageIds[0] ?? "",
-            title: "",
+            forward_id: resId,
+            title,
             preview: [],
             summary: "",
         },
@@ -266,7 +272,10 @@ export function outgoingSegmentsToCanonical(segments: OutgoingSegment[]): {
                 elements.push({ type: "json", raw: seg.data.json_payload });
                 break;
             case "forward":
-                throw kernelError("forward 段发送暂未支持（P1 接内核转发链路）", "INVALID_PARAM");
+                throw kernelError(
+                    "forward 段发送暂未支持（需 kernel 组装任意内容的新转发，P2 探测）",
+                    "INVALID_PARAM",
+                );
             default:
                 // 未知段：跳过（规范兼容性要求）
                 break;

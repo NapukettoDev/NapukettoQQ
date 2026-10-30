@@ -1,17 +1,24 @@
 /**
  * MilkyApi：Milky 动作统一依赖聚合（对齐 OneBotApi 模式，P2-16）
  *
- * 持有 P0 动作面所需 kernel apis + 协议层共享状态（seq 双向映射 / 版本 /
- * 发送媒体缓存目录）；动作经 Pick 视图取依赖，装配方只构造一次本对象。
+ * 持有 P1 动作面所需 kernel apis + 协议层共享状态（seq 双向映射 / 转发索引 /
+ * 版本 / 发送媒体缓存目录）；动作经 Pick 视图取依赖，装配方只构造一次本对象。
  */
 import type {
+    BuddyReq,
     FriendApi,
     GroupApi,
     GroupCache,
+    GroupNotify,
+    GroupNotifyApi,
     MsgApi,
     Peer,
     ProfileApi,
+    ProfileLikeApi,
     RawMessage,
+    RichMediaApi,
+    TicketApi,
+    WebApi,
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
 import type { MessageSeqIndex } from "./helper/seq-index.js";
@@ -22,8 +29,14 @@ export interface MilkyApiOptions {
     groupApi: GroupApi;
     friendApi: FriendApi;
     profileApi: ProfileApi;
-    /** 登录身份（get_login_info / self_id 用）。 */
-    self: { uin: string; nickname: string };
+    /** P1 扩面依赖（表态度 / 票据 / 精华列表 / 群通知 / 群文件）。 */
+    profileLikeApi: ProfileLikeApi;
+    ticketApi: TicketApi;
+    webApi: WebApi;
+    groupNotifyApi: GroupNotifyApi;
+    richMediaApi: RichMediaApi;
+    /** 登录身份（get_login_info / self_id / target_user_uid 用）。 */
+    self: { uin: string; nickname: string; uid?: string };
     /** 群/成员缓存（群实体回填 / get_group_list；未装配时动作直查 api）。 */
     groupCache?: GroupCache;
     /** QQ 客户端版本（get_impl_info.qq_protocol_version）。 */
@@ -39,7 +52,12 @@ export class MilkyApi {
     readonly groupApi: GroupApi;
     readonly friendApi: FriendApi;
     readonly profileApi: ProfileApi;
-    readonly self: { uin: string; nickname: string };
+    readonly profileLikeApi: ProfileLikeApi;
+    readonly ticketApi: TicketApi;
+    readonly webApi: WebApi;
+    readonly groupNotifyApi: GroupNotifyApi;
+    readonly richMediaApi: RichMediaApi;
+    readonly self: { uin: string; nickname: string; uid?: string };
     readonly groupCache: GroupCache | undefined;
     readonly qqVersion: string;
     readonly implVersion: string;
@@ -52,6 +70,11 @@ export class MilkyApi {
         this.groupApi = opts.groupApi;
         this.friendApi = opts.friendApi;
         this.profileApi = opts.profileApi;
+        this.profileLikeApi = opts.profileLikeApi;
+        this.ticketApi = opts.ticketApi;
+        this.webApi = opts.webApi;
+        this.groupNotifyApi = opts.groupNotifyApi;
+        this.richMediaApi = opts.richMediaApi;
         this.self = opts.self;
         this.groupCache = opts.groupCache;
         this.qqVersion = opts.qqVersion;
@@ -60,7 +83,7 @@ export class MilkyApi {
         this.seqIndex = seqIndex;
     }
 
-    /** uin → uid（私聊目标 / at 段发送转换）。 */
+    /** uin → uid（私聊目标 / at 段发送转换 / 群管动作的 uid 入参）。 */
     uinToUid(uins: string[]): Promise<Map<string, string>> {
         return this.groupApi.uinToUid(uins);
     }
@@ -68,6 +91,23 @@ export class MilkyApi {
     /** uid → uin（事件路径 mention 转换）。 */
     uidToUin(uids: string[]): Promise<Map<string, string>> {
         return this.groupApi.uidToUin(uids);
+    }
+
+    /**
+     * uin（数字）→ uid（群管动作入参转换）；转换失败抛 INVALID_PARAM
+     * （Milky 入参 user_id 都是 uin，kernel 群管 API 要 uid）。
+     */
+    async resolveUidFromUin(uin: number | string): Promise<string> {
+        const uinStr = String(uin);
+        try {
+            const uid = (await this.uinToUid([uinStr])).get(uinStr);
+            if (uid !== undefined && uid !== "") {
+                return uid;
+            }
+        } catch {
+            // 落到下方报错
+        }
+        throw kernelError(`用户 ${uinStr} 不存在或 uin→uid 转换失败`, "INVALID_PARAM");
     }
 
     /**
@@ -128,4 +168,36 @@ export class MilkyApi {
             time: Math.floor(Number(sent.msgTime) / 1000),
         };
     }
+}
+
+/** 通知查找默认搜索数量（单屏全量，OB11 DEFAULT_COUNT 同值）。 */
+const NOTIFY_SEARCH_COUNT = 100;
+
+/**
+ * 按通知 seq 查找群通知（先非可疑后可疑，OB11 set_group_add_request 同路径）。
+ * 未找到抛 NOT_FOUND（应答动作的 seq 无效或已过期）。
+ * 模块级函数（非类成员）：应答动作的公共入口，OB11 同路径。
+ */
+export async function findGroupNotify(api: MilkyApi, seq: string): Promise<GroupNotify> {
+    const normal = await api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT);
+    const hit = normal.find((item) => item.seq === seq);
+    if (hit !== undefined) {
+        return hit;
+    }
+    const doubt = await api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT);
+    const doubtHit = doubt.find((item) => item.seq === seq);
+    if (doubtHit !== undefined) {
+        return doubtHit;
+    }
+    throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
+}
+
+/** 按发起者 uid 查找好友申请（getBuddyReqList 匹配 friendUid）；未找到抛 NOT_FOUND。 */
+export async function findBuddyReq(api: MilkyApi, initiatorUid: string): Promise<BuddyReq> {
+    const reqs = await api.friendApi.getBuddyReqList();
+    const hit = reqs.find((req) => req.friendUid === initiatorUid);
+    if (hit === undefined) {
+        throw kernelError(`未找到来自 ${initiatorUid} 的好友申请`, "NOT_FOUND");
+    }
+    return hit;
 }

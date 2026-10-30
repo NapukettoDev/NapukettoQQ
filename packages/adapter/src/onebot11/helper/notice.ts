@@ -30,6 +30,8 @@ import {
 
 export { collectGrayTipUids } from "../../core/gray-tip.js";
 
+import { firstUntranslatedGrayTip } from "../../core/gray-tip.js";
+
 import type {
     OB11Event,
     OB11FriendAddNoticeEvent,
@@ -152,42 +154,12 @@ function toPoke(
     };
 }
 
-/** 群成员变动（group_increase / group_decrease / group_admin / group_ban）。 */
-function toGroupChange(
-    msg: RawMessage,
-    g: GrayTipElement,
-    ctx: NoticeTranslateContext,
-):
+/** 群成员变动事件族（increase/decrease/admin/ban 的联合，映射器返回类型）。 */
+type OB11GroupEvent =
     | OB11GroupIncreaseNoticeEvent
     | OB11GroupDecreaseNoticeEvent
     | OB11GroupAdminNoticeEvent
-    | OB11GroupBanNoticeEvent
-    | null {
-    const grp = g?.groupElement;
-    if (grp === undefined || grp.type === undefined) {
-        return null;
-    }
-    const common = {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
-        selfId: Number(ctx.selfUin),
-        groupId: Number(msg.peerUid),
-        memberUid: grp.memberUid ?? "",
-        adminUid: grp.adminUid ?? "",
-    };
-    switch (grp.type) {
-        case TipGroupElementType.MEMBER_ADD:
-            return toMemberAdd(common, ctx);
-        case TipGroupElementType.QUIT:
-            return toQuit(common, ctx);
-        case TipGroupElementType.BLOCK:
-        case TipGroupElementType.UNBLOCK:
-            return toAdminChange(common, grp, ctx);
-        case TipGroupElementType.SHUT_UP:
-            return toBan(common, grp, ctx);
-        default:
-            return null;
-    }
-}
+    | OB11GroupBanNoticeEvent;
 
 /** 群成员变动公共字段。 */
 interface GroupChangeCommon {
@@ -198,9 +170,55 @@ interface GroupChangeCommon {
     adminUid: string;
 }
 
+/** 群成员变动映射器表（键 = TipGroupElementType；缺项 = 不可翻译返回 null）。 */
+const GROUP_CHANGE_BUILDERS: Partial<
+    Record<
+        TipGroupElementType,
+        (
+            common: GroupChangeCommon,
+            grp: TipGroupElement,
+            ctx: NoticeTranslateContext,
+        ) => OB11GroupEvent | null
+    >
+> = {
+    [TipGroupElementType.MEMBER_ADD]: toMemberAdd,
+    [TipGroupElementType.QUIT]: toQuit,
+    [TipGroupElementType.BLOCK]: toAdminChange,
+    [TipGroupElementType.UNBLOCK]: toAdminChange,
+    [TipGroupElementType.SHUT_UP]: toBan,
+};
+
+/** 群成员变动（group_increase / group_decrease / group_admin / group_ban）。 */
+function toGroupChange(
+    msg: RawMessage,
+    g: GrayTipElement,
+    ctx: NoticeTranslateContext,
+): OB11GroupEvent | null {
+    const grp = g?.groupElement;
+    if (grp === undefined || grp.type === undefined) {
+        return null;
+    }
+    const builder = GROUP_CHANGE_BUILDERS[grp.type];
+    if (builder === undefined) {
+        return null;
+    }
+    return builder(
+        {
+            time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+            selfId: Number(ctx.selfUin),
+            groupId: Number(msg.peerUid),
+            memberUid: grp.memberUid ?? "",
+            adminUid: grp.adminUid ?? "",
+        },
+        grp,
+        ctx,
+    );
+}
+
 /** 群成员增加（approve=管理员操作 / invite=普通邀请）。 */
 function toMemberAdd(
     common: GroupChangeCommon,
+    _grp: TipGroupElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupIncreaseNoticeEvent {
     const { time, selfId, groupId, memberUid, adminUid } = common;
@@ -219,6 +237,7 @@ function toMemberAdd(
 /** 群成员退出（leave）。 */
 function toQuit(
     common: GroupChangeCommon,
+    _grp: TipGroupElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupDecreaseNoticeEvent {
     const { time, selfId, groupId, memberUid, adminUid } = common;
@@ -258,18 +277,18 @@ function toBan(
     grp: TipGroupElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupBanNoticeEvent {
-    const { time, selfId, groupId, adminUid, memberUid } = common;
     const shutUp = grp.shutUp;
+    const duration = Number(shutUp?.duration ?? 0);
     return {
-        time,
-        self_id: selfId,
+        time: common.time,
+        self_id: common.selfId,
         post_type: "notice",
         notice_type: "group_ban",
-        sub_type: Number(shutUp?.duration ?? 0) > 0 ? "ban" : "lift_ban",
-        group_id: groupId,
-        operator_id: toUin(shutUp?.admin?.uid ?? adminUid, ctx),
-        user_id: toUin(shutUp?.member?.uid ?? memberUid, ctx),
-        duration: Number(shutUp?.duration ?? 0),
+        sub_type: duration > 0 ? "ban" : "lift_ban",
+        group_id: common.groupId,
+        operator_id: toUin(shutUp?.admin?.uid ?? common.adminUid, ctx),
+        user_id: toUin(shutUp?.member?.uid ?? common.memberUid, ctx),
+        duration,
     };
 }
 
@@ -337,11 +356,22 @@ function translateGrayTip(
     }
     // 未知/未翻译子类型：raw 日志（JSON/BUDDY/ESSENCE/GROUP_NOTIFY/FILE 等——
     // friend_add/lucky_notify/honor/essence 等翻译的数据源校准入口）
-    ctx.logger?.warn(
-        { subType, raw: JSON.stringify(g)?.slice(0, 2000) },
-        "ob11: 未翻译的 grayTip 子类型（raw 校准数据）",
-    );
+    logUntranslatedGrayTip(msg, ctx);
     return null;
+}
+
+// 未知/未翻译子类型 raw 日志（与 Milky notice 同源，core 提取器定位元素）
+function logUntranslatedGrayTip(msg: RawMessage, ctx: NoticeTranslateContext): void {
+    const untranslated = firstUntranslatedGrayTip(msg);
+    if (untranslated !== undefined) {
+        ctx.logger?.warn(
+            {
+                subType: untranslated.subElementType,
+                raw: JSON.stringify(untranslated)?.slice(0, 2000),
+            },
+            "ob11: 未翻译的 grayTip 子类型（raw 校准数据）",
+        );
+    }
 }
 
 /** RawMessage → OB11 notice 事件（无 grayTip 返回 null）。

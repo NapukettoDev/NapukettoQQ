@@ -331,13 +331,7 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
 - **适配器级**：假服务端 + ProtocolConfig seed + 桩 msgChannel/msgApi 跑通
   QQ→MC chat/command 与 MC→QQ 渲染回群全链路。
 
-## 9. Milky（未实现，规划中）
-
-Milky 协议适配器的实施方案（目标 1.3.0、65 接口 × kernel 覆盖、21 事件 × 数据源、
-装配接缝、P0–P2 顺序）见 `docs/protocols/milky.md`。**实现前先在本文件补对应设计
-（目录结构 / `/event` 的 SSE+WS 分流 / 错误映射 / 类型生成方式），再动代码。**
-
-## 9. milky 协议适配器（P0，2026-10-28）
+## 9. milky 协议适配器（P0 2026-10-28，P1 2026-10-30）
 
 > 协议说明与覆盖清单见 `docs/protocols/milky.md`（Milky 1.3.0）。第四个协议适配器，
 > 单端口 HTTP（`POST /api/:api` + `GET /event` SSE/WS）+ WebHook，`@napuketto/adapter/milky`
@@ -376,3 +370,66 @@ Milky 协议适配器的实施方案（目标 1.3.0、65 接口 × kernel 覆盖
 `helper/translate.test.ts`（10 例：三场景形状 / 段映射 / 回填 / unknown 跳过）、
 `action/message.test.ts`（7 例：发送链 canonical 断言 / 输出映射 / -400 / 注册表）、
 `transport.test.ts`（7 例，真端口：信封 / 404 / 415 / 401 / SSE 推送 / WS 升级）。
+
+### 9.4 P1 测试
+
+`helper/notice.test.ts`（11 例：成员增减两形态 / 禁言 / 全员禁言 / 改名 / 解散守卫 /
+戳一戳群与好友 / 未知子类型日志）、`helper/request.test.ts`（7 例：好友申请 / 入群
+申请 / 成员邀请 / 邀请自身 / 状态过滤）、`action/p1-actions.test.ts`（9 例：注册表
+49 名齐 / 通知实体五变体 + 分页 / 精华翻译 + 分页 / 群文件实体 / schema -400）、
+`seq-index.test.ts` +1（转发索引）。
+
+### 9.3 P1 扩面（2026-10-30）
+
+**接口扩面（+40 动作，总 49）**——覆盖 milky.md §6 的 ✅ 46 中可落地的部分；延后项见下。
+文件按域拆分：`action/profile.ts` 新（资料/票据 7 个）、`action/social.ts` 扩（好友操作
+5 个）、`action/message.ts` 扩（历史/转发内容/已读 3 个）、`action/group.ts` 新（群管 +
+精华 + 表态 + 通知 16 个）、`action/group-file.ts` 新（群文件 7 个）。
+
+- **依赖扩充**：MilkyApi +profileLikeApi / ticketApi / webApi / groupNotifyApi /
+  richMediaApi（loader services 已有，装配透传）；`self` 扩 `uid`（loader
+  kernel-services 从 loginResult.uid 透传，get_friend_requests 的 target_user_uid 用）。
+- **uin→uid 入参转换**：以 uid 为入参的 kernel API（名片/管理员/禁言/踢人/点赞/删好友/
+  应答好友申请）经 `MilkyApi.uinToUid` 批量转换，失败抛 INVALID_PARAM（入参非法）。
+- **请求应答**（accept/reject_group_request、accept/reject_group_invitation）：
+  seq 入参 → `getSingleScreenNotifies(doubt=is_filtered)` 按 seq 匹配（OB11
+  set_group_add_request 同路径，先非可疑后可疑）→ `handleGroupRequest`。
+  notification_type 入参仅作 schema 校验（匹配按 seq，通知对象自带 type）。
+- **精华列表**：`WebApi.getEssenceMsgList` → GroupEssenceMessage（msg_content
+  msg_type 1→text / 2→image 近似翻译；page_index/page_size 客户端分页；message_time
+  无源取 operation_time 兜底）。设置/取消精华：seq → resolveMsgIdBySeq →
+  add/removeGroupEssence。
+- **历史消息**：start_message_seq → resolveMsgIdBySeq → `fetchMessages`（msgId 锚点）
+  → 逐条 seqIndex.record + 实体回填翻译；输出按 message_seq 升序（原生新→旧，反转），
+  next_message_seq = 最旧一条（不满 limit → null）。
+- **转发内容**：接收段 forward.forward_id 从「容器 msgId」改为 **resId**（规范语义
+  「转发消息 ID」，取 multiForwardMsgElement.resId）；seqIndex 增加转发索引
+  resId → {chatType, peerUid, msgId}（接收链路登记），get_forwarded_messages 经索引
+  取 peer → `fetchForwardMessage`（forward_id 未登记 → NOT_FOUND）。
+- **群文件实体**：GroupFileItemInfo / GroupFolderInfo → GroupFileEntity /
+  GroupFolderEntity（fileSize 字符串转数值；expire_time / downloaded_times /
+  uploader 无源字段 0/null 兜底）。download url / rename_folder / resource 反查 /
+  nudge 发送 kernel 无出口，P2 探测（见 milky.md）。
+
+**事件扩面（+13，总 15）**——复用 OB11 已打通的两类数据源，翻译为 Milky 形状：
+
+- **grayTip 系**（`helper/notice.ts` 新，判据对齐 OB11 helper/notice.ts）：
+  group_member_increase（MEMBER_ADD：adminUid===memberUid → operator_id 否则
+  invitor_id）、group_member_decrease（QUIT：adminUid 非空且 ≠ member 时给
+  operator_id）、group_mute / group_whole_mute（SHUT_UP：member uid 空 = 全员禁言，
+  is_mute = duration>0）、friend_nudge / group_nudge（aioOpGrayTipElement，
+  best-effort + raw 校准日志，与 OB11 poke 同口径待真实事件校准）、
+  group_file_upload（群消息含 fileElement → **替代** message_receive，文件消息的
+  Milky 语义即上传事件；friend 场景仍走 message_receive 带 file 段）。
+- **通道系**（`helper/request.ts` 新）：adapter options +groupChannel +buddyChannel
+  （loader services 已有）。friend_request（Buddy/onBuddyReqChange，
+  narrowBuddyReqs 防御收窄，comment 取 words 字段）；group_join_request /
+  group_invited_join_request / group_invitation（Group/onGroupNotifiesUpdated，
+  仅 KUNHANDLE 状态，type 1=邀请自身 / 5=成员邀请他人 / 7=入群申请，
+  is_filtered = doubt 参数，notification_seq = Number(seq)，user1/user2 uid→uin）。
+- uid→uin 批量转换在广播路径异步取得后经 ctx 注入（同 P0 纯函数模式）。
+- **未接**（无源或源待校准，P2）：group_message_reaction / peer_pin_change（无推送
+  源）、group_essence_message_change（kernel 只打原始日志）、bot_offline（kernel 离线
+  事件待确认）、friend_file_upload（onRecvOfflineFileMsg 形状未定）。
+  group_name_change / group_disband 已接（grayTip GROUP_NAME_MODIFIED / DISBANDED，
+  操作者 uid 不可得时不产出事件）。

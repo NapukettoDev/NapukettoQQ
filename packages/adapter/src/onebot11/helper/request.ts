@@ -20,29 +20,15 @@ import {
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
 } from "@napuketto/kernel";
+import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/uid-uin.js";
+
+export type { RequestTranslateContext } from "../../core/uid-uin.js";
 
 import type { OB11FriendRequestEvent, OB11GroupRequestEvent } from "../event/index.js";
 
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
-
-/** request 翻译上下文（uid→uin 映射，调用方批量转换）。 */
-export interface RequestTranslateContext {
-    selfUin: string;
-    uidToUin: Map<string, string>;
-}
-
-/** uid → uin（上下文映射缺省时：数字 uid 直取数值，非数字 uid 返回 0 表示未知）。 */
+/** uid → uin（core 共享解析；ctx 携带映射）。 */
 function toUin(uid: string | undefined, ctx: RequestTranslateContext): number {
-    if (uid === undefined || uid === "") {
-        return 0;
-    }
-    const uin = ctx.uidToUin.get(uid);
-    if (uin !== undefined) {
-        return Number(uin);
-    }
-    const n = Number(uid);
-    return Number.isFinite(n) ? n : 0;
+    return resolveUin(uid, ctx.uidToUin);
 }
 
 /**
@@ -85,31 +71,8 @@ export function toOb11GroupRequestEvent(
     };
 }
 
-/** BuddyReq 防御性收窄：仅接受字段形状可用的对象（onBuddyReqChange 参数待真实事件校准）。 */
-export function isBuddyReqLike(value: unknown): value is BuddyReq {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const v = value as Record<string, unknown>;
-    return typeof v["reqTime"] === "string" && typeof v["friendUid"] === "string";
-}
-
-/**
- * onBuddyReqChange 回调参数 → BuddyReq 列表（防御性收窄）。
- * 已知候选形状：BuddyReq[] / { buddyReqs: BuddyReq[] }；其余返回 null（调用方打 raw 日志）。
- */
-export function narrowBuddyReqs(arg: unknown): BuddyReq[] | null {
-    if (Array.isArray(arg)) {
-        return arg.every(isBuddyReqLike) ? (arg as BuddyReq[]) : null;
-    }
-    if (typeof arg === "object" && arg !== null) {
-        const reqs = (arg as Record<string, unknown>)["buddyReqs"];
-        if (Array.isArray(reqs) && reqs.every(isBuddyReqLike)) {
-            return reqs as BuddyReq[];
-        }
-    }
-    return null;
-}
+/** BuddyReq 防御性收窄收敛到 core（OB11 / Milky 共用，P1 2026-10-30）。 */
+export { isBuddyReqLike, narrowBuddyReqs } from "../../core/buddy-req.js";
 
 /**
  * BuddyReq → OB11 好友请求事件（friend）。

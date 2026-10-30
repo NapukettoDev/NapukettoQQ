@@ -20,11 +20,20 @@ interface SeqMeta {
     timeSec: number;
 }
 
+/** 合并转发 resId → 定位信息（get_forwarded_messages 取 peer 用）。 */
+export interface ForwardEntry {
+    chatType: ChatType;
+    peerUid: string;
+    msgId: string;
+}
+
 export class MessageSeqIndex {
     /** `${chatType}:${peerUid}:${seq}` → msgId。 */
     private readonly seqToMsg = new Map<string, string>();
     /** msgId → seq 元信息。 */
     private readonly msgToMeta = new Map<string, SeqMeta>();
+    /** 合并转发 resId → 定位信息（P1：get_forwarded_messages）。 */
+    private readonly forwards = new Map<string, ForwardEntry>();
 
     /** 接收链路登记（一条消息双向写入；重复 msgId 覆盖）。 */
     record(msg: RawMessage): void {
@@ -70,6 +79,29 @@ export class MessageSeqIndex {
     /** key 规则（chatType 数值 + peerUid + seq；peerUid 群聊=群号，C2C=uid）。 */
     private key(chatType: ChatType, peerUid: string, seq: number): string {
         return `${chatType}:${peerUid}:${seq}`;
+    }
+
+    /**
+     * 登记合并转发（接收链路：消息含 multiForwardMsgElement 时调用）。
+     * resId 是 Milky forward_id 的来源；同一 resId 重复覆盖。
+     */
+    recordForward(resId: string, entry: ForwardEntry): void {
+        if (resId === "") {
+            return;
+        }
+        this.forwards.set(resId, entry);
+        while (this.forwards.size > MAX_ENTRIES) {
+            const oldest = this.forwards.keys().next().value;
+            if (oldest === undefined) {
+                break;
+            }
+            this.forwards.delete(oldest);
+        }
+    }
+
+    /** resId → 转发定位（get_forwarded_messages；未登记返回 undefined）。 */
+    resolveForward(resId: string): ForwardEntry | undefined {
+        return this.forwards.get(resId);
     }
 
     /** FIFO 淘汰到容量上限内。 */
