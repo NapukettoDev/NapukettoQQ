@@ -22,6 +22,7 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
 import type { MessageSeqIndex } from "./helper/seq-index.js";
+import type { MilkyLoggerLike } from "./transport.js";
 
 /** MilkyApi 构造参数。 */
 export interface MilkyApiOptions {
@@ -45,6 +46,8 @@ export interface MilkyApiOptions {
     implVersion: string;
     /** 发送媒体 http(s)/base64 URI 下载缓存目录（缺省 = 远程媒体发送不可用）。 */
     mediaDir?: string;
+    /** 动作层可观测出口（P2 批次一：forward 临时消息撤回失败 warn；缺省静默）。 */
+    logger?: MilkyLoggerLike;
 }
 
 export class MilkyApi {
@@ -62,6 +65,8 @@ export class MilkyApi {
     readonly qqVersion: string;
     readonly implVersion: string;
     readonly mediaDir: string | undefined;
+    /** 动作层可观测出口（缺省静默）。 */
+    readonly logger: MilkyLoggerLike | undefined;
     /** message_seq ↔ msgId 双向映射（接收链路 record，动作侧反查）。 */
     readonly seqIndex: MessageSeqIndex;
 
@@ -80,6 +85,7 @@ export class MilkyApi {
         this.qqVersion = opts.qqVersion;
         this.implVersion = opts.implVersion;
         this.mediaDir = opts.mediaDir;
+        this.logger = opts.logger;
         this.seqIndex = seqIndex;
     }
 

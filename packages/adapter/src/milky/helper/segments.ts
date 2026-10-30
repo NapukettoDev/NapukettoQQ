@@ -6,8 +6,8 @@
  * 跳过——规范兼容性要求「数组中未知项跳过」）。forward 接收段不经 canonical：
  * kernel 无 MULTI_FORWARD 分支，adapter 从 RawMessage 提取 resId 后经
  * incomingForwardSegment + ctx 注入。
- * 发送方向：OutgoingSegment → canonical（10 种中映射 9 种；forward 发送需要
- * kernel 组装任意内容的新转发（未探测），显式报错不静默跳过）。
+ * 发送方向：OutgoingSegment → canonical（10 种全映射；forward 顶层段不走本转换器，
+ * 由 sendMilkyMessage 分流到组装链——本转换器内 forward 报错只拦截混发/嵌套）。
  */
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
@@ -227,7 +227,9 @@ function rawToPayload(raw: unknown): string {
 /**
  * OutgoingSegment 数组 → canonical 元素（同步映射；媒体 URI 解析与 at uin→uid
  * 由调用方在返回值上继续处理）。
- * forward 显式报错（发送走 kernel 专用链路，P1 接）。
+ * forward 在此报错：顶层 forward 已由 sendMilkyMessage 分流到组装链（message.ts，
+ * P2 批次一），命中本分支 = forward 与其他段混发漏网或嵌套 forward（组装链内逐项
+ * 转换经过此处）——均显式拒绝。
  */
 export function outgoingSegmentsToCanonical(segments: OutgoingSegment[]): {
     elements: CanonicalElement[];
@@ -273,7 +275,7 @@ export function outgoingSegmentsToCanonical(segments: OutgoingSegment[]): {
                 break;
             case "forward":
                 throw kernelError(
-                    "forward 段发送暂未支持（需 kernel 组装任意内容的新转发，P2 探测）",
+                    "forward 段不可与其他消息段混发或嵌套（顶层 forward 须单独发送）",
                     "INVALID_PARAM",
                 );
             default:

@@ -119,7 +119,16 @@ export type IncomingSegment =
     | { type: "xml"; data: { service_id: number; xml_payload: string } }
     | { type: "markdown"; data: { content: string } };
 
-/** 发送消息段（10 种，P0 全量建模；与规范 OutgoingSegment 一一对应）。 */
+/** 发送 forward 段的节点内容（规范 OutgoingForwardedMessage，1.3 增 time）。 */
+export interface OutgoingForwardedMessage {
+    user_id: number;
+    sender_name: string;
+    time?: number | null;
+    segments: OutgoingSegment[];
+}
+
+/** 发送消息段（10 种，P0 全量建模；与规范 OutgoingSegment 一一对应）。
+ *  forward 段 P2 批次一补全（messages + title/preview/summary/prompt，见 milky.md §0.6）。 */
 export type OutgoingSegment =
     | { type: "text"; data: { text: string } }
     | { type: "mention"; data: { user_id: number } }
@@ -132,7 +141,16 @@ export type OutgoingSegment =
       }
     | { type: "record"; data: { uri: string } }
     | { type: "video"; data: { uri: string; thumb_uri?: string | null } }
-    | { type: "forward"; data: { messages: unknown[]; title?: string | null } }
+    | {
+          type: "forward";
+          data: {
+              messages: OutgoingForwardedMessage[];
+              title?: string | null;
+              preview?: string[] | null;
+              summary?: string | null;
+              prompt?: string | null;
+          };
+      }
     | { type: "light_app"; data: { json_payload: string } };
 
 /** 接收消息（IncomingMessage：friend / group / temp 三形态）。 */
