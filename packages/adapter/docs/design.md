@@ -433,3 +433,41 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
   事件待确认）、friend_file_upload（onRecvOfflineFileMsg 形状未定）。
   group_name_change / group_disband 已接（grayTip GROUP_NAME_MODIFIED / DISBANDED，
   操作者 uid 不可得时不产出事件）。
+
+### 9.5 P2 批次一：forward 发送段（2026-10-31）
+
+**规范语义**（官方 OutgoingSegment / OutgoingForwardedMessage，MIT）：发送 forward 段 =
+`messages: {user_id, sender_name, time?, segments}[]`（任意内容组装）+ 可选
+title / preview / summary / prompt。P1 的「显式报错」到此落地为「组装链路」。
+
+**kernel 链路（零 kernel 改动，全部现有出口）**——临时消息法：
+
+1. 逐条临时消息：每项 messages[i].segments 过 outgoingSegmentsToCanonical +
+   resolveElements（at uin→uid / 媒体落盘复用发送核心）→ `MsgApi.sendMessage` → 收集
+   NT msgId；
+2. 组装并发送：`MsgApi.sendForwardMessage(target, target, srcMsgIds)`（buildMultiForwardMsg
+   以目标 peer 的真实消息组装 MULTI_FORWARD → sendMsg）→ 输出经 resolveSentOutput 回查
+   message_seq；
+3. 清理：`MsgApi.recallMessage(target, srcMsgIds)` best-effort（失败经 MilkyApi.logger
+   记 warn，不影响转发已发出——撤销失败只留可见垃圾，不抛错）。
+
+**已知差异（文档明示，实机联调校准）**：
+
+- 节点发送者恒为机器人自己：buildMultiForwardMsg 基于真实消息组装，载荷里的
+  user_id / sender_name / time 仅作 schema 校验（规范契约），不参与组装（kernel 无
+  伪造发送者出口；协议级组装属 native 探测范围）。
+- title / preview / summary / prompt 忽略：buildMultiForwardMsg 无对应入参。
+- 临时消息在发送→撤回窗口内对会话可见；其撤回会产生 message_recall 广播（operator=
+  自己，消息本体因自过滤从未广播）——已知事件噪音。
+- 约束：forward 段必须单独发（不与其他段混发、单次仅一个 forward，否则 INVALID_PARAM）；
+  messages 为空 / 某项 segments 全部不可用 / 嵌套 forward → INVALID_PARAM。
+
+**logger 接线**：MilkyApi 增可选 `logger`（装配自 adapter opts.logger，与 calibLogger
+同源）——动作层首次有可观测出口，服务于「撤回失败必须可观测」（错误处理红线：不静默）。
+
+**批次二（依赖实机探测产物，未开工）**：rename_group_folder /
+get_group_file_download_url / get_resource_temp_url / send_friend_nudge /
+send_group_nudge / 群公告 / 置顶 / 专属头衔 / 群头像 / 上传 + 5 无源事件。前置：宿主以
+`NAPUTO_PROBE=1` 启动产 `napuketto-probe.json`（含各 get*Service 完整方法面，见
+kernel probe.ts collectServiceGetters），按方法面设计 kernel 出口（说明书参考 +
+待探测校准惯例），再接 adapter。

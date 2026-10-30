@@ -1,10 +1,12 @@
 /**
  * Milky 消息类动作（P0：send_private_message / send_group_message / get_message /
  * recall_private_message / recall_group_message；
- * P1 +3：get_history_messages / get_forwarded_messages / mark_message_as_read）
+ * P1 +3：get_history_messages / get_forwarded_messages / mark_message_as_read；
+ * P2 批次一：forward 发送段组装链）
  *
  * 发送核心 sendMilkyMessage：OutgoingSegment → canonical（媒体 URI 异步落盘 +
  * at uin→uid + reply seq→msgId 原样兜底）→ MsgApi.sendMessage → 回查 msgSeq/time。
+ * forward 段走专用组装链（sendForwardComposition，临时消息法，见 milky.md §0.6）。
  * get/recall 入口是 message_seq（Milky ID 模型），经 seqIndex 反查 msgId。
  * get_forwarded_messages 经 seqIndex 转发索引（resId → peer）定位。
  */
@@ -34,6 +36,7 @@ import type {
     IncomingMessage,
     IncomingSegment,
     MessageScene,
+    OutgoingForwardedMessage,
     OutgoingSegment,
     SendMessageOutput,
 } from "../types.js";
@@ -172,12 +175,16 @@ async function recallBySeq(peer: Peer, seq: number, api: MilkyApi): Promise<void
     await api.msgApi.recallMessage(peer, [msgId]);
 }
 
-/** 发送核心：segments → canonical（URI/ID 转换）→ sendMessage → 回查输出。 */
+/** 发送核心：segments → canonical（URI/ID 转换）→ sendMessage → 回查输出。
+ *  forward 段分流到组装链（P2 批次一，临时消息法）。 */
 export async function sendMilkyMessage(
     peer: Peer,
     segments: OutgoingSegment[],
     api: MilkyApi,
 ): Promise<SendMessageOutput> {
+    if (segments.some((s) => s.type === "forward")) {
+        return await sendForwardComposition(peer, segments, api);
+    }
     const { elements, atUins } = outgoingSegmentsToCanonical(segments);
     const resolved = await resolveElements(elements, atUins, api);
     if (resolved.length === 0) {
@@ -185,6 +192,84 @@ export async function sendMilkyMessage(
     }
     const { msgId } = await api.msgApi.sendMessage(peer, resolved);
     return await api.resolveSentOutput(peer, msgId);
+}
+
+/**
+ * forward 段组装链（P2 批次一，milky.md §0.6）：仅支持单 forward 单独发。
+ * 临时消息法：逐条发送 messages[i].segments → sendForwardMessage（buildMultiForwardMsg
+ * 以目标 peer 的真实消息组装 → sendMsg）→ best-effort 撤回临时消息 → 回查输出。
+ *
+ * 已知差异（规范语义 vs kernel 出口，待实机联调）：节点发送者恒为机器人自己
+ * （user_id / sender_name / time 不参与组装）；title / preview / summary / prompt 忽略。
+ */
+async function sendForwardComposition(
+    peer: Peer,
+    segments: OutgoingSegment[],
+    api: MilkyApi,
+): Promise<SendMessageOutput> {
+    if (segments.length !== 1) {
+        throw kernelError("forward 段必须单独发送（不支持与其他消息段混发）", "INVALID_PARAM");
+    }
+    const [forward] = segments;
+    if (forward === undefined || forward.type !== "forward") {
+        throw kernelError("forward 组装链收到非 forward 段", "UNKNOWN");
+    }
+    const messages = narrowForwardMessages(forward);
+    const srcMsgIds: string[] = [];
+    for (const [i, item] of messages.entries()) {
+        const { elements, atUins } = outgoingSegmentsToCanonical(item.segments);
+        const resolved = await resolveElements(elements, atUins, api);
+        if (resolved.length === 0) {
+            throw kernelError(`forward 第 ${i + 1} 条消息无可用内容段`, "INVALID_PARAM");
+        }
+        const { msgId } = await api.msgApi.sendMessage(peer, resolved);
+        srcMsgIds.push(msgId);
+    }
+    const { msgId } = await api.msgApi.sendForwardMessage(peer, peer, srcMsgIds);
+    await recallTempMessages(peer, srcMsgIds, api);
+    return await api.resolveSentOutput(peer, msgId);
+}
+
+/**
+ * forward 段载荷收窄（入口 schema 只保证 data 为 record）：messages 非空数组，
+ * 项内 segments 非空数组。user_id / sender_name / time 不参与组装不校验
+ * （丢弃字段不设门槛）；title / preview / summary / prompt 忽略。
+ */
+function narrowForwardMessages(
+    forward: Extract<OutgoingSegment, { type: "forward" }>,
+): OutgoingForwardedMessage[] {
+    const raw = (forward.data as { messages?: unknown }).messages;
+    if (!Array.isArray(raw) || raw.length === 0) {
+        throw kernelError("forward 段 messages 必须是非空数组", "INVALID_PARAM");
+    }
+    const out: OutgoingForwardedMessage[] = [];
+    for (const item of raw) {
+        if (typeof item !== "object" || item === null) {
+            throw kernelError("forward 段 messages 项必须是对象", "INVALID_PARAM");
+        }
+        const segments = (item as { segments?: unknown }).segments;
+        if (!Array.isArray(segments) || segments.length === 0) {
+            throw kernelError("forward 段 messages 项的 segments 必须是非空数组", "INVALID_PARAM");
+        }
+        out.push(item as OutgoingForwardedMessage);
+    }
+    return out;
+}
+
+/** 临时消息清理（best-effort：失败只留可见垃圾，转发已发出——warn 可观测不抛）。 */
+async function recallTempMessages(peer: Peer, msgIds: string[], api: MilkyApi): Promise<void> {
+    try {
+        await api.msgApi.recallMessage(peer, msgIds);
+    } catch (e) {
+        api.logger?.warn(
+            {
+                peer: peer.peerUid,
+                count: msgIds.length,
+                error: e instanceof Error ? e.message : String(e),
+            },
+            "milky: forward 临时消息撤回失败（转发已发出）",
+        );
+    }
 }
 
 /** 元素二次解析：at uin→uid + 远程媒体 URI 落盘（reply seq 已在映射层兜底原样）。 */

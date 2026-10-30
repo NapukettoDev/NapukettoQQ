@@ -1,8 +1,8 @@
 # Milky 协议（P0 已实现 · 规划稿）
 
-> **状态：P1 已实现**（P0 2026-10-28 / P1 2026-10-30 落地，见 §0/§0.5 落地面与
-> §9 勾选）。§6/§7 的状态列与 §9 P2 部分仍是覆盖清单，不是现状描述；全部落地后按
-> `docs/README.md` 的维护约定改写为现状文档。
+> **状态：P1 已实现，P2 批次一已落地**（P0 2026-10-28 / P1 2026-10-30 / P2 批次一
+> 2026-10-31，见 §0/§0.5/§0.6 落地面与 §9 勾选）。§6/§7 的状态列与 §9 P2 剩余部分
+> 仍是覆盖清单，不是现状描述；全部落地后按 `docs/README.md` 的维护约定改写为现状文档。
 >
 > **目标协议版本：Milky 1.3.0**（2026-08-07 发布）。`get_impl_info` 上报
 > `milky_version = "1.3"`。
@@ -64,11 +64,38 @@
 - **测试**：notice 翻译 11 例 + request 翻译 7 例 + P1 动作 9 例 + seqIndex 转发 1 例
   （全仓 92 文件 / 883 例全绿；fallow 门禁 55 变更文件零问题）。
 
-**延后（P2，依赖探测）**：rename_group_folder（kernel 无 renameFolder 出口）、
-get_group_file_download_url（fileItem 无 url 字段）、get_resource_temp_url
-（resource_id 反查）、send_friend_nudge / send_group_nudge（无 nudge 发送）、
-forward 段发送（kernel 无法从任意内容组装新转发）、群公告 / 置顶 / 专属头衔 /
+**延后（P2）**：forward 段发送 → 已在 P2 批次一落地（§0.6）。其余依赖实机探测：
+rename_group_folder（kernel 无 renameFolder 出口）、get_group_file_download_url
+（fileItem 无 url 字段）、get_resource_temp_url（resource_id 反查）、
+send_friend_nudge / send_group_nudge（无 nudge 发送）、群公告 / 置顶 / 专属头衔 /
 群头像 / 上传（kernel 无出口）。
+
+## 0.6 P2 批次一（2026-10-31）：forward 发送段
+
+发送段 9/10 → 10/10。规范语义（官方 OutgoingSegment / OutgoingForwardedMessage，
+MIT）：forward 发送段 = `messages: {user_id, sender_name, time?, segments}[]`（任意
+内容组装）+ 可选 title / preview / summary / prompt。
+
+**实现（kernel 零改动，临时消息法）**：逐条临时发送 messages[i].segments →
+`buildMultiForwardMsg` 组装（kernel `sendForwardMessage`，源 = 目标 peer）→ 发出 →
+best-effort 撤回临时消息（失败记 warn，不影响转发已发出）。
+
+**已知差异（待实机联调校准，同 #28 ARK 发送先例）**：
+
+- 节点发送者恒为机器人自己（组装基于真实消息，user_id / sender_name / time 仅作
+  schema 校验不参与组装；kernel 无伪造发送者出口）。
+- title / preview / summary / prompt 忽略（buildMultiForwardMsg 无对应入参）。
+- 临时消息在发送→撤回窗口内可见；其撤回产生 message_recall 广播（operator = 自己）。
+- 约束：forward 段单独发（不混发、单次一个）；messages 为空 / 项内无可用段 /
+  嵌套 forward → INVALID_PARAM。
+
+**批次二（依赖实机探测产物，未开工）**：上表其余 9 个 API + 5 个无源事件
+（group_message_reaction / peer_pin_change / group_essence_message_change /
+bot_offline / friend_file_upload）。前置操作：宿主以 `NAPUTO_PROBE=1` 启动，产
+`napuketto-probe.json`（+35s 晚探测 `napuketto-probe-late.json`）至 NAPUTO_CFG_DIR
+（缺省 cwd）——产物含各 `get*Service` 完整方法面（kernel probe.ts
+collectServiceGetters，已具备）；按方法面设计 kernel 出口（说明书参考 + 待探测校准
+惯例），再接 adapter。
 
 ## 1. 为什么做
 
@@ -369,7 +396,7 @@ webhooks = []             # 额外事件推送地址，可多个
 2. [x] 事件扩面：2 → 15（通道系请求 4 + grayTip 系 10 + 群文件上传）；
    group_essence_message_change / bot_offline / friend_file_upload 源待校准，转 P2。
 3. [x] 消息段：接收 12/14（market_face / markdown 原始元素形状未探测，canonical
-   unknown 跳过）；发送 9/10（forward 需 kernel 组装任意内容新转发，P2）。
+   unknown 跳过）；发送 9/10 → **10/10**（forward 段 P2 批次一落地，§0.6，临时消息法）。
 4. [x] `message_seq → msgId` 索引定型（P0 方案二 adapter 侧 MessageSeqIndex，
    P1 补转发 resId 索引）。
 
@@ -378,10 +405,12 @@ webhooks = []             # 额外事件推送地址，可多个
 
 ### P2（长尾，依赖 native 探测）
 
-- 13 个 ❌ 里可实现的（群公告、置顶、nudge、上传、私聊文件下载、收藏表情、群头像、
-  专属头衔）逐个探测 + 实现。
-- 5 个无源事件（sysmsg 系 2 个 + reaction / disband / pin）：先补 sysmsg 识别表与回调
-  探测，再谈翻译。
+- [x] 批次一（2026-10-31）：forward 发送段（§0.6，临时消息法 + 已知差异）。
+- [ ] 批次二：13 个 ❌ 里可实现的（群公告、置顶、nudge、上传、私聊文件下载、收藏表情、
+  群头像、专属头衔）——前置 `NAPUTO_PROBE=1` 实机探测（§0.6 runbook），按方法面设计
+  kernel 出口后接 adapter。
+- [ ] 5 个无源事件（sysmsg 系 2 个 + reaction / disband / pin）：先补 sysmsg 识别表与
+  回调探测，再谈翻译。
 
 ## 10. 验收与测试
 
