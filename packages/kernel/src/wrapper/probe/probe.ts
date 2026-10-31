@@ -18,15 +18,9 @@ import { join } from "node:path";
 import process from "node:process";
 import { getMainSession } from "../session-resolver.js";
 import type { WrapperContext } from "../wrapper-loader.js";
-import { serialize, shapeKeyGetters } from "./probe-serialize.js";
+import { serialize } from "./probe-serialize.js";
 import { probeEngineCalls, probeExportCtors, probeLoginService } from "./probe-services.js";
-import {
-    countNonNullServices,
-    listMethods,
-    type ProbeSessionCandidate,
-    pickPrimaryCandidate,
-    tryCall,
-} from "./probe-utils.js";
+import { isServiceGetter, listMethods, tryCall } from "./probe-utils.js";
 
 /** 枚举候选 sessionId（nt_0..nt_9 / gpro_0..gpro_9）找 QQ 已 init 的 session。 */
 function enumerateSessionIds(ctx: WrapperContext): Record<string, unknown> {
@@ -249,114 +243,92 @@ function findMainProbeId(sessionIds: string[]): string | undefined {
     return sessionIds.find((id) => id.startsWith("nt_")) ?? sessionIds[0];
 }
 
-/** 探测 session 与 service 方法（候选中选服务实例最多者为主目标）。
- *  自建宿主下 QQ 主 session 未被 init（get*Service 恒 null，2026-10-31 实测
- *  napuketto-probe-late.json 全服务空），kernel 自建 session 已带 adapter init
- *  服务可用——主目标按 countNonNullServices 评分选取，并列保持主 session 优先。 */
-function probeSession(ctx: WrapperContext): Record<string, unknown> {
+/** 探测 session 与 service 方法名面。
+ *  主目标 = ctx.session 快照（kernel 自建就绪 session），缺省回退 QQ 主 session；
+ *  自建宿主下主 session 未被 init（get*Service 恒 null，2026-10-31 实测）。
+ *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有 P1-4 遗留副作用
+ *  （resolveMainFromStartup 把空壳主 session 写回 ctx.session，session-resolver.ts）。
+ *  ⚠️ names-only：不对服务实例做无参 shape 调用——活 session 上无参调原生方法
+ *  = 访问违例 0xC0000005（2026-10-31 实测崩溃，tryShape 捕不住原生段错误）。 */
+/** 非空判定（null / undefined 均视为缺省）。 */
+function hasValue(value: unknown): boolean {
+    return value !== null && value !== undefined;
+}
+
+function probeSession(ctx: WrapperContext, persist?: () => void): Record<string, unknown> {
     const out: Record<string, unknown> = {};
-    const candidates = collectProbeCandidates(ctx).map(scoreCandidate);
-    const primary = pickPrimaryCandidate(candidates);
-    out["sessionSource"] = primary.source;
-    out["session"] = sessionFace(primary.session);
-    if (primary.session !== null && primary.session !== undefined) {
-        out["services"] = collectServiceGetters(primary.session);
-    }
-    if (candidates.length > 1) {
-        out["sessionAlternates"] = alternateFaces(candidates, primary);
-    }
+    const own = ctx.session;
+    const main = tryMainSession(ctx);
+    const primary = hasValue(own) ? own : main;
+    out["sessionSource"] = hasValue(own) ? "own-create" : "mainSession";
+    out["session"] = sessionFace(primary);
+    assignServices(out, primary, persist);
+    assignAlternates(out, own, main);
     return out;
 }
 
-/** 候选收集原始形态（评分前）。 */
-interface ProbeSessionSource {
-    source: string;
-    session: unknown;
+/** 并入主目标的服务方法名面（主目标缺省时跳过）。 */
+function assignServices(
+    out: Record<string, unknown>,
+    primary: unknown,
+    persist?: () => void,
+): void {
+    if (!hasValue(primary)) {
+        return;
+    }
+    out["services"] = collectServiceGetters(primary, persist);
 }
 
-/** 候选评分（非空服务实例数）。 */
-function scoreCandidate(candidate: ProbeSessionSource): ProbeSessionCandidate {
-    return { ...candidate, serviceNonNull: countNonNullServices(candidate.session) };
+/** 并入落选候选概要（仅主目标为自建 session 时记录主 session 方法数，诊断用）。 */
+function assignAlternates(out: Record<string, unknown>, own: unknown, main: unknown): void {
+    if (!hasValue(own) || !hasValue(main)) {
+        return;
+    }
+    out["sessionAlternates"] = [
+        {
+            source: "mainSession(getNTWrapperSession)",
+            methodCount: listMethods(main).length,
+        },
+    ];
 }
 
-/** 落选候选的概要面（方法数 + 评分，诊断用）。 */
-function alternateFaces(
-    candidates: ProbeSessionCandidate[],
-    primary: ProbeSessionCandidate,
-): Record<string, unknown>[] {
-    return candidates
-        .filter((candidate) => candidate !== primary)
-        .map((candidate) => ({
-            source: candidate.source,
-            methodCount: listMethods(candidate.session).length,
-            serviceNonNull: candidate.serviceNonNull,
-        }));
-}
-
-/** 收集候选 session：kernel 自建 session + QQ 主 session（若可得）。
- *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有 P1-4 遗留副作用
- *  （resolveMainFromStartup 把空壳主 session 写回 ctx.session，session-resolver.ts），
- *  后读会把就绪的自建 session 读成空壳（2026-10-31 实测：候选退化为单主 session）。 */
-function collectProbeCandidates(ctx: WrapperContext): ProbeSessionSource[] {
-    const own = ctx.session;
-    const candidates: ProbeSessionSource[] = [];
-    pushMainCandidate(ctx, candidates);
-    pushOwnCandidate(own, candidates);
-    return candidates;
-}
-
-/** 并入 QQ 主 session 候选（枚举失败静默跳过）。 */
-function pushMainCandidate(ctx: WrapperContext, out: ProbeSessionSource[]): void {
+/** QQ 主 session（getMainSession 有写回 ctx.session 的副作用——调用前须已快照）。 */
+function tryMainSession(ctx: WrapperContext): unknown {
     try {
-        const main = getMainSession(ctx);
-        if (main !== null) {
-            out.push({ source: "mainSession(getNTWrapperSession)", session: main });
-        }
+        return getMainSession(ctx);
     } catch {
-        // 主 session 枚举失败：只剩 own-create 候选
+        return null; // 主 session 枚举失败：只剩 own-create 候选
     }
 }
 
-/** 并入 kernel 自建 session 候选（与已有候选同一实例时去重）。 */
-function pushOwnCandidate(own: unknown, out: ProbeSessionSource[]): void {
-    if (own === null || own === undefined) {
-        return;
-    }
-    if (out.some((candidate) => candidate.session === own)) {
-        return;
-    }
-    out.push({ source: "own-create", session: own });
-}
-
-/** 收集 session 的 get*Service getter 方法面与返回形状。 */
-function collectServiceGetters(session: unknown): Record<string, unknown> {
-    const getters = listMethods(session).filter(
-        (m) => m.startsWith("get") && m.endsWith("Service"),
-    );
+/** 收集 session 的 get*Service 方法名面（names-only，不做 shape 无参调用）。
+ *  每个服务完成即 persist 一次——活 session 上个别 getter 若触发原生崩溃，
+ *  文件里留下最后一个成功项，精确定位肇事 getter。 */
+function collectServiceGetters(session: unknown, persist?: () => void): Record<string, unknown> {
     const services: Record<string, unknown> = {};
-    for (const getter of getters) {
+    for (const getter of listMethods(session).filter(isServiceGetter)) {
         services[getter] = probeServiceGetter(session, getter);
+        persist?.();
     }
     return services;
 }
 
-/** 探测单个 getter：成功记录方法面/形状，失败记录错误。 */
+/** 探测单个 getter：成功记录方法名面（不调用服务方法），失败记录错误。 */
 function probeServiceGetter(session: unknown, getter: string): unknown {
     const call = tryCall(session, getter);
     if (!(call.ok && call.value)) {
         return { error: call.error ?? "null/undefined", ok: call.ok };
     }
-    const methods = listMethods(call.value);
     return {
-        methods,
+        methods: listMethods(call.value),
         ownKeys: Object.getOwnPropertyNames(call.value).slice(0, 20),
-        shapes: shapeKeyGetters(call.value, methods),
     };
 }
 
 /**
- * 探测 wrapper 运行时：dump session 方法与各 service 方法到 JSON。
+ * 探测 wrapper 运行时：dump session 方法与各 service 方法名到 JSON。
  * 返回探测结果对象；同时写文件（NAPUTO_CFG_DIR/<file>，默认 napuketto-probe.json）。
+ * 服务枚举逐项增量落盘（persist）——活 session 上原生崩溃时文件保留断点。
  */
 export function probeRuntime(
     ctx: WrapperContext,
@@ -370,10 +342,15 @@ export function probeRuntime(
         engineCalls: probeEngineCalls(ctx),
         loginService: probeLoginService(ctx),
         startup: probeStartup(ctx),
-        ...probeSession(ctx),
     };
+    const persist = (): void => writeProbeFile(result, file);
+    Object.assign(result, probeSession(ctx, persist));
+    writeProbeFile(result, file);
+    return result;
+}
 
-    // 写文件
+/** 探测结果落盘（增量与最终共用；最终写入后记 probeFile 路径）。 */
+function writeProbeFile(result: Record<string, unknown>, file: string): void {
     try {
         const dir = process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
         mkdirSync(dir, { recursive: true });
@@ -381,7 +358,6 @@ export function probeRuntime(
         writeFileSync(full, JSON.stringify(result, null, 2), "utf8");
         result["probeFile"] = full;
     } catch (e) {
-        result["probeFileError"] = e instanceof Error ? e.message : String(e);
+        result["probeFileError"] = errMsgString(e);
     }
-    return result;
 }

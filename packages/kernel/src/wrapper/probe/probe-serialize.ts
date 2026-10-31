@@ -3,7 +3,6 @@
  *
  * - serialize：深度受限序列化（BigInt 转字符串，Map/Set/Promise 展开，循环引用防护）
  * - tryShape：解析 service getter 返回形状
- * - shapeKeyGetters：探测 service 关键数据 getter 返回形状
  */
 
 /** 序列化深度上限（循环引用/深层对象防护）。 */
@@ -90,22 +89,4 @@ export function tryShape(session: unknown, getter: string): unknown {
     } catch {
         return "[error]";
     }
-}
-
-/** 数据 getter 方法名模式（探测返回形状用）。 */
-const DATA_GETTER_RE = /^(get|query|fetch|load)/i;
-
-/** 探测 service 的关键数据 getter 返回形状（取前几个无参调用）。 */
-export function shapeKeyGetters(
-    session: unknown,
-    serviceMethods: string[],
-): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    const candidates = serviceMethods.filter(
-        (m) => DATA_GETTER_RE.test(m) && !m.endsWith("Listener"),
-    );
-    for (const m of candidates.slice(0, 8)) {
-        out[m] = tryShape(session, m);
-    }
-    return out;
 }

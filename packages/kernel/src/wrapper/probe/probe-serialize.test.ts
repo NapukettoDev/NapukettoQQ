@@ -1,9 +1,9 @@
 /**
  * probe-serialize.ts 基线测试（fallow refactoring target #4，untested risk）
- * 锁定 serialize / tryShape / shapeKeyGetters 现有行为，重构后回归。
+ * 锁定 serialize / tryShape 现有行为，重构后回归。
  */
 import { describe, expect, it } from "vitest";
-import { serialize, shapeKeyGetters, tryShape } from "./probe-serialize.js";
+import { serialize, tryShape } from "./probe-serialize.js";
 
 describe("serialize", () => {
     it("null / undefined / 原始值原样返回", () => {
@@ -115,33 +115,5 @@ describe("tryShape", () => {
             },
         };
         expect(tryShape(session, "boom")).toBe("[error]");
-    });
-});
-
-describe("shapeKeyGetters", () => {
-    it("只取 get/query/fetch/load 开头且非 Listener 的方法", () => {
-        const service = {
-            getMsg: () => "m",
-            queryInfo: () => "i",
-            loadAll: () => "a",
-            setStatus: () => "s",
-            getMsgListener: () => "l",
-        };
-        expect(shapeKeyGetters(service, Object.keys(service))).toEqual({
-            getMsg: "m",
-            queryInfo: "i",
-            loadAll: "a",
-        });
-    });
-
-    it("最多取前 8 个候选", () => {
-        const service: Record<string, () => string> = {};
-        const methods: string[] = [];
-        for (let i = 0; i < 12; i += 1) {
-            const name = `getM${i}`;
-            service[name] = () => name;
-            methods.push(name);
-        }
-        expect(Object.keys(shapeKeyGetters(service, methods))).toHaveLength(8);
     });
 });
