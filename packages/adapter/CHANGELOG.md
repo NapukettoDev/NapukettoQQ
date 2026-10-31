@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [513df56]
+  - @napuketto/kernel@0.5.3
+
 ## 0.7.2
 
 ### Patch Changes
