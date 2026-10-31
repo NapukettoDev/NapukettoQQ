@@ -293,11 +293,15 @@ function alternateFaces(
         }));
 }
 
-/** 收集候选 session：QQ 主 session（若可得）在前 + kernel 自建 session 去重补充。 */
+/** 收集候选 session：kernel 自建 session + QQ 主 session（若可得）。
+ *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有 P1-4 遗留副作用
+ *  （resolveMainFromStartup 把空壳主 session 写回 ctx.session，session-resolver.ts），
+ *  后读会把就绪的自建 session 读成空壳（2026-10-31 实测：候选退化为单主 session）。 */
 function collectProbeCandidates(ctx: WrapperContext): ProbeSessionSource[] {
+    const own = ctx.session;
     const candidates: ProbeSessionSource[] = [];
     pushMainCandidate(ctx, candidates);
-    pushOwnCandidate(ctx, candidates);
+    pushOwnCandidate(own, candidates);
     return candidates;
 }
 
@@ -314,14 +318,14 @@ function pushMainCandidate(ctx: WrapperContext, out: ProbeSessionSource[]): void
 }
 
 /** 并入 kernel 自建 session 候选（与已有候选同一实例时去重）。 */
-function pushOwnCandidate(ctx: WrapperContext, out: ProbeSessionSource[]): void {
-    if (ctx.session === null) {
+function pushOwnCandidate(own: unknown, out: ProbeSessionSource[]): void {
+    if (own === null || own === undefined) {
         return;
     }
-    if (out.some((candidate) => candidate.session === ctx.session)) {
+    if (out.some((candidate) => candidate.session === own)) {
         return;
     }
-    out.push({ source: "own-create", session: ctx.session });
+    out.push({ source: "own-create", session: own });
 }
 
 /** 收集 session 的 get*Service getter 方法面与返回形状。 */
