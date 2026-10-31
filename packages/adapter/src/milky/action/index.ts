@@ -1,9 +1,9 @@
 /**
- * Milky 动作注册表（P0 9 个 + P1 40 个 = 49 个）
+ * Milky 动作注册表（P0 9 + P1 40 + P2 批次二 15 = 64 个）
  *
- * P0 面 = docs/protocols/milky.md §9 P0 清单；P1 面 = §9 P1 清单（群管/精华/
- * 群文件/好友操作/票据/历史与转发）。延后项（nudge 发送 / rename_folder /
- * download_url / resource 反查 / 置顶 / 公告 / 上传）见 milky.md §6。
+ * P0/P1 面 = docs/protocols/milky.md §9 清单；批次二 = §0.7（nudge / 公告 /
+ * 头衔 / 群头像 / peer_pins / 上传 / download_url / rename_folder / 收藏表情 /
+ * resource 反查）。
  */
 import { ActionRegistry } from "../../core/index.js";
 import type { MilkyApi } from "../api.js";
@@ -11,6 +11,8 @@ import type { MilkyAction } from "./base-action.js";
 import {
     AcceptGroupInvitationAction,
     AcceptGroupRequestAction,
+    DeleteGroupAnnouncementAction,
+    GetGroupAnnouncementsAction,
     GetGroupEssenceMessagesAction,
     GetGroupInfoAction,
     GetGroupMemberInfoAction,
@@ -20,11 +22,15 @@ import {
     QuitGroupAction,
     RejectGroupInvitationAction,
     RejectGroupRequestAction,
+    SendGroupAnnouncementAction,
     SendGroupMessageReactionAction,
+    SendGroupNudgeAction,
+    SetGroupAvatarAction,
     SetGroupEssenceMessageAction,
     SetGroupMemberAdminAction,
     SetGroupMemberCardAction,
     SetGroupMemberMuteAction,
+    SetGroupMemberSpecialTitleAction,
     SetGroupNameAction,
     SetGroupWholeMuteAction,
 } from "./group.js";
@@ -32,20 +38,26 @@ import {
     CreateGroupFolderAction,
     DeleteGroupFileAction,
     DeleteGroupFolderAction,
+    GetGroupFileDownloadUrlAction,
     GetGroupFilesAction,
     MoveGroupFileAction,
     PersistGroupFileAction,
     RenameGroupFileAction,
+    RenameGroupFolderAction,
+    UploadGroupFileAction,
 } from "./group-file.js";
 import {
+    GetCustomFaceUrlListAction,
     GetForwardedMessagesAction,
     GetHistoryMessagesAction,
     GetMessageAction,
+    GetResourceTempUrlAction,
     MarkMessageAsReadAction,
     RecallGroupMessageAction,
     RecallPrivateMessageAction,
     SendGroupMessageAction,
     SendPrivateMessageAction,
+    UploadPrivateFileAction,
 } from "./message.js";
 import {
     GetCookiesAction,
@@ -62,8 +74,11 @@ import {
     GetFriendListAction,
     GetFriendRequestsAction,
     GetGroupListAction,
+    GetPeerPinsAction,
     RejectFriendRequestAction,
+    SendFriendNudgeAction,
     SendProfileLikeAction,
+    SetPeerPinAction,
 } from "./social.js";
 import { GetImplInfoAction, GetLoginInfoAction } from "./system.js";
 
@@ -128,5 +143,21 @@ export function createMilkyActionRegistry(opts: {
     registry.register(new PersistGroupFileAction(api));
     registry.register(new CreateGroupFolderAction(api));
     registry.register(new DeleteGroupFolderAction(api));
+    // P2 批次二（§0.7）
+    registry.register(new SendFriendNudgeAction(api));
+    registry.register(new GetPeerPinsAction(api));
+    registry.register(new SetPeerPinAction(api));
+    registry.register(new SendGroupNudgeAction(api));
+    registry.register(new GetGroupAnnouncementsAction(api));
+    registry.register(new SendGroupAnnouncementAction(api));
+    registry.register(new DeleteGroupAnnouncementAction(api));
+    registry.register(new SetGroupAvatarAction(api));
+    registry.register(new SetGroupMemberSpecialTitleAction(api));
+    registry.register(new GetCustomFaceUrlListAction(api));
+    registry.register(new GetResourceTempUrlAction(api));
+    registry.register(new UploadPrivateFileAction(api));
+    registry.register(new UploadGroupFileAction(api));
+    registry.register(new GetGroupFileDownloadUrlAction(api));
+    registry.register(new RenameGroupFolderAction(api));
     return registry;
 }

@@ -1,21 +1,27 @@
 /**
- * Milky 群文件类动作（P1）：get_group_files / move / rename / delete /
- * persist_group_file / create_group_folder / delete_group_folder
+ * Milky 群文件类动作（P1 + P2 批次二）：get_group_files / move / rename / delete /
+ * persist_group_file / create_group_folder / delete_group_folder /
+ * upload_group_file / get_group_file_download_url / rename_group_folder
  *
- * 全部走 RichMediaApi（群文件系列）。rename_group_folder 与
- * get_group_file_download_url kernel 无出口（P2 探测，见 docs/protocols/milky.md）。
+ * 全部走 RichMediaApi（群文件系列）。upload_group_file 走消息发送链（生态同款，
+ * 群内产文件消息；parent_folder_id 暂不参与定位）；download_url 仅根目录可达。
  * 实体字段以 GroupFileItemInfo / GroupFolderInfo 为源；下载次数 / 过期时间 /
  * 文件夹元数据等无源字段 0/null 兜底（待探测校准）。
  */
-import type { GroupFileItemInfo, GroupFolderInfo } from "@napuketto/kernel";
+import type { GroupFileItemInfo, GroupFolderInfo, Peer } from "@napuketto/kernel";
+import { ChatType } from "@napuketto/kernel";
 import { z } from "zod";
+import { resolveUriToPath } from "../helper/media-uri.js";
 import type {
     CreateGroupFolderOutput,
+    GetFileDownloadUrlOutput,
     GetGroupFilesOutput,
     GroupFileEntity,
     GroupFolderEntity,
+    UploadFileOutput,
 } from "../types.js";
 import { MilkyApiAction } from "./base-action.js";
+import { sendFileMessage } from "./message.js";
 
 const groupIdField = { group_id: z.number().int().min(10001) } as const;
 const fileIdField = { file_id: z.string().min(1) } as const;
@@ -219,4 +225,81 @@ function folderToEntity(info: GroupFolderInfo, groupId: number): GroupFolderEnti
         creator_id: 0,
         file_count: num("totalFileCount"),
     };
+}
+
+/** upload_group_file：上传群文件（消息发送链；parent_folder_id 暂不参与定位）。 */
+export class UploadGroupFileAction extends MilkyApiAction<
+    {
+        group_id: number;
+        parent_folder_id?: string | null | undefined;
+        file_uri: string;
+        file_name: string;
+    },
+    UploadFileOutput
+> {
+    readonly name = "upload_group_file";
+    readonly schema = z.object({
+        ...groupIdField,
+        parent_folder_id: optStr,
+        file_uri: z.string().min(1),
+        file_name: z.string().min(1),
+    });
+
+    protected async _handle(payload: {
+        group_id: number;
+        parent_folder_id?: string | null | undefined;
+        file_uri: string;
+        file_name: string;
+    }): Promise<UploadFileOutput> {
+        const path = await resolveUriToPath(payload.file_uri, this.api.mediaDir);
+        const peer: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
+        const fileId = await sendFileMessage(this.api, peer, path, payload.file_name);
+        return { file_id: fileId };
+    }
+}
+
+/** get_group_file_download_url：群文件下载链接（url 字段待实机确认，仅根目录）。 */
+export class GetGroupFileDownloadUrlAction extends MilkyApiAction<
+    { group_id: number; file_id: string },
+    GetFileDownloadUrlOutput
+> {
+    readonly name = "get_group_file_download_url";
+    readonly schema = z.object({ ...groupIdField, ...fileIdField });
+
+    protected async _handle(payload: {
+        group_id: number;
+        file_id: string;
+    }): Promise<GetFileDownloadUrlOutput> {
+        const url = await this.api.richMediaApi.getGroupFileDownloadUrl(
+            String(payload.group_id),
+            payload.file_id,
+        );
+        return { download_url: url };
+    }
+}
+
+/** rename_group_folder：重命名群文件夹（renameGroupFile 同款形态，待校准）。 */
+export class RenameGroupFolderAction extends MilkyApiAction<
+    { group_id: number; folder_id: string; new_folder_name: string },
+    Record<string, never>
+> {
+    readonly name = "rename_group_folder";
+    readonly schema = z.object({
+        ...groupIdField,
+        folder_id: z.string().min(1),
+        new_folder_name: z.string().min(1),
+    });
+
+    protected async _handle(payload: {
+        group_id: number;
+        folder_id: string;
+        new_folder_name: string;
+    }): Promise<Record<string, never>> {
+        await this.api.richMediaApi.renameGroupFolder(
+            String(payload.group_id),
+            payload.folder_id,
+            payload.new_folder_name,
+        );
+        return {};
+    }
 }

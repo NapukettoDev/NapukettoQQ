@@ -16,6 +16,7 @@ import type {
     ProfileApi,
     ProfileLikeApi,
     RawMessage,
+    RecentContactApi,
     RichMediaApi,
     TicketApi,
     WebApi,
@@ -36,6 +37,8 @@ export interface MilkyApiOptions {
     webApi: WebApi;
     groupNotifyApi: GroupNotifyApi;
     richMediaApi: RichMediaApi;
+    /** P2 批次二：会话列表（get_peer_pins 数据源）。 */
+    recentContactApi: RecentContactApi;
     /** 登录身份（get_login_info / self_id / target_user_uid 用）。 */
     self: { uin: string; nickname: string; uid?: string };
     /** 群/成员缓存（群实体回填 / get_group_list；未装配时动作直查 api）。 */
@@ -60,6 +63,7 @@ export class MilkyApi {
     readonly webApi: WebApi;
     readonly groupNotifyApi: GroupNotifyApi;
     readonly richMediaApi: RichMediaApi;
+    readonly recentContactApi: RecentContactApi;
     readonly self: { uin: string; nickname: string; uid?: string };
     readonly groupCache: GroupCache | undefined;
     readonly qqVersion: string;
@@ -80,6 +84,7 @@ export class MilkyApi {
         this.webApi = opts.webApi;
         this.groupNotifyApi = opts.groupNotifyApi;
         this.richMediaApi = opts.richMediaApi;
+        this.recentContactApi = opts.recentContactApi;
         this.self = opts.self;
         this.groupCache = opts.groupCache;
         this.qqVersion = opts.qqVersion;

@@ -156,6 +156,21 @@ export interface GroupMember {
     [key: string]: unknown;
 }
 
+/** 群公告（getGroupBulletin 返回项，说明书参考，待探测校准）。 */
+export interface GroupBulletin {
+    /** 公告 id（delete_group_announcement 的 announcement_id）。 */
+    announcementId?: string;
+    /** 发送者 uid。 */
+    senderUid?: string;
+    /** 发送时间（秒）。 */
+    publishTime?: number;
+    /** 文本内容。 */
+    content?: string;
+    /** 公告图片（url 待实机确认）。 */
+    pic?: { url?: string; width?: number; height?: number; id?: string };
+    [key: string]: unknown;
+}
+
 /** 群服务：apis/group 用到的核心方法面。 */
 export interface NodeIKernelGroupService {
     addKernelGroupListener(listener: unknown): number;
@@ -251,4 +266,20 @@ export interface NodeIKernelGroupService {
             };
         },
     ): Promise<void>;
+    /** 群公告列表（get_group_announcements；返回形状待探测校准）。 */
+    getGroupBulletin(groupCode: string): Promise<GeneralCallResult & { result?: unknown }>;
+    /** 发群公告（send_group_announcement；参数形状待探测校准）。 */
+    publishGroupBulletin(param: {
+        groupCode: string;
+        content: string;
+        picId?: string;
+    }): Promise<unknown>;
+    /** 上传公告图片（image_uri 落盘后调用；返回 picId 待校准）。 */
+    uploadGroupBulletinPic(groupCode: string, imagePath: string): Promise<unknown>;
+    /** 删群公告（delete_group_announcement；参数待校准）。 */
+    deleteGroupBulletin(groupCode: string, announcementId: string): Promise<unknown>;
+    /** 专属头衔（set_group_member_special_title；待校准，备选 setGroupIdentitySpec）。 */
+    setIdentityTitleInfo(groupCode: string, uid: string, title: string): Promise<unknown>;
+    /** 群头像（set_group_avatar；参数待校准；Profile setHeader 同名方法）。 */
+    setHeader(groupCode: string, imagePath: string): Promise<unknown>;
 }

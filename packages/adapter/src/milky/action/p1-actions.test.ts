@@ -65,10 +65,10 @@ function makeApi(stubs: { notifies?: GroupNotify[]; essence?: unknown[]; files?:
 }
 
 describe("P1 注册表面", () => {
-    it("49 动作名齐（P0 九个保持前缀）", () => {
+    it("64 动作名齐（P0 九个保持前缀；P2 批次二 15 个注册）", () => {
         const { registry } = makeApi({});
         const names = registry.names;
-        expect(names).toHaveLength(49);
+        expect(names).toHaveLength(64);
         expect(names.slice(0, 9)).toEqual([
             "get_login_info",
             "get_impl_info",
@@ -84,6 +84,22 @@ describe("P1 注册表面", () => {
         expect(names).toContain("get_group_notifications");
         expect(names).toContain("create_group_folder");
         expect(names).toContain("get_csrf_token");
+        // P2 批次二（§0.7）
+        expect(names).toContain("send_friend_nudge");
+        expect(names).toContain("send_group_nudge");
+        expect(names).toContain("get_peer_pins");
+        expect(names).toContain("set_peer_pin");
+        expect(names).toContain("get_group_announcements");
+        expect(names).toContain("send_group_announcement");
+        expect(names).toContain("delete_group_announcement");
+        expect(names).toContain("set_group_avatar");
+        expect(names).toContain("set_group_member_special_title");
+        expect(names).toContain("get_custom_face_url_list");
+        expect(names).toContain("get_resource_temp_url");
+        expect(names).toContain("upload_private_file");
+        expect(names).toContain("upload_group_file");
+        expect(names).toContain("get_group_file_download_url");
+        expect(names).toContain("rename_group_folder");
     });
 });
 

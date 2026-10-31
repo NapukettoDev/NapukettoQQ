@@ -90,6 +90,7 @@ vi.mock("../protocols.js", () => ({
             groupNotifyApi: {},
             ticketApi: {},
             richMediaApi: {},
+            recentContactApi: {},
             profileApi: {},
             profileLikeApi: {},
             webApi: {},
