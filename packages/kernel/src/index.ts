@@ -169,7 +169,13 @@ export {
     toCanonicalElements,
     toSendElements,
 } from "./types/index.js";
-export { probeRuntime } from "./wrapper/probe/index.js";
+export {
+    createRecordingListener,
+    type ListenerRecordEvent,
+    type ListenerRecordingResult,
+    probeRuntime,
+    startListenerRecording,
+} from "./wrapper/probe/index.js";
 export { resolveQqGlobalPath } from "./wrapper/qq-data-path.js";
 export { getExistingSession, getMainSession } from "./wrapper/session-resolver.js";
 export {

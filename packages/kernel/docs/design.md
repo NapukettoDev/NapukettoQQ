@@ -350,3 +350,41 @@ KernelError INVALID_PARAM）。字段名与接收侧同源（同一 wrapper 事�
 **其余仍落 unknown 的元素类型**（GRAY_TIP 8 / MFACE 11 / LIVE_GIFT 12 /
 STRUCT_LONG_MSG 13 / MARKDOWN 14 / GIPHY 15 / INLINE_KEYBOARD 17 等）待有
 真实样本按「运行时探测」原则（ADR-006）逐个补。
+
+## 10. listener 录制器（probe-listener.ts，2026-10-31 批次三前置）
+
+**动机**：无源事件（Milky 批次三，`docs/protocols/milky.md` §0.8）缺的不是
+方法名而是**回调证据**——现有 bridge 只注册已知回调名（Msg 7 / Group 9），
+原生 listener 回调面之外的派发行为从未被观测。录制器用 Proxy 万能监听器把
+这块补上：原生调什么记什么。
+
+**原理**：原生 listener 是普通 JS 对象 + NAPI 按名反射回调（§1 bridge 模式）。
+`createRecordingListener(service, onEvent)` 返回 Proxy 包裹的空对象——
+`get` 陷阱对任意字符串属性返回记录函数（同时记录原生查过的名字，即使从未
+调用）；`has` / `ownKeys` 也记录（判定原生按名 Get 还是枚举发现回调）；
+非字符串键（Symbol）放行默认行为。记录函数只序列化入参后回调 onEvent，
+**绝不反向调用原生**（probe 工具安全边界）。
+
+**接缝**：`startListenerRecording(ctx, file?)` 由 loader bootstrap 调用
+（`NAPUTO_LISTENER_RECORD=1`，位置在 `runProbePhase` **之前**——session 就绪 +
+协议装配完成后）。时序硬约束：probe 内 `getMainSession` 的写回副作用会把空壳
+主 session 毒化进 `ctx.session`（session-resolver.ts），录制器必须先于探测取
+服务。仪器面默认十个 session 服务（Msg / Group / RecentContact / BdhUpload /
+OnlineStatus / Lock / FileAssistant / Buddy / ProfileLike / NodeMisc）+
+LoginService（`NodeIKernelLoginService.get()`）。add/remove 方法按
+`/^add(Kernel)?\w*Listener$/`（remove 同理）自动选取，覆盖裸 `addListener`
+服务（VasGroup / PublicAccount）。
+
+**产物**：`NAPUTO_CFG_DIR/napuketto-listener-record.jsonl`，JSONL 追加——
+每回调一行 `{ts, service, event, args}`（probe-serialize 截断）；注册过程逐行
+落盘（`<registered>`，含 listenerId），注册逐服务即时 append，原生崩溃时保留
+断点定位肇事服务（同 collectServiceGetters 增量落盘惯例）。
+
+**共存与失效**：与业务 bridge 并存——`addKernelXListener` 多监听各自独立 id，
+录制器不干扰协议链路。软重登后录制器随旧 session 失效（probe 工具不随装配
+重挂），重录须重启进程。回调若需返回值（原生用返回值控制流程的场合）记录
+函数返回 undefined——QQ NT listener 族以 void 通知为主，首轮数据校验此假设。
+
+**已知风险**：若原生以 ownKeys 枚举发现回调（而非按名 Get），空目标 Proxy
+一无所获——`<ownKeys>` 陷阱记录会立即暴露该行为，fallback 是预置已知回调名
+全集为真实属性后重新录制。

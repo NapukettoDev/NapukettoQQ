@@ -245,6 +245,35 @@ export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
     }
 }
 
+/**
+ * listener 录制模式（NAPUTO_LISTENER_RECORD=1，批次三前置）：万能监听器挂满
+ * 候选服务，回调逐行落盘 napuketto-listener-record.jsonl。
+ * ⚠️ 必须先于 runProbePhase——probe 的 getMainSession 写回副作用会毒化
+ * ctx.session（空壳主 session），录制器要先取服务。
+ */
+function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): void {
+    if (env.NAPUTO_LISTENER_RECORD !== "1") {
+        return;
+    }
+    if (typeof kernel.startListenerRecording !== "function") {
+        log("bootstrap: listener-record 请求但 kernel 缺 startListenerRecording（kernel 过旧）");
+        return;
+    }
+    try {
+        const rec = kernel.startListenerRecording(ctx);
+        const ok = Object.values(rec.registered).filter((r) => r.ok).length;
+        const total = Object.keys(rec.registered).length;
+        log(`bootstrap: listener-record 挂起 ${ok}/${total} 服务 → ${rec.file}`);
+        for (const [name, r] of Object.entries(rec.registered)) {
+            if (!r.ok) {
+                log(`bootstrap: listener-record ${name} 未挂: ${r.error ?? "unknown"}`);
+            }
+        }
+    } catch (e) {
+        log(`bootstrap: listener-record error: ${errMsg(e)}`);
+    }
+}
+
 /** 探测模式（NAPUTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
 function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
     if (env.NAPUTO_PROBE !== "1") {
@@ -494,6 +523,8 @@ export async function bootstrapWithCore(
     }
     // 装配完成：开启软重登窗口（control login 原地重登 + 重装配）
     control.markReady();
+    // listener 录制模式（先于探测——时序硬约束见 runListenerRecordingPhase）
+    runListenerRecordingPhase(kernel, ctx);
     // 探测模式
     runProbePhase(kernel, ctx);
     return true;
