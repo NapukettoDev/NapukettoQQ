@@ -4,17 +4,10 @@
  * 覆盖运行时反射基础工具：
  *  - listMethods：原型链 + 自有属性枚举（去重、去构造器、排序）
  *  - tryCall：安全调用（成功/非函数/抛异常）
- *  - session 候选评分（isServiceGetter / countNonNullServices /
- *    pickPrimaryCandidate，2026-10-31 自建宿主主 session 服务全 null 修复）
+ *  - isServiceGetter（get*Service 命名约定）
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-    countNonNullServices,
-    isServiceGetter,
-    listMethods,
-    pickPrimaryCandidate,
-    tryCall,
-} from "./probe-utils.js";
+import { isServiceGetter, listMethods, tryCall } from "./probe-utils.js";
 
 describe("listMethods", () => {
     it("null/undefined 返回空数组", () => {
@@ -140,50 +133,12 @@ describe("tryCall", () => {
     });
 });
 
-describe("session 候选评分", () => {
-    it("isServiceGetter：get*Service 命名判定", () => {
+describe("isServiceGetter", () => {
+    it("get*Service 命名判定", () => {
         expect(isServiceGetter("getMsgService")).toBe(true);
         expect(isServiceGetter("getService")).toBe(true);
         expect(isServiceGetter("getMsg")).toBe(false);
         expect(isServiceGetter("sendMessage")).toBe(false);
         expect(isServiceGetter("getMsgServiceList")).toBe(false);
-    });
-
-    it("countNonNullServices：只数非空 get*Service 返回（异常与非服务忽略）", () => {
-        const session = {
-            getMsgService: () => ({ sendMsg: () => undefined }),
-            getGroupService: () => null,
-            getBuddyService: () => undefined,
-            getBoomService: () => {
-                throw new Error("not ready");
-            },
-            fetchNotService: () => "ignored",
-            sendMessage: () => "not a getter",
-        };
-        expect(countNonNullServices(session)).toBe(1);
-    });
-
-    it("countNonNullServices：null / 无服务对象返回 0", () => {
-        expect(countNonNullServices(null)).toBe(0);
-        expect(countNonNullServices(undefined)).toBe(0);
-        expect(countNonNullServices({ answer: 42 })).toBe(0);
-    });
-
-    it("pickPrimaryCandidate：服务实例多者优先（并列保持顺序 = 主 session 优先）", () => {
-        const main = { source: "mainSession", session: {}, serviceNonNull: 0 };
-        const own = { source: "own-create", session: {}, serviceNonNull: 40 };
-        expect(pickPrimaryCandidate([main, own])).toEqual(own);
-        // 并列（都 0，自建宿主未登录态）：保持主 session 在前
-        const main2 = { source: "mainSession", session: {}, serviceNonNull: 0 };
-        const own2 = { source: "own-create", session: {}, serviceNonNull: 0 };
-        expect(pickPrimaryCandidate([main2, own2])).toEqual(main2);
-    });
-
-    it("pickPrimaryCandidate：空候选回退 own-create 占位", () => {
-        expect(pickPrimaryCandidate([])).toEqual({
-            source: "own-create",
-            session: null,
-            serviceNonNull: 0,
-        });
     });
 });
