@@ -16,6 +16,8 @@ export { GroupNotifyApi } from "./group-notify.js";
 export { MsgApi } from "./msg.js";
 export { ProfileApi } from "./profile.js";
 export { ProfileLikeApi } from "./profile-like.js";
+export type { PinnedContact } from "./recent-contact.js";
+export { RecentContactApi } from "./recent-contact.js";
 export type { GroupFileListItem, GroupFileSystemInfo } from "./richmedia.js";
 export { RichMediaApi } from "./richmedia.js";
 export type { StrangerInfo } from "./stranger-info.js";

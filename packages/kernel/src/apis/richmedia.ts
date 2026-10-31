@@ -12,7 +12,7 @@ import type {
     NodeIKernelRichMediaService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
-import { unwrap } from "./result.js";
+import { checkLooseResult, unwrap } from "./result.js";
 
 /** 群文件业务类型（deleteGroupFile/moveGroupFile/renameGroupFile 用，说明书参考）。 */
 const GROUP_FILE_BIZ_TYPE = 102;
@@ -77,14 +77,15 @@ export class RichMediaApi {
             showOnlinedocFolder: HIDE_ONLINEDOC_FOLDER,
         };
         const raw = await this.service.getGroupFileList(groupCode, params);
-        if (raw.result !== 0) {
-            unwrap("getGroupFileList", raw.result, raw.errMsg);
-        }
+        // 宽松解包（2026-10-31 修正）：旧逻辑 result 数字非 0 抛错 + extractFileList(0)
+        // 得空——真实返回形状（result 即列表 / 顶层列表 / 嵌套 items）下要么误抛要么恒空。
+        checkLooseResult("getGroupFileList", raw);
         const list = extractFileList(raw.result);
+        const items = list.length > 0 ? list : extractFileList(raw);
         if (parentFolderId === "") {
-            return list;
+            return items;
         }
-        return list.filter(
+        return items.filter(
             (item) =>
                 (item.fileInfo !== undefined && item.fileInfo.parent === parentFolderId) ||
                 (item.folderInfo !== undefined && item.folderInfo.folderUid === parentFolderId),
@@ -167,6 +168,33 @@ export class RichMediaApi {
         if (raw.result !== 0) {
             unwrap("moveGroupFile", raw.result, raw.errMsg);
         }
+    }
+
+    /** 重命名群文件夹（rename_group_folder；形态镜像 renameGroupFile，待校准）。 */
+    async renameGroupFolder(groupCode: string, folderId: string, newName: string): Promise<void> {
+        await this.service.renameGroupFolder(groupCode, GROUP_FILE_BIZ_TYPE, folderId, newName, "");
+    }
+
+    /**
+     * 群文件下载链接（get_group_file_download_url）：getGroupFileList 根列表按
+     * fileId 查找取 url 字段（字段待实机确认）。已知差异：仅根目录可达——
+     * 子目录文件需 parentFolderId 逐层定位，暂不支持。
+     */
+    async getGroupFileDownloadUrl(groupCode: string, fileId: string): Promise<string> {
+        const items = await this.getGroupFileList(groupCode);
+        for (const item of items) {
+            const info = item.fileInfo;
+            if (info !== undefined && info.fileId === fileId) {
+                if (typeof info.url === "string" && info.url !== "") {
+                    return info.url;
+                }
+                throw kernelError(
+                    `群文件 ${fileId} 无下载链接（url 字段缺失，待实机校准）`,
+                    "NOT_FOUND",
+                );
+            }
+        }
+        throw kernelError(`群文件 ${fileId} 不在根目录或不存在（仅支持根目录查找）`, "NOT_FOUND");
     }
 
     /** 转存群文件（trans_group_file）。 */

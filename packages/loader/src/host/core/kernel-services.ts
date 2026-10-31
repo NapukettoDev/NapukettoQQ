@@ -42,6 +42,7 @@ export interface KernelServices {
     groupNotifyApi: unknown;
     ticketApi: unknown;
     richMediaApi: unknown;
+    recentContactApi: unknown;
     profileApi: unknown;
     profileLikeApi: unknown;
     webApi: unknown;
@@ -217,6 +218,8 @@ export async function createKernelServices(
     const groupNotifyApi = new kernel.GroupNotifyApi(session);
     const ticketApi = new kernel.TicketApi(session);
     const richMediaApi = new kernel.RichMediaApi(session);
+    // 会话列表（P2 批次二 get_peer_pins 数据源）
+    const recentContactApi = new kernel.RecentContactApi(session);
     const profileApi = new kernel.ProfileApi(session);
     const profileLikeApi = new kernel.ProfileLikeApi(session);
     // 群空间 web API（Cookie 经 TicketApi.getCookies 注入）
@@ -238,6 +241,7 @@ export async function createKernelServices(
         groupNotifyApi,
         ticketApi,
         richMediaApi,
+        recentContactApi,
         profileApi,
         profileLikeApi,
         webApi,

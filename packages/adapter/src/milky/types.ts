@@ -308,6 +308,47 @@ export interface GetGroupFilesOutput {
     folders: GroupFolderEntity[];
 }
 
+/** get_group_announcements 响应。 */
+export interface GetGroupAnnouncementsOutput {
+    announcements: GroupAnnouncementEntity[];
+}
+
+/** 群公告实体（官方 GroupAnnouncementEntity，1.3.0）。 */
+export interface GroupAnnouncementEntity {
+    group_id: number;
+    announcement_id: string;
+    user_id: number;
+    time: number;
+    content: string;
+    image_url: string | null;
+}
+
+/** get_custom_face_url_list 响应。 */
+export interface GetCustomFaceUrlListOutput {
+    urls: string[];
+}
+
+/** get_resource_temp_url 响应。 */
+export interface GetResourceTempUrlOutput {
+    url: string;
+}
+
+/** get_peer_pins 响应。 */
+export interface GetPeerPinsOutput {
+    friends: FriendEntity[];
+    groups: GroupEntity[];
+}
+
+/** upload_private/group_file 响应。 */
+export interface UploadFileOutput {
+    file_id: string;
+}
+
+/** get_group/private_file_download_url 响应。 */
+export interface GetFileDownloadUrlOutput {
+    download_url: string;
+}
+
 /** create_group_folder 响应。 */
 export interface CreateGroupFolderOutput {
     folder_id: string;

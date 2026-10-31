@@ -4,14 +4,17 @@
  * accept_friend_request / reject_friend_request）
  */
 
+import type { Peer } from "@napuketto/kernel";
+import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
-import { findBuddyReq } from "../api.js";
+import { findBuddyReq, type MilkyApi } from "../api.js";
 import { groupListToEntity, toFriendEntity } from "../helper/entities.js";
 import type {
     FriendRequestEntity,
     GetFriendListOutput,
     GetFriendRequestsOutput,
     GetGroupListOutput,
+    GetPeerPinsOutput,
 } from "../types.js";
 import { MilkyApiAction } from "./base-action.js";
 
@@ -169,3 +172,115 @@ export class RejectFriendRequestAction extends HandleFriendRequestBase {
     readonly name = "reject_friend_request";
     protected readonly accept = false;
 }
+
+/** send_friend_nudge：发送好友戳一戳（is_self=true 戳自己）。 */
+export class SendFriendNudgeAction extends MilkyApiAction<
+    { user_id: number; is_self?: boolean | null | undefined },
+    Record<string, never>
+> {
+    readonly name = "send_friend_nudge";
+    readonly schema = z.object({ user_id: z.number().int().min(10001), is_self: optBoolNudge });
+
+    protected async _handle(payload: {
+        user_id: number;
+        is_self?: boolean | null | undefined;
+    }): Promise<Record<string, never>> {
+        const callerUid = requireSelfUid(this.api);
+        const receiverUid =
+            payload.is_self === true
+                ? callerUid
+                : await this.api.resolveUidFromUin(payload.user_id);
+        const peer = await this.api.resolvePeer("friend", payload.user_id);
+        await this.api.msgApi.sendNudge(peer, { receiverUid, callerUid });
+        return {};
+    }
+}
+
+/** get_peer_pins：获取置顶会话（RecentContactApi isTop 过滤，实体经现有翻译）。 */
+export class GetPeerPinsAction extends MilkyApiAction<Record<string, never>, GetPeerPinsOutput> {
+    readonly name = "get_peer_pins";
+    readonly schema = z.object({});
+
+    protected async _handle(): Promise<GetPeerPinsOutput> {
+        const pinned = await this.api.recentContactApi.getPinnedContacts();
+        const friendUids = pinned.filter((p) => p.scene === "friend").map((p) => p.peerUid);
+        const groupCodes = pinned.filter((p) => p.scene === "group").map((p) => p.peerUid);
+        const friends = await pinnedFriendEntities(this.api, friendUids);
+        const groups = await pinnedGroupEntities(this.api, groupCodes);
+        return { friends, groups };
+    }
+}
+
+/** set_peer_pin：设置/取消会话置顶（is_pinned 缺省 true）。 */
+export class SetPeerPinAction extends MilkyApiAction<
+    {
+        message_scene: "friend" | "group" | "temp";
+        peer_id: number;
+        is_pinned?: boolean | null | undefined;
+    },
+    Record<string, never>
+> {
+    readonly name = "set_peer_pin";
+    readonly schema = z.object({
+        message_scene: z.enum(["friend", "group", "temp"]),
+        peer_id: z.number().int().min(10001),
+        is_pinned: optBoolNudge,
+    });
+
+    protected async _handle(payload: {
+        message_scene: "friend" | "group" | "temp";
+        peer_id: number;
+        is_pinned?: boolean | null | undefined;
+    }): Promise<Record<string, never>> {
+        const peer: Peer = await this.api.resolvePeer(payload.message_scene, payload.peer_id);
+        await this.api.msgApi.setContactTop(peer, payload.is_pinned ?? true);
+        return {};
+    }
+}
+
+/** 置顶好友实体（uid 匹配全量好友列表；未命中跳过）。 */
+async function pinnedFriendEntities(
+    api: MilkyApi,
+    uids: string[],
+): Promise<GetPeerPinsOutput["friends"]> {
+    if (uids.length === 0) {
+        return [];
+    }
+    const all = await api.friendApi.getFriendList();
+    const byUid = new Map(all.map((f) => [f.uid, f]));
+    return uids.flatMap((uid) => {
+        const f = byUid.get(uid);
+        return f !== undefined ? [toFriendEntity(f, f.uin, f.nickname)] : [];
+    });
+}
+
+/** 置顶群实体（groupCode 匹配群列表，缓存优先；未命中跳过）。 */
+async function pinnedGroupEntities(
+    api: MilkyApi,
+    groupCodes: string[],
+): Promise<GetPeerPinsOutput["groups"]> {
+    if (groupCodes.length === 0) {
+        return [];
+    }
+    const groups =
+        api.groupCache !== undefined
+            ? await api.groupCache.listGroupsRefreshed()
+            : await api.groupApi.getGroupList(true);
+    const byCode = new Map(groups.map((g) => [g.groupCode, g]));
+    return groupCodes.flatMap((code) => {
+        const g = byCode.get(code);
+        return g !== undefined ? [groupListToEntity(g)] : [];
+    });
+}
+
+/** self.uid 必备（nudge 发送的 callerUid）。 */
+function requireSelfUid(api: MilkyApi): string {
+    const uid = api.self.uid;
+    if (uid === undefined || uid === "") {
+        throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
+    }
+    return uid;
+}
+
+/** 可选布尔（social.ts 本文件原无 optBool，本地定义避免全局重名）。 */
+const optBoolNudge = z.boolean().nullable().optional();

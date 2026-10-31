@@ -162,6 +162,8 @@ export interface NodeIQQNTWrapperSession {
     /** 闪传服务（诊断用：调查 rich media transfer failed 时验证初始化触发点）。 */
     getFlashTransferService(): unknown;
     getProfileService(): unknown;
+    /** 会话列表（P2 批次二 get_peer_pins 数据源；2026-10-31 探测方法面）。 */
+    getRecentContactService(): unknown;
     getProfileLikeService(): unknown;
     getTipOffService(): unknown;
 }

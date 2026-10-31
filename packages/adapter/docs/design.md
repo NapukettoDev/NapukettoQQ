@@ -465,9 +465,39 @@ title / preview / summary / prompt。P1 的「显式报错」到此落地为「�
 **logger 接线**：MilkyApi 增可选 `logger`（装配自 adapter opts.logger，与 calibLogger
 同源）——动作层首次有可观测出口，服务于「撤回失败必须可观测」（错误处理红线：不静默）。
 
-**批次二（依赖实机探测产物，未开工）**：rename_group_folder /
-get_group_file_download_url / get_resource_temp_url / send_friend_nudge /
-send_group_nudge / 群公告 / 置顶 / 专属头衔 / 群头像 / 上传 + 5 无源事件。前置：宿主以
-`NAPUTO_PROBE=1` 启动产 `napuketto-probe.json`（含各 get*Service 完整方法面，见
-kernel probe.ts collectServiceGetters），按方法面设计 kernel 出口（说明书参考 +
-待探测校准惯例），再接 adapter。
+### 9.6 P2 批次二：❌ 面 12 实装 + 2 🟡 接线（2026-10-31）
+
+实机探测（NAPUTO_PROBE=1，names-only 修复后）拿到 56 个服务方法面；规范形状取
+官方 API 文档（1.3.0，MIT）。动作 15 个（§0.7 对应表），kernel 出口在装配期一次性
+取服务（实测登录后 session 注册表 getter 恒 null，运行中重新 get*Service 拿不到
+实例——已持引用不受影响）。
+
+**kernel 出口**：MsgApi 补 file 元素发送链（P2-2 预留口子，prepareFileElement =
+pic/ptt/video 同款 NapCat 式 md5 → getRichMediaFilePathForGuild(FILE) → copyFile →
+fileElement）+ sendNudge / setContactTop / queryFavEmojis；GroupApi 补公告三动作
+（getGroupBulletin / publishGroupBulletin(+uploadGroupBulletinPic) /
+deleteGroupBulletin）+ setGroupAvatar（setHeader）+ setMemberSpecialTitle
+（setIdentityTitleInfo）；RichMediaApi 补 renameGroupFolder +
+getGroupFileDownloadUrl（getGroupFileList 按 fileId 查 url 字段）；新增
+RecentContactApi（getRecentContactList，get_peer_pins 数据源）。全部「方法名实测
+确认、参数待校准」——失败抛 KernelError，原始响应记 debug 日志供实机校准。
+
+**adapter 接线**：动作按域落 social（send_friend_nudge / peer_pins 对）、group
+（send_group_nudge / 公告三动作 / set_group_avatar / set_group_member_special_title）、
+message（get_custom_face_url_list / get_resource_temp_url / upload_private_file）、
+group-file（upload_group_file / get_group_file_download_url / rename_group_folder）。
+image_uri / file_uri 经 helper/media-uri 新增 resolveUriToPath（file:// 剥前缀同步
+展开，远程复用 resolveMediaUri）。upload_* 响应 file_id 取发出消息
+fileElement.fileUuid（fetchMsgsByMsgId 回查，缺省 msgId 兜底）。
+
+**已知差异（文档明示）**：get_resource_temp_url 当前 resource_id 即临时链接（P0
+模型）原样返回；upload_group_file 走消息发送链（群内产文件消息，生态同款），
+parent_folder_id 暂不参与定位；get_group_file_download_url 仅根目录可达。
+get_private_file_download_url 延后批次三（rkey/TriSHA1）。
+
+**loader 装配**：kernel-services 增构造 recentContactApi，assemble-protocols 透传
+入 MilkyApiOptions（richMediaApi 同款）。
+
+**批次三（未动）**：5 无源事件（reaction / peer_pin / essence_change / bot_offline /
+friend_file_upload）+ get_private_file_download_url 校准——需 sysmsg 识别表与
+listener 回调探测。

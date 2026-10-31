@@ -1,8 +1,8 @@
 # Milky 协议（P0 已实现 · 规划稿）
 
 > **状态：P1 已实现，P2 批次一已落地**（P0 2026-10-28 / P1 2026-10-30 / P2 批次一
-> 2026-10-31，见 §0/§0.5/§0.6 落地面与 §9 勾选）。§6/§7 的状态列与 §9 P2 剩余部分
-> 仍是覆盖清单，不是现状描述；全部落地后按 `docs/README.md` 的维护约定改写为现状文档。
+> 2026-10-31，见 §0/§0.5/§0.6/§0.7 落地面与 §9 勾选）。§7 事件状态列仍是覆盖清单，
+> 不是现状描述；全部落地后按 `docs/README.md` 的维护约定改写为现状文档。
 >
 > **目标协议版本：Milky 1.3.0**（2026-08-07 发布）。`get_impl_info` 上报
 > `milky_version = "1.3"`。
@@ -64,11 +64,9 @@
 - **测试**：notice 翻译 11 例 + request 翻译 7 例 + P1 动作 9 例 + seqIndex 转发 1 例
   （全仓 92 文件 / 883 例全绿；fallow 门禁 55 变更文件零问题）。
 
-**延后（P2）**：forward 段发送 → 已在 P2 批次一落地（§0.6）。其余依赖实机探测：
-rename_group_folder（kernel 无 renameFolder 出口）、get_group_file_download_url
-（fileItem 无 url 字段）、get_resource_temp_url（resource_id 反查）、
-send_friend_nudge / send_group_nudge（无 nudge 发送）、群公告 / 置顶 / 专属头衔 /
-群头像 / 上传（kernel 无出口）。
+**延后（P2）**：forward 段发送 → 已在 P2 批次一落地（§0.6）；其余 ❌/🟡 面 → 已在
+P2 批次二落地（§0.7，实机探测方法面驱动），仅剩 get_private_file_download_url
+（rkey/TriSHA1 校准）与 5 个无源事件（批次三）。
 
 ## 0.6 P2 批次一（2026-10-31）：forward 发送段
 
@@ -89,13 +87,53 @@ best-effort 撤回临时消息（失败记 warn，不影响转发已发出）。
 - 约束：forward 段单独发（不混发、单次一个）；messages 为空 / 项内无可用段 /
   嵌套 forward → INVALID_PARAM。
 
-**批次二（依赖实机探测产物，未开工）**：上表其余 9 个 API + 5 个无源事件
-（group_message_reaction / peer_pin_change / group_essence_message_change /
-bot_offline / friend_file_upload）。前置操作：宿主以 `NAPUTO_PROBE=1` 启动，产
-`napuketto-probe.json`（+35s 晚探测 `napuketto-probe-late.json`）至 NAPUTO_CFG_DIR
-（缺省 cwd）——产物含各 `get*Service` 完整方法面（kernel probe.ts
-collectServiceGetters，已具备）；按方法面设计 kernel 出口（说明书参考 + 待探测校准
-惯例），再接 adapter。
+**批次二**：见 §0.7（探测产物驱动，已实现）。
+
+## 0.7 P2 批次二（2026-10-31）：❌ 面 12 实装 + 2 🟡 接线
+
+实机探测（`NAPUTO_PROBE=1`，names-only 探测修复后）拿到 56 个服务的完整方法面
+（本地 `.napuketto/<uin>/probe-services-summary.txt`，不入库）；规范形状取官方
+API 文档（1.3.0，MIT）。 kernel 出口全部在**装配期一次性取服务**（实测登录后
+session 注册表 getter 返回 null，运行中重新 get*Service 拿不到实例）。
+
+**动作 15 个（实装）**：
+
+| 动作 | kernel 出口（新） | 校准状态 |
+|---|---|---|
+| send_friend_nudge / send_group_nudge | `MsgApi.sendNudge` → MsgService.sendNudge | 方法名实测确认；参数对象形状待校准 |
+| set_peer_pin | `MsgApi.setContactTop` → MsgService.setContactLocalTop | 方法名实测确认；参数待校准 |
+| get_peer_pins | 新 `RecentContactApi.getRecentContactList`（isTop 过滤，套用现有 friend/group 实体翻译） | 方法名实测确认；返回形状待校准 |
+| get_custom_face_url_list | `MsgApi.queryFavEmojis` → MsgService.queryFavEmojiByDesc | 待校准 |
+| get_resource_temp_url | adapter 侧（见已知差异） | 🟡 维持 |
+| get_group_announcements | `GroupApi.getGroupAnnouncements` → getGroupBulletin | 待校准 |
+| send_group_announcement | `GroupApi.publishGroupAnnouncement` → uploadGroupBulletinPic（image_uri 时）+ publishGroupBulletin | 待校准 |
+| delete_group_announcement | `GroupApi.deleteGroupAnnouncement` → deleteGroupBulletin | 待校准 |
+| set_group_avatar | `GroupApi.setGroupAvatar` → GroupService.setHeader | 待校准 |
+| set_group_member_special_title | `GroupApi.setMemberSpecialTitle` → setIdentityTitleInfo | 待校准（备选 setGroupIdentitySpec） |
+| upload_private_file / upload_group_file | `MsgApi` 补 file 元素发送链（P2-2 预留口子）：prepareFileElement（pic/ptt/video 同款 md5 → getRichMediaFilePathForGuild(FILE) → copyFile → fileElement）→ sendMessage；file_id 取发出消息 fileElement.fileUuid（缺省 msgId 兜底） | 发送链模式已验证；fileElement 字段待校准 |
+| get_group_file_download_url | `RichMediaApi.getGroupFileDownloadUrl`：getGroupFileList 按 fileId 查找取 url 字段 | url 字段待实机确认；仅根目录可达（已知差异） |
+| rename_group_folder | `RichMediaApi.renameGroupFolder`（renameGroupFile 同款 5 参形态） | §6 此前误标 ✅（kernel 无出口），本批修正 |
+
+**get_private_file_download_url 延后（唯一剩余 ❌）**：NT 私聊文件下载链接涉及
+rkey 机制与 TriSHA1（规范 file_hash 参数即 TriSHA1），候选出口
+queryFileDownloadList 参数形状完全未知——盲装必错，随批次三回调探测校准。
+
+**已知差异 / 约定**：
+
+- get_resource_temp_url：当前接收段 resource_id 即临时链接（P0 模型，本地路径
+  优先 url 兜底），http(s)/base64 形态原样返回，否则 NOT_FOUND。独立资源索引
+  （稳定 resource_id + 反查）未建，留待按需。
+- upload_group_file 走消息发送链（生态同款）：群内产生一条文件消息（同时进群
+  文件区）；parent_folder_id 暂不参与定位（无 onlyUploadFile 校准前盲装风险高）。
+- file:// / http(s):// / base64:// URI：image_uri / file_uri 经 helper/media-uri
+  的 resolveUriToPath 展开（file:// 剥前缀，远程复用 resolveMediaUri 落盘）。
+- 待校准方法调用失败抛 KernelError（UNKNOWN/INVALID_PARAM），原始响应记 debug
+  日志（批次一 logger 出口）供实机校准；不静默吞错。
+
+**无源事件（批次三，未动）**：group_message_reaction / peer_pin_change /
+group_essence_message_change / bot_offline / friend_file_upload——无独立方法名
+可依（reaction 疑走 msg listener 回调携带），需先补 sysmsg 识别表与 listener
+回调探测（§9）。
 
 ## 1. 为什么做
 
@@ -242,12 +280,12 @@ webhooks = []             # 额外事件推送地址，可多个
 | `get_group_info` | ✅ | `GroupApi.getGroupInfo` |
 | `get_group_member_list` | ✅ | `GroupApi.getGroupMemberList` |
 | `get_group_member_info` | ✅ | `GroupApi.getGroupMemberInfo` |
-| `get_peer_pins` | ❌ | 无置顶能力 |
-| `set_peer_pin` | ❌ | 同上 |
+| `get_peer_pins` | ✅ | `RecentContactApi.getRecentContactList` isTop 过滤（待校准） |
+| `set_peer_pin` | ✅ | `MsgApi.setContactTop`（setContactLocalTop，待校准） |
 | `set_avatar` | ✅ | `ProfileApi.setHeader` |
 | `set_nickname` | ✅ | `ProfileApi.setNickName` |
 | `set_bio` | ✅ | `ProfileApi.setLongNick` |
-| `get_custom_face_url_list` | ❌ | 无收藏表情接口 |
+| `get_custom_face_url_list` | ✅ | `MsgApi.queryFavEmojis`（queryFavEmojiByDesc，待校准） |
 | `get_cookies` | ✅ | `TicketApi.getCookies` |
 | `get_csrf_token` | ✅ | `TicketApi.getClientKey` |
 
@@ -269,7 +307,7 @@ webhooks = []             # 额外事件推送地址，可多个
 
 | API | 状态 | kernel 对应 / 缺口 |
 |---|---|---|
-| `send_friend_nudge` | ❌ | 无 nudge 发送（OB11 侧 poke 也只做通知，未做发送） |
+| `send_friend_nudge` | ✅ | `MsgApi.sendNudge`（sendNudge，待校准） |
 | `send_profile_like` | ✅ | `ProfileLikeApi.sendLike` |
 | `delete_friend` | ✅ | `FriendApi.deleteFriend` |
 | `get_friend_requests` | ✅ | `FriendApi.getBuddyReqList` |
@@ -281,21 +319,21 @@ webhooks = []             # 额外事件推送地址，可多个
 | API | 状态 | kernel 对应 / 缺口 |
 |---|---|---|
 | `set_group_name` | ✅ | `GroupApi.modifyGroupName` |
-| `set_group_avatar` | ❌ | 无群头像接口 |
+| `set_group_avatar` | ✅ | `GroupApi.setGroupAvatar`（setHeader，待校准） |
 | `set_group_member_card` | ✅ | `GroupApi.setMemberCardName` |
-| `set_group_member_special_title` | ❌ | 无专属头衔接口 |
+| `set_group_member_special_title` | ✅ | `GroupApi.setMemberSpecialTitle`（setIdentityTitleInfo，待校准） |
 | `set_group_member_admin` | ✅ | `GroupApi.setMemberRole` |
 | `set_group_member_mute` | ✅ | `GroupApi.setMemberShutUp` |
 | `set_group_whole_mute` | ✅ | `GroupApi.setGroupShutUp` |
 | `kick_group_member` | ✅ | `GroupApi.kickMember` |
-| `get_group_announcements` | ❌ | 无群公告 |
-| `send_group_announcement` | ❌ | 同上 |
-| `delete_group_announcement` | ❌ | 同上 |
+| `get_group_announcements` | ✅ | `GroupApi.getGroupAnnouncements`（getGroupBulletin，待校准） |
+| `send_group_announcement` | ✅ | `GroupApi.publishGroupAnnouncement`（publishGroupBulletin，待校准） |
+| `delete_group_announcement` | ✅ | `GroupApi.deleteGroupAnnouncement`（deleteGroupBulletin，待校准） |
 | `get_group_essence_messages` | ✅ | `WebApi.getEssenceMsgList` |
 | `set_group_essence_message` | ✅ | `GroupApi.addGroupEssence` / `removeGroupEssence` |
 | `quit_group` | ✅ | `GroupApi.quitGroup` |
 | `send_group_message_reaction` | ✅ | `MsgApi.setMsgEmojiLike`（OB11 `set_msg_emoji_like`） |
-| `send_group_nudge` | ❌ | 无 nudge 发送 |
+| `send_group_nudge` | ✅ | 同 send_friend_nudge |
 | `get_group_notifications` | ✅ | `GroupNotifyApi.getSingleScreenNotifies` |
 | `accept_group_request` | ✅ | `GroupNotifyApi.handleGroupRequest` |
 | `reject_group_request` | ✅ | 同上 |
@@ -306,22 +344,21 @@ webhooks = []             # 额外事件推送地址，可多个
 
 | API | 状态 | kernel 对应 / 缺口 |
 |---|---|---|
-| `upload_private_file` | ❌ | 无上传（OB11 也没有） |
-| `upload_group_file` | ❌ | 同上 |
-| `get_private_file_download_url` | ❌ | 无私聊文件下载链接 |
-| `get_group_file_download_url` | 🟡 | `RichMediaApi.getGroupFileList` 内的 url 字段，待确认 |
+| `upload_private_file` | ✅ | `MsgApi` file 元素发送链（file_id 取 fileUuid） |
+| `upload_group_file` | ✅ | 同上（走消息发送链，群内产文件消息） |
+| `get_private_file_download_url` | ❌ | rkey/TriSHA1 机制未校准（queryFileDownloadList 参数未知，批次三） |
+| `get_group_file_download_url` | ✅ | `RichMediaApi.getGroupFileDownloadUrl`（url 字段待实机确认，仅根目录） |
 | `get_group_files` | ✅ | `RichMediaApi.getGroupFileList` |
 | `move_group_file` | ✅ | `RichMediaApi.moveGroupFile` |
 | `rename_group_file` | ✅ | `RichMediaApi.renameGroupFile` |
 | `delete_group_file` | ✅ | `RichMediaApi.deleteGroupFile` |
 | `persist_group_file` | 🟡 | `RichMediaApi.transGroupFile`（转存语义待对齐） |
 | `create_group_folder` | ✅ | `RichMediaApi.createGroupFolder` |
-| `rename_group_folder` | ✅ | 同上 |
+| `rename_group_folder` | ✅ | `RichMediaApi.renameGroupFolder` |
 | `delete_group_folder` | ✅ | `RichMediaApi.deleteGroupFolder` |
 
-**合计：✅ 46 ／ 🟡 6 ／ ❌ 13。** 46 个可以直接映射，协议层工作量主要是编解码；
-13 个 ❌ 全部要先探测 `wrapper.node` 有没有对应 native API——这是本项目最大的不确定性，
-也是 P2 之前不该对外承诺的面。
+**合计：✅ 58 ／ 🟡 5 ／ ❌ 1（2026-10-31 P2 批次二后）。** 待实现面只剩
+get_private_file_download_url（rkey/TriSHA1 校准）与 5 个无源事件（§0.7 批次三）。
 
 ## 7. 事件覆盖（21 个 → kernel 数据源）
 
@@ -406,11 +443,12 @@ webhooks = []             # 额外事件推送地址，可多个
 ### P2（长尾，依赖 native 探测）
 
 - [x] 批次一（2026-10-31）：forward 发送段（§0.6，临时消息法 + 已知差异）。
-- [ ] 批次二：13 个 ❌ 里可实现的（群公告、置顶、nudge、上传、私聊文件下载、收藏表情、
-  群头像、专属头衔）——前置 `NAPUTO_PROBE=1` 实机探测（§0.6 runbook），按方法面设计
-  kernel 出口后接 adapter。
-- [ ] 5 个无源事件（sysmsg 系 2 个 + reaction / disband / pin）：先补 sysmsg 识别表与
-  回调探测，再谈翻译。
+- [x] 批次二（2026-10-31）：12 个 ❌ 实装 + get_group_file_download_url 接线 +
+  rename_group_folder 出口修正（§0.7，探测方法面驱动）；get_private_file_download_url
+  延后（rkey/TriSHA1 校准）。
+- [ ] 批次三：5 个无源事件（group_message_reaction / peer_pin_change /
+  group_essence_message_change / bot_offline / friend_file_upload）+
+  get_private_file_download_url 校准——先补 sysmsg 识别表与 listener 回调探测，再谈翻译。
 
 ## 10. 验收与测试
 

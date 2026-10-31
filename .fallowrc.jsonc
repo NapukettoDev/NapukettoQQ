@@ -125,6 +125,15 @@
         "packages/kernel/src/types/listeners/index.ts",
         "packages/kernel/src/infra/index.ts",
         "packages/kernel/src/apis/index.ts",
+        // kernel apis 实现（2026-10-31）：语义化 API 类的公开方法全部被 adapter/loader
+        // 跨包消费（MsgApi.sendMessage 这类核心方法也在内），fallow 静态图跨不过包
+        // 边界（整仓模式 72 个同类误报）；任一改动文件的行位移还会把存量成员翻成
+        // 「本次引入」卡死增量门禁。与上方 barrel 豁免同根因：包公共面。复杂度/重复
+        // 检查不受影响（ignoreFindings 只压 dead-code）。
+        "packages/kernel/src/apis/msg.ts",
+        "packages/kernel/src/apis/group.ts",
+        "packages/kernel/src/apis/richmedia.ts",
+        "packages/kernel/src/apis/recent-contact.ts",
         "packages/loader/src/host/ipc/index.ts",
         // 测试文件（**/*.test.ts）：单包目录下跑 fallow 时 vitest 入口检测不到，
         // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经

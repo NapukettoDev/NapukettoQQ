@@ -13,6 +13,7 @@ export type {
 } from "./buddy-service.js";
 export type {
     Group,
+    GroupBulletin,
     GroupDetailInfo,
     GroupMember,
     GroupNotify,
@@ -31,6 +32,7 @@ export {
 export type {
     GeneralCallResult,
     NodeIKernelMsgService,
+    NudgeParam,
     SendMessageElement,
 } from "./msg-service.js";
 export { ElementType } from "./msg-service.js";
@@ -39,6 +41,11 @@ export type {
     NodeIKernelProfileLikeService,
 } from "./profile-like-service.js";
 export type { NodeIKernelProfileService, UserDetailInfoByUin } from "./profile-service.js";
+export type {
+    NodeIKernelRecentContactService,
+    RecentContact,
+    RecentContactFetchParam,
+} from "./recent-contact-service.js";
 export type {
     GetFileListParam,
     GroupFileItemInfo,

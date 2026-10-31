@@ -5,9 +5,10 @@
  * 方法面（P2-4 + P2-10）：群列表 / 群详情 / 成员列表 / 成员详情 / uin↔uid +
  * 群管操作（踢人 / 禁言 / 管理员 / 名片 / 群名 / 退群 / 精华消息 / @all 剩余）。
  */
-import { kernelError } from "../infra/index.js";
+import { isKernelError, kernelError } from "../infra/index.js";
 import type {
     Group,
+    GroupBulletin,
     GroupDetailInfo,
     GroupMember,
     KickMemberV2Req,
@@ -249,6 +250,121 @@ export class GroupApi {
         checkLooseResult(label, res);
     }
 
+    /**
+     * 群公告列表（get_group_announcements；getGroupBulletin 返回形状待探测校准，
+     * 兼容 result 数组 / result.bulletins 等宽松提取）。
+     */
+    async getGroupAnnouncements(groupCode: string): Promise<GroupBulletin[]> {
+        let raw: { result?: unknown; errMsg?: unknown };
+        try {
+            raw = (await this.service.getGroupBulletin(groupCode)) as typeof raw;
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`getGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+        unwrap("getGroupBulletin", toResultNumber(raw.result), raw.errMsg as string | undefined);
+        return extractBulletins(raw.result);
+    }
+
+    /**
+     * 发群公告（send_group_announcement；imagePath 提供时先 uploadGroupBulletinPic
+     * 再带 picId 发布——两步参数形状均待探测校准）。
+     */
+    async publishGroupAnnouncement(
+        groupCode: string,
+        content: string,
+        imagePath?: string,
+    ): Promise<void> {
+        let picId: string | undefined;
+        if (imagePath !== undefined && imagePath !== "") {
+            picId = await this.uploadBulletinPic(groupCode, imagePath);
+        }
+        try {
+            checkLooseResult(
+                "publishGroupBulletin",
+                (await this.service.publishGroupBulletin({
+                    groupCode,
+                    content,
+                    ...(picId !== undefined ? { picId } : {}),
+                })) as { result?: unknown } | null | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`publishGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 删群公告（delete_group_announcement；参数待探测校准）。 */
+    async deleteGroupAnnouncement(groupCode: string, announcementId: string): Promise<void> {
+        try {
+            checkLooseResult(
+                "deleteGroupBulletin",
+                (await this.service.deleteGroupBulletin(groupCode, announcementId)) as
+                    | { result?: unknown }
+                    | null
+                    | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`deleteGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 专属头衔（set_group_member_special_title；setIdentityTitleInfo 参数待校准）。 */
+    async setMemberSpecialTitle(groupCode: string, uid: string, title: string): Promise<void> {
+        try {
+            checkLooseResult(
+                "setIdentityTitleInfo",
+                (await this.service.setIdentityTitleInfo(groupCode, uid, title)) as
+                    | { result?: unknown }
+                    | null
+                    | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`setIdentityTitleInfo 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 群头像（set_group_avatar；GroupService.setHeader 参数待校准）。 */
+    async setGroupAvatar(groupCode: string, imagePath: string): Promise<void> {
+        try {
+            checkLooseResult(
+                "setHeader",
+                (await this.service.setHeader(groupCode, imagePath)) as
+                    | { result?: unknown }
+                    | null
+                    | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`setHeader(group) 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 公告图片上传（uploadGroupBulletinPic 返回 picId 待校准，失败原样上抛）。 */
+    private async uploadBulletinPic(groupCode: string, imagePath: string): Promise<string> {
+        const res = (await this.service.uploadGroupBulletinPic(groupCode, imagePath)) as
+            | {
+                  result?: unknown;
+                  picId?: unknown;
+              }
+            | null
+            | undefined;
+        checkLooseResult("uploadGroupBulletinPic", res);
+        return typeof res?.picId === "string" ? res.picId : "";
+    }
+
     /** @all 剩余次数（get_group_at_all_remain）。 */
     async getGroupRemainAtTimes(groupCode: string): Promise<{
         canAtAll: boolean;
@@ -265,6 +381,35 @@ export class GroupApi {
             remainAtAllCountForGroup: raw.atInfo.remainAtAllCountForGroup,
         };
     }
+}
+
+/** result 字段宽松取数（数字直接用，缺省 0 = 成功语义）。 */
+function toResultNumber(result: unknown): number {
+    return typeof result === "number" ? result : 0;
+}
+
+/** 公告列表宽松提取（result 数组 / { bulletins } / { result: 数组 } 兼容，形状待校准）。 */
+function extractBulletins(result: unknown): GroupBulletin[] {
+    const candidates = [result];
+    if (result !== null && typeof result === "object") {
+        const rec = result as Record<string, unknown>;
+        for (const key of ["bulletins", "announcementList", "result", "list"] as const) {
+            candidates.push(rec[key]);
+        }
+    }
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) {
+            return candidate.filter(
+                (item): item is GroupBulletin => item !== null && typeof item === "object",
+            );
+        }
+    }
+    return [];
+}
+
+/** 未知异常 → 消息字符串。 */
+function errMsgString(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
 }
 
 /**

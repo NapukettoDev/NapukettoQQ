@@ -310,6 +310,7 @@ export async function assembleOb11AndSatori(
                 webApi: services.webApi,
                 groupNotifyApi: services.groupNotifyApi,
                 richMediaApi: services.richMediaApi,
+                recentContactApi: services.recentContactApi,
                 self: services.self,
                 groupCache,
                 qqVersion: env.NAPUTO_QQ_VERSION || "unknown",

@@ -24,6 +24,8 @@ export interface GroupFileItemInfo {
     fileSize: string;
     fileUuid?: string;
     parent?: string;
+    /** 下载链接（get_group_file_download_url 数据源，字段待实机确认）。 */
+    url?: string;
     uploadTime?: number;
     modifyTime?: number;
     uploaderUid?: string;
@@ -78,6 +80,14 @@ export interface NodeIKernelRichMediaService {
     deleteGroupFolder(groupCode: string, folderId: string): Promise<GeneralCallResult>;
     /** 重命名群文件（rename_group_file；参数待探测校准）。 */
     renameGroupFile(
+        arg1: string,
+        arg2: number,
+        arg3: string,
+        arg4: string,
+        arg5: string,
+    ): Promise<unknown>;
+    /** 重命名群文件夹（rename_group_folder；形态镜像 renameGroupFile，待校准）。 */
+    renameGroupFolder(
         arg1: string,
         arg2: number,
         arg3: string,

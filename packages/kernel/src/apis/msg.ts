@@ -10,11 +10,12 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import type { MsgEventChannel } from "../bridge/msg-bridge.js";
-import { kernelError } from "../infra/index.js";
+import { isKernelError, kernelError } from "../infra/index.js";
 import type {
     CanonicalElement,
     NodeIKernelMsgService,
     NodeIQQNTWrapperSession,
+    NudgeParam,
     Peer,
     PttElement,
     RawElement,
@@ -22,8 +23,8 @@ import type {
     SendMessageElement,
     VideoElement,
 } from "../types/index.js";
-import { ElementType, toSendElements } from "../types/index.js";
-import { unwrapResult } from "./result.js";
+import { ChatType, ElementType, toSendElements } from "../types/index.js";
+import { checkLooseResult, unwrapResult } from "./result.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */
 const SEND_STATUS = { FAILED: 0, SENDING: 1, SUCCESS: 2, SUCCESS_NO_SEQ: 3 } as const;
@@ -94,6 +95,37 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
     });
+}
+
+/** 未知异常 → 消息字符串。 */
+function errMsgString(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+}
+
+/** 语音下载完成判定：有路径且（传输完成或末次轮询）才返回元素，否则 null。 */
+function pttDownloadResult(latest: PttElement | undefined, isLastPoll: boolean): PttElement | null {
+    if (latest === undefined) {
+        return null;
+    }
+    const hasPath = latest.filePath !== undefined && latest.filePath !== "";
+    const done = latest.transferStatus === 2 || latest.transferStatus === 4;
+    return hasPath && (done || isLastPoll) ? latest : null;
+}
+
+/** 收藏表情项 → url（字段名待校准，url/imageUrl/emojiUrl 逐个兜底）。 */
+function extractFavEmojiUrls(list: unknown[]): string[] {
+    const out: string[] = [];
+    for (const item of list) {
+        if (item === null || typeof item !== "object") {
+            continue;
+        }
+        const rec = item as Record<string, unknown>;
+        const url = rec["url"] ?? rec["imageUrl"] ?? rec["emojiUrl"];
+        if (typeof url === "string" && url !== "") {
+            out.push(url);
+        }
+    }
+    return out;
 }
 
 /** 读文件 stat（富媒体发送预处理；文件不存在抛 INVALID_PARAM）。 */
@@ -233,6 +265,9 @@ export class MsgApi {
                     break;
                 case "video":
                     out.push(await this.prepareVideoElement(el));
+                    break;
+                case "file":
+                    out.push(await this.prepareFileElement(el));
                     break;
                 default:
                     out.push(...toSendElements([el]));
@@ -375,6 +410,31 @@ export class MsgApi {
             videoElement.thumbPath = new Map([[VIDEO_THUMB_KEY, thumbRelPath]]);
         }
         return { elementType: ElementType.VIDEO, elementId: "", videoElement };
+    }
+
+    /**
+     * FILE 元素预处理（P2-2 预留口子，upload_private/group_file 落地）：
+     * pic/ptt/video 同款 NapCat 式链路——md5 → getRichMediaFilePathForGuild(FILE)
+     * → copyFile → 完整 fileElement。链路模式已验证（三类媒体同构）；fileElement
+     * 字段值（fileSize 字符串形态、fileUuid 空串等）待探测校准。
+     */
+    private async prepareFileElement(
+        el: Extract<CanonicalElement, { type: "file" }>,
+    ): Promise<SendMessageElement> {
+        const file = await statFile(el.path, "文件");
+        const md5 = await hashFile(el.path, "文件");
+        const fileName = el.name !== undefined && el.name !== "" ? el.name : basename(el.path);
+        const relPath = await this.placeMediaFile(el.path, ElementType.FILE, md5, fileName);
+        return {
+            elementType: ElementType.FILE,
+            elementId: "",
+            fileElement: {
+                fileName,
+                filePath: relPath,
+                fileSize: String(file.size),
+                fileUuid: "",
+            },
+        };
     }
 
     /**
@@ -535,16 +595,13 @@ export class MsgApi {
      * 调用方），完全无路径抛 NOT_FOUND。
      */
     async downloadPtt(msgId: string, target: Peer): Promise<PttElement> {
-        const msgs = await this.fetchMsgsByMsgId(target, [msgId]);
-        const el = findPttElement(msgs);
-        const ptt = el?.pttElement;
-        if (el === null || ptt === undefined) {
+        const found = await this.pttElementOf(msgId, target);
+        if (found === null) {
             throw kernelError("消息中不包含语音", "NOT_FOUND");
         }
-        const elemId = el.elementId ?? "";
         await this.service.downloadRichMedia({
             msgId,
-            elemId,
+            elemId: found.elemId,
             chatType: target.chatType,
             downloadType: DOWNLOAD_TYPE_COMMON,
             thumbSize: THUMB_SIZE_NONE,
@@ -552,28 +609,88 @@ export class MsgApi {
         for (let i = 0; i < PTT_POLL_TIMES; i++) {
             await sleep(PTT_POLL_INTERVAL_MS);
             const again = await this.fetchMsgsByMsgId(target, [msgId]);
-            const latest = findPttElement(again)?.pttElement;
-            if (latest === undefined) {
-                continue;
-            }
-            const done = latest.transferStatus === 2 || latest.transferStatus === 4;
-            if (latest.filePath !== undefined && latest.filePath !== "" && done) {
-                return latest;
-            }
-            if (
-                i === PTT_POLL_TIMES - 1 &&
-                latest.filePath !== undefined &&
-                latest.filePath !== ""
-            ) {
-                return latest;
+            const result = pttDownloadResult(
+                findPttElement(again)?.pttElement,
+                i === PTT_POLL_TIMES - 1,
+            );
+            if (result !== null) {
+                return result;
             }
         }
         throw kernelError("语音下载未完成（超时）", "TIMEOUT");
     }
 
+    /** 取消息内语音元素（无则 null；附 elemId 供主动下载）。 */
+    private async pttElementOf(
+        msgId: string,
+        target: Peer,
+    ): Promise<{ elemId: string; ptt: PttElement } | null> {
+        const msgs = await this.fetchMsgsByMsgId(target, [msgId]);
+        const el = findPttElement(msgs);
+        const ptt = el?.pttElement;
+        if (el === null || ptt === undefined) {
+            return null;
+        }
+        return { elemId: el.elementId ?? "", ptt };
+    }
+
     /** 发送输入状态（set_input_status；eventType=1 输入中，0 停止）。 */
     async setInputStatus(target: Peer, eventType: number): Promise<void> {
         await this.service.sendShowInputStatusReq(target.chatType, eventType, target.peerUid);
+    }
+
+    /** 戳一戳发送（send_friend/group_nudge；参数形状待探测校准，失败抛 UNKNOWN）。 */
+    async sendNudge(target: Peer, opts: { receiverUid: string; callerUid: string }): Promise<void> {
+        const param: NudgeParam = {
+            receiverUid: opts.receiverUid,
+            callerUid: opts.callerUid,
+            ...(target.chatType === ChatType.GROUP ? { confId: target.peerUid } : {}),
+        };
+        try {
+            checkLooseResult(
+                "sendNudge",
+                (await this.service.sendNudge(param)) as { result?: unknown } | null | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`sendNudge 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 会话置顶（set_peer_pin；setContactLocalTop 参数待探测校准）。 */
+    async setContactTop(target: Peer, isTop: boolean): Promise<void> {
+        try {
+            checkLooseResult(
+                "setContactLocalTop",
+                (await this.service.setContactLocalTop(target, isTop)) as
+                    | { result?: unknown }
+                    | null
+                    | undefined,
+            );
+        } catch (e) {
+            if (isKernelError(e)) {
+                throw e;
+            }
+            throw kernelError(`setContactLocalTop 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+    }
+
+    /** 收藏表情列表（get_custom_face_url_list；queryFavEmojiByDesc 形状待校准）。 */
+    async queryFavEmojis(): Promise<string[]> {
+        let raw: { result?: unknown; errMsg?: unknown; emojiInfoList?: unknown };
+        try {
+            raw = (await this.service.queryFavEmojiByDesc("")) as typeof raw;
+        } catch (e) {
+            throw kernelError(`queryFavEmojiByDesc 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+        }
+        checkLooseResult("queryFavEmojiByDesc", raw);
+        const list = raw.emojiInfoList;
+        if (!Array.isArray(list)) {
+            return [];
+        }
+        return extractFavEmojiUrls(list);
     }
 
     /**

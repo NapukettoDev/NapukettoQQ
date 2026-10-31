@@ -7,6 +7,7 @@
  */
 import type {
     FaceElement,
+    FileElement,
     Peer,
     PicElement,
     PttElement,
@@ -59,6 +60,20 @@ export interface SendMessageElement {
     videoElement?: VideoElement;
     /** ARK 卡片（小程序/分享卡片）；bytesData 为卡片 JSON 字符串（与接收侧 RawElement 同字段名，2026-10-25 实测）。 */
     arkElement?: { bytesData: string };
+    /** 文件（upload_private/group_file；字段值待探测校准，pic/ptt 同款发送链）。 */
+    fileElement?: FileElement;
+}
+
+/** 戳一戳参数（sendNudge，说明书参考，字段值待探测校准）。 */
+export interface NudgeParam {
+    /** 被戳者 uid。 */
+    receiverUid: string;
+    /** 发起者 uid（机器人自己）。 */
+    callerUid: string;
+    /** 会话 id（群场景 = 群号；好友场景缺省）。 */
+    confId?: string;
+    /** 场景操作码（接收侧 aioOp 同名；发送取值待校准）。 */
+    aioOp?: number;
 }
 
 /** 消息服务：apis/msg 用到的核心方法面。 */
@@ -152,4 +167,10 @@ export interface NodeIKernelMsgService {
             faceType: string;
         };
     }): Promise<GeneralCallResult>;
+    /** 戳一戳发送（send_friend/group_nudge；参数形状待探测校准）。 */
+    sendNudge(param: NudgeParam): Promise<unknown>;
+    /** 会话置顶（set_peer_pin；参数待探测校准）。 */
+    setContactLocalTop(peer: Peer, isTop: boolean): Promise<unknown>;
+    /** 收藏表情查询（get_custom_face_url_list；desc 空串 = 全量，形状待校准）。 */
+    queryFavEmojiByDesc(desc: string): Promise<GeneralCallResult & { emojiInfoList?: unknown }>;
 }

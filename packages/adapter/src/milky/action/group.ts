@@ -8,18 +8,27 @@
  *   handleGroupRequest；通知类型 7=入群申请 / 5=成员邀请他人 / 8,12,13=管理员变更 /
  *   9,10=踢出 / 11=退群（1=邀请自身无实体变体，不产出）。
  */
-import type { EssenceMsgItem, GroupMember, GroupNotify, Peer } from "@napuketto/kernel";
+import type {
+    EssenceMsgItem,
+    GroupBulletin,
+    GroupMember,
+    GroupNotify,
+    Peer,
+} from "@napuketto/kernel";
 import { ChatType, kernelError, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { z } from "zod";
 import { findGroupNotify, type MilkyApi } from "../api.js";
 import { toGroupEntity, toGroupMemberEntity } from "../helper/entities.js";
+import { resolveUriToPath } from "../helper/media-uri.js";
 import { collectNotifyUids } from "../helper/request.js";
 import type {
+    GetGroupAnnouncementsOutput,
     GetGroupEssenceMessagesOutput,
     GetGroupInfoOutput,
     GetGroupMemberInfoOutput,
     GetGroupMemberListOutput,
     GetGroupNotificationsOutput,
+    GroupAnnouncementEntity,
     GroupEssenceMessage,
     GroupNotificationEntity,
     IncomingSegment,
@@ -478,6 +487,138 @@ export class RejectGroupInvitationAction extends HandleGroupNotifyBase<{ invitat
     }
 }
 
+/** send_group_nudge：发送群戳一戳（self.uid 缺失报 INVALID_PARAM）。 */
+export class SendGroupNudgeAction extends MilkyApiAction<
+    { group_id: number; user_id: number },
+    Record<string, never>
+> {
+    readonly name = "send_group_nudge";
+    readonly schema = z.object({ ...groupIdField, ...userIdField });
+
+    protected async _handle(payload: {
+        group_id: number;
+        user_id: number;
+    }): Promise<Record<string, never>> {
+        const receiverUid = await this.api.resolveUidFromUin(payload.user_id);
+        const peer = await this.api.resolvePeer("group", payload.group_id);
+        await this.api.msgApi.sendNudge(peer, {
+            receiverUid,
+            callerUid: requireSelfUid(this.api),
+        });
+        return {};
+    }
+}
+
+/** get_group_announcements：获取群公告列表（bulletin 形状待校准，宽松映射）。 */
+export class GetGroupAnnouncementsAction extends MilkyApiAction<
+    { group_id: number },
+    GetGroupAnnouncementsOutput
+> {
+    readonly name = "get_group_announcements";
+    readonly schema = z.object({ ...groupIdField });
+
+    protected async _handle(payload: { group_id: number }): Promise<GetGroupAnnouncementsOutput> {
+        const groupCode = String(payload.group_id);
+        const bulletins = await this.api.groupApi.getGroupAnnouncements(groupCode);
+        const announcements = await Promise.all(
+            bulletins.map((b) => bulletinToEntity(b, payload.group_id, this.api)),
+        );
+        return { announcements };
+    }
+}
+
+/** send_group_announcement：发群公告（image_uri 落盘后经上传+发布两步）。 */
+export class SendGroupAnnouncementAction extends MilkyApiAction<
+    { group_id: number; content: string; image_uri?: string | null | undefined },
+    Record<string, never>
+> {
+    readonly name = "send_group_announcement";
+    readonly schema = z.object({ ...groupIdField, content: z.string().min(1), image_uri: optStr });
+
+    protected async _handle(payload: {
+        group_id: number;
+        content: string;
+        image_uri?: string | null | undefined;
+    }): Promise<Record<string, never>> {
+        const groupCode = String(payload.group_id);
+        let imagePath: string | undefined;
+        if (
+            payload.image_uri !== undefined &&
+            payload.image_uri !== null &&
+            payload.image_uri !== ""
+        ) {
+            imagePath = await resolveUriToPath(payload.image_uri, this.api.mediaDir);
+        }
+        await this.api.groupApi.publishGroupAnnouncement(groupCode, payload.content, imagePath);
+        return {};
+    }
+}
+
+/** delete_group_announcement：删除群公告。 */
+export class DeleteGroupAnnouncementAction extends MilkyApiAction<
+    { group_id: number; announcement_id: string },
+    Record<string, never>
+> {
+    readonly name = "delete_group_announcement";
+    readonly schema = z.object({ ...groupIdField, announcement_id: z.string().min(1) });
+
+    protected async _handle(payload: {
+        group_id: number;
+        announcement_id: string;
+    }): Promise<Record<string, never>> {
+        await this.api.groupApi.deleteGroupAnnouncement(
+            String(payload.group_id),
+            payload.announcement_id,
+        );
+        return {};
+    }
+}
+
+/** set_group_avatar：设置群头像（image_uri → 本地路径）。 */
+export class SetGroupAvatarAction extends MilkyApiAction<
+    { group_id: number; image_uri: string },
+    Record<string, never>
+> {
+    readonly name = "set_group_avatar";
+    readonly schema = z.object({ ...groupIdField, image_uri: z.string().min(1) });
+
+    protected async _handle(payload: {
+        group_id: number;
+        image_uri: string;
+    }): Promise<Record<string, never>> {
+        const imagePath = await resolveUriToPath(payload.image_uri, this.api.mediaDir);
+        await this.api.groupApi.setGroupAvatar(String(payload.group_id), imagePath);
+        return {};
+    }
+}
+
+/** set_group_member_special_title：设置专属头衔（uin → uid）。 */
+export class SetGroupMemberSpecialTitleAction extends MilkyApiAction<
+    { group_id: number; user_id: number; special_title: string },
+    Record<string, never>
+> {
+    readonly name = "set_group_member_special_title";
+    readonly schema = z.object({
+        ...groupIdField,
+        ...userIdField,
+        special_title: z.string(),
+    });
+
+    protected async _handle(payload: {
+        group_id: number;
+        user_id: number;
+        special_title: string;
+    }): Promise<Record<string, never>> {
+        const uid = await this.api.resolveUidFromUin(payload.user_id);
+        await this.api.groupApi.setMemberSpecialTitle(
+            String(payload.group_id),
+            uid,
+            payload.special_title,
+        );
+        return {};
+    }
+}
+
 /** ---------- 内部辅助 ---------- */
 
 /** 通知查找数量（单屏全量，OB11 DEFAULT_COUNT 同值）。 */
@@ -641,4 +782,45 @@ function notifyToEntity(
         entity.is_filtered = isFiltered;
     }
     return entity;
+}
+
+/** self.uid 必备（nudge 发送的 callerUid；缺配置报 INVALID_PARAM）。 */
+function requireSelfUid(api: MilkyApi): string {
+    const uid = api.self.uid;
+    if (uid === undefined || uid === "") {
+        throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
+    }
+    return uid;
+}
+
+/** GroupBulletin → 群公告实体（senderUid → uin 反查；无源字段兜底，待校准）。 */
+async function bulletinToEntity(
+    b: GroupBulletin,
+    groupId: number,
+    api: MilkyApi,
+): Promise<GroupAnnouncementEntity> {
+    return {
+        group_id: groupId,
+        announcement_id: b.announcementId ?? "",
+        user_id: await senderUinOf(b, api),
+        time: Number(b.publishTime) || 0,
+        content: b.content ?? "",
+        image_url: picUrlOf(b),
+    };
+}
+
+/** 公告发送者 uid → uin（缺省/转换失败 0 兜底）。 */
+async function senderUinOf(b: GroupBulletin, api: MilkyApi): Promise<number> {
+    const uid = b.senderUid;
+    if (typeof uid !== "string" || uid === "") {
+        return 0;
+    }
+    const uins = await api.uidToUin([uid]).catch(() => undefined);
+    return Number(uins?.get(uid)) || 0;
+}
+
+/** 公告图片 url（缺省 null）。 */
+function picUrlOf(b: GroupBulletin): string | null {
+    const url = b.pic?.url;
+    return typeof url === "string" && url !== "" ? url : null;
 }

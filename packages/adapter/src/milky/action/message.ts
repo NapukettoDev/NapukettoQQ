@@ -21,7 +21,7 @@ import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
 import type { MilkyApi } from "../api.js";
 import { toGroupEntity, toGroupMemberEntity } from "../helper/entities.js";
-import { resolveMediaUri } from "../helper/media-uri.js";
+import { resolveMediaUri, resolveUriToPath } from "../helper/media-uri.js";
 import {
     canonicalToIncomingSegments,
     incomingForwardSegment,
@@ -29,9 +29,11 @@ import {
 } from "../helper/segments.js";
 import { type ReceiveTranslateContext, toMessageReceiveEvent } from "../helper/translate.js";
 import type {
+    GetCustomFaceUrlListOutput,
     GetForwardedMessagesOutput,
     GetHistoryMessagesOutput,
     GetMessageOutput,
+    GetResourceTempUrlOutput,
     IncomingForwardedMessage,
     IncomingMessage,
     IncomingSegment,
@@ -39,6 +41,7 @@ import type {
     OutgoingForwardedMessage,
     OutgoingSegment,
     SendMessageOutput,
+    UploadFileOutput,
 } from "../types.js";
 import { MilkyApiAction } from "./base-action.js";
 
@@ -545,4 +548,80 @@ function receiveSegmentsOf(msg: RawMessage, uidToUin: Map<string, string>): Inco
 /** QQ 头像 URL（公开头像服务，640px）。 */
 function avatarUrlOf(uin: string): string {
     return uin === "" ? "" : `https://q1.qlogo.cn/g?b=qq&nk=${uin}&s=640`;
+}
+
+/** get_custom_face_url_list：收藏表情链接（queryFavEmojiByDesc 形状待校准）。 */
+export class GetCustomFaceUrlListAction extends MilkyApiAction<
+    Record<string, never>,
+    GetCustomFaceUrlListOutput
+> {
+    readonly name = "get_custom_face_url_list";
+    readonly schema = z.object({});
+
+    protected async _handle(): Promise<GetCustomFaceUrlListOutput> {
+        return { urls: await this.api.msgApi.queryFavEmojis() };
+    }
+}
+
+/**
+ * get_resource_temp_url：资源临时链接。
+ * 已知差异（P0 模型）：接收段 resource_id 即临时链接（本地路径优先 url 兜底），
+ * 无独立资源索引——http(s)/base64 形态原样返回，其余 NOT_FOUND。
+ */
+export class GetResourceTempUrlAction extends MilkyApiAction<
+    { resource_id: string },
+    GetResourceTempUrlOutput
+> {
+    readonly name = "get_resource_temp_url";
+    readonly schema = z.object({ resource_id: z.string().min(1) });
+
+    protected async _handle(payload: { resource_id: string }): Promise<GetResourceTempUrlOutput> {
+        const id = payload.resource_id;
+        if (id.startsWith("http://") || id.startsWith("https://") || id.startsWith("base64://")) {
+            return { url: id };
+        }
+        throw kernelError(`资源 ${id} 无临时链接（resource_id 非链接形态）`, "NOT_FOUND");
+    }
+}
+
+/** upload_private_file：上传私聊文件（file 元素消息链，file_id 取 fileUuid）。 */
+export class UploadPrivateFileAction extends MilkyApiAction<
+    { user_id: number; file_uri: string; file_name: string },
+    UploadFileOutput
+> {
+    readonly name = "upload_private_file";
+    readonly schema = z.object({
+        user_id: z.number().int().min(10001),
+        file_uri: z.string().min(1),
+        file_name: z.string().min(1),
+    });
+
+    protected async _handle(payload: {
+        user_id: number;
+        file_uri: string;
+        file_name: string;
+    }): Promise<UploadFileOutput> {
+        const path = await resolveUriToPath(payload.file_uri, this.api.mediaDir);
+        const peer = await this.api.resolvePeer("friend", payload.user_id);
+        const fileId = await sendFileMessage(this.api, peer, path, payload.file_name);
+        return { file_id: fileId };
+    }
+}
+
+/**
+ * 发送文件消息并回查 file_id：sendMessage（canonical file 元素，kernel 走
+ * prepareFileElement 链）→ fetchMsgsByMsgId 取 fileElement.fileUuid（缺省 msgId）。
+ * upload_private/group_file 共用。
+ */
+export async function sendFileMessage(
+    api: MilkyApi,
+    peer: Peer,
+    path: string,
+    fileName: string,
+): Promise<string> {
+    const { msgId } = await api.msgApi.sendMessage(peer, [{ type: "file", path, name: fileName }]);
+    const [sent] = await api.msgApi.fetchMsgsByMsgId(peer, [msgId]);
+    const el = sent?.elements.find((e) => e.fileElement !== undefined);
+    const uuid = el?.fileElement?.fileUuid;
+    return uuid !== undefined && uuid !== "" ? uuid : msgId;
 }
