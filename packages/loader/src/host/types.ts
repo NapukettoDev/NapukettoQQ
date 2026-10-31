@@ -113,6 +113,19 @@ export interface ProbeResultLike {
     services?: Record<string, unknown>;
 }
 
+/** kernel startListenerRecording 逐服务注册结果（batch-3 前置探测，milky.md §0.8.1）。 */
+export interface ListenerRegistrationLike {
+    ok: boolean;
+    listenerId?: number;
+    error?: string | null;
+}
+
+/** kernel startListenerRecording 结果。 */
+export interface ListenerRecordingResultLike {
+    file: string;
+    registered: Record<string, ListenerRegistrationLike>;
+}
+
 /** [log] 配置解析结果最小面（kernel parseLogConfig 返回值，字段语义见 kernel）。 */
 export interface LogConfigLike {
     level: string;
@@ -175,6 +188,11 @@ export interface KernelLike {
     resolveQqGlobalPath?: (qqDataRoot: string) => string;
     // 探测
     probeRuntime?: (ctx: CoreContextLike, filename?: string) => ProbeResultLike;
+    /** listener 录制器（批次三前置；必须先于 probeRuntime——getMainSession 写回毒化 ctx.session）。 */
+    startListenerRecording?: (
+        ctx: CoreContextLike,
+        filename?: string,
+    ) => ListenerRecordingResultLike;
     // 消息 / 桥 / 服务
     // ChatType 是 kernel 常量对象（GROUP/C2C），Record 字面量键规避 useNamingConvention
     ChatType: Record<"GROUP" | "C2C", number>;

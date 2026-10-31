@@ -36,6 +36,8 @@ const env = {
     NAPUTO_SMOKE_PEER: process.env["NAPUTO_SMOKE_PEER"],
     /** 运行时探测开关（=1 触发 probeRuntime）。 */
     NAPUTO_PROBE: process.env["NAPUTO_PROBE"],
+    /** listener 录制器开关（=1 触发 startListenerRecording，先于探测挂起——批次三前置）。 */
+    NAPUTO_LISTENER_RECORD: process.env["NAPUTO_LISTENER_RECORD"],
     /** 全局 TOML 配置显式路径（优先级最高）。 */
     NAPKETTO_CONFIG: process.env["NAPKETTO_CONFIG"],
     /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPKETTO_CONFIG 文件，2026-10-25）。 */

@@ -1,8 +1,9 @@
 # Milky 协议（P0 已实现 · 规划稿）
 
-> **状态：P1 已实现，P2 批次一已落地**（P0 2026-10-28 / P1 2026-10-30 / P2 批次一
-> 2026-10-31，见 §0/§0.5/§0.6/§0.7 落地面与 §9 勾选）。§7 事件状态列仍是覆盖清单，
-> 不是现状描述；全部落地后按 `docs/README.md` 的维护约定改写为现状文档。
+> **状态：P1 已实现，P2 批次一已落地，批次三设计先行**（P0 2026-10-28 /
+> P1 2026-10-30 / P2 批次一 2026-10-31，见 §0/§0.5/§0.6/§0.7 落地面与 §9 勾选；
+> 批次三设计见 §0.8——listener 录制器 + 实机校准单，未接行为）。§7 事件状态列仍是
+> 覆盖清单，不是现状描述；全部落地后按 `docs/README.md` 的维护约定改写为现状文档。
 >
 > **目标协议版本：Milky 1.3.0**（2026-08-07 发布）。`get_impl_info` 上报
 > `milky_version = "1.3"`。
@@ -134,6 +135,83 @@ queryFileDownloadList 参数形状完全未知——盲装必错，随批次三�
 group_essence_message_change / bot_offline / friend_file_upload——无独立方法名
 可依（reaction 疑走 msg listener 回调携带），需先补 sysmsg 识别表与 listener
 回调探测（§9）。
+
+### 0.8 批次三设计（2026-10-31 设计先行，实机校准驱动）
+
+批次三 = 5 个无源事件 + get_private_file_download_url 校准。与前两批不同，
+本批没有可盲装的方法名——全部出口先经 **listener 录制器**（kernel probe 扩展，
+§0.8.1）取得实机回调证据，再接 kernel 出口与 adapter 翻译。P1 批次一
+「猜方法名、P2 实测修正」的教训本批不重蹈。
+
+#### 事件映射（官方 1.3 形状 → 候选原生源）
+
+候选源依据 = napuketto-probe.json 56 服务方法面（2026-10-31 实测）+ 现有
+listener 类型层（types/listeners/msg.ts、group.ts）。形状均以录制窗口实测为准，
+官方 payload 仅作翻译目标：
+
+| Milky 事件 | 官方 payload | 候选原生源 |
+|---|---|---|
+| group_message_reaction | `{group_id, user_id, message_seq, face_id, reaction_type: "face"\|"emoji", is_add}` | Msg listener 未覆盖回调（录制器发现）；次选 onRecvSysMsg |
+| peer_pin_change | `{message_scene, peer_id, is_pinned}` | `RecentContactService.addKernelRecentContactListener`（探测确认存在，参数面未知） |
+| group_essence_message_change | `{group_id, message_seq, operator_id, is_set}` | `GroupListener.onGroupEssenceListChange`（已接线，unknown 透传待形状） |
+| bot_offline | `{reason: string}` | `LoginService.addKernelLoginListener`（探测确认存在）+ `getMsfStatus`；备选 OnlineStatus / Lock listener |
+| friend_file_upload | `{user_id, file_id, file_name, file_size, file_hash(TriSHA1), is_self}` | `MsgListener.onRecvOfflineFileMsg`（已接线，unknown 透传待形状） |
+
+#### 0.8.1 listener 录制器（kernel probe 扩展）
+
+原理：原生 listener 是普通 JS 对象 + NAPI 按名反射回调（MsgBridge 模式）——
+用 Proxy `get` 陷阱构造**万能监听器**：任意字符串属性访问返回记录函数，原生调
+什么记什么，不需要预先知道回调名。这正是「无源事件」缺的那块证据：现有 bridge
+只注册了已知回调名（Msg 7 个、Group 9 个），回调面之外的派发行为从未被观测。
+
+- 开关 `NAPUTO_LISTENER_RECORD=1`；loader bootstrap 在 `runProbePhase` **之前**
+  挂起（session 就绪 + 协议装配完成后）——时序硬约束：probe 内 `getMainSession`
+  的写回副作用会把空壳主 session 毒化进 `ctx.session`（session-resolver.ts，
+  late probe 61/63 getter null 的根因），录制器必须先于探测取服务。与业务
+  bridge 共存——`addKernelXListener` 支持多监听（各自独立 id）。
+- 仪器面（默认）：Msg / Group / RecentContact / BdhUpload / OnlineStatus / Lock /
+  FileAssistant / Buddy / ProfileLike / NodeMisc 十个 session 服务 +
+  LoginService（`NodeIKernelLoginService.get()` 单例）。add/remove 方法按
+  `/^add(Kernel)?\w*Listener$/`（remove 同理）从服务方法面自动选取——VasGroup /
+  PublicAccount 这类裸 `addListener` 服务同规则覆盖。
+- 产物：`NAPUTO_CFG_DIR/napuketto-listener-record.jsonl`，每回调一行
+  `{ts, service, event, args}`（probe-serialize 截断序列化）；注册过程也逐行落盘
+  （`<registered>` 事件，含 listenerId）——注册逐服务进行、每服务即时 append，
+  若某服务注册触发原生崩溃，文件保留断点精确定位肇事服务（同
+  collectServiceGetters 增量落盘惯例）。
+- 陷阱观测：`get`（按名反射——同时记录原生查过什么名字，即使从未调用）/
+  `has` / `ownKeys` 一并记录（`<get>`/`<has>`/`<ownKeys>` 合成事件）。首轮数据
+  即可判定原生的回调发现方式：按名 Get（陷阱捕获一切）还是 ownKeys 枚举
+  （空目标 Proxy 将一无所获，需 fallback 预置已知回调名全集为真实属性）。
+- 非字符串属性键（Symbol，如 util.inspect 触发）直接放行默认行为，不记录。
+
+#### 0.8.2 实机操作单（录制窗口）
+
+录制器挂起后按序执行真实操作，每步间隔 ≥10s，结束后把 jsonl 交回分析：
+
+1. 私聊/群聊各发一条消息——基线时间锚点（onRecvMsg 已知行为对照）。
+2. 对任一群消息添加表情回应——reaction 回调名 + 参数形状。
+3. 撤回该回应——is_add=false 路径。
+4. 置顶再取消置顶一个会话——peer_pin 回调形状（预期 RecentContact listener）。
+5. 设一条群消息为精华再取消——onGroupEssenceListChange 形状落定。
+6. 好友向机器人发一个文件——onRecvOfflineFileMsg 形状落定（friend_file_upload）。
+7. 机器人给好友上传一个文件——BdhUpload / 上传完成回调面（fileUuid 来源）。
+
+#### 0.8.3 sysmsg 识别表共享化
+
+OB11 侧 `adapter/src/onebot11/helper/sysmsg.ts`（wire-format 解码 + 信封提取 +
+KIND_TABLE 识别层，2026-09-10）目前为 OB11 专用，识别表近乎空表。批次三：
+解码器与识别层上移 `adapter/src/core/`（P1「翻译共享收敛」惯例），Milky 订阅
+`Msg/onRecvSysMsg` 复用同一识别层；表条目随录制窗口样本扩充（admin_change /
+name_change / essence 等的 msg_type:sub_type 实测键）。
+
+#### 0.8.4 get_private_file_download_url 校准路径
+
+`queryFileDownloadList`（MsgService，探测确认存在）参数形状未知。校准依赖
+录制窗口取得真实 fileUuid（§0.8.2 步骤 7）后的**参数实验**：候选参数形状逐个
+试错，persist-before-call（原生段错误无法捕获，先落盘再调用），实验置于探测链
+最后。rkey 预期由查询结果携带（待实验证实），file_hash（TriSHA1）取自
+fileElement。实验结论落回本节后再接出口。
 
 ## 1. 为什么做
 
