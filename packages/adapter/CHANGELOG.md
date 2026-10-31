@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [a668d31]
+  - @napuketto/kernel@0.7.0
+
 ## 0.8.0
 
 ### Minor Changes
