@@ -91,6 +91,8 @@ export function attachIpcServices(
     forwardChannel(services.channel, stops);
     forwardChannel(services.groupChannel, stops);
     forwardChannel(services.friendChannel, stops);
+    forwardChannel(services.recentContactChannel, stops);
+    forwardChannel(services.loginChannel, stops);
 
     return () => {
         for (const stop of stops) {

@@ -21,6 +21,8 @@ const RECENT_CONTACT_FETCH_COUNT = 200;
 export interface PinnedContact {
     /** 会话 id（好友 = uid，群 = 群号）。 */
     peerUid: string;
+    /** 对端 uin（peer_pin_change 播种键；录制实证条目携带，可能缺省）。 */
+    peerUin?: string;
     /** 场景：friend（C2C）/ group（GROUP）；temp 不产出。 */
     scene: "friend" | "group";
 }
@@ -85,19 +87,35 @@ function pinnedOf(item: unknown): PinnedContact[] {
     if (item === null || typeof item !== "object") {
         return [];
     }
-    const contact = item as RecentContact;
-    // 置顶字段实测为 topFlag（1 = 置顶，listener 载荷 2026-11-01 实录）；isTop 为兼容形态
-    const pinned = contact.isTop === true || contact.topFlag === 1;
-    if (!pinned || typeof contact.peerUid !== "string") {
+    return pinnedContactOf(item as RecentContact);
+}
+
+/** 置顶判据（topFlag 实测字段名 + isTop 兼容形态）且 peerUid 可用才产出。 */
+function pinnedContactOf(contact: RecentContact): PinnedContact[] {
+    if (!isPinned(contact) || typeof contact.peerUid !== "string") {
         return [];
     }
     if (contact.chatType === ChatType.GROUP) {
-        return [{ peerUid: contact.peerUid, scene: "group" }];
+        return pinnedItem(contact, "group");
     }
     if (contact.chatType === ChatType.C2C) {
-        return [{ peerUid: contact.peerUid, scene: "friend" }];
+        return pinnedItem(contact, "friend");
     }
     return [];
+}
+
+/** 置顶字段实测为 topFlag（1 = 置顶，listener 载荷 2026-11-01 实录）；isTop 为兼容形态。 */
+function isPinned(contact: RecentContact): boolean {
+    return contact.isTop === true || contact.topFlag === 1;
+}
+
+/** 单条置顶项组装（peerUin 为 peer_pin_change 播种键，可能缺省）。 */
+function pinnedItem(contact: RecentContact, scene: "friend" | "group"): PinnedContact[] {
+    const peerUin =
+        typeof contact.peerUin === "string" && contact.peerUin !== ""
+            ? { peerUin: contact.peerUin }
+            : {};
+    return [{ peerUid: contact.peerUid, ...peerUin, scene }];
 }
 
 /** 未知异常 → 消息字符串。 */

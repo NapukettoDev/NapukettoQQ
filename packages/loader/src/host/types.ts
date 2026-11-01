@@ -96,6 +96,8 @@ export interface CoreContextLike {
     login?: { uin?: string; uid?: string; nick?: string };
     /** 老 kernel 回退路径（startNapuketto 手工 lifecycle）。 */
     loginService?: { initConfig(config: unknown): void };
+    /** wrapper 上下文（LoginBridge 取 loginService：拦截 new 捕获 / 单例 get()）。 */
+    wrapper?: { loginService?: unknown } | null;
 }
 
 /** NapukettoCore（kernel 装配层）。 */
@@ -233,6 +235,16 @@ export interface KernelLike {
     ) => { register(): void; unregister(): void };
     FriendBridge: new (
         session: unknown,
+        channel: EventChannelLike,
+    ) => { register(): void; unregister(): void };
+    // 批次三（2026-11-01）：RecentContact 桥（peer_pin_change 源）+ Login 桥
+    //（bot_offline 源；loginService 由装配方注入 ctx.wrapper.loginService）
+    RecentContactBridge: new (
+        session: unknown,
+        channel: EventChannelLike,
+    ) => { register(): void; unregister(): void };
+    LoginBridge: new (
+        loginService: unknown,
         channel: EventChannelLike,
     ) => { register(): void; unregister(): void };
     GroupCache: new (options: {

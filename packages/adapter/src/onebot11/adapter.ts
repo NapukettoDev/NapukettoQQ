@@ -51,7 +51,10 @@ import {
     decodeProtoTree,
     extractSysMsgEnvelope,
     narrowSysMsgBlobs,
-    recognizeSysMsg,
+    recognizeOb11SysMsg,
+    type SysMsgEnvelope,
+    type SysMsgField,
+    type SysMsgKindRuleOB11,
     toHex,
 } from "./helper/sysmsg.js";
 import type { Ob11TransportSet } from "./transport.js";
@@ -295,7 +298,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                     return;
                 }
                 for (const blob of blobs) {
-                    this.handleSysMsgBlob(blob);
+                    void this.handleSysMsgBlob(blob);
                 }
             }),
         );
@@ -393,9 +396,31 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /**
      * 单条 sysmsg 字节块：解码 → 识别 → 命中才广播，未识别打结构化校准日志
-     * （识别表为空时全部走日志路径，design.md §7.5）。
+     * （识别表 2026-11-01 起含 732:21 group_card；design.md §7.5）。
+     * 规则声明 collectUids 时先批量 uid→uin 再提取（异步 fire-and-forget）。
      */
-    private handleSysMsgBlob(blob: Uint8Array): void {
+    /** sysmsg 规则的 uid→uin 解析器（collectUids 声明才批量转换；失败/缺省恒 0）。 */
+    private async sysMsgUinResolver(
+        rule: SysMsgKindRuleOB11,
+        tree: readonly SysMsgField[],
+        env: SysMsgEnvelope,
+    ): Promise<(uid: string) => number> {
+        if (rule.collectUids === undefined) {
+            return () => 0;
+        }
+        const uids = rule.collectUids(tree, env).filter((uid) => uid !== "");
+        if (uids.length === 0) {
+            return () => 0;
+        }
+        try {
+            const map = await this.oneBotApi.uidToUin(uids);
+            return (uid: string) => Number(map.get(uid) ?? 0);
+        } catch {
+            return () => 0;
+        }
+    }
+
+    private async handleSysMsgBlob(blob: Uint8Array): Promise<void> {
         const tree = decodeProtoTree(blob);
         if (tree === null) {
             this.calibLogger?.warn(
@@ -405,9 +430,14 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             return;
         }
         const env = extractSysMsgEnvelope(tree);
-        const rec = recognizeSysMsg(env.msgType, env.subType);
+        const rec = recognizeOb11SysMsg(env.msgType, env.subType);
         if (rec.kind === "notice") {
-            const event = rec.rule.extract(tree, env);
+            const uinOf = await this.sysMsgUinResolver(rec.rule, tree, env);
+            const ctx = {
+                selfUin: Number(this.selfUin),
+                time: env.time ?? Math.floor(Date.now() / 1000),
+            };
+            const event = rec.rule.extract(tree, env, uinOf, ctx);
             if (event !== null) {
                 this.broadcastEvent(event);
                 return;

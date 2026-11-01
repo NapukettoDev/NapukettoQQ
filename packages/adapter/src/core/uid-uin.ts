@@ -17,7 +17,7 @@ export interface RequestTranslateContext {
 }
 
 /** uid → uin（映射命中取 uin，未命中退化 uid 数值，非数字返回 0）。 */
-export function resolveUin(uid: string | undefined, uidToUin: Map<string, string>): number {
+export function resolveUin(uid: string | undefined, uidToUin: ReadonlyMap<string, string>): number {
     if (uid === undefined || uid === "") {
         return 0;
     }

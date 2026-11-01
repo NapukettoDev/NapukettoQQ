@@ -395,3 +395,31 @@ LoginService（`NodeIKernelLoginService.get()`）。add/remove 方法按
 listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Listener` 优先、
 回退正则。首推噪声：Buddy 注册即全量首推；每条群记录伴生 chatType=7 影子
 条目（peerUid 空）。事件侧结论详见 `docs/protocols/milky.md` §0.8.5。
+
+### 10.1 录制驱动的桥扩展（2026-11-01，批次三）
+
+三轮录制 + 置顶自触发实验（set_peer_pin 翻转）取齐事件源证据后，按
+`docs/protocols/milky.md` §0.8.6 方案扩桥：
+
+- **RecentContactBridge**（新）：`addKernelRecentContactListener` 注册，
+  转发 `onRecentContactListChangedVer2`（onRecentContactListChangedVer2 参数 =
+  `{listType, sortedContactList, changedList}` 数组，changedList 条目实测含
+  chatType / peerUin / topFlag / topFlagTime）与 `onRecentContactNotification`
+  （RecentContact 快照数组，peer_pin 翻译不用但通道保留）。事件名
+  `RecentContact/*`。
+- **LoginBridge**（新）：loginService 由装配方注入（`ctx.wrapper.loginService`，
+  wrapper-loader 拦截 new 捕获 / 单例 get() 兜底的既有实例，与 QrLoginSession
+  同源），转发 `onLoginDisConnected` / `onLogoutSucceed`（bot_offline 候选，
+  参数形状零样本透传 unknown）。事件名 `Login/*`。
+- **MsgBridge** 补转发 `onFileMsgCome`：三轮录制实证与 onRecvOfflineFileMsg
+  同载荷（RawMessage 数组，chatType=1 fileElement），friend_file_upload 第二
+  源；`onRecvOfflineFileMsg` 参数类型同步从 unknown 收窄为 RawMessage[]。
+- 类型面：`types/listeners/recent-contact.ts` 新建（RecentContactListener +
+  RecentContactListChanged，录制实证形状）；`NodeIKernelRecentContactService`
+  补 add/removeKernelRecentContactListener；FileElement 补录制实证字段
+  （file10MMd5 / fileSha / fileSha3 / expireTime / transferStatus /
+  subElementType）；RawMessage 补 sendType（0=收到 2=自己发出）；PinnedContact
+  补 peerUin（peer_pin 播种键）。
+
+桥仍是「每 Service 每进程一份、构造期一次性取服务」模式（ADR-003/015）；登录
+后 getter 重挂 null 的雷区不影响——服务实例在装配期已持有。

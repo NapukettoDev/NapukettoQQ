@@ -32,8 +32,9 @@ const API_PATH_RE = /^\/api\/([a-z][a-z0-9_]*)$/;
 /** Bearer 前缀。 */
 const BEARER_PREFIX = "Bearer ";
 
-/** 校准 logger 最小面（webhook 失败 / 配置异常提示；缺省静默）。 */
+/** 校准 logger 最小面（webhook 失败 / 配置异常 / 批次三事件校准数据；缺省静默）。 */
 export interface MilkyLoggerLike {
+    debug(obj: unknown, msg?: string): void;
     warn(obj: unknown, msg?: string): void;
     info(obj: unknown, msg?: string): void;
 }

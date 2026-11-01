@@ -575,3 +575,47 @@ export interface GroupDisbandData {
     group_id: number;
     operator_id: number;
 }
+
+/** group_message_reaction 事件载荷（批次三，732:16）。 */
+export interface GroupMessageReactionData {
+    group_id: number;
+    /** 操作者 uin——原生 push 不携带（732:16 实证，milky.md §0.8.6），不可得时省略。 */
+    user_id?: number;
+    message_seq: number;
+    /** 表情 id（官方支持 face/emoji 两类；QQ 消息回应实证恒为 face）。 */
+    face_id: number;
+    reaction_type: "face" | "emoji";
+    is_add: boolean;
+}
+
+/** peer_pin_change 事件载荷（批次三，RecentContact topFlag 翻转）。 */
+export interface PeerPinChangeData {
+    message_scene: "friend" | "group";
+    peer_id: number;
+    is_pinned: boolean;
+}
+
+/** group_essence_message_change 事件载荷（批次三，732:1 快路径 + 列表 diff）。 */
+export interface GroupEssenceMessageChangeData {
+    group_id: number;
+    message_seq: number;
+    /** 操作者 uin（diff 新增项 = add_digest_uin；732:1 快路径与取消场景不可得时省略）。 */
+    operator_id?: number;
+    is_set: boolean;
+}
+
+/** friend_file_upload 事件载荷（批次三，onRecvOfflineFileMsg / onFileMsgCome）。 */
+export interface FriendFileUploadData {
+    user_id: number;
+    file_id: string;
+    file_name: string;
+    file_size: number;
+    /** 官方语义为 TriSHA1；实测取 file10MMd5（md5）充值（milky.md §0.8.6 已知差异）。 */
+    file_hash: string;
+    is_self: boolean;
+}
+
+/** bot_offline 事件载荷（批次三，Login 桥；reason 真实来源待野捕校准）。 */
+export interface BotOfflineData {
+    reason: string;
+}

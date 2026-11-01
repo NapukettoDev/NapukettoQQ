@@ -134,6 +134,14 @@
         "packages/kernel/src/apis/group.ts",
         "packages/kernel/src/apis/richmedia.ts",
         "packages/kernel/src/apis/recent-contact.ts",
+        // 事件桥（2026-11-01 批次三新增两桥同根因）：register/unregister 被
+        // loader KernelLike 跨包调用（动态 import 装配），fallow 静态图跨不过
+        // 包边界。存量三桥（Msg/Group/Buddy）为基线继承不报。
+        "packages/kernel/src/bridge/recent-contact-bridge.ts",
+        "packages/kernel/src/bridge/login-bridge.ts",
+        // MsgBridge：批次三补转发 onFileMsgCome 触达该文件，存量 register/unregister
+        // 位移翻成「本次引入」（同上方桥根因）。
+        "packages/kernel/src/bridge/msg-bridge.ts",
         "packages/loader/src/host/ipc/index.ts",
         // 测试文件（**/*.test.ts）：单包目录下跑 fallow 时 vitest 入口检测不到，
         // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经

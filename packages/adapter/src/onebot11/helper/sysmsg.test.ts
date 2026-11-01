@@ -1,38 +1,16 @@
 /**
- * sysmsg.test.ts：onRecvSysMsg protobuf 解码 + 识别单测（2026-09-10，design.md §7）。
+ * OB11 sysmsg 识别表单测（2026-11-01；解码层测试在 core/sysmsg.test.ts）
  *
- * 双路样本：
- *  - 合成字节（测试内手工构造 varint/嵌套/畸形输入）覆盖解码器边界行为；
- *  - 脱敏真实样本 fixture（c3 观测窗 2026-09-09 实触 2 条，各 151 字节）覆盖
- *    真实 wire 字节端到端。
- *
- * ⚠️ 脱敏说明：原始样本含本机登录账号 uin / uid / 群标识 / base64 尾部，
- * 已做**等长字节替换**（uin→10000000001、uid→u_MASKEDUID…、群标识对→
- * 0xAAAAAAAA(+1)/0xBBBBBBBB(+1)、base64 尾部清零）——msgType/subType
- * （528/382）、时间戳、varint 边界与嵌套长度等结构字节原样保留，真实样本的
- * 回归价值不受影响。
+ * 732:21 群名片变更规则用合成 wire bytes（按批次三轮录制实证的 strings 顺序
+ * [群号, 对象 uid, 新值, 旧值] 构造）覆盖：命中提取 / 判别式拒收 / uid 解析。
  */
 import { describe, expect, it } from "vitest";
 import {
-    collectStrings,
     decodeProtoTree,
     extractSysMsgEnvelope,
-    narrowSysMsgBlobs,
-    recognizeSysMsg,
-    type SysMsgField,
-    type SysMsgKindRule,
-    toHex,
-    varintToNumber,
+    recognizeOb11SysMsg,
+    type SysMsgKindRuleOB11,
 } from "./sysmsg.js";
-
-/** hex → Uint8Array。 */
-function hexToBytes(hex: string): Uint8Array {
-    const out = new Uint8Array(hex.length / 2);
-    for (let i = 0; i + 1 < hex.length; i += 2) {
-        out[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16);
-    }
-    return out;
-}
 
 /** varint 编码。 */
 function encVarint(value: number | bigint): Uint8Array {
@@ -63,240 +41,99 @@ function encBytesField(no: number, payload: Uint8Array): Uint8Array {
     ]);
 }
 
-/** 嵌套包裹：payload 变成 field 1 的子消息。 */
-function wrap(payload: Uint8Array): Uint8Array {
-    return encBytesField(1, payload);
+/** 文本 bytes 字段。 */
+function encTextField(no: number, text: string): Uint8Array {
+    return encBytesField(no, new TextEncoder().encode(text));
 }
 
-/** 最内层 bytes 节点的 children（沿首个 bytes 节点下钻；null = 不透明降级）。 */
-function deepestChildren(tree: readonly SysMsgField[]): readonly SysMsgField[] | null {
-    const f = tree[0];
-    if (f === undefined || f.kind !== "bytes") {
-        return tree;
-    }
-    return f.children === null ? null : deepestChildren(f.children);
+/**
+ * 构造 732:21 形状样本：f2 块内 [f1=msgType 732, f2=subType 21, 群号, uid,
+ * 新值, 旧值]（collectStrings 先序 = 录制实证顺序）。
+ */
+function cardChangeBlob(group: string, uid: string, cardNew: string, cardOld: string): Uint8Array {
+    const f2 = Uint8Array.from([
+        ...encVarintField(1, 732),
+        ...encVarintField(2, 21),
+        ...encTextField(4, group),
+        ...encTextField(5, uid),
+        ...encTextField(6, cardNew),
+        ...encTextField(7, cardOld),
+    ]);
+    return Uint8Array.from([...encBytesField(2, f2)]);
 }
 
-// ---------------------------------------------------------------------------
-// 脱敏真实样本 fixture（c3 观测窗 2026-09-09 实触，脱敏说明见文件头）
-// ---------------------------------------------------------------------------
-
-const SAMPLE_1_HEX =
-    "0a400881c8afa0251218755f4d41534b45445549444d41534b45445549444d4154512881c8afa0253218755f4d41534b45445549444d41534b45445549444d415451123108900410fe0218fe0220aad5aad50a28abd5aad50a308d9486d50660aad5aad58a808080028002e6a0c2e5f3af9ee8b4011a200a00121c4367496f4168442b416741414141414141414141414141414141413d";
-const SAMPLE_2_HEX =
-    "0a400881c8afa0251218755f4d41534b45445549444d41534b45445549444d4154512881c8afa0253218755f4d41534b45445549444d41534b45445549444d415451123108900410fe0218fe0220bbf7eedd0b28bcf7eedd0b30919486d50660bbf7eedd8b808080028002cbd4f89b82b8d7b6d9011a200a00121c4367496f4168442b416741414141414141414141414141414141413d";
-
-describe("decodeProtoTree：wire-format 解码", () => {
-    it("varint 单字段（多字节值）", () => {
-        expect(decodeProtoTree(encVarintField(1, 300))).toEqual([
-            { no: 1, kind: "varint", value: 300n },
-        ]);
-    });
-
-    it("64 位 varint 精度保持（BigInt）", () => {
-        const big = 2n ** 57n + 2863311530n;
-        expect(decodeProtoTree(encVarintField(12, big))).toEqual([
-            { no: 12, kind: "varint", value: big },
-        ]);
-    });
-
-    it("嵌套 msg（varint + 不可解析字符串子块 → 不透明字节）", () => {
-        const text = new TextEncoder().encode("abc"); // "abc" 作 protobuf 解析失败
-        const inner = Uint8Array.from([...encVarintField(1, 7), ...encBytesField(2, text)]);
-        expect(decodeProtoTree(encBytesField(3, inner))).toEqual([
-            {
-                no: 3,
-                kind: "bytes",
-                value: inner,
-                children: [
-                    { no: 1, kind: "varint", value: 7n },
-                    { no: 2, kind: "bytes", value: text, children: null },
-                ],
-            },
-        ]);
-    });
-
-    it("try-parse 失败 → children null（不透明字节）", () => {
-        const opaque = Uint8Array.from([0x0f]); // field 1 wire 7 非法
-        expect(decodeProtoTree(encBytesField(1, opaque))).toEqual([
-            { no: 1, kind: "bytes", value: opaque, children: null },
-        ]);
-    });
-
-    it("wire 1/5（fixed64/32）跳过不产出节点", () => {
-        const data = Uint8Array.from([
-            0x09,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8, // f1 fixed64
-            0x0d,
-            9,
-            8,
-            7,
-            6, // f2 fixed32
-            ...encVarintField(3, 1),
-        ]);
-        expect(decodeProtoTree(data)).toEqual([{ no: 3, kind: "varint", value: 1n }]);
-    });
-
-    it("畸形输入顶层判失败 → null：wire 3 / 截断 varint / field 0 / length 越界", () => {
-        expect(decodeProtoTree(Uint8Array.from([0x0b]))).toBeNull(); // field1 wire3
-        expect(decodeProtoTree(Uint8Array.from([0x08]))).toBeNull(); // varint 截断
-        expect(decodeProtoTree(Uint8Array.from([0x00]))).toBeNull(); // field 0
-        expect(decodeProtoTree(Uint8Array.from([0x0a, 0x05, 0x01]))).toBeNull(); // length 越界
-        expect(decodeProtoTree(Uint8Array.from([0x60]))).toBeNull(); // field12 wire0 无值
-    });
-
-    it("深度上限：16 层包裹解析到底，17 层降级为不透明字节（防栈溢出）", () => {
-        let ok = encVarintField(1, 1);
-        for (let i = 0; i < 16; i += 1) {
-            ok = wrap(ok);
-        }
-        // 根 + 16 层 bytes：最内层 children = [varint 叶子]
-        expect(deepestChildren(decodeProtoTree(ok) ?? [])).toEqual([
-            { no: 1, kind: "varint", value: 1n },
-        ]);
-        // 再包一层（第 17 层）：超深部分整体降级为 children null，树不炸
-        const deep = wrap(ok);
-        expect(deepestChildren(decodeProtoTree(deep) ?? [])).toBeNull();
-    });
-
-    it("字段数上限：256 字段可解析，257 判失败", () => {
-        const ok = new Uint8Array(512);
-        for (let i = 0; i < 256; i += 1) {
-            ok[i * 2] = 0x08; // field 1 varint
-            ok[i * 2 + 1] = 0x01;
-        }
-        expect(decodeProtoTree(ok)).not.toBeNull();
-        expect(decodeProtoTree(Uint8Array.from([0x08, 0x01, ...ok]))).toBeNull();
-    });
-
-    it("空输入 → 空树（非 null）", () => {
-        expect(decodeProtoTree(new Uint8Array(0))).toEqual([]);
-    });
-});
-
-describe("narrowSysMsgBlobs：回调参数防御性收窄", () => {
-    it("实测批形状 [[signed bytes]] → Uint8Array（&0xFF 归一）", () => {
-        const blobs = narrowSysMsgBlobs([[10, 64, -100, 200]]);
-        expect(blobs?.length).toBe(1);
-        expect(Array.from(blobs?.[0] ?? [])).toEqual([10, 64, 156, 200]);
-    });
-
-    it("多条批量 → 多块", () => {
-        expect(narrowSysMsgBlobs([[1, 2], [3]])?.length).toBe(2);
-    });
-
-    it("单块裸字节数组兜底", () => {
-        const blobs = narrowSysMsgBlobs([10, 64, 8]);
-        expect(blobs?.length).toBe(1);
-        expect(Array.from(blobs?.[0] ?? [])).toEqual([10, 64, 8]);
-    });
-
-    it("TypedArray 输入（Uint8Array 批 / Int8Array 裸块）", () => {
-        expect(narrowSysMsgBlobs([new Uint8Array([1, 2])])?.length).toBe(1);
-        const fromInt8 = narrowSysMsgBlobs(new Int8Array([10, -100]));
-        expect(Array.from(fromInt8?.[0] ?? [])).toEqual([10, 156]);
-    });
-
-    it("批内垃圾项跳过、有效项保留", () => {
-        expect(narrowSysMsgBlobs(["垃圾", [1, 2], {}, [3]])?.length).toBe(2);
-    });
-
-    it("未知形状 → null：垃圾 / 空批 / 空数组 / 越界数值 / 浮点 / NaN", () => {
-        expect(narrowSysMsgBlobs({ foo: 1 })).toBeNull();
-        expect(narrowSysMsgBlobs("str")).toBeNull();
-        expect(narrowSysMsgBlobs([])).toBeNull();
-        expect(narrowSysMsgBlobs([[]])).toBeNull();
-        expect(narrowSysMsgBlobs([[300]])).toBeNull();
-        expect(narrowSysMsgBlobs([[-129]])).toBeNull();
-        expect(narrowSysMsgBlobs([[1.5]])).toBeNull();
-        expect(narrowSysMsgBlobs([[Number.NaN]])).toBeNull();
-    });
-});
-
-describe("extractSysMsgEnvelope：脱敏真实样本信封提取（design.md §7.3）", () => {
-    it("样本 1：信封字段全量断言", () => {
-        const tree = decodeProtoTree(hexToBytes(SAMPLE_1_HEX)) ?? [];
-        const env = extractSysMsgEnvelope(tree);
-        expect(env.actorUin).toBe(10000000001);
-        expect(env.actorUid).toBe("u_MASKEDUIDMASKEDUIDMATQ");
-        expect(env.targetUin).toBe(10000000001);
-        expect(env.targetUid).toBe("u_MASKEDUIDMASKEDUIDMATQ");
-        expect(env.msgType).toBe(528);
-        expect(env.subType).toBe(382);
-        expect(env.subTypeAlt).toBe(382);
-        expect(env.groupCodes).toEqual([2863311530, 2863311531]); // 0xAAAAAAAA / +1
-        expect(env.time).toBe(1788971533); // 2026-09-09T16:32:13Z
-        expect(env.strings).toEqual([
-            "u_MASKEDUIDMASKEDUIDMATQ",
-            "u_MASKEDUIDMASKEDUIDMATQ",
-            "CgIoAhD+AgAAAAAAAAAAAAAAAAA=",
-        ]);
-    });
-
-    it("样本 2：同构不同群标识与时间戳", () => {
-        const env = extractSysMsgEnvelope(decodeProtoTree(hexToBytes(SAMPLE_2_HEX)) ?? []);
-        expect(env.msgType).toBe(528);
-        expect(env.subType).toBe(382);
-        expect(env.groupCodes).toEqual([3149642683, 3149642684]); // 0xBBBBBBBB / +1
-        expect(env.time).toBe(1788971537); // 2026-09-09T16:32:17Z
-    });
-
-    it("空树 / 缺字段 → 全 null 软失败", () => {
-        const env = extractSysMsgEnvelope([]);
-        expect(env.actorUin).toBeNull();
-        expect(env.msgType).toBeNull();
-        expect(env.groupCodes).toBeNull();
-        expect(env.time).toBeNull();
-        expect(env.strings).toEqual([]);
-    });
-});
-
-describe("collectStrings / varintToNumber / toHex", () => {
-    it("collectStrings：先序、跳过空字节段、不透明字节也取文本", () => {
-        const text = new TextEncoder().encode("abc"); // 解析失败 → children null，文本仍收集
-        const tree =
-            decodeProtoTree(
-                Uint8Array.from([
-                    ...encBytesField(1, text),
-                    ...encBytesField(2, new Uint8Array(0)),
-                    ...encVarintField(3, 1),
-                ]),
-            ) ?? [];
-        expect(collectStrings(tree)).toEqual(["abc"]);
-    });
-
-    it("varintToNumber：安全整数内转 number，超限 null", () => {
-        expect(varintToNumber(1n)).toBe(1);
-        expect(varintToNumber(3567141148n)).toBe(3567141148);
-        expect(varintToNumber(2n ** 57n)).toBeNull();
-    });
-
-    it("toHex：小写补零", () => {
-        expect(toHex(Uint8Array.from([0x0a, 0x40, 0xff]))).toBe("0a40ff");
-    });
-});
-
-describe("recognizeSysMsg：识别三态（design.md §7.5 不得猜错还硬广播）", () => {
-    it("已观测未命名 528:382 → observed_unnamed（不广播）", () => {
-        expect(recognizeSysMsg(528, 382).kind).toBe("observed_unnamed");
+describe("recognizeSysMsg：OB11 识别三态", () => {
+    it("已观测未命名键（528 族）→ observed_unnamed（不广播）", () => {
+        expect(recognizeOb11SysMsg(528, 382).kind).toBe("observed_unnamed");
+        expect(recognizeOb11SysMsg(528, 349).kind).toBe("observed_unnamed");
+        expect(recognizeOb11SysMsg(528, 381).kind).toBe("observed_unnamed");
     });
 
     it("未知对 / null → unknown（不广播）", () => {
-        expect(recognizeSysMsg(1, 2).kind).toBe("unknown");
-        expect(recognizeSysMsg(null, 382).kind).toBe("unknown");
-        expect(recognizeSysMsg(528, null).kind).toBe("unknown");
+        expect(recognizeOb11SysMsg(1, 2).kind).toBe("unknown");
+        expect(recognizeOb11SysMsg(null, 382).kind).toBe("unknown");
+        expect(recognizeOb11SysMsg(528, null).kind).toBe("unknown");
     });
 
-    it("合成表命中 → notice 且规则透传（生产 KIND_TABLE 为空，经注入表验证）", () => {
-        const rule: SysMsgKindRule = { kind: "group_card", extract: () => null };
+    it("732:21 → notice（表命中）", () => {
+        const rec = recognizeOb11SysMsg(732, 21);
+        expect(rec.kind).toBe("notice");
+        expect(rec.kind === "notice" && rec.rule.kind).toBe("group_card");
+    });
+});
+
+describe("732:21 group_card 规则提取", () => {
+    const uinOf = (uid: string): number => (uid === "u_OP" ? 10001 : 0);
+
+    it("命中：strings [群号, uid, 新值, 旧值] → group_card 事件（uid → uin）", () => {
+        const rec = recognizeOb11SysMsg(732, 21);
+        if (rec.kind !== "notice") {
+            throw new Error("expected notice");
+        }
+        const tree =
+            decodeProtoTree(cardChangeBlob("1101729931", "u_OP", "新名片", "旧名片")) ?? [];
+        const env = extractSysMsgEnvelope(tree);
+        const event = rec.rule.extract(tree, env, uinOf, { selfUin: 3567141148, time: 1793540000 });
+        expect(event).toMatchObject({
+            time: 1793540000,
+            self_id: 3567141148,
+            post_type: "notice",
+            notice_type: "group_card",
+            group_id: 1101729931,
+            user_id: 10001,
+            card_new: "新名片",
+            card_old: "旧名片",
+        });
+    });
+
+    it("collectUids 声明 = 对象 uid（提取前批量解析）", () => {
+        const rec = recognizeOb11SysMsg(732, 21);
+        if (rec.kind !== "notice") {
+            throw new Error("expected notice");
+        }
+        const tree = decodeProtoTree(cardChangeBlob("1101729931", "u_OP", "A", "B")) ?? [];
+        const env = extractSysMsgEnvelope(tree);
+        expect(rec.rule.collectUids?.(tree, env)).toEqual(["u_OP"]);
+    });
+
+    it("判别式拒收：群号非数字 / 对象非 uid 形 → null（降级校准日志）", () => {
+        const rec = recognizeOb11SysMsg(732, 21);
+        if (rec.kind !== "notice") {
+            throw new Error("expected notice");
+        }
+        const bad1 = decodeProtoTree(cardChangeBlob("not-a-group", "u_OP", "A", "B")) ?? [];
+        const bad2 = decodeProtoTree(cardChangeBlob("1101729931", "plain-text", "A", "B")) ?? [];
+        const env1 = extractSysMsgEnvelope(bad1);
+        const env2 = extractSysMsgEnvelope(bad2);
+        const ctx = { selfUin: 1, time: 1 };
+        expect(rec.rule.extract(bad1, env1, uinOf, ctx)).toBeNull();
+        expect(rec.rule.extract(bad2, env2, uinOf, ctx)).toBeNull();
+    });
+
+    it("注入合成表仍走通用识别（协议无关核心）", () => {
+        const rule: SysMsgKindRuleOB11 = { kind: "group_card", extract: () => null };
         const table = new Map([["1:2", rule]]);
-        expect(recognizeSysMsg(1, 2, table)).toEqual({ kind: "notice", rule });
+        const rec = recognizeOb11SysMsg(1, 2, table);
+        expect(rec).toEqual({ kind: "notice", rule });
     });
 });
