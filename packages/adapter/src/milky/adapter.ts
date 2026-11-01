@@ -106,6 +106,10 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
                 ...(this.calibLogger !== undefined ? { logger: this.calibLogger } : {}),
             });
             this.stopTransports = set.close;
+            // 启动监听（satori/OB11 startTransports 同款）：server.open 实绑端口，
+            // hub / webhook client 的 open 均为 no-op。2026-11-01 实机发现：缺此步
+            // milky HTTP 从未监听（P0 起；集成测试一直显式 open 掩盖了该缺口）。
+            await Promise.all(set.adapters.map((a) => a.open()));
         }
         this.subscribe();
         this.calibLogger?.info(

@@ -9,10 +9,13 @@
  *  - /event WS：同端口升级，事件单条 JSON 推送
  */
 
+import { type MsgListener, NTEventChannel } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it } from "vitest";
 import { WebSocket as WsClient } from "ws";
+import { ProtocolConfig } from "../core/index.js";
 import { createMilkyActionRegistry } from "./action/index.js";
+import { NapukettoMilkyAdapter } from "./adapter.js";
 import { MilkyApi } from "./api.js";
 import { milkyConfigSchema } from "./config.js";
 import { MessageSeqIndex } from "./helper/seq-index.js";
@@ -169,5 +172,49 @@ describe("Milky 事件推送（/event）", () => {
         });
         const parsed = JSON.parse(received) as { event_type: string };
         expect(parsed.event_type).toBe("message_recall");
+    });
+});
+
+/**
+ * 适配器级回归（2026-11-01 实机发现）：NapukettoMilkyAdapter.start() 必须自行
+ * open 传输——此前 startTransports 只装配不监听，集成测试显式
+ * `set.adapters[0]?.open()` 掩盖了该缺口（P0 起 milky HTTP 从未真正绑端口）。
+ */
+describe("Milky 适配器 start 即监听（回归）", () => {
+    const AdapterPort = 36222;
+    const adapter = new NapukettoMilkyAdapter({
+        config: new ProtocolConfig({
+            path: "milky-adapter-start-test.toml",
+            schema: milkyConfigSchema,
+            defaults: milkyConfigSchema.parse({}),
+            seed: milkyConfigSchema.parse({
+                enabled: true,
+                host: "127.0.0.1",
+                port: AdapterPort,
+                token: "",
+            }),
+        }),
+        broadcaster: new EventBroadcaster(),
+        msgChannel: new NTEventChannel<MsgListener, "Msg">("Msg"),
+        msgApi: {},
+        groupApi: {},
+        friendApi: {},
+        profileApi: {},
+        self: { uin: "10000", nickname: "机器人" },
+        qqVersion: "9.9.9-test",
+    } as unknown as ConstructorParameters<typeof NapukettoMilkyAdapter>[0]);
+
+    it("start() 后无需显式 open，HTTP 动作即可达", async () => {
+        await adapter.start();
+        try {
+            const res = await fetch(`http://127.0.0.1:${AdapterPort}/api/get_impl_info`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: "{}",
+            });
+            expect(res.status).toBe(200);
+        } finally {
+            await adapter.stop();
+        }
     });
 });
