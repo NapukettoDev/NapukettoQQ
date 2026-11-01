@@ -80,13 +80,15 @@ function extractPinnedContacts(raw: { result?: unknown }): PinnedContact[] {
     return [];
 }
 
-/** 单条会话 → 置顶项（isTop 为真且场景可判定才产出）。 */
+/** 单条会话 → 置顶项（置顶标记为真且场景可判定才产出）。 */
 function pinnedOf(item: unknown): PinnedContact[] {
     if (item === null || typeof item !== "object") {
         return [];
     }
     const contact = item as RecentContact;
-    if (contact.isTop !== true || typeof contact.peerUid !== "string") {
+    // 置顶字段实测为 topFlag（1 = 置顶，listener 载荷 2026-11-01 实录）；isTop 为兼容形态
+    const pinned = contact.isTop === true || contact.topFlag === 1;
+    if (!pinned || typeof contact.peerUid !== "string") {
         return [];
     }
     if (contact.chatType === ChatType.GROUP) {

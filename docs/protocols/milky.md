@@ -213,6 +213,42 @@ name_change / essence 等的 msg_type:sub_type 实测键）。
 最后。rkey 预期由查询结果携带（待实验证实），file_hash（TriSHA1）取自
 fileElement。实验结论落回本节后再接出口。
 
+#### 0.8.5 首轮录制结论（2026-11-01，uin 3567141148）
+
+首录窗口约 4 分钟（操作单 1/2/5/6 步 + 常驻聊天流量），199 行落盘，11 服务
+全部挂上。结论：
+
+- **原生按名 Get 反射确认**：全程无 `<has>` / `<ownKeys>` 陷阱触发——万能
+  监听器设计成立，无需 fallback 预置回调名。
+- **录制器 bug（随修复批）**：MsgService 有 5 个 add*Listener，正则按字母序
+  误选 `addKernelMsgImportToolListener`——真 listener 没挂上，本轮 Msg 回调面
+  （onRecvMsg 基线 / reaction 候选 / onRecvSysMsg / onRecvOfflineFileMsg）零
+  捕获。修复 = 精确名 `addKernel<简称>Listener` 优先、回退正则。
+  **reaction / sysmsg / friend_file_upload 证据待重录窗口**。
+- **group_essence_message_change 源实锤**：`Group/onGroupEssenceListChange(群号)`
+  与设/取消精华操作逐次吻合；payload 只有群号——翻译需主动查精华列表 diff
+  （fetchGroupEssenceListV2 探测面在），message_seq / operator_id / is_set 从
+  列表项取；sysmsg 是否同推 operator（省 diff）待重录验证。
+- **peer_pin_change：源候选实锤、翻转未捕获**：RecentContact 两回调
+  （onRecentContactListChangedVer2 / onRecentContactNotification）随每条消息
+  活动推 contact 快照，含 `topFlag` / `topFlagTime` 字段；但置顶操作发生在
+  用户自己的客户端（改的是用户会话列表，bot 无感）——翻转实验须**自触发**：
+  调 set_peer_pin（MsgApi.setContactLocalTop）后观察 bot 侧 topFlag 翻转。
+- **get_peer_pins 校准证据**：listener 载荷置顶字段名为 `topFlag`（1 = 置顶），
+  非 isTop——RecentContactApi.pinnedOf 已改双字段兼容（topFlag === 1 ||
+  isTop === true）。
+- **噪声面**：每条群记录伴生 chatType=7 影子记录（peerUid 空 / peerUin "0"，
+  翻译过滤；pinnedOf 只认 GROUP=2 / C2C=1 已安全）；Buddy 注册后立即全量首推
+  （onBuddyListChange / onBlockChanged / onBuddyReqChange 初值快照），翻译须
+  识别首推。
+- **FileAssistant.onFileStatusChanged**：4 次，进度字段全 null（只有 id +
+  thumbPath）——非 friend_file_upload 主源（主源仍是 Msg.onRecvOfflineFileMsg）。
+- **bot_offline**：本轮无下线操作，Login / OnlineStatus / Lock listener 已挂
+  待野捕。
+
+**重录窗口（录制器修复合入后）**：按 §0.8.2 补 Msg 面（步骤 1/2/3/6/7）+
+置顶自触发实验（set_peer_pin 翻转）+ 精华操作看 sysmsg 是否同推 operator。
+
 ## 1. 为什么做
 
 Milky 是针对 OneBot 11 的历史设计做的**重写**，不是扩展。对我们这种"kernel 已经是
