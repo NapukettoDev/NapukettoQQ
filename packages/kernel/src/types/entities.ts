@@ -149,6 +149,18 @@ export interface FileElement {
     fileName?: string;
     fileSize?: string;
     fileUuid?: string;
+    /** 文件 md5（2026-11-01 录制实证：私聊文件消息必带；官方 Milky file_hash 为 TriSHA1，见 milky.md §0.8.6）。 */
+    file10MMd5?: string;
+    /** 文件 sha1（录制实证：接收侧为空，上传侧携带）。 */
+    fileSha?: string;
+    /** 文件 sha3（录制实证：接收侧为空）。 */
+    fileSha3?: string;
+    /** 过期时间（秒级 unix，录制实证）。 */
+    expireTime?: number;
+    /** 传输状态（录制实证）。 */
+    transferStatus?: number;
+    /** 文件子类型（录制实证：私聊离线文件 = 9）。 */
+    subElementType?: number;
 }
 
 /** 灰色提示子类型（系统事件类型，QQ wrapper 契约）。 */
@@ -262,6 +274,8 @@ export interface RawMessage {
     sendMemberName?: string;
     /** 发送状态（0=失败 1=发送中 2=成功 3=成功无seq）。onMsgInfoListUpdate 事件填充。 */
     sendStatus?: number;
+    /** 发送方向（2026-11-01 录制实证：文件消息 0=收到 2=自己发出；is_self 判据）。 */
+    sendType?: number;
     elements: RawElement[];
     records?: RawMessage[];
     guildId?: string;

@@ -43,9 +43,16 @@ export type MsgListener = {
      * 证据：wrapper.node 9.9.33-52230 字符串——小写名位于 listener 反射字符串簇
      * （与 onRecvMsg 同页，offset 差 ~7KB）+ RTTI
      * `OnRecvOfflineFileMsg@KernelMsgService@wrapper@nt`；API 族旁证
-     * getNewOfflineFileList。⚠️ 参数形状待真实事件校准（unknown 透传）。
+     * getNewOfflineFileList。2026-11-01 录制实证：参数 = RawMessage 数组
+     * （chatType=1，fileElement 携带 fileUuid/file10MMd5 等）。
      */
-    onRecvOfflineFileMsg: (arg: unknown) => void;
+    onRecvOfflineFileMsg: (msgs: RawMessage[]) => void;
+    /**
+     * 收到文件消息（onRecvOfflineFileMsg 同族；2026-11-01 录制实证：与
+     * onRecvOfflineFileMsg 同载荷（RawMessage 数组）——friend_file_upload
+     * 第二源，订阅方按 msgId 去重）。
+     */
+    onFileMsgCome: (msgs: RawMessage[]) => void;
     /**
      * 收到在线文件消息（onRecvOfflineFileMsg 同族，字符串簇相邻；
      * OB11 无对应通知类型，仅作校准观测）。参数形状待校准。

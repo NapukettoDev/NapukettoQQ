@@ -16,26 +16,45 @@
 import type {
     BuddyEventChannel,
     CanonicalElement,
+    EssenceMsgItem,
     GroupEventChannel,
     GroupNotify,
+    LoginEventChannel,
     MsgEventChannel,
     RawMessage,
+    RecentContact,
+    RecentContactEventChannel,
+    RecentContactListChanged,
 } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { narrowBuddyReqs } from "../core/buddy-req.js";
 import { collectGrayTipUids } from "../core/gray-tip.js";
 import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
-import { subscribeRawMessages } from "../core/raw-message.js";
+import { forEachRawMessage, subscribeRawMessages } from "../core/raw-message.js";
+import {
+    decodeProtoTree,
+    extractSysMsgEnvelope,
+    narrowSysMsgBlobs,
+    type SysMsgEnvelope,
+    type SysMsgField,
+    type SysMsgKindRule,
+    toHex,
+} from "../core/sysmsg.js";
 import type { RequestTranslateContext } from "../core/uid-uin.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/entities.js";
+import { diffEssenceList, narrowEssenceGroupArg } from "./helper/essence.js";
+import { toFriendFileUploadData } from "./helper/file-upload.js";
 import { type NoticeTranslateContext, toMilkyNoticeEvent } from "./helper/notice.js";
+import { PinWatch, toPeerPinChangeData } from "./helper/peer-pin.js";
+import { RecentKeyCache } from "./helper/recent-keys.js";
 import { collectNotifyUids, toFriendRequestEvent, toGroupRequestEvent } from "./helper/request.js";
 import { incomingForwardSegment } from "./helper/segments.js";
 import { MessageSeqIndex } from "./helper/seq-index.js";
+import { recognizeMilkySysMsg } from "./helper/sysmsg.js";
 import {
     type ReceiveTranslateContext,
     toGroupFileUploadEvent,
@@ -43,6 +62,7 @@ import {
     toMessageReceiveEvent,
 } from "./helper/translate.js";
 import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
+import type { BotOfflineData, GroupEssenceMessageChangeData, PeerPinChangeData } from "./types.js";
 
 /** 适配器构造参数（api 相关字段继承 MilkyApiOptions）。 */
 export interface MilkyAdapterOptions extends MilkyApiOptions {
@@ -54,8 +74,19 @@ export interface MilkyAdapterOptions extends MilkyApiOptions {
     groupChannel?: GroupEventChannel;
     /** kernel 好友事件通道（P1：好友申请推送；缺省不订阅）。 */
     buddyChannel?: BuddyEventChannel;
+    /** kernel 会话列表事件通道（批次三：peer_pin_change；缺省不订阅）。 */
+    recentContactChannel?: RecentContactEventChannel;
+    /** kernel 登录状态事件通道（批次三：bot_offline；缺省不订阅）。 */
+    loginChannel?: LoginEventChannel;
     /** 校准日志（webhook 失败 / 启停提示 / 未知事件形状；IPC 模式传 loader pino 实例）。 */
     logger?: MilkyLoggerLike;
+}
+
+/** sysmsg 识别命中产物（信封 + 规则 + 已提取 data 体）。 */
+interface SysMsgHit {
+    env: SysMsgEnvelope;
+    rule: SysMsgKindRule<unknown>;
+    data: unknown;
 }
 
 export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
@@ -64,6 +95,18 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     private readonly msgChannel: MsgEventChannel;
     private readonly groupChannel: GroupEventChannel | undefined;
     private readonly buddyChannel: BuddyEventChannel | undefined;
+    private readonly recentContactChannel: RecentContactEventChannel | undefined;
+    private readonly loginChannel: LoginEventChannel | undefined;
+    /** peer_pin 翻转检测（批次三；启动期 getPinnedContacts 播种）。 */
+    private readonly pinWatch = new PinWatch();
+    /** friend_file_upload 双回调去重（同载荷，按 msgId）。 */
+    private readonly fileKeys = new RecentKeyCache(10 * 60 * 1000);
+    /** essence 双路径去重（732:1 快路径 vs 列表 diff，键 群:seq:方向）。 */
+    private readonly essenceKeys = new RecentKeyCache(5 * 60 * 1000);
+    /** 精华列表缓存（群号 → seq → 操作者 uin，空串 = 未知）。 */
+    private readonly essenceCaches = new Map<string, Map<number, string>>();
+    /** 精华列表拉取串行链（并发回写乱序会把新列表覆盖成旧列表）。 */
+    private essenceChain: Promise<void> = Promise.resolve();
     private readonly calibLogger: MilkyLoggerLike | undefined;
     private readonly api: MilkyApi;
     private readonly seqIndex = new MessageSeqIndex();
@@ -86,6 +129,8 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         this.msgChannel = opts.msgChannel;
         this.groupChannel = opts.groupChannel;
         this.buddyChannel = opts.buddyChannel;
+        this.recentContactChannel = opts.recentContactChannel;
+        this.loginChannel = opts.loginChannel;
         this.calibLogger = opts.logger;
         this.api = new MilkyApi(opts, this.seqIndex);
         this.registry = createMilkyActionRegistry({ api: this.api });
@@ -143,6 +188,27 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
                 void this.handleIncoming(msg);
             }),
         );
+        // sysmsg 总闸（批次三：732:16 表情回应 / 732:1 精华设置快路径）
+        this.unsubscribes.push(
+            this.msgChannel.on("Msg/onRecvSysMsg", (arg) => {
+                this.handleSysMsg(arg);
+            }),
+        );
+        // 私聊文件（批次三 friend_file_upload）：双回调同载荷，处理器内按 msgId 去重
+        this.unsubscribes.push(
+            this.msgChannel.on("Msg/onRecvOfflineFileMsg", (msgs) => {
+                this.handleFileMessages(msgs);
+            }),
+            this.msgChannel.on("Msg/onFileMsgCome", (msgs) => {
+                this.handleFileMessages(msgs);
+            }),
+        );
+        this.subscribeGroupAndBuddy();
+        this.subscribeBatch3();
+    }
+
+    /** 群通知 + 好友请求通道（P1 事件源；通道缺省不订阅）。 */
+    private subscribeGroupAndBuddy(): void {
         if (this.groupChannel !== undefined) {
             const groupChannel = this.groupChannel;
             this.unsubscribes.push(
@@ -156,6 +222,39 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             this.unsubscribes.push(
                 buddyChannel.on("Buddy/onBuddyReqChange", (arg) => {
                     this.handleBuddyReqs(arg);
+                }),
+            );
+        }
+    }
+
+    /** 批次三通道：精华列表变更 / 置顶翻转（含播种基线）/ bot_offline。 */
+    private subscribeBatch3(): void {
+        if (this.groupChannel !== undefined) {
+            const groupChannel = this.groupChannel;
+            // 精华列表变更（批次三：remove 路径 + operator 回填，列表 diff）
+            this.unsubscribes.push(
+                groupChannel.on("Group/onGroupEssenceListChange", (arg) => {
+                    this.handleEssenceChange(arg);
+                }),
+            );
+        }
+        if (this.recentContactChannel !== undefined) {
+            const recentContactChannel = this.recentContactChannel;
+            this.unsubscribes.push(
+                recentContactChannel.on("RecentContact/onRecentContactListChangedVer2", (lists) => {
+                    this.handlePinChanges(lists);
+                }),
+            );
+            this.seedPinWatch();
+        }
+        if (this.loginChannel !== undefined) {
+            const loginChannel = this.loginChannel;
+            this.unsubscribes.push(
+                loginChannel.on("Login/onLoginDisConnected", (...args) => {
+                    this.broadcastBotOffline("disconnected", args);
+                }),
+                loginChannel.on("Login/onLogoutSucceed", (...args) => {
+                    this.broadcastBotOffline("logout", args);
                 }),
             );
         }
@@ -326,6 +425,273 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         }
     }
 
+    // ------------------------------------------------------------------
+    // 批次三事件（milky.md §0.8.6）：sysmsg 识别表 / 私聊文件 / 精华 diff /
+    // 置顶翻转 / 下线。载荷证据 = 2026-11-01 三轮录制 + set_peer_pin 翻转实验。
+    // ------------------------------------------------------------------
+
+    /**
+     * sysmsg 总闸：解码 → 识别 → 表命中才广播（732:16 表情回应 / 732:1 精华
+     * 设置）；未识别 debug 校准日志。规则提取失败不广播半成品事件。
+     */
+    private handleSysMsg(arg: unknown): void {
+        const blobs = narrowSysMsgBlobs(arg);
+        if (blobs === null) {
+            this.calibLogger?.warn(
+                { raw: truncate(JSON.stringify(arg)) },
+                "milky: onRecvSysMsg 未知参数形状",
+            );
+            return;
+        }
+        for (const blob of blobs) {
+            this.handleSysMsgBlob(blob);
+        }
+    }
+
+    /** 单条字节块：解码 → 识别 → 提取；任一步失败走校准日志返回 null。 */
+    private handleSysMsgBlob(blob: Uint8Array): void {
+        const hit = this.sysMsgHit(blob);
+        if (hit === null) {
+            return;
+        }
+        if (!this.claimEssenceFastPath(hit)) {
+            return;
+        }
+        this.broadcastEvent({
+            time: hit.env.time ?? Math.floor(Date.now() / 1000),
+            self_id: Number(this.api.self.uin),
+            event_type: hit.rule.kind,
+            data: hit.data,
+        });
+    }
+
+    /** 解码 + 识别 + 提取（每步失败各自打 debug 校准日志）。 */
+    private sysMsgHit(blob: Uint8Array): SysMsgHit | null {
+        const tree = decodeProtoTree(blob);
+        if (tree === null) {
+            this.calibLogger?.debug(
+                { raw: toHex(blob).slice(0, 1024) },
+                "milky: onRecvSysMsg protobuf 解码失败",
+            );
+            return null;
+        }
+        const env = extractSysMsgEnvelope(tree);
+        const rule = this.sysMsgRule(env, tree, blob);
+        if (rule === null) {
+            return null;
+        }
+        return { env, rule: rule.rule, data: rule.data };
+    }
+
+    /** 识别 + 规则提取（未识别/提取失败 → 校准日志 + null）。 */
+    private sysMsgRule(
+        env: SysMsgEnvelope,
+        tree: readonly SysMsgField[],
+        blob: Uint8Array,
+    ): { rule: SysMsgKindRule<unknown>; data: unknown } | null {
+        const rec = recognizeMilkySysMsg(env.msgType, env.subType);
+        if (rec.kind !== "notice") {
+            this.calibLogger?.debug(
+                {
+                    verdict: rec.kind,
+                    msgType: env.msgType,
+                    subType: env.subType,
+                    strings: env.strings,
+                    raw: toHex(blob).slice(0, 1024),
+                },
+                "milky: onRecvSysMsg 校准数据（未识别，不广播）",
+            );
+            return null;
+        }
+        const ctx = {
+            selfUin: Number(this.api.self.uin),
+            time: env.time ?? Math.floor(Date.now() / 1000),
+        };
+        const data = rec.rule.extract(tree, env, () => 0, ctx);
+        if (data === null) {
+            this.calibLogger?.debug(
+                { kind: rec.rule.kind, msgType: env.msgType, subType: env.subType },
+                "milky: sysmsg 规则提取失败（不广播）",
+            );
+            return null;
+        }
+        return { rule: rec.rule, data };
+    }
+
+    /** 精华快路径去重守卫：非精华事件恒 true；精华事件 claim 失败（已由列表 diff 抢发）→ false。 */
+    private claimEssenceFastPath(hit: SysMsgHit): boolean {
+        if (hit.rule.kind !== "group_essence_message_change") {
+            return true;
+        }
+        const essence = hit.data as GroupEssenceMessageChangeData;
+        return this.essenceKeys.claim(`${essence.group_id}:${essence.message_seq}:1`);
+    }
+
+    /** 私聊文件消息 → friend_file_upload（双回调同载荷，按 msgId 去重）。 */
+    private handleFileMessages(msgs: unknown): void {
+        forEachRawMessage(msgs, (msg) => {
+            // senderUin 缺失时的 uid 反查需异步批量，此处从简（录制实证 senderUin
+            // 恒有值；缺失场景 user_id=0 + 校准日志）
+            const data = toFriendFileUploadData(msg, this.api.self.uin, new Map());
+            if (data === null) {
+                return;
+            }
+            if (data.user_id === 0) {
+                this.calibLogger?.debug(
+                    { msgId: msg.msgId, senderUid: msg.senderUid },
+                    "milky: friend_file_upload senderUin 缺失（user_id=0）",
+                );
+            }
+            if (!this.fileKeys.claim(`file:${msg.msgId}`)) {
+                return;
+            }
+            this.broadcastEvent({
+                time: secondsOf(msg.msgTime),
+                self_id: Number(this.api.self.uin),
+                event_type: "friend_file_upload",
+                data,
+            });
+        });
+    }
+
+    /** 精华列表变更：拉全量列表 diff（remove 路径 + operator 回填；串行防乱序）。 */
+    private handleEssenceChange(arg: unknown): void {
+        const groupCode = narrowEssenceGroupArg(arg);
+        if (groupCode === null) {
+            this.calibLogger?.warn(
+                { raw: truncate(JSON.stringify(arg)) },
+                "milky: onGroupEssenceListChange 未知参数形状",
+            );
+            return;
+        }
+        this.essenceChain = this.essenceChain.then(
+            () => this.syncEssenceList(groupCode),
+            () => undefined,
+        );
+    }
+
+    /** 单群精华列表同步：拉取 → diff → 广播 → 更新缓存（基线未建立只建基线）。 */
+    private async syncEssenceList(groupCode: string): Promise<void> {
+        let items: EssenceMsgItem[];
+        try {
+            items = await this.api.webApi.getEssenceMsgList(groupCode);
+        } catch (e) {
+            this.calibLogger?.warn(
+                { group: groupCode, err: String(e) },
+                "milky: 精华列表拉取失败（diff 跳过）",
+            );
+            return;
+        }
+        const prev = this.essenceCaches.get(groupCode);
+        const { cache, added, removed } = diffEssenceList(prev, items);
+        this.essenceCaches.set(groupCode, cache);
+        if (prev === undefined) {
+            return;
+        }
+        const selfId = Number(this.api.self.uin);
+        const now = Math.floor(Date.now() / 1000);
+        this.broadcastEssenceAdded(groupCode, added, now, selfId);
+        this.broadcastEssenceRemoved(groupCode, removed, now, selfId);
+    }
+
+    /** diff 新增项广播（is_set=true；operator = add_digest_uin；快路径已发则跳过）。 */
+    private broadcastEssenceAdded(
+        groupCode: string,
+        added: ReadonlyArray<{ messageSeq: number; operatorUin: string | null }>,
+        now: number,
+        selfId: number,
+    ): void {
+        for (const item of added) {
+            // 732:1 快路径已广播过则跳过（去重窗口内）
+            if (!this.essenceKeys.claim(`${groupCode}:${item.messageSeq}:1`)) {
+                continue;
+            }
+            const data = essenceAddedData(groupCode, item);
+            this.broadcastEvent({
+                time: now,
+                self_id: selfId,
+                event_type: "group_essence_message_change",
+                data,
+            });
+        }
+    }
+
+    /** diff 移除项广播（is_set=false；取消无 sysmsg，operator 不可得省略）。 */
+    private broadcastEssenceRemoved(
+        groupCode: string,
+        removed: readonly number[],
+        now: number,
+        selfId: number,
+    ): void {
+        for (const seq of removed) {
+            if (!this.essenceKeys.claim(`${groupCode}:${seq}:0`)) {
+                continue;
+            }
+            this.broadcastEvent({
+                time: now,
+                self_id: selfId,
+                event_type: "group_essence_message_change",
+                data: { group_id: Number(groupCode), message_seq: seq, is_set: false },
+            });
+        }
+    }
+
+    /** 会话列表变更 → peer_pin_change（topFlag 翻转检测，条目自带 chatType 判场景）。 */
+    private handlePinChanges(lists: unknown): void {
+        const arr = Array.isArray(lists) ? lists : [lists];
+        for (const list of arr) {
+            this.handlePinChangeList(list);
+        }
+    }
+
+    /** 单个变更列表：changedList 逐条目翻转检测 + 广播。 */
+    private handlePinChangeList(list: unknown): void {
+        for (const entry of changedListOf(list)) {
+            this.handlePinEntry(entry);
+        }
+    }
+
+    /** 单个变更条目：翻译 + 翻转检测 + 广播（首见/未变/不支持场景静默跳过）。 */
+    private handlePinEntry(entry: unknown): void {
+        const payload = pinPayloadOf(entry);
+        if (payload === null) {
+            return;
+        }
+        if (!this.pinWatch.observe(payload.chatType, payload.peerUin, payload.topFlag)) {
+            return;
+        }
+        this.broadcastEvent({
+            time: secondsOf(payload.topFlagTime),
+            self_id: Number(this.api.self.uin),
+            event_type: "peer_pin_change",
+            data: payload.data,
+        });
+    }
+
+    /** 启动基线：置顶会话播种（重启后首个取消置顶也能观测到翻转；失败静默）。 */
+    private seedPinWatch(): void {
+        void this.api.recentContactApi
+            .getPinnedContacts()
+            .then((pins) => {
+                this.pinWatch.seed(pins);
+            })
+            .catch(() => undefined);
+    }
+
+    /** bot_offline：Login 桥回调（载荷零样本，reason 固定值 + raw 校准日志待野捕）。 */
+    private broadcastBotOffline(reason: string, args: unknown[]): void {
+        this.calibLogger?.debug(
+            { reason, raw: truncate(JSON.stringify(args)) },
+            "milky: bot_offline（reason 为固定值，回调载荷待野捕校准）",
+        );
+        this.broadcastEvent({
+            time: Math.floor(Date.now() / 1000),
+            self_id: Number(this.api.self.uin),
+            event_type: "bot_offline",
+            data: { reason } satisfies BotOfflineData,
+        });
+    }
+
     /** uid 批量 → uin（空集/失败返回 undefined 语义：调用方用空 Map）。 */
     private resolveUidToUin(uids: string[]): Promise<Map<string, string> | undefined> {
         const unique = [...new Set(uids.filter((uid) => uid !== ""))];
@@ -350,4 +716,68 @@ function findRevokeElement(msg: RawMessage) {
 /** 字符串截断（raw 日志防刷屏）。 */
 function truncate(raw: string | undefined): string {
     return raw === undefined ? "" : raw.slice(0, 2000);
+}
+
+/** 数字串判别（uin / 秒级时间戳）。 */
+const NUMERIC_RE = /^\d+$/;
+
+/** diff 新增项 → 事件载荷（operator = add_digest_uin，非数字串省略）。 */
+function essenceAddedData(
+    groupCode: string,
+    item: { messageSeq: number; operatorUin: string | null },
+): GroupEssenceMessageChangeData {
+    const base = { group_id: Number(groupCode), message_seq: item.messageSeq };
+    if (item.operatorUin !== null && NUMERIC_RE.test(item.operatorUin)) {
+        return { ...base, operator_id: Number(item.operatorUin), is_set: true };
+    }
+    return { ...base, is_set: true };
+}
+
+/** 变更列表 → changedList 条目数组（形状不符 → 空）。 */
+function changedListOf(list: unknown): readonly unknown[] {
+    if (list === null || typeof list !== "object") {
+        return [];
+    }
+    const changed = (list as RecentContactListChanged).changedList;
+    return Array.isArray(changed) ? changed : [];
+}
+
+/** 变更条目 → 翻转检测输入（null = 条目不支持/缺置顶字段）。 */
+function pinPayloadOf(entry: unknown): PinPayload | null {
+    if (entry === null || typeof entry !== "object") {
+        return null;
+    }
+    return pinPayloadFrom(entry as RecentContact);
+}
+
+/** 单条置顶变更条目的翻转检测输入。 */
+interface PinPayload {
+    chatType: number;
+    peerUin: string;
+    topFlag: number;
+    topFlagTime: string | undefined;
+    data: PeerPinChangeData;
+}
+
+function pinPayloadFrom(contact: RecentContact): PinPayload | null {
+    const topFlag = contact.topFlag;
+    const payload = toPeerPinChangeData(contact);
+    if (topFlag === undefined || payload === null) {
+        return null;
+    }
+    return {
+        chatType: contact.chatType,
+        peerUin: payload.peerUin,
+        topFlag,
+        topFlagTime: payload.topFlagTime,
+        data: payload.data,
+    };
+}
+
+/** 秒级时间戳归一（空/非法 → 当前时间；topFlagTime/msgTime 均为秒级字符串）。 */
+function secondsOf(raw: string | undefined): number {
+    if (raw !== undefined && NUMERIC_RE.test(raw)) {
+        return Number(raw);
+    }
+    return Math.floor(Date.now() / 1000);
 }

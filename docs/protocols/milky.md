@@ -249,6 +249,47 @@ fileElement。实验结论落回本节后再接出口。
 **重录窗口（录制器修复合入后）**：按 §0.8.2 补 Msg 面（步骤 1/2/3/6/7）+
 置顶自触发实验（set_peer_pin 翻转）+ 精华操作看 sysmsg 是否同推 operator。
 
+#### 0.8.6 批次三接线方案（2026-11-01 设计定稿，三轮录制 + 置顶实验证据齐备）
+
+证据链：#37 录制器 → #38 Msg 精确名修复 → #39 serialize 字节保真 → 三轮录制
+（操作单 + set_peer_pin 自触发翻转实验）→ 本节。sysmsg wire bytes 全量解码
+（临时脚本 `.napuketto/decode-sysmsg*.mjs`，不入库），识别表如下：
+
+| 键 (msgType:subType) | 语义 | 关键路径（实测） |
+|---|---|---|
+| 732:16 | 群消息表情回应 | f1.f1=群号；f3.f2.f44.f1.f1 = {f1 变动值, f2.f1=msgSeq, f3={f1 faceId 字符串, f5: 1=添加/2=撤销, f3:1 仅添加时存在}}；**operator 不在 push**（f4=bot 自身 uid 占位，被回应操作者 uid 树内 0 命中） |
+| 732:1 | 群精华设置 | f1.f1=群号, f1.f8.f8.f1=msgSeq；**取消精华无独立 sysmsg** |
+| 732:21 | 群名片变更 | strings=[群号, 对象 uid, 新值, 旧值]（OB11 group_card 键） |
+| 528:349/381/382 | 多端设备同步族 | instanceId 与 onLineDev 复现；不广播 |
+
+**接线方案**（kernel 通道扩展 → loader 装配 → adapter 翻译）：
+
+| Milky 事件 | 原生源 | 翻译要点与已知差异 |
+|---|---|---|
+| peer_pin_change | `RecentContact/onRecentContactListChangedVer2`（**新桥** RecentContactBridge） | changedList 条目自带 chatType（2=群/1=好友，7=影子过滤）+ topFlag/topFlagTime——按「同 key 前后值翻转」检测广播（回调随消息活动高频快照，不能见条目就广播）；message_scene 群→"group"/好友→"friend"；适配器启动以 getPinnedContacts 播种（重启后首翻转不丢） |
+| friend_file_upload | `Msg/onRecvOfflineFileMsg` + `Msg/onFileMsgCome`（**桥补转发**，二者同载荷） | fileElement{fileName, fileSize 字符串, file10MMd5, fileUuid, transferStatus, ...}；is_self = sendType===2 ‖ senderUin===self；file_hash 官方 TriSHA1、**实测取 file10MMd5（md5）**——接收侧 fileSha/fileSha3 为空，上传侧校准前以 md5 充值并文档标注；双回调同载荷按 msgId 去重 |
+| group_message_reaction | `Msg/onRecvSysMsg` 732:16 | reaction_type 恒 "face"；is_add = f5===1（f3===1 双判据）；**user_id 不可得省略**（P1 惯例：不产出半成品字段，校准日志留存原始树） |
+| group_essence_message_change | 732:1（set 快路径）+ `Group/onGroupEssenceListChange` → getEssenceMsgList 列表 diff | set：732:1 命中即广播（is_set=true，operator 省略）；remove：列表 diff（取消无 sysmsg）→ is_set=false；diff 新增项若未被 732:1 抢发则回填 operator_id=add_digest_uin；双路径共用去重缓存（key=群:seq:is_set，TTL 5min——谁先到谁广播）；基线未建立的组首个变更只建基线不广播 |
+| bot_offline | `Login/onLoginDisConnected`（**新桥** LoginBridge，`ctx.wrapper.loginService` 注入）+ onLogoutSucceed | **回调载荷零样本**（三轮无下线操作）——防御收窄 + 固定 reason（disconnected/logout）+ raw 校准日志，真实 reason 字段待野捕回填 |
+
+**sysmsg 识别表共享化**（§0.8.3 落地）：解码层（decodeProtoTree / 信封提取 /
+narrowSysMsgBlobs / toHex）上移 `adapter/src/core/sysmsg.ts`，识别层泛型化
+`SysMsgKindRule<TEvent>`；onebot11 保留 KIND_TABLE + 732:21 group_card 规则
+（uid→uin 经 collectUids 钩子批量解析后传入 extract）；milky 新建识别表
+（732:16 / 732:1，规则产出 data 体，适配器套 time/self_id/event_type 信封）。
+
+**kernel 扩展**：RecentContact 桥（onRecentContactListChangedVer2 /
+onRecentContactNotification，录制实证参数形状）/ Login 桥（onLoginDisConnected
++ onLogoutSucceed）/ Msg 桥补 onFileMsgCome / FileElement 补录制实证字段
+（file10MMd5/fileSha/fileSha3/expireTime/transferStatus/subElementType）/
+RawMessage 补 sendType / PinnedContact 补 peerUin（播种用）。
+
+**遗留**（不进本批）：get_private_file_download_url（§0.8.4 参数实验待实机
+fileUuid，维持 persist-before-call 方案）；OB11 group_essence（源已具备 =
+732:1 + 列表 diff，message_id 反查 seqIndex 接线后可开）；bot_offline reason /
+reaction user_id / 取消精华 push 形态（重录窗口或野捕校准）；732:16/732:1 测试
+fixture 为按识别表合成的 protobuf 字节（真实样本回归待重录窗口补充）。
+
 ## 1. 为什么做
 
 Milky 是针对 OneBot 11 的历史设计做的**重写**，不是扩展。对我们这种"kernel 已经是

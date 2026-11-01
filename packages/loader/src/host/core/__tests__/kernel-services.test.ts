@@ -52,6 +52,8 @@ const KERNEL_MEMBERS = {
     msgBridge: "MsgBridge",
     groupBridge: "GroupBridge",
     friendBridge: "FriendBridge",
+    recentContactBridge: "RecentContactBridge",
+    loginBridge: "LoginBridge",
     groupApi: "GroupApi",
     msgApi: "MsgApi",
     friendApi: "FriendApi",
@@ -80,6 +82,8 @@ function stubKernel(): KernelLike {
         [KERNEL_MEMBERS.msgBridge]: FakeNode,
         [KERNEL_MEMBERS.groupBridge]: FakeNode,
         [KERNEL_MEMBERS.friendBridge]: FakeNode,
+        [KERNEL_MEMBERS.recentContactBridge]: FakeNode,
+        [KERNEL_MEMBERS.loginBridge]: FakeNode,
         [KERNEL_MEMBERS.groupApi]: FakeNode,
         [KERNEL_MEMBERS.msgApi]: FakeNode,
         [KERNEL_MEMBERS.friendApi]: FakeNode,
@@ -164,19 +168,25 @@ describe("createKernelServices logger 装配", () => {
 });
 
 describe("createKernelServices dispose 面（顺带回归：装配产物完整）", () => {
-    it("dispose 清理三桥 + 两缓存", async () => {
+    it("dispose 清理五桥 + 两缓存", async () => {
         vi.stubEnv("NAPUTO_IPC", "0");
         vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
-        const services = await createKernelServices(stubKernel(), stubCtx(), {
-            uin: "10000",
-            uid: "u1",
-        } satisfies LoginResultLike);
+        const services = await createKernelServices(
+            stubKernel(),
+            // wrapper.loginService 注入：Login 桥注册路径一并覆盖
+            { ...stubCtx(), wrapper: { loginService: {} } },
+            {
+                uin: "10000",
+                uid: "u1",
+            } satisfies LoginResultLike,
+        );
         expect(services).not.toBeNull();
         services?.dispose();
-        // dispose 面 = 三桥 + GroupCache + BuddyCache（API/Channel 实例不在清理面）
+        // dispose 面 = 五桥（Msg/Group/Buddy/RecentContact/Login）+ GroupCache +
+        // BuddyCache（API/Channel 实例不在清理面；批次三 2026-11-01 增两桥）
         const disposed = instances.filter((n) => n.unregister.mock.calls.length > 0);
-        expect(disposed).toHaveLength(5);
+        expect(disposed).toHaveLength(7);
     });
 });
 

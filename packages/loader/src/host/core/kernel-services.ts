@@ -32,6 +32,10 @@ export interface KernelServices {
     groupChannel: EventChannelLike;
     /** 好友事件通道（Buddy/onBuddyReqChange 等；OB11 request 事件源）。 */
     friendChannel: EventChannelLike;
+    /** 会话列表事件通道（RecentContact/onRecentContactListChangedVer2；milky peer_pin 源）。 */
+    recentContactChannel: EventChannelLike;
+    /** 登录状态事件通道（Login/onLoginDisConnected；milky bot_offline 源）。 */
+    loginChannel: EventChannelLike;
     /** 好友缓存（B2，2026-09-08：onBuddyListChange 快照 diff → onBuddyAdded/Removed；OB11 friend_add 源）。 */
     buddyCache: unknown;
     /** kernel apis（宽松 unknown，装配方按需断言——OB11 用完整面，IPC 动作表用最小面）。 */
@@ -116,6 +120,40 @@ function buildLoaderLoggerOptions(
         timestamp: cfg.timestamp,
         colorize: cfg.colorize,
         base: { name: "loader", account },
+    };
+}
+
+/**
+ * 批次三通道与桥（2026-11-01）：RecentContactBridge（peer_pin_change 源）+
+ * LoginBridge（bot_offline 源）。loginService 取自 wrapper 上下文（与
+ * QrLoginSession 同源），缺失（老 kernel / 未 attach）时只跳过 Login 桥注册
+ * ——通道保留，事件为空。
+ */
+function createBatch3Channels(
+    kernel: KernelLike,
+    ctx: CoreContextLike,
+    session: unknown,
+    log: (msg: string) => void,
+): { recentContactChannel: EventChannelLike; loginChannel: EventChannelLike; unregister(): void } {
+    const recentContactChannel = new kernel.NTEventChannel("RecentContact");
+    const recentContactBridge = new kernel.RecentContactBridge(session, recentContactChannel);
+    recentContactBridge.register();
+    const loginChannel = new kernel.NTEventChannel("Login");
+    const loginService = ctx.wrapper?.loginService;
+    let loginBridge: { register(): void; unregister(): void } | null = null;
+    if (loginService !== null && loginService !== undefined) {
+        loginBridge = new kernel.LoginBridge(loginService, loginChannel);
+        loginBridge.register();
+    } else {
+        log("bootstrap: loginService 不可用，Login 桥未注册（bot_offline 事件不可用）");
+    }
+    return {
+        recentContactChannel,
+        loginChannel,
+        unregister: () => {
+            recentContactBridge.unregister();
+            loginBridge?.unregister();
+        },
     };
 }
 
@@ -210,6 +248,8 @@ export async function createKernelServices(
     const friendChannel = new kernel.NTEventChannel("Buddy");
     const friendBridge = new kernel.FriendBridge(session, friendChannel);
     friendBridge.register();
+    // 批次三通道 + 桥（peer_pin / bot_offline 源，2026-11-01）
+    const batch3 = createBatch3Channels(kernel, ctx, session, log);
     const groupCache = new kernel.GroupCache({ channel: groupChannel, groupApi });
     groupCache.register();
     // 好友缓存（B2）：快照 diff 归一化事件（OB11 friend_add 源）
@@ -233,6 +273,8 @@ export async function createKernelServices(
         channel,
         groupChannel,
         friendChannel,
+        recentContactChannel: batch3.recentContactChannel,
+        loginChannel: batch3.loginChannel,
         msgApi,
         groupApi,
         friendApi,
@@ -258,6 +300,7 @@ export async function createKernelServices(
             bridge.unregister();
             groupBridge.unregister();
             friendBridge.unregister();
+            batch3.unregister();
             groupCache.unregister();
             buddyCache.unregister();
             offMsgLogging();

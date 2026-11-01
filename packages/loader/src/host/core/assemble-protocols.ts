@@ -300,6 +300,9 @@ export async function assembleOb11AndSatori(
                 // P1 事件通道：群请求/邀请（Group/onGroupNotifiesUpdated）+ 好友申请
                 groupChannel: services.groupChannel,
                 buddyChannel: services.friendChannel,
+                // 批次三事件通道：peer_pin（RecentContact）+ bot_offline（Login）
+                recentContactChannel: services.recentContactChannel,
+                loginChannel: services.loginChannel,
                 msgApi: services.msgApi,
                 groupApi: services.groupApi,
                 friendApi: services.friendApi,
@@ -318,6 +321,7 @@ export async function assembleOb11AndSatori(
                 mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
                 logger: services.calibLogger as
                     | {
+                          debug(obj: unknown, msg?: string): void;
                           warn(obj: unknown, msg?: string): void;
                           info(obj: unknown, msg?: string): void;
                       }

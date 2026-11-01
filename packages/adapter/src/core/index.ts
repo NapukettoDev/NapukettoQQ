@@ -11,3 +11,22 @@ export type { ProtocolHooks } from "./base-protocol-adapter.js";
 export { BaseProtocolAdapter } from "./base-protocol-adapter.js";
 export { ProtocolConfig } from "./config.js";
 export { ensureSilk } from "./media.js";
+export {
+    collectStrings,
+    decodeProtoTree,
+    decodeText,
+    extractSysMsgEnvelope,
+    firstField,
+    getChildren,
+    narrowSysMsgBlobs,
+    nodeAt,
+    type SysMsgEnvelope,
+    type SysMsgField,
+    type SysMsgKindRule,
+    type SysMsgRecognition,
+    textOf,
+    toHex,
+    varintAt,
+    varintOf,
+    varintToNumber,
+} from "./sysmsg.js";

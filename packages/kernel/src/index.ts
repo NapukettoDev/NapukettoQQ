@@ -14,6 +14,7 @@ export type {
     FriendCategory,
     GroupHonorWebInfo,
     HonorListItem,
+    PinnedContact,
     StrangerInfo,
 } from "./apis/index.js";
 export {
@@ -29,8 +30,20 @@ export {
     WebApi,
     WebHonorType,
 } from "./apis/index.js";
-export type { BuddyEventChannel, GroupEventChannel, MsgEventChannel } from "./bridge/index.js";
-export { FriendBridge, GroupBridge, MsgBridge } from "./bridge/index.js";
+export type {
+    BuddyEventChannel,
+    GroupEventChannel,
+    LoginEventChannel,
+    MsgEventChannel,
+    RecentContactEventChannel,
+} from "./bridge/index.js";
+export {
+    FriendBridge,
+    GroupBridge,
+    LoginBridge,
+    MsgBridge,
+    RecentContactBridge,
+} from "./bridge/index.js";
 export type {
     BuddyCacheEventChannel,
     BuddyCacheListener,
@@ -147,6 +160,8 @@ export type {
     RDeliveryConfig,
     RecentContact,
     RecentContactFetchParam,
+    RecentContactListChanged,
+    RecentContactListener,
     SendMessageElement,
     ShutUpGroupMember,
     TipAioOpGrayTipElement,

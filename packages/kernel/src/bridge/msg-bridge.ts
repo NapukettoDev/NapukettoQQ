@@ -56,7 +56,10 @@ export class MsgBridge {
             // 2026-08-11 补齐：发送状态更新（sendMsg 结果以此为准，NapCat 同款）
             onMsgInfoListUpdate: (msgs) => this.channel.emit("Msg/onMsgInfoListUpdate", msgs),
             // 2026-09-10 接线：离线文件 / sys msg（方法名证据见 listeners/msg.ts 头注释）
-            onRecvOfflineFileMsg: (arg) => this.channel.emit("Msg/onRecvOfflineFileMsg", arg),
+            // 2026-11-01：onRecvOfflineFileMsg 收窄为 RawMessage[] + 补 onFileMsgCome
+            // （录制实证与离线文件同载荷，friend_file_upload 第二源）
+            onRecvOfflineFileMsg: (msgs) => this.channel.emit("Msg/onRecvOfflineFileMsg", msgs),
+            onFileMsgCome: (msgs) => this.channel.emit("Msg/onFileMsgCome", msgs),
             onRecvOnlineFileMsg: (arg) => this.channel.emit("Msg/onRecvOnlineFileMsg", arg),
             onRecvSysMsg: (arg) => this.channel.emit("Msg/onRecvSysMsg", arg),
         };

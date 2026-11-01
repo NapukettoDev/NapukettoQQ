@@ -26,9 +26,12 @@ export type {
     BuddyListener,
     GroupListener,
     GroupMemberListChange,
+    LoginListener,
     MsgListener,
     MsgReadReportItem,
     MsgReceipt,
+    RecentContactListChanged,
+    RecentContactListener,
 } from "./listeners/index.js";
 export { GroupListUpdateType, GroupMemberDataSource } from "./listeners/index.js";
 export type { CanonicalElement } from "./message-element.js";
