@@ -1,5 +1,49 @@
 # @napuketto/kernel
 
+## 0.7.2
+
+### Patch Changes
+
+- 708924b: fix(kernel): 录制器 Msg listener 精确名选择 + getPinnedContacts topFlag 适配（首轮录制结论，milky.md §0.8.5）
+  
+  2026-11-01 首轮实机录制（约 4 分钟窗口，11 服务全部挂上）暴露两处修复：
+  
+  - **录制器 add 方法误选**：MsgService 有 5 个 add*Listener，正则按字母序选中
+    `addKernelMsgImportToolListener`——真 listener 没挂上，Msg 回调面（onRecvMsg
+    基线 / reaction 候选 / onRecvSysMsg / onRecvOfflineFileMsg）零捕获。改精确名
+    `addKernel<简称>Listener` 优先、回退正则（裸 addListener 服务），单测加
+    ImportTool/Notify decoy 锁定回归。
+  - **getPinnedContacts 置顶字段**：listener 载荷实测置顶字段名为 topFlag
+    （1 = 置顶），非批次二假设的 isTop——pinnedOf 改双字段兼容
+    （topFlag === 1 || isTop === true），类型层补 topFlag / topFlagTime。
+  
+  录制结论（按名 Get 反射确认 / essence 回调只给群号需列表 diff / peer_pin 翻转
+  须 set_peer_pin 自触发 / chatType=7 影子记录与 Buddy 首推噪声）已落
+  milky.md §0.8.5 与 kernel design.md §10，重录窗口待本修复合入后进行。
+- 708924b: fix(kernel): probe serialize 字节串保真 + 截断上限放宽（第二轮录制教训）
+  
+  第二轮实机录制（Msg listener 修复后）拿全了 Msg 回调面，但两路关键载荷被
+  serialize 截断毁掉，批次三样本采不完整：
+  
+  - **onRecvSysMsg 参数是 wire bytes 的带符号字节数组**（25 条）——数组 20 项
+    截断只留前 20 字节，连信封 f1 块（64 字节）都装不下，msgType/subType 够不着。
+  - **grayTip 的 jsonGrayTipElement**（subElementType=17，表情回应通知载体）
+    在深度 4 截断。
+  
+  修复：
+  
+  - TypedArray / 字节形态普通数组（全元素整数落 [-128,255]，≥16 项）→
+    `{ kind: "bytes", size, data: base64 }`，保留上限 8192 字节 + truncated 标注
+    （native 把字节块转带符号字节数组，按无符号还原）。
+  - MAX_SERIALIZE_DEPTH 4 → 8，MAX_ARRAY_ITEMS 20 → 64。
+  
+  顺带收获（本轮录制，milky.md §0.8.5 重录结论）：friend_file_upload 源定型
+  （onRecvOfflineFileMsg / onFileMsgCome 同载荷 RawMessage 数组，fileElement 含
+  fileUuid/fileSize/file10MMd5/fileSha/fileSha3，fileSha* 接收侧为空待校准）；
+  reaction 证据链 = 群消息同 seq grayTip subElementType 17 + jsonGrayTipElement
+  （深度截断前未取得内容）；多设备上线回调 onLineDev{instanceId, clientType,
+  devUid} 入视野。
+
 ## 0.7.1
 
 ### Patch Changes
