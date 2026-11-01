@@ -72,6 +72,9 @@ describe("startListenerRecording（注册 + JSONL 落盘）", () => {
                 captured.push(listener);
                 return 42;
             }),
+            // decoy：MsgService 另有 ImportTool/Notify 等 add*Listener（首录误选回归锚点）
+            addKernelMsgImportToolListener: vi.fn(() => 99),
+            addKernelMsgNotifyListener: vi.fn(() => 98),
             removeKernelMsgListener: vi.fn(),
         };
         // exports 键是 wrapper 导出名（PascalCase 事实接口），经 Record 装配规避命名规则
@@ -110,6 +113,7 @@ describe("startListenerRecording（注册 + JSONL 落盘）", () => {
 
         const lines = readLines(res.file);
         const registered = lines.find((l) => l.service === "Msg" && l.event === "<registered>");
+        // 精确名优先：MsgService 有 ImportTool/Notify 等 decoy 仍选 addKernelMsgListener
         expect(registered?.args[0]).toMatchObject({
             addMethod: "addKernelMsgListener",
             listenerId: 42,

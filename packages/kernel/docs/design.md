@@ -388,3 +388,10 @@ LoginService（`NodeIKernelLoginService.get()`）。add/remove 方法按
 **已知风险**：若原生以 ownKeys 枚举发现回调（而非按名 Get），空目标 Proxy
 一无所获——`<ownKeys>` 陷阱记录会立即暴露该行为，fallback 是预置已知回调名
 全集为真实属性后重新录制。
+
+**首录实测（2026-11-01，uin 3567141148，约 4 分钟窗口）**：11 服务全部挂上；
+原生按名 Get 反射确认（全程无 has/ownKeys 陷阱触发）。暴露并修复 add 方法
+选择 bug：MsgService 有 5 个 add*Listener，正则按字母序误选 ImportTool（真
+listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Listener` 优先、
+回退正则。首推噪声：Buddy 注册即全量首推；每条群记录伴生 chatType=7 影子
+条目（peerUid 空）。事件侧结论详见 `docs/protocols/milky.md` §0.8.5。

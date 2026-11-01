@@ -67,15 +67,31 @@ function serviceShortName(getter: string): string {
     return getter.replace(GETTER_PREFIX_RE, "").replace(SERVICE_SUFFIX_RE, "");
 }
 
-/** 从服务方法面选 listener 注册方法（addKernelMsgListener / 裸 addListener 同规则）。 */
-function findAddMethod(service: unknown): string | null {
-    const match = listMethods(service).find((m) => ADD_LISTENER_RE.test(m));
+/**
+ * 从服务方法面选 listener 注册方法：精确名 `addKernel<简称>Listener` 优先——
+ * MsgService 另有 addKernelMsgImportToolListener / MsgNotify / MsgQuery /
+ * TempChatSig 四个 add*Listener，正则按字母序会误选 ImportTool（2026-11-01
+ * 首录实锤：真 listener 没挂上，Msg 回调面零捕获）；无精确名回退正则（裸
+ * addListener 服务）。
+ */
+function findAddMethod(service: unknown, shortName: string): string | null {
+    const methods = listMethods(service);
+    const preferred = `addKernel${shortName}Listener`;
+    if (methods.includes(preferred)) {
+        return preferred;
+    }
+    const match = methods.find((m) => ADD_LISTENER_RE.test(m));
     return match ?? null;
 }
 
 /** 从服务方法面选 listener 注销方法（缺失允许——录制器不主动注销）。 */
-function findRemoveMethod(service: unknown): string | null {
-    const match = listMethods(service).find((m) => REMOVE_LISTENER_RE.test(m));
+function findRemoveMethod(service: unknown, shortName: string): string | null {
+    const methods = listMethods(service);
+    const preferred = `removeKernel${shortName}Listener`;
+    if (methods.includes(preferred)) {
+        return preferred;
+    }
+    const match = methods.find((m) => REMOVE_LISTENER_RE.test(m));
     return match ?? null;
 }
 
@@ -205,7 +221,7 @@ function attachRecordingListener(
     service: unknown,
     emit: (record: ListenerRecordEvent) => void,
 ): ListenerRecordingResult["registered"][string] {
-    const addMethod = findAddMethod(service);
+    const addMethod = findAddMethod(service, name);
     if (addMethod === null) {
         return { ok: false, error: "无 add*Listener 方法" };
     }
@@ -225,7 +241,7 @@ function attachRecordingListener(
         args: [
             {
                 addMethod,
-                removeMethod: findRemoveMethod(service),
+                removeMethod: findRemoveMethod(service, name),
                 listenerId: serialize(listenerId),
             },
         ],

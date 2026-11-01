@@ -13,8 +13,12 @@ export interface RecentContact {
     peerUid: string;
     /** 会话类型（ChatType 值域）。 */
     chatType: number;
-    /** 置顶标记（get_peer_pins 数据源）。 */
+    /** 置顶标记（get_peer_pins 数据源；listener 实测字段名为 topFlag，1 = 置顶）。 */
+    topFlag?: number;
+    /** 置顶标记（布尔别名形态，兼容探测取值）。 */
     isTop?: boolean;
+    /** 置顶时间（topFlag=1 时携带，毫秒时间戳字符串）。 */
+    topFlagTime?: string;
     /** 对端 uin（部分返回形态带）。 */
     peerUin?: string;
     [key: string]: unknown;

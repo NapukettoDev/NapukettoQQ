@@ -26,11 +26,11 @@ describe("RecentContactApi", () => {
         );
     });
 
-    it("getPinnedContacts：isTop 过滤 + 场景归类（temp 不产出）", async () => {
+    it("getPinnedContacts：isTop/topFlag 过滤 + 场景归类（temp 不产出）", async () => {
         const service = {
             getRecentContactList: vi.fn(async () => ({
                 result: [
-                    { peerUid: "30003", chatType: ChatType.GROUP, isTop: true },
+                    { peerUid: "30003", chatType: ChatType.GROUP, topFlag: 1 },
                     { peerUid: "uid-20002", chatType: ChatType.C2C, isTop: true },
                     { peerUid: "40004", chatType: ChatType.GROUP, isTop: false },
                     { peerUid: "uid-x", chatType: 9, isTop: true },
