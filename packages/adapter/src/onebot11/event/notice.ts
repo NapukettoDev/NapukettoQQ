@@ -114,14 +114,18 @@ export interface OB11GroupCardNoticeEvent extends OB11BaseEvent {
     card_old: string;
 }
 
-/** 群消息精华（go-cqhttp 扩展）。 */
+/**
+ * 群消息精华（go-cqhttp 扩展；2026-11-03 接线）。
+ * sender_id = 被加精消息发送者（列表 sender_uin / prev 缓存回填）；
+ * operator_id 仅 add 回填（add_digest_uin）——delete 无任何数据源，省略。
+ */
 export interface OB11GroupEssenceNoticeEvent extends OB11BaseEvent {
     post_type: "notice";
     notice_type: "group_essence";
     sub_type: "add" | "delete";
     group_id: number;
     sender_id: number;
-    operator_id: number;
+    operator_id?: number;
     message_id: number;
 }
 

@@ -9,7 +9,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MsgEventChannel } from "@napuketto/kernel";
+import type { GroupEventChannel, MsgEventChannel } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { ProtocolConfig } from "../core/index.js";
@@ -478,5 +478,241 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
         expect(info).not.toHaveBeenCalled();
         expect(debug).not.toHaveBeenCalled();
         expect(events).toHaveLength(0);
+    });
+});
+
+describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）", () => {
+    /** EssenceMsgItem 桩（webapi getEssenceMsgList 项）。 */
+    const essenceItem = (seq: number, adder: string, sender = "10001") => ({
+        msg_seq: seq,
+        msg_random: seq,
+        sender_uin: sender,
+        sender_nick: "s",
+        add_digest_uin: adder,
+        add_digest_nick: "op",
+        add_digest_time: 1793540100,
+        msg_content: [],
+    });
+
+    /** 合成 732:1 sysmsg 字节（精华设置；f1.f1=群号 + f1.f8.f8.f1=msgSeq，识别表实证路径）。 */
+    function essenceBlob(): number[] {
+        const inner = [0x08, ...encVarintOf(150)]; // f8.f1 = msgSeq
+        const mid = [0x42, inner.length, ...inner]; // f8（length-delimited）
+        const f1 = [0x08, ...encVarintOf(1101729931), 0x42, mid.length, ...mid]; // f1.f1 群号 + f1.f8
+        const f2 = [0x08, ...encVarintOf(732), 0x10, ...encVarintOf(1)]; // msgType/subType
+        return [
+            0x0a,
+            f1.length,
+            ...f1, // 顶层 f1
+            0x12,
+            f2.length,
+            ...f2, // 顶层 f2
+        ];
+    }
+
+    /** 合成 732:1 畸形样本（缺 f1 群号路径 → 触发器抽取失败）。 */
+    function bareEssenceBlob(): number[] {
+        const f2 = [0x08, ...encVarintOf(732), 0x10, ...encVarintOf(1)];
+        return [0x12, f2.length, ...f2];
+    }
+
+    /** varint 编码（合成 sysmsg 用，返回字节数组）。 */
+    function encVarintOf(v: number): number[] {
+        const out: number[] = [];
+        let value = v;
+        while (true) {
+            const b = value & 0x7f;
+            value >>>= 7;
+            if (value === 0) {
+                out.push(b);
+                return out;
+            }
+            out.push(b | 0x80);
+        }
+    }
+
+    /** 精华链 harness：msg + group 通道捕获，webApi/msgApi 可控桩。 */
+    function makeEssenceHarness(): {
+        adapter: NapukettoOneBot11Adapter;
+        msg: ReturnType<typeof captureChannel>;
+        group: ReturnType<typeof captureChannel>;
+        events: Record<string, unknown>[];
+        warn: ReturnType<typeof vi.fn>;
+        debug: ReturnType<typeof vi.fn>;
+        getEssenceList: ReturnType<typeof vi.fn>;
+        fetchMsgs: ReturnType<typeof vi.fn>;
+    } {
+        const msg = captureChannel();
+        const group = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const warn = vi.fn();
+        const info = vi.fn();
+        const debug = vi.fn();
+        const getEssenceList = vi.fn(async (_group: string): Promise<unknown[]> => []);
+        const fetchMsgs = vi.fn(async (_peer: unknown, _opts: unknown): Promise<unknown[]> => []);
+        const options = {
+            ...stubOptions(),
+            webApi: { getEssenceMsgList: getEssenceList },
+            msgApi: { fetchMessages: fetchMsgs },
+        } as unknown as ReturnType<typeof stubOptions>;
+        const adapter = new NapukettoOneBot11Adapter({
+            ...options,
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: {
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            } as unknown as EventBroadcaster,
+            msgChannel: msg.channel,
+            groupChannel: group.channel as unknown as GroupEventChannel,
+            logger: { warn, info, debug },
+        });
+        return { adapter, msg, group, events, warn, debug, getEssenceList, fetchMsgs };
+    }
+
+    it("列表回调：首个事件只建基线；新增项 → add 广播（operator/sender/message_id 全字段）", async () => {
+        const { adapter, group, events, getEssenceList, fetchMsgs } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        expect(events).toHaveLength(0); // 基线不广播
+
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(151, "10003")]);
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-151", msgSeq: "151" }]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        expect(events[0]).toMatchObject({
+            post_type: "notice",
+            notice_type: "group_essence",
+            sub_type: "add",
+            group_id: 1101729931,
+            sender_id: 10001,
+            operator_id: 10003,
+            time: 1793540100,
+        });
+        const messageId = (events[0] as { message_id?: number }).message_id;
+        expect(typeof messageId).toBe("number");
+        expect(messageId).toBeGreaterThan(0);
+    });
+
+    it("732:1 触发器与列表回调汇入同一串行链：不重复广播", async () => {
+        const { adapter, msg, group, events, getEssenceList, fetchMsgs } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-150", msgSeq: "150" }]);
+        // 首触（732:1）→ 基线
+        msg.handlers.get("Msg/onRecvSysMsg")?.([[...essenceBlob()]]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        expect(events).toHaveLength(0);
+        // 次触（列表回调，列表已含 150）→ diff 空，不重发
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(2);
+        });
+        expect(events).toHaveLength(0);
+        // 三触（列表新增 151）→ add 广播一次
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(151, "10002")]);
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-151", msgSeq: "151" }]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+    });
+
+    it("移除项 → delete 广播（sender 从 prev 缓存回填，operator 省略）", async () => {
+        const { adapter, group, events, getEssenceList, fetchMsgs } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(151, "10003")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-150", msgSeq: "150" }]);
+        getEssenceList.mockResolvedValue([essenceItem(151, "10003")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        expect(events[0]).toMatchObject({
+            notice_type: "group_essence",
+            sub_type: "delete",
+            group_id: 1101729931,
+            sender_id: 10001,
+            message_id: expect.any(Number),
+        });
+        expect("operator_id" in (events[0] as object)).toBe(false);
+    });
+
+    it("message_id 反查未命中 → 跳过事件 + warn 校准", async () => {
+        const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(999, "10002")]);
+        // fetchMsgs 桩默认返回空 → 近段扫描未命中
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(warn).toHaveBeenCalled();
+        });
+        expect(events).toHaveLength(0);
+        expect(
+            warn.mock.calls.some((call) => String(call[1]).includes("message_id 反查未命中")),
+        ).toBe(true);
+    });
+
+    it("sender_uin 缺失 → 跳过事件 + warn 校准", async () => {
+        const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        getEssenceList.mockResolvedValue([
+            essenceItem(150, "10002"),
+            essenceItem(151, "10002", ""),
+        ]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(warn).toHaveBeenCalled();
+        });
+        expect(events).toHaveLength(0);
+    });
+
+    it("精华列表拉取失败 → warn 校准，无事件", async () => {
+        const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockRejectedValue(new Error("cgi down"));
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(warn).toHaveBeenCalled();
+        });
+        expect(events).toHaveLength(0);
+    });
+
+    it("732:1 触发器抽取失败（畸形样本）→ 落入 unknown 校准路径", async () => {
+        const { adapter, msg, events, warn, debug, getEssenceList } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvSysMsg")?.([[...bareEssenceBlob()]]);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(getEssenceList).not.toHaveBeenCalled();
+        expect(events).toHaveLength(0);
+        expect(warn).not.toHaveBeenCalled();
+        expect(debug).toHaveBeenCalledTimes(1);
+        const payload = debug.mock.calls[0]?.[0] as { verdict?: string };
+        expect(payload.verdict).toBe("unknown");
     });
 });

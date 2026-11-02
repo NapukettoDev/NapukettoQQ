@@ -285,10 +285,11 @@ onRecentContactNotification，录制实证参数形状）/ Login 桥（onLoginDi
 RawMessage 补 sendType / PinnedContact 补 peerUin（播种用）。
 
 **遗留**（不进本批）：get_private_file_download_url（§0.8.4 参数实验待实机
-fileUuid，维持 persist-before-call 方案）；OB11 group_essence（源已具备 =
-732:1 + 列表 diff，message_id 反查 seqIndex 接线后可开）；bot_offline reason /
+fileUuid，维持 persist-before-call 方案）；bot_offline reason /
 reaction user_id / 取消精华 push 形态（重录窗口或野捕校准）；732:16/732:1 测试
 fixture 为按识别表合成的 protobuf 字节（真实样本回归待重录窗口补充）。
+（OB11 group_essence 已于 2026-11-03 独立 PR 接线：diff 层上移
+`adapter/src/core/essence.ts` 共享，732:1 作加速触发器。）
 
 ## 1. 为什么做
 

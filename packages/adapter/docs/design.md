@@ -14,9 +14,9 @@ Group/onGroupNotifiesUpdated     →  subscribe()（2026-09-08）    →  reques
 Buddy/onBuddyReqChange           →  subscribe()（2026-09-08）    →  request.ts               → request 事件（friend）
 Buddy/onBuddyListChange(dV2)     →  subscribe()（2026-09-08）    →  仅 raw 校准日志（形状未知，不翻译）
 Msg/onRecvOfflineFileMsg         →  subscribe()（c3，2026-09-10）→  notice-extra.ts          → offline_file notice
-Msg/onRecvSysMsg                 →  subscribe()（c3，2026-09-10）→  sysmsg.ts（§7 解码，识别表空=仅校准日志）
+Msg/onRecvSysMsg                 →  subscribe()（c3，2026-09-10）→  sysmsg.ts（§7 解码；识别表 732:21=group_card；732:1=精华触发器）
 Msg/onRecvOnlineFileMsg          →  subscribe()（c3，2026-09-10）→  仅 raw 校准日志（OB11 无对应类型）
-Group/onGroupEssenceListChange   →  subscribe()（c3，2026-09-10）→  仅 raw 校准日志（group_essence 候选源）
+Group/onGroupEssenceListChange   →  subscribe()（c3，2026-09-10）→  essence diff 翻译 → group_essence notice（2026-11-03）
 ```
 
 - **request 事件**（`helper/request.ts`）：
@@ -73,8 +73,16 @@ Group/onGroupEssenceListChange   →  subscribe()（c3，2026-09-10）→  仅 r
     raw 校准日志；protobuf 解码 + type/subType → notice 映射是下轮工作。
   - **msg_emoji_like**：无推送回调（API 面 getMsgEmojiLikesList 存在），
     无源可接，待观测（疑经 onMsgInfoListUpdate）。
-  - **group_essence（清单外）**：`Group/onGroupEssenceListChange` raw 校准
-    日志（精华事件的候选直达源，与 grayTip ESSENCE 子类型双路积累）。
+  - **group_essence（清单外，2026-11-03 接线）**：唯一发射路径 =
+    `Group/onGroupEssenceListChange` 列表 diff（`core/essence.ts` 共享层：
+    fetch → diffEssenceList → 基线未建立只建基线，essenceChain 串行防乱序）；
+    sysmsg 732:1（`extractEssenceSetSysMsg`）**不直接翻译**——push 内无
+    sender/operator，只作加速触发器踢入同一串行 sync 链（diff 幂等 + 串行
+    天然去重，无需 RecentKeyCache）。字段：sender_id 必填（列表 sender_uin /
+    prev 缓存回填，缺失跳过事件）；operator_id 仅 add 回填 add_digest_uin
+    （类型可选，delete 无数据源）；message_id 经 fetchMessages 近段扫描
+    （60 条）→ `MessageUnique.alloc` 幂等分配（正确空间，可被 get_msg 反查），
+    解析失败跳过事件 + 校准日志。
 - **gap 清单**（源事件缺失或改报形式有风险，未翻译）：group_upload（文件消息
   现以 message 事件 + file 段透出，改 notice 影响现网 koishi 收向，待拍板）、
   group_card / group_title / group_sign（解码器已上线 §7，识别表待真实样本
@@ -127,7 +135,8 @@ transcodeVideo / downloadUrl / inferExtension）。kernel 不依赖 media。
   group_sign 的 (msgType, subType) 判别值无样本支撑，识别表为空 = 不广播，
   等真实样本登记规则）。
 - onRecvOfflineFileMsg payload 形状校准（翻译已上线，收窄口径待真实事件修正）。
-- onGroupEssenceListChange payload 形状（group_essence 翻译待校准）。
+- group_essence 已接线（2026-11-03）：payload 收窄沿用录制实证（参数首项群号）；
+  message_id 扫描窗口 60 条，更早消息的加/取消精华将跳过事件（校准日志可观测）。
 - onBuddyReqChange payload 形状（BuddyReq 字段 words 等待真实事件校准）。
 - msg_emoji_like 无推送源（疑经 onMsgInfoListUpdate 或轮询，待观测）。
 
