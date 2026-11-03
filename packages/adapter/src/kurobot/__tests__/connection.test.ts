@@ -13,9 +13,9 @@ import type {
     ConnectionEndedReason,
     KurobotConnectionOptions,
     ServerEventMessage,
-} from "./connection.js";
-import { KurobotConnection } from "./connection.js";
-import { type HelloAckOkBody, WS_SUBPROTOCOL } from "./schema.js";
+} from "../connection.js";
+import { KurobotConnection } from "../connection.js";
+import { type HelloAckOkBody, WS_SUBPROTOCOL } from "../schema.js";
 import { type FakeKurobotServer, startFakeKurobotServer, waitFor } from "./test-support.js";
 
 /** 测试快参数（重连/心跳/握手超时全部加速）。 */

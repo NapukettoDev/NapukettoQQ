@@ -8,7 +8,7 @@
  */
 import type { CanonicalElement } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { type CanonicalToSatoriDeps, canonicalToSatoriElements } from "./canonical.js";
+import { type CanonicalToSatoriDeps, canonicalToSatoriElements } from "../canonical.js";
 
 describe("canonicalToSatoriElements", () => {
     it("text 非空 → Satori text；空 text 忽略", async () => {

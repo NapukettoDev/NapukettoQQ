@@ -15,7 +15,7 @@ import {
     parseCqMessage,
     serializeCqParts,
     unescapeCqText,
-} from "./cqcode.js";
+} from "../cqcode.js";
 
 describe("CQ 码转义", () => {
     it("escapeCqText：& [ ] 转义（& 优先避免二次转义）", () => {

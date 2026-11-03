@@ -10,9 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { ProtocolConfig } from "../core/index.js";
-import { NapukettoSatoriAdapter } from "./adapter.js";
-import { satoriConfigSchema } from "./helper/index.js";
+import { ProtocolConfig } from "../../core/index.js";
+import { NapukettoSatoriAdapter } from "../adapter.js";
+import { satoriConfigSchema } from "../helper/index.js";
 
 let tmpRoot = "";
 
