@@ -111,8 +111,8 @@
         },
         {
             "includes": [
-                "packages/kernel/src/login/login.test.ts",
-                "packages/kernel/src/login/login-connect.test.ts"
+                "packages/kernel/src/login/__tests__/login.test.ts",
+                "packages/kernel/src/login/__tests__/login-connect.test.ts"
             ],
             "linter": {
                 "rules": {

@@ -9,14 +9,14 @@
  *    → 抛登录失败；超时文案不触发网络重试
  */
 import { describe, expect, it, vi } from "vitest";
-import type { WrapperContext } from "../wrapper/wrapper-loader.js";
+import type { WrapperContext } from "../../wrapper/wrapper-loader.js";
 import {
     isNetworkError,
     type LoginAccountInfo,
     pickLoginTarget,
     quickLogin,
     waitForNetworkConnection,
-} from "./login-connect.js";
+} from "../login-connect.js";
 
 describe("pickLoginTarget", () => {
     const items: LoginAccountInfo[] = [

@@ -5,7 +5,7 @@
  * （非 reject）——此前只挂 .catch 导致无凭据环境（WSL 扫码）永不 refresh 出码。
  */
 import { describe, expect, it, vi } from "vitest";
-import { QR_LOGIN_TIMEOUT_MESSAGE, QR_LOGIN_TIMEOUT_MS, QrLoginSession } from "./login.js";
+import { QR_LOGIN_TIMEOUT_MESSAGE, QR_LOGIN_TIMEOUT_MS, QrLoginSession } from "../login.js";
 
 /** 构造假 loginService（可注入回调序列）。 */
 function createFakeLoginService(overrides: Partial<Record<string, unknown>> = {}) {

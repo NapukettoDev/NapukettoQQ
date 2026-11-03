@@ -3,7 +3,7 @@
  * 锁定 serialize / tryShape 现有行为，重构后回归。
  */
 import { describe, expect, it } from "vitest";
-import { serialize, tryShape } from "./probe-serialize.js";
+import { serialize, tryShape } from "../probe-serialize.js";
 
 describe("serialize", () => {
     it("null / undefined / 原始值原样返回", () => {

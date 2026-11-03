@@ -8,11 +8,16 @@
  * 用 mock channel（NTEventChannel）与 mock groupApi，不依赖真实 service。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { GroupApi } from "../apis/index.js";
-import { NTEventChannel } from "../event-channel.js";
-import type { Group, GroupDetailInfo, GroupMember, GroupMemberListChange } from "../types/index.js";
-import { GroupListUpdateType } from "../types/index.js";
-import { GroupCache } from "./group-cache.js";
+import type { GroupApi } from "../../apis/index.js";
+import { NTEventChannel } from "../../event-channel.js";
+import type {
+    Group,
+    GroupDetailInfo,
+    GroupMember,
+    GroupMemberListChange,
+} from "../../types/index.js";
+import { GroupListUpdateType } from "../../types/index.js";
+import { GroupCache } from "../group-cache.js";
 
 /** Group 事件通道接口（GroupBridge 注册监听后 emit）。 */
 type GroupEvents = {

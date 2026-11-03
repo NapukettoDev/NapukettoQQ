@@ -5,10 +5,10 @@
  * 验证回调 → channel 透传链路）。
  */
 import { describe, expect, it, vi } from "vitest";
-import { NTEventChannel } from "../event-channel.js";
-import type { BuddyListener } from "../types/index.js";
-import type { BuddyEventChannel } from "./friend-bridge.js";
-import { FriendBridge } from "./friend-bridge.js";
+import { NTEventChannel } from "../../event-channel.js";
+import type { BuddyListener } from "../../types/index.js";
+import type { BuddyEventChannel } from "../friend-bridge.js";
+import { FriendBridge } from "../friend-bridge.js";
 
 /** 桩 buddy service（记录注册/注销调用，返回可控 listenerId）。 */
 function makeService(): {
