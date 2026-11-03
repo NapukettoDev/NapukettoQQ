@@ -8,7 +8,7 @@
 
 import type { Friend } from "@napuketto/kernel";
 import { GroupApi, type GroupDetailInfo, type GroupMember } from "@napuketto/kernel";
-import type { FriendEntity, GroupEntity, GroupMemberEntity } from "../types.js";
+import type { FriendEntity, GroupEntity, GroupMemberEntity } from "../../types.js";
 
 /** GroupDetailInfo / Group → GroupEntity（detail 缺失时全兜底）。 */
 export function toGroupEntity(detail: GroupDetailInfo | undefined, groupCode: string): GroupEntity {

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { RecentKeyCache } from "./recent-keys.js";
+import { RecentKeyCache } from "../recent-keys.js";
 
 describe("RecentKeyCache：去重键缓存", () => {
     it("claim 首次 true；窗口内重复 false；过期后重新 true", () => {

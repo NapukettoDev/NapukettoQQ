@@ -9,10 +9,10 @@
  */
 import { ChatType, type Peer, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { MilkyApi } from "../api.js";
-import { MessageSeqIndex } from "../helper/seq-index.js";
-import { createMilkyActionRegistry } from "./index.js";
-import { sendMilkyMessage } from "./message.js";
+import { MilkyApi } from "../../api.js";
+import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import { createMilkyActionRegistry } from "../index.js";
+import { sendMilkyMessage } from "../message.js";
 
 /** 发送成功回查用的 RawMessage。 */
 function sentMsg(seq: string, time: string): RawMessage {

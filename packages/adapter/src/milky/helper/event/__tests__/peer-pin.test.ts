@@ -2,7 +2,7 @@
  * peer_pin 翻译单测（批次三；形状依据 2026-11-01 set_peer_pin 翻转实验录制）
  */
 import { describe, expect, it } from "vitest";
-import { PinWatch, pinScene, toPeerPinChangeData } from "./peer-pin.js";
+import { PinWatch, pinScene, toPeerPinChangeData } from "../peer-pin.js";
 
 describe("pinScene：chatType → message_scene", () => {
     it("群 = group，好友 = friend，影子(7)/其他 = null", () => {

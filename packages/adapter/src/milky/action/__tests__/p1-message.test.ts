@@ -8,10 +8,10 @@
  */
 import { ChatType, type GroupCache, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { MilkyApi } from "../api.js";
-import { MessageSeqIndex } from "../helper/seq-index.js";
-import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../types.js";
-import { createMilkyActionRegistry } from "./index.js";
+import { MilkyApi } from "../../api.js";
+import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../../types.js";
+import { createMilkyActionRegistry } from "../index.js";
 
 /** 原始消息桩（默认群聊文本消息）。 */
 function rawMsg(overrides: Partial<RawMessage> = {}): RawMessage {

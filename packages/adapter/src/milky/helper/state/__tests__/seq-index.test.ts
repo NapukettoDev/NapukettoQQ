@@ -6,7 +6,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { MAX_ENTRIES, MessageSeqIndex } from "./seq-index.js";
+import { MAX_ENTRIES, MessageSeqIndex } from "../seq-index.js";
 
 /** 构造 RawMessage（最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {

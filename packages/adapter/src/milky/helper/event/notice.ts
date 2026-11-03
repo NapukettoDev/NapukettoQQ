@@ -22,8 +22,8 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { firstUntranslatedGrayTip } from "../../core/shared/gray-tip.js";
-import { resolveUin } from "../../core/shared/uid-uin.js";
+import { firstUntranslatedGrayTip } from "../../../core/shared/gray-tip.js";
+import { resolveUin } from "../../../core/shared/uid-uin.js";
 import type {
     FriendNudgeData,
     GroupDisbandData,
@@ -34,7 +34,7 @@ import type {
     GroupNudgeData,
     GroupWholeMuteData,
     MilkyEvent,
-} from "../types.js";
+} from "../../types.js";
 
 /** 毫秒 → 秒（Unix 时间戳）。 */
 const MS_TO_SEC = 1000;

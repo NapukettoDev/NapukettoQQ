@@ -20,9 +20,9 @@ import type {
     IncomingSegment,
     MessageRecallData,
     MilkyEvent,
-} from "../types.js";
-import { toFriendEntity, toGroupEntity, toGroupMemberEntity } from "./entities.js";
-import { canonicalToIncomingSegments, type ReceiveSegmentContext } from "./segments.js";
+} from "../../types.js";
+import { toFriendEntity, toGroupEntity, toGroupMemberEntity } from "../message/entities.js";
+import { canonicalToIncomingSegments, type ReceiveSegmentContext } from "../message/segments.js";
 
 /** 毫秒 → 秒（Unix 时间戳）。 */
 const MS_TO_SEC = 1000;
@@ -32,7 +32,7 @@ export interface ReceiveTranslateContext extends ReceiveSegmentContext {
     /** 登录 uin（self_id）。 */
     selfUin: string;
     /** friend 场景：好友实体（广播路径 best-effort 构造；缺省最小实体）。 */
-    friendEntity?: import("../types.js").FriendEntity;
+    friendEntity?: import("../../types.js").FriendEntity;
     /** group 场景：群实体（缺省最小实体）。 */
     groupEntity?: GroupEntity;
     /** group 场景：群成员实体（缺省最小实体）。 */

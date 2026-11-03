@@ -8,7 +8,7 @@ import type { Peer } from "@napuketto/kernel";
 import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import { findBuddyReq, type MilkyApi } from "../api.js";
-import { groupListToEntity, toFriendEntity } from "../helper/entities.js";
+import { groupListToEntity, toFriendEntity } from "../helper/message/entities.js";
 import type {
     FriendRequestEntity,
     GetFriendListOutput,

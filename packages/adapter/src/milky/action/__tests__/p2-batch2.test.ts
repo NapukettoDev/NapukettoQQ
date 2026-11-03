@@ -7,9 +7,9 @@
  * resource_id 链接形态判定、置顶会话实体过滤（未命中跳过）。
  */
 import { describe, expect, it, vi } from "vitest";
-import { MilkyApi } from "../api.js";
-import { MessageSeqIndex } from "../helper/seq-index.js";
-import { createMilkyActionRegistry } from "./index.js";
+import { MilkyApi } from "../../api.js";
+import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import { createMilkyActionRegistry } from "../index.js";
 
 /** 批次二依赖桩（其余 P0/P1 依赖空对象——注册表只需构造不调用）。 */
 function makeApi(overrides: {

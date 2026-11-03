@@ -11,7 +11,7 @@
 import type { GroupFileItemInfo, GroupFolderInfo, Peer } from "@napuketto/kernel";
 import { ChatType } from "@napuketto/kernel";
 import { z } from "zod";
-import { resolveUriToPath } from "../helper/media-uri.js";
+import { resolveUriToPath } from "../helper/message/media-uri.js";
 import type {
     CreateGroupFolderOutput,
     GetFileDownloadUrlOutput,

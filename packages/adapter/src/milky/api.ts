@@ -22,7 +22,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
-import type { MessageSeqIndex } from "./helper/seq-index.js";
+import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 
 /** MilkyApi 构造参数。 */

@@ -10,7 +10,7 @@
  * 一一对应（milky.md §0.8.6）。
  */
 import { ChatType, type PinnedContact, type RecentContact } from "@napuketto/kernel";
-import type { PeerPinChangeData } from "../types.js";
+import type { PeerPinChangeData } from "../../types.js";
 
 /** uin 形判别（peer_id 必须是数字串）。 */
 const NUMERIC_RE = /^\d+$/;

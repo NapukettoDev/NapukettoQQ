@@ -47,21 +47,25 @@ import type { RequestTranslateContext } from "../core/shared/uid-uin.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
-import { toGroupEntity, toGroupMemberEntity } from "./helper/entities.js";
-import { toFriendFileUploadData } from "./helper/file-upload.js";
-import { type NoticeTranslateContext, toMilkyNoticeEvent } from "./helper/notice.js";
-import { PinWatch, toPeerPinChangeData } from "./helper/peer-pin.js";
-import { RecentKeyCache } from "./helper/recent-keys.js";
-import { collectNotifyUids, toFriendRequestEvent, toGroupRequestEvent } from "./helper/request.js";
-import { incomingForwardSegment } from "./helper/segments.js";
-import { MessageSeqIndex } from "./helper/seq-index.js";
-import { recognizeMilkySysMsg } from "./helper/sysmsg.js";
+import { toFriendFileUploadData } from "./helper/event/file-upload.js";
+import { type NoticeTranslateContext, toMilkyNoticeEvent } from "./helper/event/notice.js";
+import { PinWatch, toPeerPinChangeData } from "./helper/event/peer-pin.js";
+import {
+    collectNotifyUids,
+    toFriendRequestEvent,
+    toGroupRequestEvent,
+} from "./helper/event/request.js";
+import { recognizeMilkySysMsg } from "./helper/event/sysmsg.js";
 import {
     type ReceiveTranslateContext,
     toGroupFileUploadEvent,
     toMessageRecallEvent,
     toMessageReceiveEvent,
-} from "./helper/translate.js";
+} from "./helper/event/translate.js";
+import { toGroupEntity, toGroupMemberEntity } from "./helper/message/entities.js";
+import { incomingForwardSegment } from "./helper/message/segments.js";
+import { RecentKeyCache } from "./helper/state/recent-keys.js";
+import { MessageSeqIndex } from "./helper/state/seq-index.js";
 import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
 import type { BotOfflineData, GroupEssenceMessageChangeData, PeerPinChangeData } from "./types.js";
 

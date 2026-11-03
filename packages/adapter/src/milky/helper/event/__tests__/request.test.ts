@@ -7,7 +7,7 @@
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { toFriendRequestEvent, toGroupRequestEvent } from "./request.js";
+import { toFriendRequestEvent, toGroupRequestEvent } from "../request.js";
 
 const UID_TO_UIN = new Map([
     ["uid-10001", "10001"],
