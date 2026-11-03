@@ -1,7 +1,8 @@
 # CI 门禁流水线
 #
 # 三个并行 job：
-# - gate   主门禁（ubuntu）：pnpm install → pnpm -r build → pnpm check →
+# - gate   主门禁（ubuntu）：pnpm install → pnpm audit --prod（high/critical）→
+#          pnpm -r build → pnpm check →
 #          test（附 lcov 覆盖率产出，经 codecov-action 上传，驱动 Codecov 在
 #            PR 上的覆盖率评论与 status check；未配 CODECOV_TOKEN secret 时
 #            公开仓自动降级 tokenless 上传，fork PR 出不了评论属预期）
@@ -91,6 +92,13 @@ jobs:
 
             - name: 安装依赖（frozen-lockfile 锁死供应链）
               run: pnpm install --frozen-lockfile
+
+            # 只卡生产依赖的 high/critical（2026-11-03 依赖审计整改）：开发工具链
+            # （vitest / changesets 传递的 launch-editor 等）的 moderate 不该阻塞日常
+            # 开发，而进入发布产物的漏洞必须拦。advisory 数据来自 npm registry，
+            # 网络故障时该步骤失败——这是有意的「宁可红灯」选择。
+            - name: 生产依赖安全门禁（pnpm audit --prod）
+              run: pnpm audit --prod --audit-level=high
 
             - name: 全量构建（check 与 test 的前置，见文件头注释）
               run: pnpm -r build

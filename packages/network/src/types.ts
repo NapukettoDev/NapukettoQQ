@@ -78,10 +78,32 @@ export interface ServerOptions {
     authorize?: AuthorizeHook;
 }
 
+/**
+ * HTTP 请求体缺省上限（字节，16 MiB）。
+ *
+ * 取值依据：OneBot 11 允许把图片/语音以 base64 塞进 send_msg，2 MB 图片编码后
+ * 约 2.7 MB，给到 16 MiB 不会误伤正常媒体；同时挡住「一个 GB 级 JSON 打爆堆」。
+ * 需要更大时用 HttpServerOptions.bodyLimitBytes 覆盖（协议层配置透传）。
+ */
+export const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
+
+/**
+ * 单条 WS 消息缺省上限（字节，32 MiB）。
+ *
+ * ws 默认 100 MiB 且不区分方向；反向 WS 的 API 调用（send_msg 带 base64 媒体）
+ * 可能很大，但事件/API 调用本身不该到百 MB 级，故收紧到 32 MiB（仍可容纳约
+ * 24 MB 原始媒体）。
+ */
+export const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+
 /** 反向 HTTP server 选项。 */
 export interface HttpServerOptions extends ServerOptions {
     /** 处理超时（毫秒）；缺省不超时。 */
     timeoutMs?: number;
+    /** 请求体上限（字节）；缺省 DEFAULT_MAX_BODY_BYTES。 */
+    bodyLimitBytes?: number;
+    /** 同端口 WS 升级的单消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
+    wsMaxPayloadBytes?: number;
 }
 
 /** 正向 HTTP 客户端（事件上报）选项。 */
@@ -99,6 +121,8 @@ export interface HttpClientOptions {
 export interface WsServerOptions extends ServerOptions {
     /** 心跳：按间隔向所有客户端 ping。缺省不心跳。 */
     heartbeat?: { intervalMs: number };
+    /** 单条消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
+    maxPayloadBytes?: number;
 }
 
 /** 正向 WS 客户端（主动连接 / 反向连接）选项。 */

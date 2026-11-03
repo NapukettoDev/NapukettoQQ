@@ -16,13 +16,15 @@ import type { OneBotApi } from "../../api/one-bot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
+import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
 import { resolveTargetPeer } from "./resolve-peer.js";
 
 const sendMsgSchema = z.object({
     message_type: z.enum(["group", "private"]).optional(),
     user_id: z.number().optional(),
     group_id: z.number().optional(),
-    message: z.union([z.string(), z.array(z.unknown())]),
+    // 上界见 action/limits.ts：第三方可直接 POST 本动作，数组必须限长
+    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
     auto_escape: z.boolean().optional(),
 });
 

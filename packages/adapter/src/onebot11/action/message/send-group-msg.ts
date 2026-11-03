@@ -5,12 +5,14 @@
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
+import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
 import type { SendMsgDeps } from "./send-msg.js";
 import { sendOb11Message } from "./send-msg.js";
 
 const sendGroupMsgSchema = z.object({
     group_id: z.number(),
-    message: z.union([z.string(), z.array(z.unknown())]),
+    // 上界见 action/limits.ts
+    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
     auto_escape: z.boolean().optional(),
 });
 

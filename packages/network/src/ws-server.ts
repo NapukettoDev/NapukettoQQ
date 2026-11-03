@@ -6,7 +6,13 @@
  */
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import type { RequestContext, Respond, TransportAdapter, WsServerOptions } from "./types.js";
+import {
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    type RequestContext,
+    type Respond,
+    type TransportAdapter,
+    type WsServerOptions,
+} from "./types.js";
 
 const WS_CLOSE_CODE = {
     unauthorized: 4401,
@@ -55,7 +61,17 @@ export class WsServer implements TransportAdapter {
             return;
         }
         const { host, port, path } = this.opts;
-        const serverOptions: { host: string; port: number; path?: string } = { host, port };
+        // 单消息上限：ws 默认 100 MiB 过宽（见 types.ts DEFAULT_MAX_PAYLOAD_BYTES）
+        const serverOptions: {
+            host: string;
+            port: number;
+            path?: string;
+            maxPayload: number;
+        } = {
+            host,
+            port,
+            maxPayload: this.opts.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+        };
         if (path !== undefined) {
             serverOptions.path = path;
         }

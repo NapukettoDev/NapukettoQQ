@@ -1,50 +1,38 @@
 packages:
   - "packages/*"
   - "apps/*"
-# typescript-eslint 与 TS7 原生编译器不兼容（TS7 无 JS API，parser 入口有
-# versionMajor >= 7 硬 guard）。理想方案是把 @typescript-eslint/* 的 typescript
-# peer 重定向到 TS6 桥接包 @typescript/typescript6，与项目的 typescript@7.0.2
-# 并存（tsc --noEmit 仍走 TS7 原生）。见
-# https://github.com/typescript-eslint/typescript-eslint/issues/10940
-# ⚠️ 现状（2026-08-23 实测）：pnpm overrides 的 `foo>bar` 语法不覆盖
-# peerDependencies（仅常规依赖），此 override 实际未生效——eslint 加载
-# @typescript-eslint/parser 时仍解析到 TS7 触发 guard。保留通配符写法：
-# pnpm 一旦支持 peer 覆盖立即生效；在此之前 eslint 对 .vue 的 lint 不可用
-#（mjs 时代同样如此，非本次 TS 化引入）。
+
+# 统一版本目录（catalog，2026-11-03 依赖审计整改）：同名依赖在全仓只能有一个
+# specifier。子包一律写 `"zod": "catalog:"`，升版本只改这一处，物理上没法再
+# 出现 vitest 4/5、@types/node 24/26 这类分裂。@types/node 与运行时对齐到 24
+# （CI 的 node-version 口径），不再用 26。
+catalog:
+  zod: ^4.6.7
+  hono: ^4.13.16
+  "@hono/node-server": ^2.1.6
+  ws: ^8.22.1
+  "@types/ws": ^8.18.2
+  "@types/node": ^24.13.4
+  tsdown: ^0.23.4
+  vitest: ^5.0.5
+  "@vitest/coverage-v8": ^5.0.5
+
 overrides:
-  '@typescript-eslint/*>typescript': 'npm:@typescript/typescript6@6.0.2'
-# pnpm 11 构建脚本审批：允许这些依赖运行 postinstall（esbuild/parcel 需要）
+  # @changesets/cli@3.0.2 传递的 launch-editor@2.14.1 带 1 high + 2 moderate
+  # 公告；2.14.2 已修，specifier `^2.14.1` 本身允许，这里显式钉住避免漂移。
+  launch-editor: ^2.14.2
+  # @types/ws / @types/qrcode 声明的是 `@types/node: "*"`，pnpm 会各自解析到当时
+  # 最新的 26.x，导致仓库里同时存在 24（运行时口径）与 26 两套 Node 类型。
+  # 钉死到与运行时一致的 24，顺带合并 undici-types。
+  "@types/node": ^24.13.4
+
+# pnpm 构建脚本审批：允许这些依赖运行 postinstall（esbuild / parcel 需要）。
+# vue-demi 自 vite 5 起不再需要构建脚本，条目已失效（2026-11-03 审计）。
 allowBuilds:
-  '@parcel/watcher': true
+  "@parcel/watcher": true
   esbuild: true
-  vue-demi: true
-# pnpm 11 supply-chain 校验（lockfile verify pass）跳过开关：本仓库 lockfile
-# 由自己维护（自产自销 monorepo），视为可信基础。
-# 背景：pnpm 11.6.0 的 verify pass 不读取 pnpm-workspace.yaml 的
-# minimumReleaseAgeExclude（疑似 bug，环境变量/CLI 才生效），导致 release 流程
-# 嵌套 install 时刚发布的 @napuketto/* 包（< 默认 1440 分钟发布龄）被拦截，
-# 报 ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION。trustLockfile: true 直接跳过该校验。
-trustLockfile: true
+
+# 刚发布的自家包不受 24h 冷却期约束。用通配符消灭「每发一版加一条」的手工债
+# （旧写法列了 14 条具体版本，永远不清）。
 minimumReleaseAgeExclude:
-  - '@napuketto/kernel@0.0.3'
-  - '@napuketto/kernel@0.0.4'
-  - '@napuketto/loader@0.0.6'
-  - '@napuketto/loader@0.0.7'
-  - '@napuketto/kernel@0.0.6'
-  - '@napuketto/loader@0.0.8'
-  - '@napuketto/kernel@0.0.7'
-  - '@napuketto/loader@0.0.9'
-  - '@napuketto/kernel@0.0.8'
-  - '@napuketto/loader@0.0.10'
-  - '@napuketto/loader@0.0.11'
-  - '@napuketto/kernel@0.0.10'
-  - '@napuketto/loader@0.0.12'
-  - '@napuketto/loader@0.0.13'
-  - '@napuketto/loader@0.0.14'
-# verify-deps-before-run 预检：每次命令前自动 reinstall。发布链自己显式跑
-# `pnpm install --lockfile-only`，这里关掉以免命令间隐式重装干扰；日常也可按需手动
-# pnpm install（开发工作流不受影响）。
-# ⚠️ 必须写在顶层：pnpm-workspace.yaml 没有 `settings` 这个键（文档里的
-# “Settings” 是章节标题）。pnpm 11 会静默忽略未知键，pnpm 12 起不仅忽略不了，
-# 在项目 pin 的 pnpm 版本被满足时还会直接报 ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS。
-verifyDepsBeforeRun: false
+  - "@napuketto/*"

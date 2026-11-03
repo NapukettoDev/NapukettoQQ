@@ -34,7 +34,7 @@ git submodule update --init --recursive   # 有权限时
 
 - `tsc` 按 NodeNext 解析 workspace 包，经 `package.json` 的 `exports` 读取 `dist` 里的类型
   声明；没有 `dist` 会直接 `TS2307`。
-- `tooling/package-exports.test.ts` 断言 `dist` 里的 `.d.mts` / `.d.cts`，同样需要先构建。
+- `tooling/package-exports.test.ts` 断言 `dist` 里的 `.d.mts` / `.mjs`，同样需要先构建。
 
 CI 的顺序固定为 build → check → test；本地全绿而 CI 红时优先怀疑这个顺序。
 
@@ -43,8 +43,10 @@ CI 的顺序固定为 build → check → test；本地全绿而 CI 红时优先
 - 测试与源码同目录（`*.test.ts`），由根 `vitest.config.ts` 统一发现。
 - 单测不加载真实 `wrapper.node`：用 mock/fixture 覆盖协议翻译、配置、连接状态机、日志、
   文件系统边界。
-- `tooling/package-exports.test.ts` 守护发布包的 `exports` 形状（双格式包的
-  `import` / `require` / 顶层 `types` 条件）。
+- `tooling/package-exports.test.ts` 守护发布包的 `exports` 形状与发布元数据：全仓
+  Pure ESM（只有 `types` + `default` 两个条件，子路径同样带 `default`，CJS 由
+  Node ≥22.12 的 `require(esm)` 加载）、`engines.node`、库包的 `sideEffects: false`、
+  `publishConfig.access: public`。
 - CI 在 Ubuntu 与 Windows 各跑一套测试；平台相关逻辑用 `skipIf` 或纯函数注入平台参数。
 
 ## 5. CI 与 PR

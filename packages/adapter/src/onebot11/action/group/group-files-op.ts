@@ -6,6 +6,7 @@ import type { RichMediaApi } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
+import { MAX_FILE_IDS } from "../limits.js";
 
 const createGroupFileFolderSchema = z.object({
     group_id: z.number(),
@@ -43,7 +44,7 @@ const deleteGroupFileSchema = z.object({
     group_id: z.number(),
     file_id: z.string(),
     /** 兼容 go-cqhttp 的 file_ids 数组（取第一个）。 */
-    file_ids: z.array(z.string()).optional(),
+    file_ids: z.array(z.string()).max(MAX_FILE_IDS).optional(),
 });
 
 type DeleteGroupFilePayload = z.infer<typeof deleteGroupFileSchema>;
@@ -128,7 +129,7 @@ export class RenameGroupFileAction extends BaseAction<RenameGroupFilePayload, nu
 const moveGroupFileSchema = z.object({
     group_id: z.number(),
     file_id: z.string(),
-    file_ids: z.array(z.string()).optional(),
+    file_ids: z.array(z.string()).max(MAX_FILE_IDS).optional(),
     /** 目标文件夹 ID（空为根目录）。 */
     folder_id: z.string().optional(),
 });

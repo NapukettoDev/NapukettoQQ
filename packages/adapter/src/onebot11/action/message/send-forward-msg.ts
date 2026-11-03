@@ -12,6 +12,7 @@ import { BaseAction } from "../../../core/index.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import type { MessageUnique } from "../../helper/message-unique.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
+import { MAX_FORWARD_NODES } from "../limits.js";
 import { resolveUid } from "../resolve-uid.js";
 
 const forwardNodeSchema = z.object({
@@ -25,14 +26,16 @@ const forwardNodeSchema = z.object({
 
 const sendGroupForwardMsgSchema = z.object({
     group_id: z.number(),
-    messages: z.array(z.unknown()).default([]),
+    // 上界见 action/limits.ts
+    messages: z.array(z.unknown()).max(MAX_FORWARD_NODES).default([]),
 });
 
 type SendGroupForwardMsgPayload = z.infer<typeof sendGroupForwardMsgSchema>;
 
 const sendPrivateForwardMsgSchema = z.object({
     user_id: z.number(),
-    messages: z.array(z.unknown()).default([]),
+    // 上界见 action/limits.ts
+    messages: z.array(z.unknown()).max(MAX_FORWARD_NODES).default([]),
 });
 
 type SendPrivateForwardMsgPayload = z.infer<typeof sendPrivateForwardMsgSchema>;

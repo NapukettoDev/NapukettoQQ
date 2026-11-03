@@ -205,6 +205,12 @@ jobs:
 
             - id: bump
               name: 消费 changeset（只提交，推送留到构建与测试通过之后）
+              # pnpm 的 lockfile verify pass 在个别版本里不读
+              # minimumReleaseAgeExclude（历史坑，见 pnpm-workspace.yaml）；发布链
+              # 只在这一步信任 lockfile，日常 CI / 开发仍走完整校验，避免「PR 直接
+              # 改 lockfile 引入刚发布的包」绕过 24h 冷却期。
+              env:
+                  npm_config_trust_lockfile: "true"
               run: |
                   # skip-version（补发）：changeset 已被消费，跳过 version 环但继续
                   # 构建与发布——changed 在此处的含义是「本次运行要构建并发布」
