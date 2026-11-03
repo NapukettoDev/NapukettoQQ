@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDuration, isSilk } from "silk-wasm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { encodePcmToSilk, SILK_SAMPLE_RATE } from "./audio.js";
+import { encodePcmToSilk, SILK_SAMPLE_RATE } from "../audio.js";
 
 const { execaMock } = vi.hoisted(() => ({ execaMock: vi.fn() }));
 vi.mock("execa", () => ({ execa: execaMock }));
