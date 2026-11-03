@@ -6,7 +6,7 @@
 import type { GroupCache, GroupMember } from "@napuketto/kernel";
 import { NTGroupMemberRole } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { OneBotApi } from "./one-bot-api.js";
+import { OneBotApi } from "../one-bot-api.js";
 
 /** 构造 GroupMember（缺省最小合法值，overrides 覆盖）。 */
 function makeMember(overrides: Partial<GroupMember> = {}): GroupMember {

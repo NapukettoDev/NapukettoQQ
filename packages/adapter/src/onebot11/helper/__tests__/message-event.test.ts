@@ -7,9 +7,9 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { toOb11MessageEvent } from "./message-event.js";
-import { toOb11MessageInfo } from "./message-info.js";
-import { MessageUnique } from "./message-unique.js";
+import { toOb11MessageEvent } from "../message-event.js";
+import { toOb11MessageInfo } from "../message-info.js";
+import { MessageUnique } from "../message-unique.js";
 
 /** 构造 RawMessage（text 元素，其余最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {

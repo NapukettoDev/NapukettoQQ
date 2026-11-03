@@ -10,7 +10,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { type SatoriTranslateDeps, toSatoriMessage } from "./translate.js";
+import { type SatoriTranslateDeps, toSatoriMessage } from "../translate.js";
 
 /** 构造 RawMessage（text 元素，其余最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {

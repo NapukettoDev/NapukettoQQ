@@ -13,7 +13,7 @@ import {
     renderTemplate,
     resolveSenderName,
     truncateForGroup,
-} from "./translate.js";
+} from "../translate.js";
 
 /** 合成群消息（elements 按用例给）。 */
 function groupMsg(elements: RawMessage["elements"], extra?: Partial<RawMessage>): RawMessage {

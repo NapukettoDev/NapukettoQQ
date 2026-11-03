@@ -12,9 +12,9 @@ import { join } from "node:path";
 import type { GroupEventChannel, MsgEventChannel } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { ProtocolConfig } from "../core/index.js";
-import { NapukettoOneBot11Adapter, type OneBot11AdapterOptions } from "./adapter.js";
-import { ob11ConfigSchema } from "./helper/index.js";
+import { ProtocolConfig } from "../../core/index.js";
+import { NapukettoOneBot11Adapter, type OneBot11AdapterOptions } from "../adapter.js";
+import { ob11ConfigSchema } from "../helper/index.js";
 
 /** 桩 kernel apis（构造期只持引用）。 */
 function stubOptions(): Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel"> {

@@ -11,9 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { afterAll, describe, expect, it } from "vitest";
-import { ProtocolConfig } from "../core/index.js";
-import { type KurobotMsgApi, NapukettoKurobotAdapter } from "./adapter.js";
-import { kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";
+import { ProtocolConfig } from "../../core/index.js";
+import { type KurobotMsgApi, NapukettoKurobotAdapter } from "../adapter.js";
+import { kurobotConfigDefaults, kurobotConfigSchema } from "../config.js";
 import { type FakeKurobotServer, startFakeKurobotServer, waitFor } from "./test-support.js";
 
 let tmpRoot = "";

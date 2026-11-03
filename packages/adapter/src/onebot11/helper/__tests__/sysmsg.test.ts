@@ -10,7 +10,7 @@ import {
     extractSysMsgEnvelope,
     recognizeOb11SysMsg,
     type SysMsgKindRuleOB11,
-} from "./sysmsg.js";
+} from "../sysmsg.js";
 
 /** varint 编码。 */
 function encVarint(value: number | bigint): Uint8Array {

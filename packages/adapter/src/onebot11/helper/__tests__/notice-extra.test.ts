@@ -6,7 +6,7 @@
  * 收窄口径，校准后回填。
  */
 import { describe, expect, it } from "vitest";
-import { narrowOfflineFiles, toOfflineFileNotice } from "./notice-extra.js";
+import { narrowOfflineFiles, toOfflineFileNotice } from "../notice-extra.js";
 
 describe("narrowOfflineFiles：防御性收窄", () => {
     it("RawMessage 数组型（elements[].fileElement）→ 归一化项", () => {

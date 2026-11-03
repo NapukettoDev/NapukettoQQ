@@ -30,7 +30,7 @@ import {
     statusFrame,
     WS_SUBPROTOCOL,
     wireFrameSchema,
-} from "./schema.js";
+} from "../schema.js";
 
 /** 请求帧测试用固定 UUID（golden 锁线格式用）。 */
 const UUID_A = "3fa85f64-5717-4562-b3fc-2c963f66afa6";

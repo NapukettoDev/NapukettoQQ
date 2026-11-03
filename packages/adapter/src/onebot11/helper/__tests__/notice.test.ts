@@ -6,7 +6,7 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { toFriendAdd, toOb11NoticeEvent } from "./notice.js";
+import { toFriendAdd, toOb11NoticeEvent } from "../notice.js";
 
 const CTX = { selfUin: "10001", uidToUin: new Map([["u9", "90009"]]) };
 

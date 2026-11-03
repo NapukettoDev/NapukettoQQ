@@ -9,7 +9,7 @@ import {
     cqCodeToSegment,
     segmentsToCqMessage,
     segmentToCanonical,
-} from "./segment.js";
+} from "../segment.js";
 
 describe("canonicalToSegment", () => {
     it("text → text 段", () => {

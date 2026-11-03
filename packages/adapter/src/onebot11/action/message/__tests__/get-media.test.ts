@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RawMessage } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageUnique } from "../../helper/message-unique.js";
-import { GetImageAction, GetRecordAction, resolveLocalMediaFile } from "./get-media.js";
+import { MessageUnique } from "../../../helper/message-unique.js";
+import { GetImageAction, GetRecordAction, resolveLocalMediaFile } from "../get-media.js";
 
 /** 桩依赖（msgApi.fetchMsgsByMsgId / downloadPtt 可控返回）。 */
 function makeDeps(

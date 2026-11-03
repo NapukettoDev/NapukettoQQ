@@ -6,7 +6,7 @@
  * `kurobridge-ws.v1` 返回 false = 拒连）；hello 的应答行为由用例注入。
  */
 import { type WebSocket, WebSocketServer } from "ws";
-import { encodeFrame, WS_SUBPROTOCOL } from "./schema.js";
+import { encodeFrame, WS_SUBPROTOCOL } from "../schema.js";
 
 /** 服务端视角收到的帧（已 JSON 解析）。 */
 export interface FakeServerFrame {

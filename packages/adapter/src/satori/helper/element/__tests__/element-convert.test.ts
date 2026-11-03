@@ -13,7 +13,7 @@ import {
     parseContentToCanonical,
     type SatoriToCanonicalDeps,
     satoriToCanonicalElements,
-} from "./element-convert.js";
+} from "../element-convert.js";
 
 // transcodeVideo mock（video 归一化测试用，vi.hoisted 供工厂引用）
 const transcodeMock = vi.hoisted(() => vi.fn(async (input: string) => `${input}.mp4`));

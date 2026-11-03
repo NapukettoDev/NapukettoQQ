@@ -14,7 +14,7 @@ import {
     narrowBuddyReqs,
     toOb11FriendRequestEvent,
     toOb11GroupRequestEvent,
-} from "./request.js";
+} from "../request.js";
 
 const CTX = { selfUin: "10001", uidToUin: new Map([["u9", "90009"]]) };
 

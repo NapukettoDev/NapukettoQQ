@@ -13,7 +13,7 @@ import {
     NTGroupMemberRole,
 } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { toOb11GroupInfo, toOb11GroupInfoDetail, toOb11GroupMemberInfo } from "./translate.js";
+import { toOb11GroupInfo, toOb11GroupInfoDetail, toOb11GroupMemberInfo } from "../translate.js";
 
 /** 构造群成员（缺省最小合法值，overrides 覆盖）。 */
 function makeMember(overrides: Partial<GroupMember> = {}): GroupMember {
