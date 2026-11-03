@@ -1,6 +1,6 @@
 {
     "name": "@napuketto/adapter",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
     "type": "module",
     "engines": {
