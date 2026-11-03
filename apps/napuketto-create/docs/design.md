@@ -34,12 +34,16 @@
   **不生成 readme.md / .gitignore**——用户项目是「运行壳」，生成后不写代码，
   编辑 `napuketto.toml` 后 `start` 就跑：readme 没人看、.gitignore 在用户不
   `git init` 时是死文件（2026-08-07 用户质疑后移除）。
-- **依赖**：零内部依赖；第三方仅 **`@clack/prompts`**（v1.7.0，脚手架交互事实
+- **依赖**：运行时零内部依赖；第三方仅 **`@clack/prompts`**（v1.7.0，脚手架交互事实
   标准，create-vue / create-turbo 同款）——2026-08-07 用户拍板替换
   prompts+kleur：一站式提供 `intro`/`outro` 边框、`text`/`confirm` 交互、
   `spinner` 进度、`log` 分级输出、`isCancel`/`cancel` 取消处理，自带 ANSI 着色
   （无需单独 kleur），解压仅 116KB。其余用 `node:fs/promises`、`node:path`、
   `node:os`、`node:process`、`node:child_process`。
+  内部包 `@napuketto/cli` **只放 devDependencies**（2026-11-03 依赖审计整改）：
+  脚手架仅读取自身 `package.json` 的版本号拼进模板，运行时不需要 CLI——否则
+  `pnpm create napukettoqq` 会先把 cli→adapter→network→media→kernel 共 95 个
+  生产包下载一遍，生成项目后再装第二遍。
 - **输出**：脚手架是独立发布的面向用户工具，输出为功能提示（等效 cli 的「功能输出」
   例外），用 `console.log` / `process.stdout.write`，不走 pino。
 

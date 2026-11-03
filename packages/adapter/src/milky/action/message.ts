@@ -53,7 +53,16 @@ const outgoingSegmentSchema = z
     .object({ type: z.string(), data: z.record(z.string(), z.unknown()) })
     .loose() as unknown as ZodType<OutgoingSegment>;
 
-const sendMessageFields = { message: z.array(outgoingSegmentSchema).min(1) } as const;
+/**
+ * 单条消息的段数上限（2026-11-03 依赖审计整改）：.min(1) 只保下界，不设上界时
+ * 第三方可 POST 十万个合法段让 zod 逐项解析（zod 4.6.1 的 CWE-770 是内存放大，
+ * 补丁版只修放大、不修「无界数组」本身）。真实单条 QQ 消息远低于此值。
+ */
+const MAX_OUTGOING_SEGMENTS = 200;
+
+const sendMessageFields = {
+    message: z.array(outgoingSegmentSchema).min(1).max(MAX_OUTGOING_SEGMENTS),
+} as const;
 const recallFields = { message_seq: z.number().int().min(0) } as const;
 
 /** send_private_message：发送私聊消息。 */

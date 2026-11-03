@@ -3,37 +3,42 @@
     "version": "0.10.0",
     "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
     "type": "module",
+    "engines": {
+        "node": ">=22.12.0"
+    },
+    "sideEffects": false,
+    "publishConfig": {
+        "access": "public"
+    },
     "files": [
         "dist"
     ],
     "main": "./dist/index.mjs",
-    "module": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
     "exports": {
         ".": {
             "types": "./dist/index.d.mts",
-            "import": "./dist/index.mjs",
-            "require": "./dist/index.mjs"
+            "default": "./dist/index.mjs"
         },
         "./core": {
             "types": "./dist/core/index.d.mts",
-            "import": "./dist/core/index.mjs"
+            "default": "./dist/core/index.mjs"
         },
         "./onebot11": {
             "types": "./dist/onebot11/index.d.mts",
-            "import": "./dist/onebot11/index.mjs"
+            "default": "./dist/onebot11/index.mjs"
         },
         "./satori": {
             "types": "./dist/satori/index.d.mts",
-            "import": "./dist/satori/index.mjs"
+            "default": "./dist/satori/index.mjs"
         },
         "./kurobot": {
             "types": "./dist/kurobot/index.d.mts",
-            "import": "./dist/kurobot/index.mjs"
+            "default": "./dist/kurobot/index.mjs"
         },
         "./milky": {
             "types": "./dist/milky/index.d.mts",
-            "import": "./dist/milky/index.mjs"
+            "default": "./dist/milky/index.mjs"
         }
     },
     "tsdown": {
@@ -51,8 +56,8 @@
         "build": "tsdown"
     },
     "devDependencies": {
-        "@types/ws": "^8.18.1",
-        "tsdown": "^0.22.14"
+        "@types/ws": "catalog:",
+        "tsdown": "catalog:"
     },
     "license": "MIT",
     "repository": {
@@ -64,7 +69,7 @@
         "@napuketto/kernel": "workspace:*",
         "@napuketto/media": "workspace:*",
         "@napuketto/network": "workspace:*",
-        "ws": "^8.21.1",
-        "zod": "^4.6.6"
+        "ws": "catalog:",
+        "zod": "catalog:"
     }
 }

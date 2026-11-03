@@ -1,23 +1,25 @@
 /**
- * tsdown.config.ts：@napuketto/kernel 双格式构建（2026-08-13）。
+ * tsdown.config.ts：@napuketto/kernel 构建（2026-11-03 起 Pure ESM）。
  *
- * 产物：dist/index.mjs（ESM）+ dist/index.cjs（CJS）+ 类型声明（d.mts / d.cts）。
+ * 产物：dist/index.mjs（ESM）+ dist/index.d.mts。
  *
- * 背景：koishi 适配器（koishi-plugin-adapter-napuketto）发布形态是 CJS
- * （lib/index.cjs），koishi loader 用 require() 加载插件 → 适配器 CJS 产物
- * require kernel。若 kernel 仅 ESM（.mjs），Node 抛 ERR_REQUIRE_ESM。
- * 双格式是基础库标准做法：ESM 消费方（apps/cli 自建宿主）走 import → .mjs；
- * CJS 消费方（koishi 适配器等）走 require → .cjs。
+ * 为什么不再出 .cjs（2026-11-03 依赖审计整改）：
+ *   - 运行时底线已是 Node >=22.12（commander@15 / execa@10 硬要求），该版本起
+ *     `require(esm)` 默认开启，无顶层 await 的 ESM 可被 CJS 同步 require；
+ *   - 双包会让 kernel 的模块状态（原生交互层缓存等）在 CJS / ESM 图里各实例化
+ *     一份（Dual-Package Hazard）；
+ *   - 曾为 koishi 适配器（CJS 发布形态）保留 .cjs，但该适配器已独立成仓且运行在
+ *     Node >=22.12，`require("@napuketto/kernel")` 经 exports 的 default 条件命中
+ *     dist/index.mjs，由 Node 原生 require(esm) 加载。
  *
- * 依赖（pino / pino-pretty / smol-toml）保持 external——三者均提供 CJS 入口，
- * CJS 产物 require 可正常加载。`import.meta.url`（infra/paths.ts）由 rolldown
- * 在 CJS 输出中转换为基于 __filename 的等价形式，定位行为不变（均在 dist/ 下）。
+ * 依赖（pino / smol-toml）保持 external；pino-pretty 是 optional peer（见
+ * package.json peerDependenciesMeta），运行时按需 require，缺省降级为单行结构化。
  */
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
     entry: ["src/index.ts"],
-    format: ["esm", "cjs"],
+    format: ["esm"],
     platform: "node",
     clean: true,
     dts: true,

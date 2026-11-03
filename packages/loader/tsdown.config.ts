@@ -1,24 +1,24 @@
 /**
- * tsdown.config.ts：@napuketto/loader 双构建（2026-08-07 阶段 2；2026-08-13 对外 API 双格式）。
+ * tsdown.config.ts：@napuketto/loader 双构建（2026-08-07 阶段 2；2026-11-03 对外 API 转 Pure ESM）。
  *
- * 配置 1 —— 对外 API（index）：**ESM + CJS 双格式** + d.mts/d.cts（2026-08-13）。
- *   背景：koishi 适配器发布形态是 CJS，koishi loader 用 require() 加载 →
- *   适配器 require loader。仅 ESM 会 ERR_REQUIRE_ESM，故与 kernel 同步输出
- *   dist/index.cjs（exports.require 指向），ESM 消费方（apps/cli）仍走
- *   dist/index.mjs。构建时清 dist。
+ * 配置 1 —— 对外 API（index）：**仅 ESM** + d.mts（2026-11-03）。
+ *   运行时底线 Node >=22.12（require(esm) 原生可用），koishi 适配器已独立成仓，
+ *   CJS 产物不再有消费方；`require("@napuketto/loader")` 经 exports 的 default
+ *   条件命中 dist/index.mjs，由 Node 原生 require(esm) 加载。
  * 配置 2 —— 自建宿主引导运行时（host/self-host）：CJS 单文件 bundle，
  *   rolldown 将 src/host/ 依赖树（bootstrap/login/session/protocols/smoke/util/
  *   types/env）全部内联进 dist/host/self-host.cjs，node 内置模块保持 external。
  *   产物被 launcher.launchSelfHost() spawn 直接执行（node dist/host/self-host.cjs），
  *   .cjs 扩展名自声明 CommonJS（包根 "type": "module"），无需再复制 runtime 目录。
+ *   ⚠️ 这是内部被 spawn 的进程入口，不是对外 API，与配置 1 的 ESM-only 不冲突。
  */
 import { defineConfig } from "tsdown";
 
 export default defineConfig([
     {
-        // 对外 API（apps/cli、koishi 适配器消费）：ESM + CJS 双格式
+        // 对外 API（apps/cli、koishi 适配器消费）：仅 ESM
         entry: { index: "src/index.ts" },
-        format: ["esm", "cjs"],
+        format: ["esm"],
         platform: "node",
         clean: true,
     },

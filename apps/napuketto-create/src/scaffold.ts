@@ -39,19 +39,28 @@ async function fetchLatestCliVersion(): Promise<string | null> {
 /**
  * 生成的用户项目所依赖的 @napuketto/cli 版本范围（自动最新版，不交互选版本）。
  * 优先级：
- *   1. 脚手架自身 package.json 的 dependencies["@napuketto/cli"]（发版时 changesets
- *      升版本 + 发布改写为实际版本，模板版本自动跟随）
+ *   1. 脚手架自身 package.json 的 devDependencies / dependencies["@napuketto/cli"]
+ *      （发版时 changesets 升版本 + 发布改写为实际版本，模板版本自动跟随）
  *   2. npm registry 查询最新版（自身依赖缺失 / 仍是 workspace:*（发布泄漏兜底）——
  *      2026-08-16 修复：published 包曾泄漏 workspace:*，yarn create 被迫交互选版本）
  *   3. ^0.0.1（离线 / registry 查询失败兜底）
  * workspace:* 只在本地 monorepo 直跑脚手架时出现（发布后被替换为实际版本）。
+ *
+ * 2026-11-03 起该依赖放在 devDependencies（依赖审计整改）：脚手架只在运行时读
+ * 自己的 package.json 取版本号，不需要在消费者机器上装整个 CLI（否则 `pnpm create
+ * napukettoqq` 会先下载 95 个生产包，生成完项目再装一遍）。npm 发布时
+ * devDependencies 字段仍保留在 package.json 里，读取路径不变。
  */
 async function cliVersionRange(): Promise<string> {
     try {
         const ownPkg = JSON.parse(
             readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-        ) as { dependencies?: Record<string, string> };
-        const range = ownPkg.dependencies?.["@napuketto/cli"];
+        ) as {
+            dependencies?: Record<string, string>;
+            devDependencies?: Record<string, string>;
+        };
+        const range =
+            ownPkg.devDependencies?.["@napuketto/cli"] ?? ownPkg.dependencies?.["@napuketto/cli"];
         if (range !== undefined && range !== "workspace:*") {
             return range;
         }

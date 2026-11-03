@@ -42,7 +42,7 @@ create-napukettoqq
        ├─ @napuketto/kernel
        └─ @napuketto/network
 
-@napuketto/kernel   无内部依赖（pino / pino-pretty / smol-toml）
+@napuketto/kernel   无内部依赖（pino / smol-toml；pino-pretty 为 optional peer，仅终端美化用）
 @napuketto/network  无内部依赖（hono / @hono/node-server / ws）
 @napuketto/media    无内部依赖（silk-wasm / file-type / image-size / execa）
 ```

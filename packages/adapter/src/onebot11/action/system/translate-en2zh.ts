@@ -5,9 +5,11 @@ import type { RichMediaApi } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
+import { MAX_TRANSLATE_WORDS } from "../limits.js";
 
 const translateEn2ZhSchema = z.object({
-    words: z.array(z.string()),
+    // 上界见 action/limits.ts：第三方可直接 POST，词条数组不能无界
+    words: z.array(z.string()).max(MAX_TRANSLATE_WORDS),
 });
 
 type TranslateEn2ZhPayload = z.infer<typeof translateEn2ZhSchema>;

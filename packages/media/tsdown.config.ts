@@ -1,30 +1,23 @@
 /**
- * tsdown.config.ts：@napuketto/media 双格式构建（2026-08-24 生产事故修复）。
+ * tsdown.config.ts：@napuketto/media 构建（2026-11-03 起 Pure ESM + 不内联依赖）。
  *
- * 产物：dist/index.mjs（ESM）+ dist/index.cjs（CJS）+ 类型声明（d.mts / d.cts）。
+ * 产物：dist/index.mjs（ESM）+ dist/index.d.mts。
  *
- * 背景：koishi 适配器（koishi-plugin-adapter-napuketto）发布形态是 CJS
- * （lib/index.cjs），koishi loader 用 require() 加载插件 → 适配器 CJS 产物
- * require media（语音发送前统一转 silk，2026-08-23 引入）。此前 media 仅 ESM
- * （exports 只有 import 条件），CJS require 解析不到入口，生产报
- * ERR_PACKAGE_PATH_NOT_EXPORTED。修复：与 kernel/loader 一致，双格式 +
- * exports 补 require 条件。
- *
- * ESM-only 依赖处理：execa（v10）、file-type（v22）无 CJS 入口——CJS 产物
- * require 它们会抛 ERR_REQUIRE_ESM（Node <22.12）。用 deps.alwaysBundle
- * 强制打进 CJS 产物（同时 ESM 产物也内联，无碍——ESM 消费方不受影响）。
- * image-size（双格式）、silk-wasm（CJS）保持 external（默认），CJS require
- * 可正常加载。
+ * 2026-08-24 曾为「koishi 适配器 CJS require media」出双格式，并把纯 ESM 的
+ * execa@10 / file-type@22 用 deps.alwaysBundle 打进产物（否则 CJS 侧
+ * ERR_REQUIRE_ESM）。2026-11-03 审计后这些前提都消失了：
+ *   - 运行时底线 Node >=22.12，require(esm) 原生可用，不再需要 .cjs；
+ *   - 内联会让下游 `pnpm audit --prod` 看不见 execa/file-type 及其 30 个传递
+ *     依赖，CVE 也没法用 overrides 热修；signal-exit 这类进程级单例还会被复制
+ *     成第二份闭包。现在一律 external，按普通 dependencies 分发，MIT 版权随各包
+ *     自带 LICENSE 一起走（不再需要往产物里拼 banner）。
  */
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
     entry: ["src/index.ts"],
-    format: ["esm", "cjs"],
+    format: ["esm"],
     platform: "node",
     clean: true,
     dts: true,
-    deps: {
-        alwaysBundle: ["execa", "file-type"],
-    },
 });

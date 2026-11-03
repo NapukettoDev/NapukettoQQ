@@ -11,16 +11,53 @@
  * performance.timeOrigin + performance.now() 单调派生墙钟，不受 Date 篡改影响。
  */
 import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import process from "node:process";
 import pino from "pino";
-import pinoPretty from "pino-pretty";
+import type { PrettyOptions, PrettyStream } from "pino-pretty";
 import { KernelError } from "./errors.js";
 import type { LogFormat, TimestampMode } from "./log-config.js";
 import { createConsoleFormatStream } from "./log-format.js";
 
 /** 默认 redact 路径：顶层 token/票据 + 任意深度的密码/密钥。 */
 const DEFAULT_REDACT_PATHS = ["token", "ticket", "cookie", "password", "secret"] as const;
+
+/** pino-pretty 工厂签名（仅类型；包本身是 optional peer，运行时按需加载）。 */
+type PrettyFactory = (options?: PrettyOptions) => PrettyStream;
+
+/** 从本模块位置解析 optional peer（dist/index.mjs 与 src/infra 深度不同，但都归 createRequire 处理）。 */
+const requireFromHere = createRequire(import.meta.url);
+
+/** undefined = 尚未探测；null = 未安装（降级 single-line 结构化输出）。 */
+let prettyFactory: PrettyFactory | null | undefined;
+
+/**
+ * 懒加载 pino-pretty（optional peerDependency，2026-11-03 依赖审计整改）。
+ *
+ * 为什么不用顶层 `import pinoPretty from "pino-pretty"`：kernel 被 koishi 适配器
+ * 或嵌入式宿主当库引用时不需要彩色终端渲染，但静态 import 会让「没装
+ * pino-pretty」直接变成模块加载期的 ERR_MODULE_NOT_FOUND。改为运行时 require +
+ * try/catch：宿主没装（或 pnpm 严格隔离下解析不到）就退化为 single-line 结构化
+ * 输出，CLI 侧因为自己依赖 pino-pretty，终端体验不变。
+ *
+ * 用 createRequire 而非动态 import()：解析结果需要同步（createLogger 是同步
+ * API），且 pino-pretty 13 是 CJS 包，同步 require 最直接。
+ */
+function loadPrettyFactory(): PrettyFactory | null {
+    if (prettyFactory !== undefined) {
+        return prettyFactory;
+    }
+    try {
+        const mod = requireFromHere("pino-pretty") as PrettyFactory | { default?: PrettyFactory };
+        const factory = typeof mod === "function" ? mod : mod.default;
+        prettyFactory = typeof factory === "function" ? factory : null;
+    } catch {
+        // 未安装 / 解析失败：静默降级（日志格式可读性下降，但进程不能因此起不来）
+        prettyFactory = null;
+    }
+    return prettyFactory;
+}
 
 /** 级别数值序（求多目的地最低级别用）。 */
 const LEVEL_ORDER: readonly pino.LevelWithSilent[] = [
@@ -109,38 +146,43 @@ interface ConsoleStreamParams {
     destination: NodeJS.WriteStream;
 }
 
-/** 构造控制台流：pretty 走 pino-pretty，single-line/json 走结构化渲染流。 */
+/** 构造控制台流：pretty 走 pino-pretty（未安装则降级），其余走结构化渲染流。 */
 function buildConsoleStream(params: ConsoleStreamParams): pino.DestinationStream {
     const { format, timestampMode, colorize, destination } = params;
-    if (format !== "pretty") {
-        return createConsoleFormatStream({
-            format,
-            timestamp: timestampMode,
-            colorize,
-            destination,
-        });
+    if (format === "pretty") {
+        const pretty = loadPrettyFactory();
+        if (pretty !== null) {
+            return pretty({
+                colorize,
+                // 短格式时间（2026-08-07 用户定稿）：完整日期+时区前缀近 60 字符，
+                // 每条日志重复占满横向视线；缩短为时分秒+毫秒，文件日志（JSON）
+                // 仍保留完整时间戳可精确追溯。
+                // ⚠️ 必须带 SYS: 前缀：无前缀按 UTC 渲染（北京 = UTC+8，时间会差 8 小时），
+                // SYS: 才用本地系统时间。iso8601 模式用完整日期+时区后缀；elapsed 模式
+                // 时间为预渲染字符串（不可解析则 pretty 原样输出），不走 translateTime。
+                ...(timestampMode === "local" ? { translateTime: "SYS:HH:MM:ss.l" as const } : {}),
+                ...(timestampMode === "iso8601"
+                    ? { translateTime: "SYS:yyyy-mm-dd'T'HH:MM:ss.l Z" as const }
+                    : {}),
+                // 原生多行展开（默认值，显式声明）：属性按 key/value 逐行渲染，
+                // 由 pino-pretty 自带颜色高亮（key 紫色 / 字符串青色），不手写格式化
+                // 函数对抗原生渲染——高频业务日志（如收到消息）在调用点直接传
+                // 纯字符串，不传对象，天然单行。
+                singleLine: false,
+                // ⚠️ 必须显式传 destination=process.stdout：pino-pretty 默认用
+                // sonic-boom 直写 fd 1（UTF-8 字节流），在 pnpm start（cmd.exe +
+                // 管道 936 转码）链路下中文被按 GBK 解码成乱码、ANSI 残留；
+                // 走 process.stdout 的 TTY 路径（WriteConsoleW UTF-16）编码正确。
+                destination,
+            });
+        }
+        // 未安装 pino-pretty：降级为 single-line（resolveRenderParams 已把 format 改掉，
+        // 这里兜底防御，避免把 "pretty" 传进结构化流）
     }
-    return pinoPretty({
+    return createConsoleFormatStream({
+        format: format === "pretty" ? "single-line" : format,
+        timestamp: timestampMode,
         colorize,
-        // 短格式时间（2026-08-07 用户定稿）：完整日期+时区前缀近 60 字符，
-        // 每条日志重复占满横向视线；缩短为时分秒+毫秒，文件日志（JSON）
-        // 仍保留完整时间戳可精确追溯。
-        // ⚠️ 必须带 SYS: 前缀：无前缀按 UTC 渲染（北京 = UTC+8，时间会差 8 小时），
-        // SYS: 才用本地系统时间。iso8601 模式用完整日期+时区后缀；elapsed 模式
-        // 时间为预渲染字符串（不可解析则 pretty 原样输出），不走 translateTime。
-        ...(timestampMode === "local" ? { translateTime: "SYS:HH:MM:ss.l" as const } : {}),
-        ...(timestampMode === "iso8601"
-            ? { translateTime: "SYS:yyyy-mm-dd'T'HH:MM:ss.l Z" as const }
-            : {}),
-        // 原生多行展开（默认值，显式声明）：属性按 key/value 逐行渲染，
-        // 由 pino-pretty 自带颜色高亮（key 紫色 / 字符串青色），不手写格式化
-        // 函数对抗原生渲染——高频业务日志（如收到消息）在调用点直接传
-        // 纯字符串，不传对象，天然单行。
-        singleLine: false,
-        // ⚠️ 必须显式传 destination=process.stdout：pino-pretty 默认用
-        // sonic-boom 直写 fd 1（UTF-8 字节流），在 pnpm start（cmd.exe +
-        // 管道 936 转码）链路下中文被按 GBK 解码成乱码、ANSI 残留；
-        // 走 process.stdout 的 TTY 路径（WriteConsoleW UTF-16）编码正确。
         destination,
     });
 }
@@ -154,11 +196,14 @@ interface ResolvedRenderParams {
 }
 
 /** 折叠 LoggerOptions 的渲染缺省：格式按 TTY 自动（TTY pretty / pipe single-line）、
- * 颜色仅在 pretty 且 TTY 时开。 */
+ * 颜色仅在 pretty 且 TTY 时开。pretty 需要 pino-pretty，未安装时同样降级为
+ * single-line（与时间戳渲染方式的决策保持一致，避免 elapsed 字符串时间进错流）。 */
 function resolveRenderParams(opts: LoggerOptions): ResolvedRenderParams {
     const destination = opts.destination ?? process.stdout;
     const isTty = destination.isTTY === true;
-    const format: LogFormat = opts.format ?? (isTty ? "pretty" : "single-line");
+    const requested: LogFormat = opts.format ?? (isTty ? "pretty" : "single-line");
+    const format: LogFormat =
+        requested === "pretty" && loadPrettyFactory() === null ? "single-line" : requested;
     return {
         format,
         timestampMode: opts.timestamp ?? "local",

@@ -11,19 +11,23 @@ import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { WebSocketServer } from "ws";
-import type {
-    HttpRouteContext,
-    HttpServerOptions,
-    RequestContext,
-    Respond,
-    TransportAdapter,
-    WsUpgradeHook,
+import {
+    DEFAULT_MAX_BODY_BYTES,
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    type HttpRouteContext,
+    type HttpServerOptions,
+    type RequestContext,
+    type Respond,
+    type TransportAdapter,
+    type WsUpgradeHook,
 } from "./types.js";
 
 const HTTP_STATUS = {
     badRequest: 400,
     unauthorized: 401,
+    payloadTooLarge: 413,
 } as const;
 
 /** 原生 server 的 upgrade 监听最小面（@hono/node-server ServerType 收窄用）。 */
@@ -80,6 +84,15 @@ export class HttpServer implements TransportAdapter {
     constructor(opts: HttpServerOptions) {
         this.opts = opts;
         this.app = new Hono();
+        // 请求体上限（2026-11-03 依赖审计整改）：第三方可直接 POST，
+        // 无上限时一个超大 JSON 就能把解析阶段的内存打爆。默认值考虑
+        // base64 媒体，见 types.ts DEFAULT_MAX_BODY_BYTES。
+        this.app.use(
+            bodyLimit({
+                maxSize: opts.bodyLimitBytes ?? DEFAULT_MAX_BODY_BYTES,
+                onError: (c) => c.json({ error: "payload too large" }, HTTP_STATUS.payloadTooLarge),
+            }),
+        );
         this.app.all("*", (c) => this.handle(c));
     }
 
@@ -171,7 +184,11 @@ export class HttpServer implements TransportAdapter {
      * @hono/node-server 默认不监听 upgrade，先挂先得（与 hono 无冲突）。
      */
     private attachUpgrade(server: ServerType): void {
-        const wss = new WebSocketServer({ noServer: true });
+        const wss = new WebSocketServer({
+            noServer: true,
+            // 单条消息上限：升级通道与独立 WsServer 同一口径（见 types.ts）
+            maxPayload: this.opts.wsMaxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+        });
         const upgradeable = server as unknown as UpgradeableServer;
         upgradeable.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
             this.onUpgrade?.(
