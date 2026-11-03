@@ -6,9 +6,9 @@
  * 用真实 NTEventChannel + BuddyCache 自带 diff 通道,不依赖原生 service。
  */
 import { describe, expect, it, vi } from "vitest";
-import { NTEventChannel } from "../event-channel.js";
-import type { BuddyListener } from "../types/index.js";
-import { BuddyCache, narrowBuddyCategories } from "./buddy-cache.js";
+import { NTEventChannel } from "../../event-channel.js";
+import type { BuddyListener } from "../../types/index.js";
+import { BuddyCache, narrowBuddyCategories } from "../buddy-cache.js";
 
 function makeCache() {
     const channel = new NTEventChannel<BuddyListener, "Buddy">("Buddy");

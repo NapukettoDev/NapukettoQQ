@@ -7,7 +7,7 @@
  *  - isServiceGetter（get*Service 命名约定）
  */
 import { describe, expect, it, vi } from "vitest";
-import { isServiceGetter, listMethods, tryCall } from "./probe-utils.js";
+import { isServiceGetter, listMethods, tryCall } from "../probe-utils.js";
 
 describe("listMethods", () => {
     it("null/undefined 返回空数组", () => {

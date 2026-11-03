@@ -9,12 +9,12 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WrapperContext } from "../wrapper-loader.js";
+import type { WrapperContext } from "../../wrapper-loader.js";
 import {
     createRecordingListener,
     type ListenerRecordEvent,
     startListenerRecording,
-} from "./probe-listener.js";
+} from "../probe-listener.js";
 
 describe("createRecordingListener（万能监听器）", () => {
     function make(): { listener: object; events: ListenerRecordEvent[] } {
