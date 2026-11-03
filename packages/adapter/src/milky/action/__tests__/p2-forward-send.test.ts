@@ -9,10 +9,10 @@
  */
 import { ChatType, type Peer, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { MilkyApi } from "../api.js";
-import { MessageSeqIndex } from "../helper/seq-index.js";
-import type { OutgoingSegment } from "../types.js";
-import { sendMilkyMessage } from "./message.js";
+import { MilkyApi } from "../../api.js";
+import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import type { OutgoingSegment } from "../../types.js";
+import { sendMilkyMessage } from "../message.js";
 
 const PEER: Peer = { chatType: ChatType.GROUP, peerUid: "10001" };
 

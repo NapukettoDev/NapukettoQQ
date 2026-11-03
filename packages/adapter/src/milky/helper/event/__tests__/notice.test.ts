@@ -12,7 +12,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { toMilkyNoticeEvent } from "./notice.js";
+import { toMilkyNoticeEvent } from "../notice.js";
 
 /** uid→uin 映射（测试固定三对）。 */
 const UID_TO_UIN = new Map([

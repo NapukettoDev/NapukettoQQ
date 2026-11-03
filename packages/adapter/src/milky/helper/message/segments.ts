@@ -12,7 +12,7 @@
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { kernelError } from "@napuketto/kernel";
-import type { IncomingSegment, OutgoingSegment } from "../types.js";
+import type { IncomingSegment, OutgoingSegment } from "../../types.js";
 
 /** reply 段回填元信息（广播/action 路径异步取得，翻译纯函数消费）。 */
 export interface ReplyMeta {

@@ -18,9 +18,9 @@ import type {
 import { ChatType, kernelError, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { z } from "zod";
 import { findGroupNotify, type MilkyApi } from "../api.js";
-import { toGroupEntity, toGroupMemberEntity } from "../helper/entities.js";
-import { resolveUriToPath } from "../helper/media-uri.js";
-import { collectNotifyUids } from "../helper/request.js";
+import { collectNotifyUids } from "../helper/event/request.js";
+import { toGroupEntity, toGroupMemberEntity } from "../helper/message/entities.js";
+import { resolveUriToPath } from "../helper/message/media-uri.js";
 import type {
     GetGroupAnnouncementsOutput,
     GetGroupEssenceMessagesOutput,

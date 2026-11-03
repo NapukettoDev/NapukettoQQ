@@ -4,7 +4,7 @@
 
 import type { RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { toFriendFileUploadData } from "./file-upload.js";
+import { toFriendFileUploadData } from "../file-upload.js";
 
 /** 构造 C2C 文件消息（录制实证形状：fileSize 字符串 + file10MMd5 + fileUuid）。 */
 function fileMsg(overrides: Partial<RawMessage> = {}): RawMessage {

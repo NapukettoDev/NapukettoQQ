@@ -9,13 +9,13 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import type { GroupEntity, GroupMemberEntity } from "../types.js";
+import type { GroupEntity, GroupMemberEntity } from "../../../types.js";
 import {
     chatTypeToScene,
     toGroupFileUploadEvent,
     toMessageRecallEvent,
     toMessageReceiveEvent,
-} from "./translate.js";
+} from "../translate.js";
 
 /** 构造 RawMessage（text 元素，其余最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {

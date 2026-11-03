@@ -8,10 +8,10 @@
 import type { GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { findBuddyReq, findGroupNotify, MilkyApi } from "../api.js";
-import { MessageSeqIndex } from "../helper/seq-index.js";
-import type { GroupNotificationEntity } from "../types.js";
-import { createMilkyActionRegistry } from "./index.js";
+import { findBuddyReq, findGroupNotify, MilkyApi } from "../../api.js";
+import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import type { GroupNotificationEntity } from "../../types.js";
+import { createMilkyActionRegistry } from "../index.js";
 
 /** 通知桩（user1/user2 固定 uid，经 uidToUin 桩转 uin）。 */
 function notify(type: GroupNotifyMsgType): GroupNotify {

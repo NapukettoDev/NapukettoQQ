@@ -9,8 +9,8 @@
  * fileSha/fileSha3 实测为空——取 file10MMd5（md5）充值，上传侧校准后回填。
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
-import { resolveUin } from "../../core/shared/uid-uin.js";
-import type { FriendFileUploadData } from "../types.js";
+import { resolveUin } from "../../../core/shared/uid-uin.js";
+import type { FriendFileUploadData } from "../../types.js";
 
 /** 单条 C2C 文件消息 → 事件载荷（非 C2C / 无 fileElement / 无 fileUuid → null）。 */
 export function toFriendFileUploadData(

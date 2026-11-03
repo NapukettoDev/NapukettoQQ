@@ -20,14 +20,14 @@ import type {
 import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
 import type { MilkyApi } from "../api.js";
-import { toGroupEntity, toGroupMemberEntity } from "../helper/entities.js";
-import { resolveMediaUri, resolveUriToPath } from "../helper/media-uri.js";
+import { type ReceiveTranslateContext, toMessageReceiveEvent } from "../helper/event/translate.js";
+import { toGroupEntity, toGroupMemberEntity } from "../helper/message/entities.js";
+import { resolveMediaUri, resolveUriToPath } from "../helper/message/media-uri.js";
 import {
     canonicalToIncomingSegments,
     incomingForwardSegment,
     outgoingSegmentsToCanonical,
-} from "../helper/segments.js";
-import { type ReceiveTranslateContext, toMessageReceiveEvent } from "../helper/translate.js";
+} from "../helper/message/segments.js";
 import type {
     GetCustomFaceUrlListOutput,
     GetForwardedMessagesOutput,

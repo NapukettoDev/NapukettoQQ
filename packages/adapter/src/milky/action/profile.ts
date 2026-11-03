@@ -8,8 +8,8 @@
  */
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { z } from "zod";
-import { toFriendEntity } from "../helper/entities.js";
-import { resolveMediaUri } from "../helper/media-uri.js";
+import { toFriendEntity } from "../helper/message/entities.js";
+import { resolveMediaUri } from "../helper/message/media-uri.js";
 import type {
     GetCookiesOutput,
     GetCSRFTokenOutput,
