@@ -123,8 +123,9 @@ create-napukettoqq -h             # 打印 usage 退出
 - `cancel`：Ctrl+C / 取消 → 打印取消消息退出 0；非 TTY（CI）→ 用默认值兜底
 
 **品牌色定向（2026-08-09 美化 v4，对齐 koishi create 观感）**：
-按 `detectPackageManager()` 结果对关键输出着色（`picocolors`，clack 同款着色库，
-显式声明依赖），16 色近似 + bold（兼容所有终端，不依赖 truecolor）：
+按 `detectPackageManager()` 结果对关键输出着色（Node 内置 `node:util` `styleText`；
+2026-11-03 起替代 `picocolors`：自动识别 `NO_COLOR` / `FORCE_COLOR` / TTY 状态，
+非 TTY 下原样返回纯文本），16 色近似 + bold（兼容所有终端，不依赖 truecolor）：
 
 | 包管理器 | 颜色 | 应用点 |
 |---|---|---|

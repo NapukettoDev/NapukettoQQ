@@ -2,6 +2,11 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# Node 版本硬闸（2026-11-03 供应链硬化）：默认 pnpm 对 engines 不匹配只 warn，
+# 这里改成硬失败——本机/CI 一旦切到旧版 Node，`pnpm install` 直接
+# ERR_PNPM_UNSUPPORTED_ENGINE，不会带着错误运行时继续装依赖。
+engineStrict: true
+
 # 统一版本目录（catalog，2026-11-03 依赖审计整改）：同名依赖在全仓只能有一个
 # specifier。子包一律写 `"zod": "catalog:"`，升版本只改这一处，物理上没法再
 # 出现 vitest 4/5、@types/node 24/26 这类分裂。@types/node 与运行时对齐到 24

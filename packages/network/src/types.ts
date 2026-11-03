@@ -20,6 +20,22 @@ export interface RequestContext {
 export type AuthorizeHook = (ctx: RequestContext) => boolean;
 
 /**
+ * WS 连接（ws 实现类型）。
+ *
+ * 协议层只经这个别名接触连接：ws 的类型与实例都由 network 拥有，adapter 不需要
+ * 在自己的 `dependencies` 里再声明 ws（2026-11-03 依赖收敛）。
+ */
+export type WsSocket = WebSocket;
+
+/** ws READY_STATE.OPEN（规范固定值 1；协议层不出现魔法数字、也不依赖 ws 常量）。 */
+const WS_READY_STATE_OPEN = 1;
+
+/** 连接是否可发送（协议层判 readyState 的唯一入口）。 */
+export function isWsOpen(socket: WsSocket): boolean {
+    return socket.readyState === WS_READY_STATE_OPEN;
+}
+
+/**
  * 响应回调：协议层处理后回发。
  * `status` 为可选 HTTP 状态码（HTTP server 用；WS 传输忽略）。
  * OB11 不传 status（恒 200）；Satori RPC 用 status 表达 404/501 等。

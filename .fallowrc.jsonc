@@ -21,12 +21,10 @@
     //  - @napuketto/network / @napuketto/adapter：cli 经 import.meta.resolve 动态解析（boot.ts），
     //    fallow 静态分析看不到
     //  - @napuketto/cli：create-napukettoqq 运行时读自身 package.json 的依赖范围（scaffold.ts）
-    //  - picocolors：预留（配色，后续实现）
     "ignoreDependencies": [
         "@napuketto/network",
         "@napuketto/adapter",
-        "@napuketto/cli",
-        "picocolors"
+        "@napuketto/cli"
     ],
     // 依赖 override 豁免（2026-10-21）：根 package.json 的
     // `@typescript-eslint/*>typescript` 是刻意保留的前瞻性 override（pnpm 尚未支持

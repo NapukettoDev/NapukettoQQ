@@ -8,7 +8,8 @@
     },
     "sideEffects": false,
     "publishConfig": {
-        "access": "public"
+        "access": "public",
+        "provenance": true
     },
     "files": [
         "dist"
@@ -57,7 +58,8 @@
     },
     "devDependencies": {
         "@types/ws": "catalog:",
-        "tsdown": "catalog:"
+        "tsdown": "catalog:",
+        "ws": "catalog:"
     },
     "license": "MIT",
     "repository": {
@@ -69,7 +71,6 @@
         "@napuketto/kernel": "workspace:*",
         "@napuketto/media": "workspace:*",
         "@napuketto/network": "workspace:*",
-        "ws": "catalog:",
         "zod": "catalog:"
     }
 }

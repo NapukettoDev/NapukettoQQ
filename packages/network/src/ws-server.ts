@@ -61,16 +61,21 @@ export class WsServer implements TransportAdapter {
             return;
         }
         const { host, port, path } = this.opts;
-        // 单消息上限：ws 默认 100 MiB 过宽（见 types.ts DEFAULT_MAX_PAYLOAD_BYTES）
+        // 单消息上限：ws 默认 100 MiB 过宽（见 types.ts DEFAULT_MAX_PAYLOAD_BYTES）。
+        // skipUTF8Validation 显式 false：文本帧进入 JSON.parse / 日志前必须已校验
+        // UTF-8（ws 默认即 false，写死防止后人为了「微秒级性能」关掉——非法字节流
+        // 会在下游变成乱码或异常，而不是可诊断的协议错误）。
         const serverOptions: {
             host: string;
             port: number;
             path?: string;
             maxPayload: number;
+            skipUTF8Validation: boolean;
         } = {
             host,
             port,
             maxPayload: this.opts.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+            skipUTF8Validation: false,
         };
         if (path !== undefined) {
             serverOptions.path = path;

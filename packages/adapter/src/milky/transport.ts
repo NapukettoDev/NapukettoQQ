@@ -18,9 +18,9 @@ import type {
     RequestContext,
     Respond,
     TransportAdapter,
+    WsSocket,
 } from "@napuketto/network";
-import { createSseResponse, HttpClient, HttpServer } from "@napuketto/network";
-import { WebSocket } from "ws";
+import { createSseResponse, HttpClient, HttpServer, isWsOpen } from "@napuketto/network";
 import type { ActionRegistry } from "../core/index.js";
 import type { MilkyAction } from "./action/base-action.js";
 import type { MilkyConfig } from "./config.js";
@@ -55,7 +55,7 @@ export interface MilkyTransportSet {
  */
 class MilkyEventHub implements TransportAdapter {
     private readonly sseClients = new Set<SseClientHandle>();
-    private readonly sockets = new Set<WebSocket>();
+    private readonly sockets = new Set<WsSocket>();
 
     /** 把 /event 的 SSE（onRawRequest）与 WS 升级（onUpgrade）挂到 HTTP server。 */
     attachTo(server: HttpServer, config: MilkyConfig): void {
@@ -103,7 +103,7 @@ class MilkyEventHub implements TransportAdapter {
             client.send(json, "milky_event");
         }
         for (const socket of this.sockets) {
-            if (socket.readyState === WebSocket.OPEN) {
+            if (isWsOpen(socket)) {
                 socket.send(json);
             }
         }

@@ -20,8 +20,8 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import process from "node:process";
+import { styleText } from "node:util";
 import { cancel, confirm, intro, log, outro, spinner, text } from "@clack/prompts";
-import pc from "picocolors";
 import type { PackageManager, ScaffoldResult } from "./scaffold.js";
 import {
     checkDirStatus,
@@ -33,8 +33,11 @@ import {
     validateProjectName,
 } from "./scaffold.js";
 
-// picocolors 是 CJS 包（无 ESM 命名导出），Node ESM 下需 default import 再解构
-const { blue, bold, cyan, dim, red, yellow } = pc;
+// 终端着色走 node:util styleText（2026-11-03 移除 picocolors）：Node >=20.12 内置，
+// 自动识别 NO_COLOR / FORCE_COLOR / NODE_DISABLE_COLORS 与 TTY 状态，非 TTY 下
+// 原样返回纯文本（与 picocolors 行为一致），不再需要第三方着色库。
+const dim = (t: string): string => styleText("dim", t);
+const cyan = (t: string): string => styleText("cyan", t);
 
 /** CLI 参数解析结果。 */
 interface CliOptions {
@@ -160,11 +163,11 @@ async function askProjectName(yes: boolean): Promise<string> {
 function brandColor(pm: PackageManager): (text: string) => string {
     switch (pm) {
         case "pnpm":
-            return (t) => yellow(bold(t));
+            return (t) => styleText(["bold", "yellow"], t);
         case "yarn":
-            return (t) => blue(bold(t));
+            return (t) => styleText(["bold", "blue"], t);
         case "npm":
-            return (t) => red(bold(t));
+            return (t) => styleText(["bold", "red"], t);
     }
 }
 
