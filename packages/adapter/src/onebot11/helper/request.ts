@@ -20,9 +20,9 @@ import {
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
 } from "@napuketto/kernel";
-import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/shared/uid-uin.js";
 
-export type { RequestTranslateContext } from "../../core/uid-uin.js";
+export type { RequestTranslateContext } from "../../core/shared/uid-uin.js";
 
 import type { OB11FriendRequestEvent, OB11GroupRequestEvent } from "../event/index.js";
 
@@ -72,7 +72,7 @@ export function toOb11GroupRequestEvent(
 }
 
 /** BuddyReq 防御性收窄收敛到 core（OB11 / Milky 共用，P1 2026-10-30）。 */
-export { isBuddyReqLike, narrowBuddyReqs } from "../../core/buddy-req.js";
+export { isBuddyReqLike, narrowBuddyReqs } from "../../core/shared/buddy-req.js";
 
 /**
  * BuddyReq → OB11 好友请求事件（friend）。

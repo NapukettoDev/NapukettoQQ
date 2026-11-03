@@ -11,7 +11,7 @@
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ProtocolConfig } from "../core/index.js";
-import { forEachRawMessage } from "../core/raw-message.js";
+import { forEachRawMessage } from "../core/shared/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
 import type { SatoriApiOptions } from "./api/index.js";
 import { SatoriApi } from "./api/index.js";

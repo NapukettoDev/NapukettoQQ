@@ -9,11 +9,11 @@
  *    f3={f1 faceId 字符串, f5: 1=添加/2=撤销, f3:1 仅添加时存在}}。
  *    operator 不在 push（f4=bot 自身 uid 占位）——user_id 省略。
  *  - 732:1 群精华设置：f1.f1=群号, f1.f8.f8.f1=msgSeq（路径提取共享自
- *    core/essence.ts extractEssenceSetSysMsg）；取消精华无独立 sysmsg
- *    （remove 走 onGroupEssenceListChange 列表 diff，core/essence.ts）。
+ *    core/shared/essence.ts extractEssenceSetSysMsg）；取消精华无独立 sysmsg
+ *    （remove 走 onGroupEssenceListChange 列表 diff，core/shared/essence.ts）。
  *  - 528:349/381/382 多端设备同步族：不广播。
  */
-import { extractEssenceSetSysMsg } from "../../core/essence.js";
+import { extractEssenceSetSysMsg } from "../../core/shared/essence.js";
 import {
     nodeAt,
     recognizeSysMsg as recognizeSysMsgCore,
@@ -23,13 +23,13 @@ import {
     textOf,
     varintAt,
     varintOf,
-} from "../../core/sysmsg.js";
+} from "../../core/shared/sysmsg.js";
 import type { GroupEssenceMessageChangeData, GroupMessageReactionData } from "../types.js";
 
 /** 数字串判别（faceId 实证为数字字符串）。 */
 const NUMERIC_RE = /^\d+$/;
 
-export type { SysMsgKindRule, SysMsgRecognition } from "../../core/sysmsg.js";
+export type { SysMsgKindRule, SysMsgRecognition } from "../../core/shared/sysmsg.js";
 
 /** Milky 识别规则：data 体类型为各事件载荷联合（信封由适配器包装）。 */
 export type SysMsgKindRuleMilky = SysMsgKindRule<unknown>;

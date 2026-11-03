@@ -5,7 +5,7 @@
  * 路径与判别值来自三轮录制 wire bytes 解码；真实样本回归待重录窗口补充。
  */
 import { describe, expect, it } from "vitest";
-import { decodeProtoTree, extractSysMsgEnvelope } from "../../core/sysmsg.js";
+import { decodeProtoTree, extractSysMsgEnvelope } from "../../core/shared/sysmsg.js";
 import { recognizeMilkySysMsg } from "./sysmsg.js";
 
 /** varint 编码。 */

@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureSilk } from "./media.js";
+import { ensureSilk } from "../shared/media.js";
 
 /** 生成正弦波 pcm_s16le（避免全零被编码器特殊处理）。 */
 function makePcm(seconds: number, rate: number): Buffer {

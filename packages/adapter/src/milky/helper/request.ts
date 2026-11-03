@@ -12,7 +12,7 @@
  */
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
-import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/shared/uid-uin.js";
 import type {
     FriendRequestData,
     GroupInvitationData,

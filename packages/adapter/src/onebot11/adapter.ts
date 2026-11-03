@@ -20,19 +20,19 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import type { EssenceAddedItem, EssenceCacheEntry } from "../core/essence.js";
-import {
-    diffEssenceList,
-    extractEssenceSetSysMsg,
-    narrowEssenceGroupArg,
-} from "../core/essence.js";
 import {
     type ActionRegistry,
     type ActionResult,
     BaseProtocolAdapter,
     type ProtocolConfig,
 } from "../core/index.js";
-import { subscribeRawMessages } from "../core/raw-message.js";
+import type { EssenceAddedItem, EssenceCacheEntry } from "../core/shared/essence.js";
+import {
+    diffEssenceList,
+    extractEssenceSetSysMsg,
+    narrowEssenceGroupArg,
+} from "../core/shared/essence.js";
+import { subscribeRawMessages } from "../core/shared/raw-message.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/index.js";
 import { OneBotApi } from "./api/index.js";

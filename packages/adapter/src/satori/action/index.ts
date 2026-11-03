@@ -5,7 +5,7 @@
  * 能力（消息编辑/频道管理/角色管理等）统一注册 NotImplementedAction。
  */
 
-import { ActionRegistry } from "../../core/action-registry.js";
+import { ActionRegistry } from "../../core/framework/action-registry.js";
 import type { SatoriApi } from "../api/index.js";
 import type { BaseSatoriAction } from "./base-action.js";
 import { type ChannelActionDeps, ChannelGetAction, ChannelListAction } from "./channel.js";

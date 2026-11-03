@@ -4,7 +4,7 @@
  * 锁定：映射命中 / 未命中退化 uid 数值 / 非数字 0 / 空与 undefined 0。
  */
 import { describe, expect, it } from "vitest";
-import { MS_TO_SEC, resolveUin } from "./uid-uin.js";
+import { MS_TO_SEC, resolveUin } from "../shared/uid-uin.js";
 
 describe("resolveUin", () => {
     const map = new Map([
