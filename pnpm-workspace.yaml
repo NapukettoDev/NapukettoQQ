@@ -26,12 +26,6 @@ overrides:
   # 钉死到与运行时一致的 24，顺带合并 undici-types。
   "@types/node": ^24.13.4
 
-# pnpm 构建脚本审批：允许这些依赖运行 postinstall（esbuild / parcel 需要）。
-# vue-demi 自 vite 5 起不再需要构建脚本，条目已失效（2026-11-03 审计）。
-allowBuilds:
-  "@parcel/watcher": true
-  esbuild: true
-
 # 刚发布的自家包不受 24h 冷却期约束。用通配符消灭「每发一版加一条」的手工债
 # （旧写法列了 14 条具体版本，永远不清）。
 minimumReleaseAgeExclude:
