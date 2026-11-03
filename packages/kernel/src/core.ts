@@ -126,7 +126,7 @@ export class NapukettoCore {
     static create(opts: NapukettoCoreOptions = {}): NapukettoCore {
         const paths = new PathWrapper(opts.paths);
         paths.ensure();
-        // base.name 用 pino 保留字段（logger name）：pino-pretty 渲染为 (kernel/pid)
+        // base.name 用 pino 保留字段（logger name）：pretty 渲染为 (kernel/pid)
         // 元数据头，不占属性行；cli/loader 同款，三来源可区分。account 未知时
         // 序列化层自然丢弃 undefined，无需条件展开。
         const logger = createLogger({

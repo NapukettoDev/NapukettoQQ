@@ -12,8 +12,8 @@
  *     Node >=22.12，`require("@napuketto/kernel")` 经 exports 的 default 条件命中
  *     dist/index.mjs，由 Node 原生 require(esm) 加载。
  *
- * 依赖（pino / smol-toml）保持 external；pino-pretty 是 optional peer（见
- * package.json peerDependenciesMeta），运行时按需 require，缺省降级为单行结构化。
+ * 依赖（pino / smol-toml）保持 external；三种控制台日志格式（pretty / single-line /
+ * json）由 kernel 自身渲染，不再需要 pino-pretty 之类的 optional peer。
  */
 import { defineConfig } from "tsdown";
 

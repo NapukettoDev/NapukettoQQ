@@ -119,7 +119,7 @@ function printAccountConfig(account: string, dataRoot: string): void {
         fileList = files.join(", ");
     }
     // 注意：字段名用 account 而非 name——name 是 pino 保留键（logger name），
-    // 会被 pino-pretty 渲染成 `(name/pid)` 元数据头而非普通字段。
+    // 会被 pretty 渲染成 `(name/pid)` 元数据头而非普通字段。
     logger.info({ account, files: fileList }, "账号配置");
 }
 

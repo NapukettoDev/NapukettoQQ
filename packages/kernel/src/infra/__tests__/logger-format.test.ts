@@ -1,9 +1,10 @@
 /**
- * createLogger 格式与级别测试（2026-10-25 日志可配置化）。
+ * createLogger 格式与级别测试（2026-10-25 日志可配置化；2026-11-03 pretty 自渲染）。
  *
- * 覆盖：single-line k=v 渲染 / json NDJSON 契约（time/level/module/account）/
- * 级别过滤 / 控制台与文件分级 / elapsed 时间标签 / colorize 关闭无 ANSI。
- * 时间戳单调钟（免 Date 篡改）以行为验证：篡改 Date.now 后记录时间仍前进。
+ * 覆盖：pretty 多行布局/着色/err.stack 展开 / single-line k=v 渲染 / json NDJSON
+ * 契约（time/level/module/account）/ 级别过滤 / 控制台与文件分级 / elapsed 时间标签 /
+ * colorize 关闭无 ANSI。时间戳单调钟（免 Date 篡改）以行为验证：篡改 Date.now 后记录
+ * 时间仍前进。
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ function captureStream(): { lines: string[]; stream: NodeJS.WriteStream } {
     return { lines, stream };
 }
 
-/** 等待渲染流落盘（pino-pretty/结构化流可能异步 flush）。 */
+/** 等待渲染流落盘（渲染流同步写，留一拍给 multistream / 文件 sink）。 */
 async function settle(): Promise<void> {
     await new Promise((resolve) => setImmediate(resolve));
 }
@@ -82,6 +83,68 @@ describe("createLogger single-line", () => {
         logger.info("相对时间");
         await settle();
         expect(lines[0]).toMatch(/^\[\+\d+\.\d{3}s\] INFO /);
+    });
+});
+
+describe("createLogger pretty", () => {
+    it("多行布局：头部 + 4 空格字段 + 嵌套按 JSON 展开", async () => {
+        const { lines, stream } = captureStream();
+        const logger = createLogger({
+            format: "pretty",
+            colorize: false,
+            destination: stream,
+            base: { name: "cli" },
+        });
+        logger.info({ qq: "3567141148", nested: { retry: 3, list: [1, 2] } }, "启动账号");
+        await settle();
+        expect(lines).toHaveLength(1);
+        const out = lines[0] ?? "";
+        expect(out).toMatch(/^\[[\d:.]+\] INFO \(cli\/\d+\): 启动账号\n/);
+        expect(out).toContain('\n    qq: "3567141148"\n');
+        expect(out).toContain(
+            '\n    nested: {\n      "retry": 3,\n      "list": [\n        1,\n        2\n      ]\n    }\n',
+        );
+        expect(out.endsWith("\n")).toBe(true);
+    });
+
+    it("err.stack 多行展开（不转义成一行 \\n）", async () => {
+        const { lines, stream } = captureStream();
+        const logger = createLogger({ format: "pretty", colorize: false, destination: stream });
+        logger.error({ err: new Error("boom") }, "失败");
+        await settle();
+        const out = lines[0] ?? "";
+        // pino 的 err 序列化给出 {type, message, stack}；stack 换行后逐行缩进展开
+        expect(out).toContain(
+            '    err: {\n      "type": "Error",\n      "message": "boom",\n      "stack":\n          Error: boom\n',
+        );
+        expect(out).not.toContain("\\n");
+    });
+
+    it("colorize=true 时级别/消息/字段名着色，续行不着色", async () => {
+        const { lines, stream } = captureStream();
+        const logger = createLogger({ format: "pretty", colorize: true, destination: stream });
+        logger.info({ qq: "1" }, "启动账号");
+        await settle();
+        const out = lines[0] ?? "";
+        expect(out).toContain("\u001b[32mINFO\u001b[0m"); // 级别绿
+        expect(out).toContain("\u001b[36m启动账号\u001b[0m"); // 消息青
+        expect(out).toContain("\u001b[35mqq\u001b[0m: "); // 字段名紫
+    });
+
+    it("elapsed 时间戳渲染为 +SS.SSSs（文件仍是数值时间）", async () => {
+        const file = tmpFile("pretty-elapsed.log");
+        const { lines, stream } = captureStream();
+        const logger = createLogger({
+            format: "pretty",
+            timestamp: "elapsed",
+            destination: stream,
+            file,
+        });
+        logger.info("相对时间");
+        await settle();
+        expect(lines[0]).toMatch(/^\[\+\d+\.\d{3}s\] INFO /);
+        const rec = JSON.parse(readFileSync(file, "utf8").trim()) as Record<string, unknown>;
+        expect(typeof rec["time"]).toBe("number");
     });
 });
 

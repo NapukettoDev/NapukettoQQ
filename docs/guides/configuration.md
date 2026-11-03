@@ -104,7 +104,9 @@ unboundReceive = true      # false = 未绑定频道的接收行不打（kurobot
 # level = "debug"          # 文件级别可低于控制台（控制台干净与排查信息兼得）
 ```
 
-- **pretty**：pino-pretty 多行彩色（终端现状）。
+- **pretty**：多行彩色（kernel 自渲染，无 pino-pretty 依赖）：头部
+  `[16:01:33.294] INFO (cli/14344): 启动账号`，字段逐行 4 空格缩进 `key: value`，
+  嵌套对象/数组按 JSON 形状展开（`err.stack` 多行原样展开）。
 - **single-line**：一条记录一行，字段内联 `key=value`：
   `[16:20:41.481] INFO (cli/14344): 启动账号 service=cli qq=3567141148`。
 - **json**：NDJSON，每行一个完整对象，可逐行 `JSON.parse`：
