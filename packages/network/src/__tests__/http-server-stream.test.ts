@@ -7,8 +7,8 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { WebSocket as WsClient } from "ws";
-import { HttpServer } from "./http-server.js";
-import { createSseResponse } from "./sse.js";
+import { HttpServer } from "../http-server.js";
+import { createSseResponse } from "../sse.js";
 
 const PORT = 36110;
 
