@@ -46,7 +46,11 @@ CI 的顺序固定为 build → check → test；本地全绿而 CI 红时优先
 - `tooling/package-exports.test.ts` 守护发布包的 `exports` 形状与发布元数据：全仓
   Pure ESM（只有 `types` + `default` 两个条件，子路径同样带 `default`，CJS 由
   Node ≥22.12 的 `require(esm)` 加载）、`engines.node`、库包的 `sideEffects: false`、
-  `publishConfig.access: public`。
+  `publishConfig.access: public` / `provenance: true`、`files` 白名单；另外三条回退
+  门禁：catalog 内的依赖必须写 `catalog:`（防版本再分叉）、`packages/media/dist`
+  小于 50 KB（防 tsdown 又把第三方库内联回产物）。
+- `pnpm-workspace.yaml` 开了 `engineStrict: true`：Node 版本不满足 `engines` 时
+  `pnpm install` 直接 `ERR_PNPM_UNSUPPORTED_ENGINE`（默认只警告）。
 - CI 在 Ubuntu 与 Windows 各跑一套测试；平台相关逻辑用 `skipIf` 或纯函数注入平台参数。
 
 ## 5. CI 与 PR

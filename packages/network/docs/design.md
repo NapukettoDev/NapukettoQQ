@@ -38,6 +38,17 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 - **依赖方向**：`kernel` / `media` / `network` 三个底层包互不依赖；本包被
   `packages/adapter`（协议层容器）与 `apps/cli`（宿主装配）以 `workspace:*`
   消费；kernel 不依赖 network。
+- **WS 连接类型归本包所有**（2026-11-03 依赖收敛）：`types.ts` 导出 `WsSocket`
+  （ws 的连接类型）与 `isWsOpen()`（`readyState === OPEN` 的唯一判定入口）。协议层
+  （adapter 的 Milky `/event` 枢纽）只经这两个符号接触连接，因此**不需要**在自己的
+  `dependencies` 里声明 `ws`——ws 的版本与实例由 network 单点持有。
+- **入帧 UTF-8 强校验**：`WsServer` 与 `HttpServer` 的同端口升级都显式设置
+  `skipUTF8Validation: false`（ws 默认值，写死防止后人为「微秒级性能」关掉）。文本帧
+  在进入 `JSON.parse` / 日志前必须已校验 UTF-8，否则畸形字节流会变成下游乱码或异常，
+  而不是可诊断的协议错误。
+- **不装原生加速插件**：`bufferutil` / `utf-8-validate` 是 ws 的可选 peer，本仓刻意不装
+  （Node 22/24 内置的 UTF-8 校验与 V8 掩码异或已足够快，跨 C++ 边界反而更慢；也符合
+  「只有 kernel 允许原生层」的硬约束）。
 - **ADR-021 补充边界**：KuroBot 的子协议握手、应用层心跳、close-code 感知
   退避属于协议语义，在 adapter 内自建连接层，**不下沉本包**——否则等于把
   协议语义塞回传输层。
@@ -48,7 +59,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 
 | 文件 | 导出 | 职责 |
 | :--- | :--- | :--- |
-| `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略） |
+| `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`WsSocket`、`isWsOpen`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略）；`WsSocket` + `isWsOpen` 是协议层接触 WS 连接的唯一入口（协议层不直接依赖 ws） |
 | `src/http-server.ts` | `HttpServer` | 基于 `hono` + `@hono/node-server` 的反向 server。处理链：`authorize` → `onRawRequest`（命中即短路返回 `Response`）→ JSON 解析 → `onPathRequest`（优先）/ `onRequest` → `respond`；`onUpgrade` 在 `open()` 时挂到原生 `upgrade` 事件，实现 SSE 与 WS 同端口共存 |
 | `src/http-client.ts` | `HttpClient` | 正向 HTTP 上报：`send` 即触发一次 POST（fire-and-forget），失败（网络 / 非 2xx / 超时）经 `onError` 交回协议层；`open` / `close` 为无连接管理语义 |
 | `src/ws-server.ts` | `WsServer` | 反向 WS server：消息经 `onRequest` 分发、`respond` 回同一客户端；鉴权失败以 close code `4401` 关闭；`heartbeat` 按间隔 ping 全部连接 |

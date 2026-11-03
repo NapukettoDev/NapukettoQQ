@@ -20,9 +20,12 @@
  *   - 本地（默认）：走本机 npm 登录态 + 2FA（`--otp=` / `NAPKETTO_NPM_OTP`）。
  *   - CI 可信发布（OIDC，2026-10-21 接入）：job 声明 `id-token: write` +
  *     `environment: release` 时，npm 用 Actions 的 id_token 换**包级**短时 token，
- *     不存在长期凭证，发布产物自动带 provenance。本脚本检测到
+ *     不存在长期凭证，发布产物自动带 provenance（各包 package.json 亦显式声明
+ *     `publishConfig.provenance: true`）。本脚本检测到
  *     `ACTIONS_ID_TOKEN_REQUEST_URL` 即进入 OIDC 模式：发布前先逐包预检信任
  *     配置（见 ./release-trust.ts），缺配置就整批不发（避免半批发上 npm）。
+ *     非 OIDC（本地应急/演练）时脚本追加 `--no-provenance`——npm 只有在 CI
+ *     里能生成溯源，否则直接 EUSAGE 拒发。
  *
  * 行为：
  *   - 发布前查询 registry：本地版本已存在（changeset 未 bump 的包）→ 跳过
@@ -233,12 +236,17 @@ export function publishPkg(
     // devEngines（强制 pnpm）→ EBADDEVENGINES 拒发。关掉 workspace 上下文即
     // 恢复 5b96c48 之前的行为（prefix 停在包目录自身，包内无 devEngines）。
     // --otp：账号开 2FA 时 publish 需要一次性验证码（EOTP），经参数/env 透传。
+    // --no-provenance：包内 publishConfig.provenance=true，但 npm 只在 CI（GitHub
+    // Actions OIDC）里能生成溯源；本地应急发布/演练必须显式关掉，否则 npm 直接
+    // EUSAGE 拒发（"Automatic provenance generation not supported"）。CI 侧由
+    // OIDC 自动开启，无需本脚本传参。
     const args = [
         "publish",
         "--access",
         "public",
         "--workspaces=false",
         ...(otp === undefined ? [] : ["--otp", otp]),
+        ...(isOidcTrustedPublishing() ? [] : ["--no-provenance"]),
         ...(dryRun ? ["--dry-run"] : []),
     ];
     // Windows 上 npm 是 npm.cmd 批处理，CreateProcess 无法直接执行 .cmd（spawn

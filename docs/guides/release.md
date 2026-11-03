@@ -140,6 +140,10 @@ git tag -l 'create-napukettoqq@*'   # tag 应与 npm 版本一一对应
 `dist.attestations` 存在即该版本经 OIDC 发布并带 provenance（来源 commit 与 workflow 可在
 npmjs.com 包页面核验）。
 
+发布包在 `package.json` 的 `publishConfig` 里显式声明 `provenance: true`（2026-11-03
+供应链硬化）——OIDC 下生成 SLSA 溯源；本地应急发布由 `tooling/release/release-npm.ts`
+自动追加 `--no-provenance`（npm 只在 CI 提供者内能生成溯源，本地会直接 EUSAGE 拒发）。
+
 ### 4.1 GitHub Releases 只发里程碑
 
 Releases 页**不是**每次 bump 都发。本仓没有整仓版本号——7 个包版本各自独立，root

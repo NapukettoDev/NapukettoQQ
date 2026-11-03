@@ -13,9 +13,11 @@
  * 状态机：connecting → establishing（hello 已发，等 ack）→ established（应用层 ping）
  * ↔ backoff（指数退避 1s/2s/…/60s 封顶）；hello_ack ok:false / close 1002 / 1008 →
  * 永久停止（等版本升级或配置修正，error 日志）。未 established 时发送直接丢弃（不积压）。
+ *
+ * 客户端用 Node 内置 `WebSocket`（Node ≥22.4 标准可用，undici 实现）：adapter 因此
+ * 不需要声明 `ws` 依赖（ws 归 network 所有），发布依赖面少一个包（2026-11-03）。
  */
 import { randomUUID } from "node:crypto";
-import { WebSocket } from "ws";
 import {
     type BindingsUpdatedBody,
     bindingsUpdatedFrame,
@@ -225,18 +227,18 @@ export class KurobotConnection {
         this.state = "connecting";
         const ws = new WebSocket(this.opts.url, WS_SUBPROTOCOL);
         this.ws = ws;
-        ws.on("open", () => {
+        ws.addEventListener("open", () => {
             this.onOpen();
         });
-        ws.on("message", (data: unknown) => {
-            this.onText(String(data));
+        ws.addEventListener("message", (event) => {
+            this.onText(messageText(event));
         });
-        ws.on("close", (code: number, reason: Buffer) => {
-            this.onClose(code, reason.toString());
+        ws.addEventListener("close", (event) => {
+            this.onClose(event.code, event.reason);
         });
-        ws.on("error", (err: Error) => {
+        ws.addEventListener("error", (event) => {
             // close 总会跟随 error 到达（连接失败 / 中途断开），状态迁移统一在 onClose
-            this.log.warn({ err: err.message }, "kurobot: 连接错误");
+            this.log.warn({ err: errorDetail(event) }, "kurobot: 连接错误");
         });
     }
 
@@ -461,6 +463,18 @@ function headerId(json: unknown): string | undefined {
     }
     const id = (header as { id?: unknown }).id;
     return typeof id === "string" ? id : undefined;
+}
+
+/** message 事件取文本（内置 WebSocket 的 data 可为 string / Blob / ArrayBuffer；
+ * 本协议只走文本帧，非文本按空串交给 JSON 解析丢弃并 warn）。 */
+function messageText(event: MessageEvent): string {
+    return typeof event.data === "string" ? event.data : "";
+}
+
+/** error 事件摘要（undici 的 ErrorEvent 带 message，普通 Event 没有）。 */
+function errorDetail(event: Event): string {
+    const { message } = event as { message?: unknown };
+    return typeof message === "string" ? message : "websocket error";
 }
 
 /** 静默日志（缺省）。 */

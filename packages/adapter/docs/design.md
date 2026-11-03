@@ -243,6 +243,12 @@ WsClient 不支持子协议；② 服务端空闲检测只认**应用层入帧**
 WsClient 无 onOpen 回调；④ 重连需感知 close code（1002/1008 停止重连），WsClient
 固定延迟重连。
 
+**客户端实现用 Node 内置 `WebSocket`**（2026-11-03 依赖收敛）：Node ≥22.4 的标准
+`WebSocket`（undici）支持子协议、close code 与事件模型，足够覆盖上述四点，因此
+adapter **不再声明 `ws` 运行时依赖**——`ws` 只由 network 持有（Milky `/event` 的
+socket 类型经 `WsSocket` / `isWsOpen()` 导出，`ws` + `@types/ws` 在 adapter 里
+降为 devDependencies，仅供测试的假服务端起真端口）。
+
 状态机：
 
 ```
@@ -324,8 +330,9 @@ url = "ws://127.0.0.1:25580" # 必填，完整 ws:// / wss:// 地址（KuroBot �
 2. cli `config-parse.ts`：`ProtocolKey` 增 `"kurobot"`（宽松对象校验）。
 3. cli `config-template.ts` + create-napukettoqq `templates/napuketto.toml.tmpl`：
    注释段模板。
-4. `packages/adapter/package.json`：`ws ^8.21.1`（对齐 network）+ `@types/ws` devDep +
-   `./kurobot` 子路径导出（ADR-014）+ tsdown entry。
+4. `packages/adapter/package.json`：`./kurobot` 子路径导出（ADR-014）+ tsdown entry；
+   `ws` / `@types/ws` 自 2026-11-03 起只在 devDependencies（测试的假服务端），运行时
+   客户端用 Node 内置 `WebSocket`（见 §8.2）。
 
 ### 8.6 测试（`*.test.ts` 与源码相邻，vitest 根配置）
 

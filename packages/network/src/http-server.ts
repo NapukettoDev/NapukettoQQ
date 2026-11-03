@@ -186,8 +186,11 @@ export class HttpServer implements TransportAdapter {
     private attachUpgrade(server: ServerType): void {
         const wss = new WebSocketServer({
             noServer: true,
-            // 单条消息上限：升级通道与独立 WsServer 同一口径（见 types.ts）
+            // 单条消息上限：升级通道与独立 WsServer 同一口径（见 types.ts）。
+            // skipUTF8Validation 同 WsServer 显式 false：Milky /event 的入帧同样
+            // 要求合法 UTF-8（见 ws-server.ts 注释）。
             maxPayload: this.opts.wsMaxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+            skipUTF8Validation: false,
         });
         const upgradeable = server as unknown as UpgradeableServer;
         upgradeable.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
