@@ -1,5 +1,31 @@
 # @napuketto/cli
 
+## 0.5.1
+
+### Patch Changes
+
+- 3fe6499: refactor(kernel): pretty 日志格式改为自渲染，移除 pino-pretty 依赖
+  
+  - kernel `log-format` 新增 pretty 渲染（多行彩色：`[HH:MM:ss.l] LEVEL (name/pid): 消息`
+    + 逐行 `key: value`，嵌套对象/数组按 JSON 形状展开，`err.stack` 多行原样展开），
+    三种控制台格式（pretty / single-line / json）统一由 kernel 自渲染。
+  - 删除 optional peerDependency `pino-pretty`（及其懒加载 `createRequire` 降级分支），
+    `@napuketto/cli` 同步移除该直接依赖；安装体积与解析链少 19 个包。
+  - 时间戳统一记数值单调墙钟：pretty + `timestamp = "elapsed"` 时文件日志自此也是数值
+    时间（此前被预渲染成 `+123.456s` 字符串），控制台仍按 timestamp 模式渲染。
+- fed25c9: chore(cli): 终端登录二维码改用零依赖 `uqr` 渲染
+  
+  `qrcode@1.5.4`（连同 `@types/qrcode`）会带进 `yargs@15` 整棵旧树，共 30 个包；`uqr`
+  自身零依赖、双格式（ESM/CJS）、`sideEffects: false`，只新增 1 个包。终端渲染按旧
+  `qrcode terminal + small` 的白底黑块 half-block 观感自行实现（`src/runtime/qr.ts`）：
+  uqr 的 `renderANSI` 每模块占全角空格、宽度翻倍（80 列终端折行即废码），
+  `renderUnicodeCompact` 用默认前景色画亮模块、浅色主题下反色；自绘版本与主题无关、
+  宽度恒等于模块数，终端显示/扫码行为与替换前一致。新增 `src/runtime/qr.test.ts`
+  把渲染结果解析回矩阵做 roundtrip 断言。
+- Updated dependencies [3fe6499]
+  - @napuketto/kernel@0.9.1
+  - @napuketto/adapter@0.11.1
+
 ## 0.5.0
 
 ### Minor Changes
