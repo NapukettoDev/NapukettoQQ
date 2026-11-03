@@ -5,7 +5,7 @@
  * 断开清理（cancel → 退订）、close 后 send 静默。
  */
 import { describe, expect, it, vi } from "vitest";
-import { createSseResponse } from "./sse.js";
+import { createSseResponse } from "../sse.js";
 
 /** 读流全部文本（读到流关闭为止）。 */
 async function readAll(res: Response): Promise<string> {
