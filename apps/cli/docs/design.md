@@ -25,6 +25,7 @@ apps/cli/src/
 │   └── store.ts                 # CliConfigStore + 默认值 + 模板落盘 + 来源决议/加载
 └── runtime/                     # 进程运行期
     ├── boot.ts                  # 单账号自建宿主启动
+    ├── qr.ts                    # 终端二维码渲染（uqr 编码 + 白底黑块 ANSI）
     ├── supervisor.ts            # 多账号子进程编排
     └── state.ts                 # runtime.json + pid/树杀/detached + 状态聚合
 ```
@@ -39,10 +40,17 @@ apps/cli/src/
 index        -> cli
 cli          -> commands, config (仅类型), logger
 commands     -> config, runtime, logger
-runtime      -> config, logger, @napuketto/kernel, @napuketto/loader
+runtime      -> config, logger, @napuketto/kernel, @napuketto/loader, uqr（仅 qr.ts）
 config       -> logger, @napuketto/kernel
 logger       -> @napuketto/kernel, config/inline（只读叶子）
 ```
+
+**终端二维码为什么自己画**（`runtime/qr.ts`）：uqr 自带的 `renderANSI` 每模块占一个
+全角空格（U+3000），宽度翻倍，登录 URL 编码出的 40+ 模块在 80 列终端里折行即废码；
+`renderUnicodeCompact` 用默认前景色画亮模块，极性跟着终端主题走（浅色主题下反色）。
+所以只取 uqr 的 `encode`，按旧 qrcode `terminal + small` 的白底黑块 half-block 自行
+绘制：与主题无关、宽度 = 模块数。`runtime/qr.test.ts` 把渲染结果解析回矩阵做
+roundtrip 断言，替代此前无法测试的第三方渲染路径。
 
 禁止项：
 
@@ -84,6 +92,7 @@ config/schema.test.ts
 config/source.test.ts        # inline + store 来源优先级
 runtime/state.test.ts
 runtime/supervisor.test.ts
+runtime/qr.test.ts           # 终端二维码渲染（uqr 矩阵 roundtrip）
 logger.test.ts
 ```
 

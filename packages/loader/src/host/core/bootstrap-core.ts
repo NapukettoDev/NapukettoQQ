@@ -90,7 +90,7 @@ function buildLoginOpts(
     // 登录进度回调：QR 阶段透出二维码数据（cli 终端渲染 / koishi IPC 转发共用）。
     //  - IPC 模式：走 JSON 行协议 sendQr/sendLogin（koishi 插件驱动，不变）
     //  - cli 自建宿主模式：QR 数据以 NAPUTO_QR 标记行输出 stdout，由 cli
-    //    forwardFiltered 解析后用 qrcode 包渲染终端二维码（png 落盘由 kernel 完成）
+    //    forwardFiltered 解析后用 uqr 编码渲染终端二维码（qr.ts；png 落盘由 kernel 完成）
     opts["onLoginProgress"] = (progress: {
         state: string;
         qr?: { pngBase64: string; qrcodeUrl: string };
