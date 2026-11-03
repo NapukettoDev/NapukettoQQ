@@ -8,10 +8,12 @@
  *  - 732:16 群消息表情回应：f1.f1=群号；f3.f2.f44.f1.f1={f1 变动值, f2.f1=msgSeq,
  *    f3={f1 faceId 字符串, f5: 1=添加/2=撤销, f3:1 仅添加时存在}}。
  *    operator 不在 push（f4=bot 自身 uid 占位）——user_id 省略。
- *  - 732:1 群精华设置：f1.f1=群号, f1.f8.f8.f1=msgSeq；取消精华无独立 sysmsg
- *    （remove 走 onGroupEssenceListChange 列表 diff，helper/essence.ts）。
+ *  - 732:1 群精华设置：f1.f1=群号, f1.f8.f8.f1=msgSeq（路径提取共享自
+ *    core/essence.ts extractEssenceSetSysMsg）；取消精华无独立 sysmsg
+ *    （remove 走 onGroupEssenceListChange 列表 diff，core/essence.ts）。
  *  - 528:349/381/382 多端设备同步族：不广播。
  */
+import { extractEssenceSetSysMsg } from "../../core/essence.js";
 import {
     nodeAt,
     recognizeSysMsg as recognizeSysMsgCore,
@@ -100,14 +102,13 @@ function reactionIsAdd(face: readonly SysMsgField[]): boolean | null {
 const ESSENCE_RULE: SysMsgKindRuleMilky = {
     kind: "group_essence_message_change",
     extract: (tree) => {
-        const groupId = varintAt(tree, [1, 1]);
-        const msgSeq = varintAt(tree, [1, 8, 8, 1]);
-        if (groupId === null || msgSeq === null) {
+        const hit = extractEssenceSetSysMsg(tree);
+        if (hit === null) {
             return null;
         }
         const data: GroupEssenceMessageChangeData = {
-            group_id: groupId,
-            message_seq: msgSeq,
+            group_id: hit.groupCode,
+            message_seq: hit.messageSeq,
             is_set: true,
         };
         return data;

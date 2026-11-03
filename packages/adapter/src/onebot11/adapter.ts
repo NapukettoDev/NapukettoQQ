@@ -12,6 +12,7 @@ import type {
     BuddyCacheEventChannel,
     BuddyEventChannel,
     BuddyReq,
+    EssenceMsgItem,
     GroupEventChannel,
     GroupNotify,
     MsgEventChannel,
@@ -19,6 +20,12 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
+import type { EssenceAddedItem, EssenceCacheEntry } from "../core/essence.js";
+import {
+    diffEssenceList,
+    extractEssenceSetSysMsg,
+    narrowEssenceGroupArg,
+} from "../core/essence.js";
 import {
     type ActionRegistry,
     type ActionResult,
@@ -78,6 +85,14 @@ function truncRaw(value: string | undefined, keep = RAW_INFO_LIMIT): string {
     return value.length <= keep ? value : `${value.slice(0, keep)}…(+${value.length - keep})`;
 }
 
+/** 数字串判别（uin）。 */
+const NUMERIC_RE = /^\d+$/;
+
+/** 数字串 uin → number（缺失/非法 → null，调用方按口径省略或跳过）。 */
+function numericUin(value: string | null): number | null {
+    return value !== null && NUMERIC_RE.test(value) ? Number(value) : null;
+}
+
 /** 最小 logger 面（校准日志用：未知事件形状打 raw JSON；缺省静默）。 */
 export interface AdapterLoggerLike {
     warn(obj: unknown, msg?: string): void;
@@ -126,6 +141,10 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     private groupUploadAsNotice = false;
     /** IPC 桥模式标记（subscribeOnly 启动；reload 时跳过传输重建）。 */
     private subscribedOnly = false;
+    /** 精华列表缓存（群号 → seq → 条目{操作者/发送者/加精时间}；group_essence diff 路径）。 */
+    private readonly essenceCaches = new Map<string, Map<number, EssenceCacheEntry>>();
+    /** 精华列表拉取串行链（并发回写乱序会把新列表覆盖成旧列表；732:1 触发器与列表回调共用）。 */
+    private essenceChain: Promise<void> = Promise.resolve();
 
     constructor(opts: OneBot11AdapterOptions) {
         super({
@@ -321,14 +340,12 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                     void this.broadcastGroupRequests(notifies);
                 }),
             );
-            // 群精华列表变化（c3，2026-09-10）：raw 校准日志（OB11 group_essence
-            // 候选源；真实 payload 到达后回填翻译；debug 级，2026-10-25）
+            // 群精华列表变化（c3，2026-09-10 订阅；2026-11-03 起翻译广播）：
+            // 列表 diff 是唯一发射路径（design.md §1），732:1 sysmsg 作加速触发器
+            // 踢入同一串行链——谁先到谁触发，diff 幂等 + 串行天然去重。
             this.unsubscribes.push(
                 this.groupChannel.on("Group/onGroupEssenceListChange", (arg) => {
-                    this.calibLogger?.debug(
-                        { raw: truncRaw(JSON.stringify(arg)) },
-                        "ob11: onGroupEssenceListChange raw（group_essence 校准数据）",
-                    );
+                    this.handleEssenceChange(arg);
                 }),
             );
         }
@@ -394,11 +411,6 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         this.unsubscribeAll();
     }
 
-    /**
-     * 单条 sysmsg 字节块：解码 → 识别 → 命中才广播，未识别打结构化校准日志
-     * （识别表 2026-11-01 起含 732:21 group_card；design.md §7.5）。
-     * 规则声明 collectUids 时先批量 uid→uin 再提取（异步 fire-and-forget）。
-     */
     /** sysmsg 规则的 uid→uin 解析器（collectUids 声明才批量转换；失败/缺省恒 0）。 */
     private async sysMsgUinResolver(
         rule: SysMsgKindRuleOB11,
@@ -420,6 +432,11 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }
     }
 
+    /**
+     * 单条 sysmsg 字节块：解码 → 识别 → 命中才广播，未识别打结构化校准日志
+     * （识别表 2026-11-01 起含 732:21 group_card；732:1 精华为加速触发器，
+     * design.md §1/§7.5）。规则声明 collectUids 时先批量 uid→uin 再提取。
+     */
     private async handleSysMsgBlob(blob: Uint8Array): Promise<void> {
         const tree = decodeProtoTree(blob);
         if (tree === null) {
@@ -431,18 +448,8 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }
         const env = extractSysMsgEnvelope(tree);
         const rec = recognizeOb11SysMsg(env.msgType, env.subType);
-        if (rec.kind === "notice") {
-            const uinOf = await this.sysMsgUinResolver(rec.rule, tree, env);
-            const ctx = {
-                selfUin: Number(this.selfUin),
-                time: env.time ?? Math.floor(Date.now() / 1000),
-            };
-            const event = rec.rule.extract(tree, env, uinOf, ctx);
-            if (event !== null) {
-                this.broadcastEvent(event);
-                return;
-            }
-            // 提取失败：降级校准日志（不硬广播半成品事件）
+        if (await this.handleRecognizedSysMsg(tree, env, rec)) {
+            return;
         }
         // 校准遥测（协议逆向用）：info/warn 级不出（2026-10-25 级别重分配 + 截断），
         // debug 级保留全量字段（含 raw hex）供校准采集
@@ -461,6 +468,173 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             },
             "ob11: onRecvSysMsg 校准数据（未识别，不广播）",
         );
+    }
+
+    /**
+     * 已识别 sysmsg 处理（732:1 精华触发器 / 识别表规则广播）；命中返回 true。
+     * 提取失败返回 false 落入校准路径（不硬广播半成品事件）。
+     */
+    private async handleRecognizedSysMsg(
+        tree: readonly SysMsgField[],
+        env: SysMsgEnvelope,
+        rec: ReturnType<typeof recognizeOb11SysMsg>,
+    ): Promise<boolean> {
+        // 732:1 群精华设置（识别表实证）：push 无 sender/operator，不直接翻译，
+        // 作加速触发器踢入列表 diff 串行链（design.md §1 group_essence bullet）
+        if (env.msgType === 732 && env.subType === 1 && this.triggerEssenceSync(tree)) {
+            return true;
+        }
+        if (rec.kind !== "notice") {
+            return false;
+        }
+        const uinOf = await this.sysMsgUinResolver(rec.rule, tree, env);
+        const ctx = {
+            selfUin: Number(this.selfUin),
+            time: env.time ?? Math.floor(Date.now() / 1000),
+        };
+        const event = rec.rule.extract(tree, env, uinOf, ctx);
+        if (event === null) {
+            return false;
+        }
+        this.broadcastEvent(event);
+        return true;
+    }
+
+    /** sysmsg 732:1 → 加速触发器：抽取群号踢入串行 sync 链（抽取失败走校准路径）。 */
+    private triggerEssenceSync(tree: readonly SysMsgField[]): boolean {
+        const hit = extractEssenceSetSysMsg(tree);
+        if (hit === null) {
+            return false;
+        }
+        this.enqueueEssenceSync(String(hit.groupCode));
+        return true;
+    }
+
+    /** 精华列表变更：拉全量列表 diff（唯一发射路径；参数收窄失败走校准日志）。 */
+    private handleEssenceChange(arg: unknown): void {
+        const groupCode = narrowEssenceGroupArg(arg);
+        if (groupCode === null) {
+            this.calibLogger?.warn(
+                { raw: truncRaw(JSON.stringify(arg)) },
+                "ob11: onGroupEssenceListChange 未知参数形状",
+            );
+            return;
+        }
+        this.enqueueEssenceSync(groupCode);
+    }
+
+    /** 精华 sync 入队（串行防乱序：并发回写会把新列表覆盖成旧列表）。 */
+    private enqueueEssenceSync(groupCode: string): void {
+        this.essenceChain = this.essenceChain.then(
+            () => this.syncEssenceList(groupCode),
+            () => undefined,
+        );
+    }
+
+    /** 单群精华列表同步：拉取 → diff → 广播 → 更新缓存（基线未建立只建基线）。 */
+    private async syncEssenceList(groupCode: string): Promise<void> {
+        let items: EssenceMsgItem[];
+        try {
+            items = await this.oneBotApi.webApi.getEssenceMsgList(groupCode);
+        } catch (e) {
+            this.calibLogger?.warn(
+                { group: groupCode, err: String(e) },
+                "ob11: 精华列表拉取失败（diff 跳过）",
+            );
+            return;
+        }
+        const prev = this.essenceCaches.get(groupCode);
+        const { cache, added, removed } = diffEssenceList(prev, items);
+        this.essenceCaches.set(groupCode, cache);
+        if (prev === undefined) {
+            return;
+        }
+        await this.broadcastEssenceAdded(groupCode, added);
+        await this.broadcastEssenceRemoved(groupCode, removed, prev);
+    }
+
+    /** diff 新增项 → group_essence add（sender 必填，operator 回填，message_id 反查）。 */
+    private async broadcastEssenceAdded(
+        groupCode: string,
+        added: readonly EssenceAddedItem[],
+    ): Promise<void> {
+        for (const item of added) {
+            const senderId = numericUin(item.senderUin);
+            if (senderId === null) {
+                this.calibLogger?.warn(
+                    { group: groupCode, seq: item.messageSeq },
+                    "ob11: 精华新增 sender_uin 缺失（跳过事件）",
+                );
+                continue;
+            }
+            const messageId = await this.resolveEssenceMsgId(groupCode, item.messageSeq);
+            if (messageId === null) {
+                continue; // resolveEssenceMsgId 内已校准日志
+            }
+            const operatorId = numericUin(item.operatorUin);
+            this.broadcastEvent({
+                time: item.addDigestTime ?? Math.floor(Date.now() / MS_TO_SEC),
+                self_id: Number(this.selfUin),
+                post_type: "notice",
+                notice_type: "group_essence",
+                sub_type: "add",
+                group_id: Number(groupCode),
+                sender_id: senderId,
+                ...(operatorId !== null ? { operator_id: operatorId } : {}),
+                message_id: messageId,
+            });
+        }
+    }
+
+    /** diff 移除项 → group_essence delete（sender 从 prev 缓存回填；operator 无数据源省略）。 */
+    private async broadcastEssenceRemoved(
+        groupCode: string,
+        removed: readonly number[],
+        prev: ReadonlyMap<number, EssenceCacheEntry>,
+    ): Promise<void> {
+        for (const seq of removed) {
+            const senderId = numericUin(prev.get(seq)?.senderUin ?? null);
+            if (senderId === null) {
+                this.calibLogger?.warn(
+                    { group: groupCode, seq },
+                    "ob11: 精华移除 sender 不可得（跳过事件）",
+                );
+                continue;
+            }
+            const messageId = await this.resolveEssenceMsgId(groupCode, seq);
+            if (messageId === null) {
+                continue;
+            }
+            this.broadcastEvent({
+                time: Math.floor(Date.now() / MS_TO_SEC),
+                self_id: Number(this.selfUin),
+                post_type: "notice",
+                notice_type: "group_essence",
+                sub_type: "delete",
+                group_id: Number(groupCode),
+                sender_id: senderId,
+                message_id: messageId,
+            });
+        }
+    }
+
+    /**
+     * 精华 message_id 反查：msgSeq → 近段历史扫描（60 条，对齐 milky
+     * resolveMsgIdBySeq fallback 层）→ MessageUnique.alloc 幂等分配（可被 get_msg
+     * 反查的正确空间，对照 recall 的 msgSeq 错位）。未命中返回 null（跳过事件）。
+     */
+    private async resolveEssenceMsgId(groupCode: string, seq: number): Promise<number | null> {
+        const peer = { chatType: ChatType.GROUP, peerUid: groupCode };
+        const msgs = await this.oneBotApi.msgApi.fetchMessages(peer, { count: 60 }).catch(() => []);
+        const hit = msgs.find((m) => Number(m.msgSeq) === seq);
+        if (hit === undefined) {
+            this.calibLogger?.warn(
+                { group: groupCode, seq },
+                "ob11: 精华 message_id 反查未命中（跳过事件）",
+            );
+            return null;
+        }
+        return this.oneBotApi.messageUnique.alloc(hit.msgId, peer);
     }
 
     /**

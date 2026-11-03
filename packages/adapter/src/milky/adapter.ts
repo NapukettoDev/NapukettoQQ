@@ -29,6 +29,8 @@ import type {
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { narrowBuddyReqs } from "../core/buddy-req.js";
+import type { EssenceCacheEntry } from "../core/essence.js";
+import { diffEssenceList, narrowEssenceGroupArg } from "../core/essence.js";
 import { collectGrayTipUids } from "../core/gray-tip.js";
 import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
 import { forEachRawMessage, subscribeRawMessages } from "../core/raw-message.js";
@@ -46,7 +48,6 @@ import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/entities.js";
-import { diffEssenceList, narrowEssenceGroupArg } from "./helper/essence.js";
 import { toFriendFileUploadData } from "./helper/file-upload.js";
 import { type NoticeTranslateContext, toMilkyNoticeEvent } from "./helper/notice.js";
 import { PinWatch, toPeerPinChangeData } from "./helper/peer-pin.js";
@@ -103,8 +104,8 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     private readonly fileKeys = new RecentKeyCache(10 * 60 * 1000);
     /** essence 双路径去重（732:1 快路径 vs 列表 diff，键 群:seq:方向）。 */
     private readonly essenceKeys = new RecentKeyCache(5 * 60 * 1000);
-    /** 精华列表缓存（群号 → seq → 操作者 uin，空串 = 未知）。 */
-    private readonly essenceCaches = new Map<string, Map<number, string>>();
+    /** 精华列表缓存（群号 → seq → 条目{操作者/发送者}）。 */
+    private readonly essenceCaches = new Map<string, Map<number, EssenceCacheEntry>>();
     /** 精华列表拉取串行链（并发回写乱序会把新列表覆盖成旧列表）。 */
     private essenceChain: Promise<void> = Promise.resolve();
     private readonly calibLogger: MilkyLoggerLike | undefined;

@@ -104,12 +104,13 @@
 | `friend_add` | `BuddyCache` 好友快照 diff |
 | `notify`（poke） | 戳一戳 grayTip；字段仍在真实事件校准中 |
 | `offline_file` | `Msg/onRecvOfflineFileMsg`；payload 形状防御性收窄，未知形状只打校准日志 |
+| `group_essence` | `Group/onGroupEssenceListChange` 列表 diff（唯一发射路径）+ `Msg/onRecvSysMsg` 732:1 加速触发；operator_id 仅 add 回填（类型可选），message_id 经 `MessageUnique` 正确空间映射 |
 
 已定义但当前未广播/未接线：
 
-- `group_card` / `group_title` / `group_sign`：来自 `Msg/onRecvSysMsg` protobuf；解码器已上线，
-  但识别表 `KIND_TABLE` 为空（缺真实样本），命中前只写结构化校准日志。
-- `group_essence`：`Group/onGroupEssenceListChange` 目前只打原始校准日志。
+- `group_title` / `group_sign`：来自 `Msg/onRecvSysMsg` protobuf；解码器已上线，识别表
+  已登记 732:21（group_card，2026-11-01），group_title / group_sign 判别值仍缺真实样本，
+  命中前只写结构化校准日志。
 - `msg_emoji_like`：没有推送回调；当前只有 `set_msg_emoji_like` 动作，没有对应的读取动作。
 - `onRecvOnlineFileMsg`：OB11 无对应通知，只打 raw 日志。
 
@@ -135,6 +136,9 @@
 - 发送方向：`at` 的 uin → uid（批量 `uinToUid`，失败交给 QQ 端判断）；`reply` 的 OB11 id →
   NT msgId；私聊 `user_id` 经 uin → uid 得到 `peerUid`。
 - 私聊 `Peer` 为 `{ chatType: C2C, peerUid: uid }`；群聊为 `{ chatType: GROUP, peerUid: 群号 }`。
+- 精华事件 `group_essence` 的 `message_id`：msgSeq → 近段历史扫描（`fetchMessages` 60 条）
+  → NT msgId → `MessageUnique.alloc` 幂等分配（与消息事件同一空间，可被 `get_msg` 反查）；
+  扫描未命中则跳过该事件。
 
 ## 6. 配置要点
 
@@ -148,9 +152,8 @@
 
 ## 7. 已知缺口
 
-- sysmsg 识别表为空：`group_card` / `group_title` / `group_sign` 暂不广播，等真实样本登记规则。
+- sysmsg 识别表已登记 732:21（group_card）：`group_title` / `group_sign` 暂不广播，等真实样本登记规则。
 - `offline_file`、poke、好友申请的部分 payload 字段仍是“防御性收窄 + 校准日志”状态。
-- `group_essence` 只有原始日志，没有翻译事件。
 - `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip 的 `msgSeq`，与消息事件的
   `MessageUnique` int32 映射不是同一空间，不能直接按它反查原消息。
 - 通用 `send_msg` 的 canonical 发送覆盖 text / at / face / image / voice / reply /
