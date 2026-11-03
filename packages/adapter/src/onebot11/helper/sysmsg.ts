@@ -9,14 +9,14 @@
  *  - recognizeSysMsg：绑定 OB11 表的识别入口
  *
  * 解码原语（decodeProtoTree / extractSysMsgEnvelope / narrowSysMsgBlobs 等）
- * 从 `core/sysmsg.js` 导入使用。
+ * 从 `core/shared/sysmsg.js` 导入使用。
  */
 
 import {
     recognizeSysMsg as recognizeSysMsgCore,
     type SysMsgKindRule,
     type SysMsgRecognition,
-} from "../../core/sysmsg.js";
+} from "../../core/shared/sysmsg.js";
 import type { OB11GroupCardNoticeEvent, OB11NoticeEvent } from "../event/index.js";
 
 /** 群号判别（strings[0] 必须是数字串）。 */
@@ -27,13 +27,13 @@ export type {
     SysMsgField,
     SysMsgKindRule,
     SysMsgRecognition,
-} from "../../core/sysmsg.js";
+} from "../../core/shared/sysmsg.js";
 export {
     decodeProtoTree,
     extractSysMsgEnvelope,
     narrowSysMsgBlobs,
     toHex,
-} from "../../core/sysmsg.js";
+} from "../../core/shared/sysmsg.js";
 
 /** OB11 识别规则：kind 收窄为 OB11 notice 种类、事件体为 OB11NoticeEvent。 */
 export type SysMsgKindRuleOB11 = SysMsgKindRule<OB11NoticeEvent>;

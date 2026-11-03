@@ -7,7 +7,10 @@
  * wsReverse 废弃（zod strip 静默忽略，不兼容迁移）。
  */
 import { z } from "zod";
-import { createHttpServerSchema, createWsServerSchema } from "../../core/transport-schema.js";
+import {
+    createHttpServerSchema,
+    createWsServerSchema,
+} from "../../core/framework/transport-schema.js";
 
 /** HTTP 反向服务器默认端口。 */
 const DEFAULT_HTTP_PORT = 3000;

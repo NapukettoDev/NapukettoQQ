@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import type { CanonicalElement, MsgEventChannel, Peer, RawMessage } from "@napuketto/kernel";
 import { ChatType } from "@napuketto/kernel";
 import { BaseProtocolAdapter, type ProtocolConfig } from "../core/index.js";
-import { forEachRawMessage } from "../core/raw-message.js";
+import { forEachRawMessage } from "../core/shared/raw-message.js";
 import type { KurobotConfig } from "./config.js";
 import type {
     ConnectionEndedReason,

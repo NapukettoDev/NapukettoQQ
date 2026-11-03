@@ -28,9 +28,9 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 
-export { collectGrayTipUids } from "../../core/gray-tip.js";
+export { collectGrayTipUids } from "../../core/shared/gray-tip.js";
 
-import { firstUntranslatedGrayTip } from "../../core/gray-tip.js";
+import { firstUntranslatedGrayTip } from "../../core/shared/gray-tip.js";
 
 import type {
     OB11Event,

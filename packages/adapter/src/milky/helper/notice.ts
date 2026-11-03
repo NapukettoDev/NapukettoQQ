@@ -22,8 +22,8 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { firstUntranslatedGrayTip } from "../../core/gray-tip.js";
-import { resolveUin } from "../../core/uid-uin.js";
+import { firstUntranslatedGrayTip } from "../../core/shared/gray-tip.js";
+import { resolveUin } from "../../core/shared/uid-uin.js";
 import type {
     FriendNudgeData,
     GroupDisbandData,

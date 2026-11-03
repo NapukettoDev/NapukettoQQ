@@ -7,8 +7,12 @@
 
 import type { EssenceMsgItem } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { diffEssenceList, extractEssenceSetSysMsg, narrowEssenceGroupArg } from "./essence.js";
-import { decodeProtoTree } from "./sysmsg.js";
+import {
+    diffEssenceList,
+    extractEssenceSetSysMsg,
+    narrowEssenceGroupArg,
+} from "../shared/essence.js";
+import { decodeProtoTree } from "../shared/sysmsg.js";
 
 describe("narrowEssenceGroupArg：回调参数 → 群号", () => {
     it("录制实证形状（参数数组首项字符串）", () => {

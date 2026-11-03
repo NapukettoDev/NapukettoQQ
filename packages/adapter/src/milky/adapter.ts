@@ -28,12 +28,12 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { narrowBuddyReqs } from "../core/buddy-req.js";
-import type { EssenceCacheEntry } from "../core/essence.js";
-import { diffEssenceList, narrowEssenceGroupArg } from "../core/essence.js";
-import { collectGrayTipUids } from "../core/gray-tip.js";
 import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
-import { forEachRawMessage, subscribeRawMessages } from "../core/raw-message.js";
+import { narrowBuddyReqs } from "../core/shared/buddy-req.js";
+import type { EssenceCacheEntry } from "../core/shared/essence.js";
+import { diffEssenceList, narrowEssenceGroupArg } from "../core/shared/essence.js";
+import { collectGrayTipUids } from "../core/shared/gray-tip.js";
+import { forEachRawMessage, subscribeRawMessages } from "../core/shared/raw-message.js";
 import {
     decodeProtoTree,
     extractSysMsgEnvelope,
@@ -42,8 +42,8 @@ import {
     type SysMsgField,
     type SysMsgKindRule,
     toHex,
-} from "../core/sysmsg.js";
-import type { RequestTranslateContext } from "../core/uid-uin.js";
+} from "../core/shared/sysmsg.js";
+import type { RequestTranslateContext } from "../core/shared/uid-uin.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";

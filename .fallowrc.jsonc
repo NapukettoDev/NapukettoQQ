@@ -91,9 +91,9 @@
         }
     ],
     // 隐藏抽象骨架与公共 API 面的死代码 finding（保留文件本身，不排除分析）：
-    //  - core/base-action.ts / base-protocol-adapter.ts：抽象骨架契约方法
+    //  - core/framework/base-action.ts / base-protocol-adapter.ts：抽象骨架契约方法
     //    （handle/websocketHandle/start/stop/reload 经 registry 反射/多态调用，静态分析追不到）
-    //  - core/action-registry.ts：registry 公共方法（has/names）
+    //  - core/framework/action-registry.ts：registry 公共方法（has/names）
     //  - satori/action/base-action.ts：Satori 动作抽象骨架（run 为执行入口）
     //  - onebot11/event/index.ts、onebot11/helper/index.ts：协议公共 barrel（re-export 被外部消费）
     //  - onebot11/helper/codec/index.ts、satori/helper/element/index.ts：DDD 拆分的子域 barrel
@@ -107,9 +107,9 @@
     //  - loader host/ipc/index.ts：IPC 协议层公共 barrel（re-export 被 self-host.ts /
     //    bootstrap-core.ts 部分消费，其余为协议面保留，静态分析看不到跨 barrel 链）
     "ignoreFindings": [
-        "packages/adapter/src/core/base-action.ts",
-        "packages/adapter/src/core/base-protocol-adapter.ts",
-        "packages/adapter/src/core/action-registry.ts",
+        "packages/adapter/src/core/framework/base-action.ts",
+        "packages/adapter/src/core/framework/base-protocol-adapter.ts",
+        "packages/adapter/src/core/framework/action-registry.ts",
         "packages/adapter/src/satori/action/base-action.ts",
         "packages/adapter/src/milky/action/base-action.ts",
         "packages/adapter/src/onebot11/event/index.ts",

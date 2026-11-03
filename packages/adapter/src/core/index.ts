@@ -2,15 +2,15 @@
  * adapter core 框架入口（ADR-013，可被第三方复用）
  */
 
-export { ActionRegistry } from "./action-registry.js";
-export type { ProtocolAdapterLike } from "./adapter-registry.js";
-export { AdapterRegistry } from "./adapter-registry.js";
-export type { ActionResult, ErrorCodeMap } from "./base-action.js";
-export { BaseAction } from "./base-action.js";
-export type { ProtocolHooks } from "./base-protocol-adapter.js";
-export { BaseProtocolAdapter } from "./base-protocol-adapter.js";
-export { ProtocolConfig } from "./config.js";
-export { ensureSilk } from "./media.js";
+export { ActionRegistry } from "./framework/action-registry.js";
+export type { ProtocolAdapterLike } from "./framework/adapter-registry.js";
+export { AdapterRegistry } from "./framework/adapter-registry.js";
+export type { ActionResult, ErrorCodeMap } from "./framework/base-action.js";
+export { BaseAction } from "./framework/base-action.js";
+export type { ProtocolHooks } from "./framework/base-protocol-adapter.js";
+export { BaseProtocolAdapter } from "./framework/base-protocol-adapter.js";
+export { ProtocolConfig } from "./framework/config.js";
+export { ensureSilk } from "./shared/media.js";
 export {
     collectStrings,
     decodeProtoTree,
@@ -29,4 +29,4 @@ export {
     varintAt,
     varintOf,
     varintToNumber,
-} from "./sysmsg.js";
+} from "./shared/sysmsg.js";

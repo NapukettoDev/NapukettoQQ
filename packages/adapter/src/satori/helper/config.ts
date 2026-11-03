@@ -3,7 +3,10 @@
  * 协议配置 schema 在各自协议包，kernel 只提供 ConfigBase 基类。
  */
 import { z } from "zod";
-import { createHttpServerSchema, createWsServerSchema } from "../../core/transport-schema.js";
+import {
+    createHttpServerSchema,
+    createWsServerSchema,
+} from "../../core/framework/transport-schema.js";
 
 /** HTTP RPC 服务器默认端口（satori.chat 惯例 5500 区间，取 5500）。 */
 const DEFAULT_HTTP_PORT = 5500;
