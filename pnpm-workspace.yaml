@@ -12,7 +12,7 @@ catalog:
   "@hono/node-server": ^2.1.6
   ws: ^8.22.1
   "@types/ws": ^8.18.2
-  "@types/node": ^24.13.4
+  "@types/node": ^26.6.6
   tsdown: ^0.23.4
   vitest: ^5.0.5
   "@vitest/coverage-v8": ^5.0.5
@@ -24,7 +24,7 @@ overrides:
   # @types/ws 声明的是 `@types/node: "*"`，pnpm 会各自解析到当时最新的 26.x，
   # 导致仓库里同时存在 24（运行时口径）与 26 两套 Node 类型。
   # 钉死到与运行时一致的 24，顺带合并 undici-types。
-  "@types/node": ^24.13.4
+  "@types/node": ^26.6.6
 
 # pnpm 构建脚本审批：允许这些依赖运行 postinstall（esbuild / parcel 需要）。
 # vue-demi 自 vite 5 起不再需要构建脚本，条目已失效（2026-11-03 审计）。
