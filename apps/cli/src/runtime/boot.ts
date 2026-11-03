@@ -32,9 +32,9 @@ import {
     watchStopSentinel,
     writeStopSentinel,
 } from "@napuketto/loader";
-import QRCode from "qrcode";
 import { isInlineConfigActive } from "../config/inline.js";
 import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "../logger.js";
+import { renderQrAnsi } from "./qr.js";
 import { writeAccountRuntime } from "./state.js";
 
 /** 单账号启动选项。 */
@@ -68,7 +68,8 @@ const GRACEFUL_STOP_TIMEOUT_MS = 10_000;
  * 链路下的乱码（原生 printf 字节流无法从 JS 侧改编码，转 pipe 后统一解码）。
  *
  * NAPUTO_QR 标记行（loader bootstrap-core 输出，QR 登录二维码数据）不转发，
- * 解析后用 qrcode 包渲染终端二维码；png 落盘与 URL 提示由 kernel 日志完成。
+ * 解析后用 uqr 编码 + qr.ts 的 ANSI 渲染器画终端二维码；png 落盘与 URL 提示
+ * 由 kernel 日志完成。
  * 噪音判定走 loader 共享单一来源（isNativeNoiseLine，与 koishi IPC 路径同源）。
  */
 function forwardFiltered(input: NodeJS.ReadableStream, out: NodeJS.WritableStream): void {
@@ -86,8 +87,9 @@ function forwardFiltered(input: NodeJS.ReadableStream, out: NodeJS.WritableStrea
 }
 
 /**
- * 渲染终端二维码（qrcode 包 terminal 模式，half-block 字符）。
- * 解析失败/无 url 时静默丢弃——标记行是内部协议，坏行不影响登录。
+ * 渲染终端二维码（qr.ts：uqr 编码 + 白底黑块 half-block，宽度 = 模块数）。
+ * 解析失败/无 url/编码失败时静默丢弃——标记行是内部协议，坏行不影响登录
+ * （kernel 日志仍会打印 URL 与 png 路径）。
  */
 function renderTerminalQr(raw: string): void {
     try {
@@ -96,15 +98,9 @@ function renderTerminalQr(raw: string): void {
         if (qrcodeUrl === undefined || qrcodeUrl === "") {
             return;
         }
-        void QRCode.toString(qrcodeUrl, { type: "terminal", small: true })
-            .then((str) => {
-                process.stdout.write(`${str}\n`);
-            })
-            .catch(() => {
-                // 渲染失败静默（不影响登录，kernel 日志的 URL/png 路径仍可用）
-            });
+        process.stdout.write(`${renderQrAnsi(qrcodeUrl)}\n`);
     } catch {
-        // 坏行静默丢弃
+        // 坏行 / 编码失败静默丢弃
     }
 }
 

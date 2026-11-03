@@ -21,8 +21,8 @@ overrides:
   # @changesets/cli@3.0.2 传递的 launch-editor@2.14.1 带 1 high + 2 moderate
   # 公告；2.14.2 已修，specifier `^2.14.1` 本身允许，这里显式钉住避免漂移。
   launch-editor: ^2.14.2
-  # @types/ws / @types/qrcode 声明的是 `@types/node: "*"`，pnpm 会各自解析到当时
-  # 最新的 26.x，导致仓库里同时存在 24（运行时口径）与 26 两套 Node 类型。
+  # @types/ws 声明的是 `@types/node: "*"`，pnpm 会各自解析到当时最新的 26.x，
+  # 导致仓库里同时存在 24（运行时口径）与 26 两套 Node 类型。
   # 钉死到与运行时一致的 24，顺带合并 undici-types。
   "@types/node": ^24.13.4
 
