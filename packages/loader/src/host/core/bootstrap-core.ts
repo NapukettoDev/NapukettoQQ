@@ -313,7 +313,7 @@ function buildCoreCreateOptions(
               }
             : {}),
         ...(env.NAPUTO_QUICK_UIN !== undefined ? { account: env.NAPUTO_QUICK_UIN } : {}),
-        // IPC 模式关 console：stdout 专用于 JSON 行协议，pino-pretty 并发写会
+        // IPC 模式关 console：stdout 专用于 JSON 行协议，控制台日志并发写会
         // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
         // logs/napuketto.log 不受影响，cli 模式 console 输出不变
         ...(env.NAPUTO_IPC === "1" ? { consoleLog: false } : {}),

@@ -20,7 +20,7 @@ NapukettoQQ：基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人
 2. **依赖方向**（只允许向下依赖）：
 
    ```
-   @napuketto/kernel    无内部依赖（pino + pino-pretty + smol-toml）
+   @napuketto/kernel    无内部依赖（pino + smol-toml）
    @napuketto/media     无内部依赖（silk-wasm / file-type / image-size / execa）
    @napuketto/network   无内部依赖（hono / ws，协议无关传输原语）
    @napuketto/adapter   kernel + network + media（协议适配器容器：core 框架 + onebot11 / satori / kurobot）

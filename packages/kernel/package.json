@@ -26,7 +26,6 @@
         "build": "tsdown"
     },
     "devDependencies": {
-        "pino-pretty": "^13.2.0",
         "tsdown": "catalog:"
     },
     "license": "MIT",
@@ -38,13 +37,5 @@
     "dependencies": {
         "pino": "^10.4.0",
         "smol-toml": "^1.9.1"
-    },
-    "peerDependencies": {
-        "pino-pretty": "^13.0.0"
-    },
-    "peerDependenciesMeta": {
-        "pino-pretty": {
-            "optional": true
-        }
     }
 }
