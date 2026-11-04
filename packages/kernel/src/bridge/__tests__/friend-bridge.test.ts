@@ -59,6 +59,18 @@ describe("FriendBridge", () => {
         }).toThrow();
     });
 
+    it("getBuddyService 返回 undefined 同样抛 INVALID_STATE", () => {
+        const channel = new NTEventChannel<BuddyListener, "Buddy">("Buddy");
+        expect(() => {
+            new FriendBridge(
+                { getBuddyService: () => undefined } as unknown as ConstructorParameters<
+                    typeof FriendBridge
+                >[0],
+                channel,
+            );
+        }).toThrow(/getBuddyService\(\) 返回空/);
+    });
+
     it("register 注册原生监听（幂等），回调透传到 Buddy/* 通道", () => {
         const { bridge, channel, service, listener } = makeBridge();
         const onReq = vi.fn();
@@ -75,6 +87,33 @@ describe("FriendBridge", () => {
         expect(onReq).toHaveBeenCalledWith({ buddyReqs: [] });
         l?.onBuddyListChange([{ categoryId: 1 }]);
         expect(onList).toHaveBeenCalledWith([{ categoryId: 1 }]);
+    });
+
+    it("onBuddyListChangedV2 → Buddy/onBuddyListChangedV2 透传", () => {
+        const { bridge, channel, listener } = makeBridge();
+        const handler = vi.fn();
+        channel.on("Buddy/onBuddyListChangedV2", handler);
+        bridge.register();
+        const arg = { selfUid: "u1" };
+        listener()?.onBuddyListChangedV2(arg);
+        expect(handler).toHaveBeenCalledWith(arg);
+    });
+
+    it("onBuddyDeleted → Buddy/onBuddyDeleted 透传", () => {
+        const { bridge, channel, listener } = makeBridge();
+        const handler = vi.fn();
+        channel.on("Buddy/onBuddyDeleted", handler);
+        bridge.register();
+        const arg = { uin: "10002" };
+        listener()?.onBuddyDeleted(arg);
+        expect(handler).toHaveBeenCalledWith(arg);
+    });
+
+    it("未 register 直接 unregister 不产生注销调用", () => {
+        const { bridge, service } = makeBridge();
+        bridge.unregister();
+        expect(service.addKernelBuddyListener).not.toHaveBeenCalled();
+        expect(service.removeKernelBuddyListener).not.toHaveBeenCalled();
     });
 
     it("unregister 注销（幂等）", () => {
