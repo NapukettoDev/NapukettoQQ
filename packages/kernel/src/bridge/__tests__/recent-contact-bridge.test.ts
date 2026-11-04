@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NTEventChannel } from "../../event-channel.js";
 import type { RecentContactListener } from "../../types/index.js";
 import { RecentContactBridge } from "../recent-contact-bridge.js";
-import { makeCapturedService, makeSession } from "../test-support.js";
+import { makeCapturedService, makeSession } from "./test-support.js";
 
 /** 构造 RecentContactBridge + 桩 service/channel。 */
 function makeBridge() {

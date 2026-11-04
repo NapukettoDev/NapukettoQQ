@@ -8,8 +8,8 @@ import type {
     NodeIQQNTWrapperEngine,
     NodeIQQNTWrapperSessionCtor,
     WrapperNodeApi,
-} from "../types/index.js";
-import type { WrapperContext } from "./wrapper-loader.js";
+} from "../../types/index.js";
+import type { WrapperContext } from "../wrapper-loader.js";
 
 /** 构造最小可用的 mock exports（overrides 宽松透传，模拟 QQ 环境）。 */
 export function mockExports(overrides: Record<string, unknown> = {}): WrapperNodeApi {

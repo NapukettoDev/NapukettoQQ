@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import { GroupNotifyApi } from "../group-notify.js";
-import { makeSession } from "../test-support.js";
+import { makeSession } from "./test-support.js";
 
 function makeApi(overrides: Record<string, unknown> = {}) {
     const service = {

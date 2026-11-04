@@ -48,7 +48,7 @@ vi.mock("../logger.js", () => ({
 vi.mock("./qr.js", () => ({ renderQrAnsi: mocks.renderQrAnsi }));
 vi.mock("./state.js", () => ({ writeAccountRuntime: mocks.writeAccountRuntime }));
 
-import { type FakeChild, flushAsync, makeFakeChild } from "../test-support.js";
+import { type FakeChild, flushAsync, makeFakeChild } from "../__tests__/test-support.js";
 import { runSingleAccount } from "./boot.js";
 
 let tmp = "";

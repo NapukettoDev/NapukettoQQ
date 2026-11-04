@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import { ChatType } from "../../types/index.js";
 import { RecentContactApi } from "../recent-contact.js";
-import { makeSession } from "../test-support.js";
+import { makeSession } from "./test-support.js";
 
 function makeApi(service: Record<string, unknown>): RecentContactApi {
     return new RecentContactApi(makeSession({ getRecentContactService: () => service }));

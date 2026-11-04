@@ -8,7 +8,6 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "../../types/index.js";
-import { makeCtx, mockExports, sessionCtorMock } from "../test-support.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import {
     createSession,
@@ -18,6 +17,7 @@ import {
     resolveQqUserDataRoot,
     startSession,
 } from "../wrapper-loader.js";
+import { makeCtx, mockExports, sessionCtorMock } from "./test-support.js";
 
 describe("createWrapper", () => {
     it("exports 有效时返回完整上下文", () => {

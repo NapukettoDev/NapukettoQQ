@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import { FriendApi } from "../friend.js";
-import { makeSession } from "../test-support.js";
+import { makeSession } from "./test-support.js";
 
 /** 构造 FriendApi（buddy service 桩，可选 uidToUin 注入）。 */
 function makeApi(

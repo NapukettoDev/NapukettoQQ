@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import { ProfileApi } from "../profile.js";
 import { ProfileLikeApi } from "../profile-like.js";
-import { makeSession } from "../test-support.js";
+import { makeSession } from "./test-support.js";
 
 describe("ProfileApi", () => {
     function makeApi(overrides: Record<string, unknown> = {}) {

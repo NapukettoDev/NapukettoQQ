@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NTEventChannel } from "../../event-channel.js";
 import type { GroupListener } from "../../types/index.js";
 import { GroupBridge } from "../group-bridge.js";
-import { makeCapturedService, makeSession } from "../test-support.js";
+import { makeCapturedService, makeSession } from "./test-support.js";
 
 /** 构造 GroupBridge + 桩 service/channel。 */
 function makeBridge() {

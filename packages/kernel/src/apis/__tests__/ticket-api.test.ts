@@ -9,8 +9,8 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { kernelError } from "../../infra/index.js";
-import { makeSession } from "../test-support.js";
 import { TicketApi } from "../ticket.js";
+import { makeSession } from "./test-support.js";
 
 // mock node:https：getCookies 走 jump 地址拿 set-cookie（fetch 会吞头），测试不触网
 const httpsGet = vi.fn();

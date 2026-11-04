@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NTEventChannel } from "../../event-channel.js";
 import type { LoginListener } from "../../types/index.js";
 import { LoginBridge } from "../login-bridge.js";
-import { makeCapturedService } from "../test-support.js";
+import { makeCapturedService } from "./test-support.js";
 
 /** 构造 LoginBridge + 桩 loginService/channel。 */
 function makeBridge() {

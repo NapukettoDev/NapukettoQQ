@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
 import { ChatType, NTGroupMemberRole } from "../../types/index.js";
 import { GroupApi } from "../group.js";
-import { makeSession } from "../test-support.js";
+import { makeSession } from "./test-support.js";
 
 /** 构造 GroupApi（group service + msg service 桩）。 */
 function makeApi(

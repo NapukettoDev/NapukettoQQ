@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NTEventChannel } from "../../event-channel.js";
 import type { MsgListener, RawMessage } from "../../types/index.js";
 import { MsgBridge } from "../msg-bridge.js";
-import { makeCapturedService, makeSession } from "../test-support.js";
+import { makeCapturedService, makeSession } from "./test-support.js";
 
 /** 构造 MsgBridge + 桩 service/channel。 */
 function makeBridge() {

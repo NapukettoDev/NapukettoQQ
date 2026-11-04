@@ -47,7 +47,7 @@ vi.mock("../logger.js", () => ({
     resolveCliLogConfig: mocks.resolveCliLogConfig,
 }));
 
-import { flushAsync } from "../test-support.js";
+import { flushAsync } from "../__tests__/test-support.js";
 import { main } from "./program.js";
 
 let tmp = "";

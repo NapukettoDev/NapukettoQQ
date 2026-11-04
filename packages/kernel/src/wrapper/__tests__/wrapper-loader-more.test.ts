@@ -17,13 +17,13 @@ import type {
     WrapperSessionInitConfig,
 } from "../../types/index.js";
 import { PlatformType } from "../../types/index.js";
-import { makeCtx, mockExports, sessionCtorMock } from "../test-support.js";
 import {
     createSession,
     electronProcessType,
     startNapuketto,
     type WrapperContext,
 } from "../wrapper-loader.js";
+import { makeCtx, mockExports, sessionCtorMock } from "./test-support.js";
 
 /** 模拟 Electron 进程类型（进程内 process.type 属性注入，用后恢复）。 */
 function withProcessType(type: string | undefined, fn: () => void): void {
