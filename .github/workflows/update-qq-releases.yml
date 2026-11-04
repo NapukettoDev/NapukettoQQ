@@ -13,21 +13,57 @@ name: update-qq-releases
 # 脚本改为请求小写 `/qqntv2/` 路径段（normalizeDownloadUrl），见 tooling 头注释。
 # 失败仍在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
 # 本地跑 tooling/qq-releases/update-qq-releases.ts 兜底更新清单。
+#
+# 为什么提 PR 用 App token 而不是 github.token（2026-11-04 修复，run 41818514612）：
+# 此前用 `github.token` 提 PR，本仓一直提不出来——仓库设置
+# 「Allow GitHub Actions to create and approve pull requests」是关的，REST 直接回
+# `GitHub Actions is not permitted to create or approve pull requests`。这不是偶发：
+# 清单大多天没变化（脚本无 diff），`create-pull-request` 也就跳过建 PR，于是绿灯
+# 掩盖了这个必然性故障，直到 QQ 出了新版（11-03 / 11-04 连续红）才暴露。
+#
+# 而且**打开那个仓库开关也不够**：GITHUB_TOKEN 创建/更新的事不触发任何 workflow
+# （GitHub 对 GITHUB_TOKEN 免触发），PR 上的 pull_request 事件不会发生，CI 不跑，
+# gate / windows / audit 三个必需检查永远缺报 → PR 进不了 merge queue → 等于不可
+# 合并。故改用 NapukettoBot App 的 installation token（与 release.yml 同一 App）：
+# App token 创建 PR 会正常触发 CI，机器人 PR 因此能被真正门禁与审查。
+#
+# 代价与边界：
+#   · App 需要 **Pull requests: Read and write**（原本只有 Contents: Read and write；
+#     配置步骤与非代码前置见 docs/guides/release.md §3.1）。
+#   · App 同时具有 ruleset bypass 与 Contents 写权限（release.yml 用它直推 main）。
+#     这里的 token 只在更新脚本**跑完之后**才铸造，且用 `repositories: NapukettoQQ`
+#     限定到本仓（不含私有 submodule 仓），把持有面压到「只读代码之后的一步」。
+#   · 标签不再由 action 打：`labels` 走 Issues API，App 没有 Issues 权限，硬打会
+#     在 PR 建好之后报错；维护者认标题前缀 `chore(loader):` 即可。
 on:
     schedule:
         # 每天 UTC 03:17（避开整点高峰）
         - cron: "17 3 * * *"
     workflow_dispatch:
 
+# 提 PR 与推分支都走 App token，GITHUB_TOKEN 只剩「读代码 + 追踪 issue」两件事。
+# 不再声明 contents / pull-requests 写权限：给了也用不上（GITHUB_TOKEN 建不了 PR），
+# 只是多开一道不必要的口子。
 permissions:
-    contents: write
-    pull-requests: write
+    contents: read
     issues: write
 
 jobs:
     update:
         runs-on: ubuntu-24.04
         steps:
+            # App 配置缺失时早失败：否则要等下载完安装包（约 2 分钟）才在铸 token
+            # 处报难懂的错。与 release.yml 同名同源（variable + secret）。
+            - name: 检查 App 配置
+              env:
+                  APP_CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+              run: |
+                  if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+                      echo "::error::缺少 NapukettoBot App 配置（variable RELEASE_APP_CLIENT_ID / secret RELEASE_APP_PRIVATE_KEY），无法自动开 PR；见 docs/guides/release.md §3.1。"
+                      exit 1
+                  fi
+
             - name: Checkout
               uses: actions/checkout@v7
 
@@ -84,14 +120,24 @@ jobs:
                           });
                       }
 
-            - name: 有变更则提 PR
+            # token 在更新脚本之后铸造：脚本（来自 main 的受审代码）跑完才出现凭证，
+            # 缩短「可执行代码与被推 main 的凭证同处一 job」的窗口。`repositories`
+            # 只列本仓——不列私有 submodule 仓 Napuketto-Native，本 job 也检不出它。
+            - if: steps.update.outcome == 'success'
+              id: app-token
+              uses: actions/create-github-app-token@v3
+              with:
+                  client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  repositories: NapukettoQQ
+
+            - if: steps.update.outcome == 'success'
+              id: pr
+              name: 有变更则提 PR
               uses: peter-evans/create-pull-request@v8
               with:
-                  # 用 github.token 而不是 secrets.GITHUB_TOKEN（后者根本不存在，
-                  # 传给 action 的是一个空串）。代价：GITHUB_TOKEN 创建的 PR 不会
-                  # 触发 pull_request workflow，CI 不会在这个 bot PR 上跑——它只改
-                  # qq-releases.json 数据，且由维护者合并，可接受。
-                  token: ${{ github.token }}
+                  # 用 App token 而非 github.token，理由见文首「为什么提 PR 用 App token」。
+                  token: ${{ steps.app-token.outputs.token }}
                   commit-message: "chore(loader): 更新 qq-releases.json 到最新 QQ 版本"
                   branch: chore/qq-releases-update
                   delete-branch: true
@@ -100,6 +146,3 @@ jobs:
                       由 update-qq-releases workflow 自动生成。
                       解析 QQ 官方下载配置 + 下载安装包计算 sha256 + 解析版本目录。
                       请核对版本号与 sha256 后合并。
-                  labels: |
-                      chore
-                      automated
