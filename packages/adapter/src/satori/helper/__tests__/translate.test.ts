@@ -10,7 +10,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { type SatoriTranslateDeps, toSatoriMessage } from "../translate.js";
+import { type SatoriTranslateDeps, toChannelById, toSatoriMessage } from "../translate.js";
 
 /** 构造 RawMessage（text 元素，其余最小合法值）。 */
 function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {
@@ -85,5 +85,20 @@ describe("toSatoriMessage", () => {
         expect(msg0.created_at).toBeUndefined();
         const msgNan = await toSatoriMessage(makeMsg({ msgTime: "abc" }), deps);
         expect(msgNan.created_at).toBeUndefined();
+    });
+});
+
+describe("toChannelById", () => {
+    it("isGroup=true → 群聊频道（type 0，name 可选）", () => {
+        expect(toChannelById("10001", true, "群名")).toEqual({
+            id: "10001",
+            type: 0,
+            name: "群名",
+        });
+        expect(toChannelById("10001", true)).toEqual({ id: "10001", type: 0 });
+    });
+
+    it("isGroup=false → 私聊频道（type 1）", () => {
+        expect(toChannelById("90001", false)).toEqual({ id: "90001", type: 1 });
     });
 });

@@ -255,3 +255,36 @@ describe("parseContentToCanonical", () => {
         await expect(parseContentToCanonical("", deps)).resolves.toEqual([]);
     });
 });
+
+describe("媒体元素空 src 容错（media-convert 分支）", () => {
+    it("img / audio / video / file 无 src → 全部忽略（[]）", async () => {
+        const deps = makeDeps();
+        await expect(
+            satoriToCanonicalElements(
+                [{ type: "img" }, { type: "audio" }, { type: "video" }, { type: "file" }],
+                deps,
+            ),
+        ).resolves.toEqual([]);
+    });
+
+    it("src 为空串 → 同样忽略（?? 缺省分支）", async () => {
+        const deps = makeDeps();
+        await expect(
+            satoriToCanonicalElements(
+                [
+                    { type: "img", attrs: { src: "" } },
+                    { type: "file", attrs: { src: "" } },
+                ],
+                deps,
+            ),
+        ).resolves.toEqual([]);
+    });
+
+    it("file title 为空串 → 不写 name", async () => {
+        const deps = makeDeps();
+        const file = join(tempDir, "n.bin");
+        await expect(
+            satoriToCanonicalElements([{ type: "file", attrs: { src: file, title: "" } }], deps),
+        ).resolves.toEqual([{ type: "file", path: file }]);
+    });
+});
