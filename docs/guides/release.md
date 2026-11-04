@@ -43,7 +43,13 @@ on:
             skip-version: boolean   # true = 跳过 version 环，构建并发布当前 main
 ```
 
-- `concurrency: group: release` 且不取消进行中的运行，避免两个运行同时消费 changeset。
+- `concurrency: group: release-prepare` 挂在 **`prepare` job** 上（不取消进行中的运行），
+  只串行“消费 changeset”这一步。**不能放 workflow 级**：`publish` 等 environment 审批时
+  整条 run 仍是 in-progress，组会被一个“正在等人点按钮”的 publish 占死——2026-11-04 事故
+  即此，一次发布在队列里等了 20 小时 47 分。
+- **推送前两次对齐 main**：版本提交 commit 之后、构建测试之前先 rebase 到最新 main（排队久
+  了 base 会过期）；推送前再查一次快进，落后就 rebase 后重建重测。这样 tag 指向的树一定
+  就是被测过、被打包的那棵树。
 - 版本提交会删除 `.changeset/` 条目，因此会再触发一次本工作流：那次 `changed=false` 空转
   退出，不会循环；`ci.yml` 也会因 main push 多跑一轮，这是 App token 推送的固有代价。
 - `skip-version` 只影响“是否消费 changeset”，不改变审批。
@@ -191,6 +197,11 @@ gh release create milestone-0.4 --verify-tag --latest \
   pnpm exec changeset git-tag                    # 幂等，只打本地还没有的版本
   git push origin refs/tags/<包名>@<版本>          # 单次 ≤5 个 ref，超了会被拒
   ```
+- **`! [rejected] HEAD -> main (non-fast-forward)`**：排队期间 main 前进了，版本提交推不
+  上去（2026-11-04 事故，run 41662910630——20 小时排队后排到，base 已过期，版本提交与 tag
+  全丢）。现在工作流在构建前与推送前各对齐一次 main；若两次之间 main 又被推进，会以
+  `第二次对齐仍未追平 main` 报错退出，直接重跑即可：版本提交没落地 → changeset 仍在 main
+  上，不带 `skip-version` 的重跑会重新消费。
 - **ENEEDAUTH `need auth`**：OIDC 模式下不代表没登录。npm 用 id_token 换包级 token，失败时
   只在 verbose 日志里写原因。看
   `POST 404 .../oidc/token/exchange/package/<包名>`：

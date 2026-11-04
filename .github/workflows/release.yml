@@ -79,8 +79,9 @@
 # 新的 workflow 运行，而 App token 不在豁免之列。版本提交会删掉 `.changeset/`
 # 条目，该提交因此命中本文件的 `paths: ['.changeset/**']`。所以一次发布会多出
 # 一次运行：那次运行消费不到 changeset，`changed=false`，只跑 install 与检测
-# 即空转退出，不会再推送，故不构成循环；`concurrency: group: release` 还保证
-# 两者串行。同一原因也会触发一次 `ci.yml`——每次发布固定多出一轮完整 CI，
+# 即空转退出，不会再推送，故不构成循环；`prepare` 上的
+# `concurrency: group: release-prepare` 还保证两者串行。同一原因也会触发一次
+# `ci.yml`——每次发布固定多出一轮完整 CI，
 # 这是改由 App token 推送（而非 GITHUB_TOKEN）的固有代价。
 #
 # 前置（均为仓库设置，非代码；详见 docs/guides/release.md）：
@@ -118,11 +119,6 @@ on:
                 type: boolean
                 default: false
 
-# 严禁并发：两个运行同时消费 changeset 会撞版本号
-concurrency:
-    group: release
-    cancel-in-progress: false
-
 permissions:
     contents: read
 
@@ -131,6 +127,16 @@ jobs:
         name: prepare（消费 changeset → 构建 → 测试 → 推送）
         runs-on: ubuntu-24.04
         timeout-minutes: 45
+        # 互斥必须挂在 **prepare 这个 job** 上，不能放 workflow 级：
+        # publish 等 environment 审批时整条 run 仍是 in-progress，workflow 级组会被
+        # 一个「正在等人点按钮」的 publish 占死。2026-11-04 事故即此——那次发布在
+        # 队列里等了 20 小时 47 分，轮到时 base 已过期，`git push` 非快进被拒，
+        # 版本提交与 tag 全部随 runner 丢弃（run 41662910630）。
+        # prepare 之间串行就足够（两个运行同时消费 changeset 才会撞版本号）；
+        # prepare 与 publish 之间没有共享可变状态，产物走 artifact。
+        concurrency:
+            group: release-prepare
+            cancel-in-progress: false
         permissions:
             # 推送用的是 App token（不受 job 级 GITHUB_TOKEN 权限约束），
             # 因此这里保持最小读权限；GITHUB_TOKEN 本来也推不进受保护的 main。
@@ -235,6 +241,25 @@ jobs:
                   git commit -m "chore(release): 消费 changeset，升版本并更新 CHANGELOG"
                   echo "changed=true" >> "$GITHUB_OUTPUT"
 
+            # 排队可能等几十分钟到几小时（runner 排队 / 上一次 prepare 未收尾），
+            # checkout 出来的 base 会过期。版本提交先 rebase 到最新 main，再构建与
+            # 测试——保证「构建/测试通过的那棵树」就是「将要推出去的那棵树」，tag
+            # 也不会指向过期 base。冲突即失败（不自动取某一边），宁可人工看一眼。
+            - if: steps.bump.outputs.changed == 'true'
+              name: 对齐 main（rebase 版本提交）
+              run: |
+                  set -euo pipefail
+                  git fetch origin main --quiet
+                  if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+                      echo "base 已包含最新 main，无需 rebase"
+                  else
+                      echo "::notice::main 在排队期间前进，rebase 版本提交后再构建与测试"
+                      git -c core.hooksPath=/dev/null rebase FETCH_HEAD
+                      # 新 base 可能带来新依赖：node_modules 还是 checkout 前的旧树，
+                      # 不重装会让下面的构建/测试跑在缺件的依赖上。
+                      pnpm install --frozen-lockfile
+                  fi
+
             - if: steps.bump.outputs.changed == 'true'
               name: 构建（发布产物 dist）
               run: pnpm release:build
@@ -279,6 +304,12 @@ jobs:
             #   · core.hooksPath 指向空处以禁用 hook：构建期代码若被污染，塞一个
             #     .git/hooks/pre-push 就能在这个步骤里读到 GH_TOKEN 并外传。
             #
+            # 推送前必须再对齐一次 main 并确认可快进：上一步 rebase 到这里还隔着
+            # 构建 + 打包守卫 + 测试（约 1 分钟），main 仍可能前进。2026-11-04 事故
+            # 即此形态——`! [rejected] HEAD -> main (non-fast-forward)`，版本提交与
+            # tag 全随 runner 丢失。落后时 rebase 后**重建重测**：tag 指向的树必须
+            # 就是被测过、被打包的那棵树，否则发布产物与 tag 内容对不上。
+            #
             # tag 分 5 个一批推：仓库规则集限制「单次 push 最多 5 个 ref」
             # （GH013 `Pushes can not update more than 5 branches or tags`），
             # 一次 bump 7 个包必超限，只能分批。顺序是先推 main 再推 tag——tag 指向
@@ -292,6 +323,21 @@ jobs:
               run: |
                   set -euo pipefail
                   remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+                  # 对齐 main（见上方说明）：落后就 rebase + 重建 + 重测，最多一次
+                  git fetch origin main --quiet
+                  if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+                      echo "::notice::main 在构建/测试期间前进，rebase 后重建重测"
+                      git -c core.hooksPath=/dev/null rebase FETCH_HEAD
+                      pnpm install --frozen-lockfile
+                      pnpm release:build
+                      pnpm release:test
+                      git fetch origin main --quiet
+                      if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+                          echo "::error::第二次对齐仍未追平 main（期间又被推进），请重跑本次 workflow。"
+                          exit 1
+                      fi
+                  fi
 
                   # 用前后快照取「本次真正新增的 tag」：直接解析 changeset 的输出要处理
                   # 颜色转义，且「已存在 → 跳过」的条目不该进推送清单。
