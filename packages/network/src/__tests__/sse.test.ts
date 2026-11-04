@@ -5,7 +5,7 @@
  * 断开清理（cancel → 退订）、close 后 send 静默。
  */
 import { describe, expect, it, vi } from "vitest";
-import { createSseResponse } from "../sse.js";
+import { createSseResponse, type SseClient } from "../sse.js";
 
 /** 读流全部文本（读到流关闭为止）。 */
 async function readAll(res: Response): Promise<string> {
@@ -76,5 +76,46 @@ describe("createSseResponse", () => {
         });
         const text = await readAll(res);
         expect(text).toBe("data: before\n\n");
+    });
+
+    it("流被 cancel 后 send → enqueue 抛错被吞、退订等价触发（断开竞态兜底）", async () => {
+        const off = vi.fn();
+        let held: SseClient | undefined;
+        const res = createSseResponse((client) => {
+            held = client;
+            return off;
+        });
+        // handler 未推送：直接 cancel（无首块可读，不能走 openReader）
+        await res.body?.getReader()?.cancel();
+        await new Promise((r) => setTimeout(r, 0));
+        // cancel 已置位：此 send 走早退分支，退订只触发一次
+        held?.send("after-cancel");
+        expect(off).toHaveBeenCalledTimes(1);
+    });
+
+    it("直接对流体 cancel（不经 reader）→ 退订等价触发，send 早退不重复", async () => {
+        const off = vi.fn();
+        let held: SseClient | undefined;
+        const res = createSseResponse((client) => {
+            held = client;
+            return off;
+        });
+        await res.body?.cancel();
+        await new Promise((r) => setTimeout(r, 0));
+        held?.send("x"); // 已置位：早退，不重复退订
+        expect(off).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancel 后 close 静默（不重复触发退订）", async () => {
+        const off = vi.fn();
+        let held: SseClient | undefined;
+        const res = createSseResponse((client) => {
+            held = client;
+            return off;
+        });
+        await res.body?.getReader()?.cancel();
+        await new Promise((r) => setTimeout(r, 0));
+        held?.close();
+        expect(off).toHaveBeenCalledTimes(1);
     });
 });
