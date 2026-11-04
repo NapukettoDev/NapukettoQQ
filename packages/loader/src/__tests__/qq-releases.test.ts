@@ -1,14 +1,53 @@
 /**
- * qq-releases.test.ts：下载 URL 归一化 + 清单 URL 解析单测。
+ * qq-releases.test.ts：下载 URL 归一化 + 清单读取/解析单测。
  *
  * 背景（issue #6 根因，2026-10-07 实测）：腾讯 CDN 边缘 WAF 对字面量
  * `/QQNTV2/` 路径段 **区分大小写** 地拦截（403 + Content-Length: 0，
  * Return Directly 不回源），而源站对路径大小写不敏感。normalizeDownloadUrl
  * 是唯一绕行点，这里锁住语义：只改该路径段大小写，其余原样不动。
+ *
+ * loadQqReleases：node:fs 部分替身（readFileSync 按 mode 注入缺失/坏 JSON/
+ * 结构非法，其余透传——真实 qq-releases.json 读取路径同样覆盖）。
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QqReleaseEntry } from "../qq-releases.js";
-import { normalizeDownloadUrl, resolveDownloadUrl } from "../qq-releases.js";
+import {
+    latestRelease,
+    loadQqReleases,
+    normalizeDownloadUrl,
+    QqReleasesError,
+    resolveDownloadUrl,
+} from "../qq-releases.js";
+
+/** readFileSync 注入模式（null = 透传真实实现）。 */
+const fsMode = vi.hoisted(() => {
+    return { mode: null as null | "throw" | "bad-json" | "bad-schema" | "empty-known" };
+});
+
+vi.mock("node:fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs")>();
+    return {
+        ...actual,
+        readFileSync: (path: Parameters<typeof actual.readFileSync>[0], ...rest: unknown[]) => {
+            switch (fsMode.mode) {
+                case "throw":
+                    throw new Error("ENOENT: 注入缺失");
+                case "bad-json":
+                    return "not-json{";
+                case "bad-schema":
+                    return JSON.stringify({ schema: 2, known: [{ version: "x" }] });
+                case "empty-known":
+                    return JSON.stringify({ schema: 1, known: [] });
+                default:
+                    return actual.readFileSync(path, ...(rest as []));
+            }
+        },
+    };
+});
+
+afterEach(() => {
+    fsMode.mode = null;
+});
 
 /** 官方 rainbow 配置给出的 x64 下载 URL（大小写即官方原样，直接请求必 403）。 */
 const OFFICIAL_9_9_36 =
@@ -100,5 +139,69 @@ describe("resolveDownloadUrl", () => {
     it("NAPUTO_QQ_URL 为空串时回退清单 URL", () => {
         setEnv("NAPUTO_QQ_URL", "");
         expect(resolveDownloadUrl(release)).toBe(OFFICIAL_9_9_36);
+    });
+});
+
+describe("loadQqReleases", () => {
+    it("读取真实包根清单：schema=1 + known 非空（条目字段完整）", () => {
+        const file = loadQqReleases();
+        expect(file.schema).toBe(1);
+        expect(file.known.length).toBeGreaterThan(0);
+        const entry = file.known[file.known.length - 1] as QqReleaseEntry;
+        expect(entry.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
+        expect(entry.url).toMatch(/^https:\/\//);
+        expect(typeof entry.appid).toBe("number");
+        expect(entry.source).toBe("official");
+    });
+
+    it("清单文件缺失 → QqReleasesError（安装不完整提示）", () => {
+        fsMode.mode = "throw";
+        expect(() => loadQqReleases()).toThrow(QqReleasesError);
+        expect(() => loadQqReleases()).toThrow(/版本清单缺失/);
+    });
+
+    it("JSON 解析失败 → QqReleasesError", () => {
+        fsMode.mode = "bad-json";
+        expect(() => loadQqReleases()).toThrow(/版本清单解析失败/);
+    });
+
+    it("schema 非 1 / known 非数组 → QqReleasesError（结构不合法）", () => {
+        fsMode.mode = "bad-schema";
+        expect(() => loadQqReleases()).toThrow(QqReleasesError);
+    });
+
+    it("known 为空数组 → QqReleasesError", () => {
+        fsMode.mode = "empty-known";
+        expect(() => loadQqReleases()).toThrow(QqReleasesError);
+    });
+});
+
+describe("latestRelease", () => {
+    it("known 按录入顺序取最后一项（最新）", () => {
+        const file = {
+            schema: 1,
+            known: [
+                {
+                    version: "9.9.30-1",
+                    url: "https://a/old.exe",
+                    sha256: "",
+                    appid: 0,
+                    source: "official",
+                },
+                {
+                    version: "9.9.31-2",
+                    url: "https://a/new.exe",
+                    sha256: "",
+                    appid: 0,
+                    source: "official",
+                },
+            ],
+        };
+        expect(latestRelease(file).version).toBe("9.9.31-2");
+        expect(latestRelease(file).url).toBe("https://a/new.exe");
+    });
+
+    it("空 known → QqReleasesError（防御：loadQqReleases 已拦，直传空仍安全）", () => {
+        expect(() => latestRelease({ schema: 1, known: [] })).toThrow(QqReleasesError);
     });
 });

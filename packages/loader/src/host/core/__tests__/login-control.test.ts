@@ -311,4 +311,67 @@ describe("createLoginControlHandler", () => {
         });
         cap.restore();
     });
+
+    it("onLoginProgress：QR 数据上 wire（sendQr）；登录态合法才发 login 消息", async () => {
+        const cap = captureStdout();
+        type ProgressFn = (p: {
+            state: string;
+            qr?: { pngBase64: string; qrcodeUrl: string };
+        }) => void;
+        const progressHolder: { fn: ProgressFn | null } = { fn: null };
+        const core = {
+            login: (opts: Record<string, unknown>) => {
+                progressHolder.fn = opts["onLoginProgress"] as ProgressFn;
+                return new Promise<LoginResultLike | null>(() => {
+                    // 不 settle（挂起中，QR 推送持续）
+                });
+            },
+        } as unknown as CoreLike;
+        const handler = createLoginControlHandler(core, 1, new LoginControl({ resolve: null }), {
+            reassemble: () => Promise.resolve(true),
+        });
+        handler({});
+        progressHolder.fn?.({
+            state: "waiting_scan",
+            qr: { pngBase64: "cG5n", qrcodeUrl: "https://qr/x" },
+        });
+        progressHolder.fn?.({ state: "bogus_state" }); // 非法登录态 → 不发 login 消息
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const all = cap
+            .lines()
+            .map((l) => JSON.parse(l) as Record<string, unknown>)
+            .filter(Boolean);
+        expect(all.some((m) => m["type"] === "qr")).toBe(true);
+        // waiting_scan 合法登录态上 wire；bogus_state 被过滤（仅一条 login）
+        expect(loginPayloads(cap.lines())).toEqual([{ state: "waiting_scan" }]);
+        cap.restore();
+    });
+
+    it("ready 软重登失败且未注入失败处理 → 默认上报 failed + process.exit(1)", async () => {
+        const cap = captureStdout();
+        const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+        try {
+            const control = new LoginControl({ resolve: null });
+            control.beginAssembly();
+            control.markReady();
+            const { core, settle } = makeDeferredCore();
+            const handler = createLoginControlHandler(core, 1, control, {
+                reassemble: () => Promise.resolve(false),
+                // 无 onReassembleFailed → defaultReassembleFailed
+            });
+            handler({});
+            settle(RESULT2);
+            await vi.waitFor(() => {
+                expect(exitSpy).toHaveBeenCalledWith(1);
+            });
+            const statuses = cap
+                .lines()
+                .map((l) => JSON.parse(l) as { type?: string; payload?: { phase?: string } })
+                .filter((m) => m["type"] === "status");
+            expect(statuses.at(-1)?.payload).toMatchObject({ phase: "failed" });
+        } finally {
+            exitSpy.mockRestore();
+            cap.restore();
+        }
+    });
 });

@@ -37,6 +37,7 @@ class FakeNode {
 interface LoggerCall {
     console: boolean;
     file?: string;
+    fileLevel?: string;
     base?: Record<string, unknown>;
 }
 
@@ -217,5 +218,110 @@ describe("createKernelServices 在线状态注册（2026-09-15 发现 I：半在
         expect(services).not.toBeNull();
         expect(services?.msgApi).toBeDefined();
         services?.dispose();
+    });
+});
+
+describe("createKernelServices 批次三通道与 ob11 子 logger", () => {
+    it("ctx.wrapper.loginService 缺失 → Login 桥跳过（通道保留，dispose 面少一个）", async () => {
+        vi.stubEnv("NAPUTO_IPC", "0");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        const { createKernelServices } = await import("../kernel-services.js");
+        const services = await createKernelServices(stubKernel(), stubCtx(), {
+            uin: "10000",
+            uid: "u1",
+        } satisfies LoginResultLike);
+        expect(services).not.toBeNull();
+        // recentContact/login 通道仍在（事件为空但通道保留）
+        expect(services?.recentContactChannel).toBeDefined();
+        expect(services?.loginChannel).toBeDefined();
+        services?.dispose();
+        const disposed = instances.filter((n) => n.unregister.mock.calls.length > 0);
+        expect(disposed).toHaveLength(6); // 无 Login 桥
+    });
+
+    it("logger.child 可用 → calibLogger = child({module:ob11})（级别随 [log.levels].ob11）", async () => {
+        vi.stubEnv("NAPUTO_IPC", "0");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        const { createKernelServices } = await import("../kernel-services.js");
+        const childCalls: Array<{
+            bindings: Record<string, unknown>;
+            options?: { level?: string };
+        }> = [];
+        const childLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+        const kernel = stubKernel() as unknown as KernelLike & {
+            createLogger: (opts: unknown) => LoggerLike;
+        };
+        const originalCreateLogger = kernel.createLogger.bind(kernel);
+        (kernel as unknown as { createLogger: (opts: unknown) => LoggerLike }).createLogger = (
+            opts: unknown,
+        ) => {
+            originalCreateLogger(opts);
+            return {
+                info: vi.fn(),
+                warn: vi.fn(),
+                error: vi.fn(),
+                debug: vi.fn(),
+                child: (bindings: Record<string, unknown>, options?: { level?: string }) => {
+                    childCalls.push({ bindings, ...(options !== undefined ? { options } : {}) });
+                    return childLogger;
+                },
+            };
+        };
+        const services = await createKernelServices(
+            kernel,
+            stubCtx(),
+            { uin: "10000", uid: "u1" } satisfies LoginResultLike,
+            {
+                level: "info",
+                banner: true,
+                unboundReceive: true,
+                levels: { ob11: "debug" },
+            },
+        );
+        expect(childCalls).toHaveLength(1);
+        expect(childCalls[0]?.bindings).toEqual({ module: "ob11" });
+        expect(childCalls[0]?.options).toEqual({ level: "debug" });
+        expect(services?.calibLogger).toBe(childLogger);
+    });
+
+    it("kernel 缺 createLogger（老版本）→ logger 兜底 undefined，calibLogger = 静默 logger", async () => {
+        vi.stubEnv("NAPUTO_IPC", "1");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        const { createKernelServices } = await import("../kernel-services.js");
+        const kernel = stubKernel() as unknown as Record<string, unknown>;
+        delete kernel["createLogger"];
+        const services = await createKernelServices(kernel as unknown as KernelLike, stubCtx(), {
+            uin: "10000",
+            uid: "u1",
+        } satisfies LoginResultLike);
+        expect(services).not.toBeNull();
+        expect(services?.logger).toBeUndefined();
+        // NOOP_LOGGER 兜底：四级别可调不抛
+        expect(() => services?.calibLogger.info({})).not.toThrow();
+        expect(() => services?.calibLogger.warn({})).not.toThrow();
+        expect(() => services?.calibLogger.error({})).not.toThrow();
+        expect(() => services?.calibLogger.debug({})).not.toThrow();
+        services?.dispose();
+    });
+
+    it("[log.file] 配置 → createLogger file 走 resolveLogFilePath 展开路径", async () => {
+        vi.stubEnv("NAPUTO_IPC", "0");
+        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        const { createKernelServices } = await import("../kernel-services.js");
+        const services = await createKernelServices(
+            stubKernel(),
+            stubCtx(),
+            { uin: "10000", uid: "u1" } satisfies LoginResultLike,
+            {
+                level: "info",
+                banner: true,
+                unboundReceive: true,
+                levels: {},
+                file: { path: "logs/custom.log", level: "error" },
+            },
+        );
+        expect(services).not.toBeNull();
+        expect(loggerCalls[0]?.file).toContain("custom.log");
+        expect(loggerCalls[0]?.fileLevel).toBe("error");
     });
 });

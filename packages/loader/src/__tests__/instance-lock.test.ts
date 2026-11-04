@@ -22,6 +22,24 @@ import {
 } from "../instance-lock.js";
 import { CMDLINE_PROBE_SUPPORTED, selfCmdline } from "../pid-cmdline.js";
 
+/** node:fs 写入失败注入（vi.hoisted：mock 工厂内可见；null = 透传真实实现）。 */
+const fsWrite = vi.hoisted(() => {
+    return { fail: false as boolean };
+});
+
+vi.mock("node:fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs")>();
+    return {
+        ...actual,
+        writeFileSync: (path: Parameters<typeof actual.writeFileSync>[0], ...rest: unknown[]) => {
+            if (fsWrite.fail) {
+                throw new Error("EACCES");
+            }
+            return (actual.writeFileSync as (...args: unknown[]) => void)(path, ...rest);
+        },
+    };
+});
+
 const readCmdlineMock = vi.hoisted(() => vi.fn<(pid: number) => string | null>());
 
 vi.mock("../pid-cmdline.js", async (importOriginal) => {
@@ -192,5 +210,16 @@ describe("releaseInstanceLock", () => {
 
     it("锁不存在 → 无操作", () => {
         expect(() => releaseInstanceLock(dataDir)).not.toThrow();
+    });
+});
+
+describe("锁写入失败（磁盘/权限）", () => {
+    it("writeFileSync 抛错 → acquire 返回 false（不假装拿到锁）", () => {
+        fsWrite.fail = true;
+        try {
+            expect(acquireInstanceLock(dataDir, "me")).toBe(false);
+        } finally {
+            fsWrite.fail = false;
+        }
     });
 });

@@ -142,3 +142,84 @@ describe("lastIpcStatusPhase / shouldSendGenericBootFailed（引导失败决策�
         expect(sender.shouldSendGenericBootFailed(true, "failed")).toBe(false);
     });
 });
+
+describe("其余 IPC 消息 wire 格式（登录/二维码/事件/日志/动作响应/心跳）", () => {
+    it("sendLogin：state/selfInfo/message 条件展开", async () => {
+        const sender = await freshSender();
+        const lines = captureStdout();
+        try {
+            sender.enableIpc();
+            sender.sendLogin("logged_in", { uin: "10001", uid: "u1", nick: "甲" });
+            sender.sendLogin("failed", undefined, "登录失败");
+            sender.sendLogin("waiting_scan");
+            expect(lines).toHaveLength(3);
+            expect(JSON.parse(lines[0] as string)).toEqual({
+                v: 1,
+                type: "login",
+                payload: { state: "logged_in", selfInfo: { uin: "10001", uid: "u1", nick: "甲" } },
+            });
+            expect(JSON.parse(lines[1] as string)).toEqual({
+                v: 1,
+                type: "login",
+                payload: { state: "failed", message: "登录失败" },
+            });
+            expect(JSON.parse(lines[2] as string)).toEqual({
+                v: 1,
+                type: "login",
+                payload: { state: "waiting_scan" },
+            });
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
+
+    it("sendQr / sendEvent / sendLog / sendResult / sendPong / sendPing wire", async () => {
+        const sender = await freshSender();
+        const lines = captureStdout();
+        try {
+            sender.enableIpc();
+            sender.sendQr("cG5n", "https://qr.example/x");
+            sender.sendEvent("Msg", "onRecvMsg", [{ msgId: "m1" }]);
+            sender.sendLog("warn", "告警文本");
+            sender.sendResult(3, { ok: true, value: 1 });
+            sender.sendPong();
+            sender.sendPing();
+            const parsed = lines.map((l) => JSON.parse(l as string) as Record<string, unknown>);
+            expect(parsed[0]).toMatchObject({
+                type: "qr",
+                payload: { pngBase64: "cG5n", qrcodeUrl: "https://qr.example/x" },
+            });
+            expect(parsed[1]).toMatchObject({
+                type: "event",
+                payload: { service: "Msg", name: "onRecvMsg", args: [{ msgId: "m1" }] },
+            });
+            expect(parsed[2]).toMatchObject({
+                type: "log",
+                payload: { level: "warn", message: "告警文本" },
+            });
+            expect(parsed[3]).toMatchObject({
+                type: "result",
+                id: 3,
+                payload: { ok: true, value: 1 },
+            });
+            expect(parsed[4]).toMatchObject({ type: "pong" });
+            expect(parsed[5]).toMatchObject({ type: "ping" });
+        } finally {
+            vi.restoreAllMocks();
+        }
+    });
+
+    it("stdout 写异常 → 静默（不阻塞引导）", async () => {
+        const sender = await freshSender();
+        const spy = vi.spyOn(process.stdout, "write").mockImplementation(() => {
+            throw new Error("EPIPE");
+        });
+        try {
+            sender.enableIpc();
+            expect(() => sender.sendStatus("ready")).not.toThrow();
+            expect(() => sender.sendPing()).not.toThrow();
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});
