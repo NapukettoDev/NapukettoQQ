@@ -144,3 +144,17 @@ describe("tryShape", () => {
         expect(tryShape(session, "boom")).toBe("[error]");
     });
 });
+
+describe("截断上限", () => {
+    it("Map 条目超 MAX_OBJECT_KEYS(50) → 截断到 50 条", () => {
+        const big = new Map(Array.from({ length: 51 }, (_, i) => [`k${i}`, i]));
+        const out = serialize(big) as {
+            kind: string;
+            size: number;
+            entries: Record<string, unknown>;
+        };
+        expect(out["kind"]).toBe("Map");
+        expect(out["size"]).toBe(51);
+        expect(Object.keys(out["entries"])).toHaveLength(50);
+    });
+});

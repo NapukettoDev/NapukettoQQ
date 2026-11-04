@@ -7,12 +7,8 @@
  * 对象模拟 QQ 环境，不依赖真实 wrapper.node。
  */
 import { describe, expect, it, vi } from "vitest";
-import type {
-    NodeIQQNTWrapperEngine,
-    NodeIQQNTWrapperSession,
-    NodeIQQNTWrapperSessionCtor,
-    WrapperNodeApi,
-} from "../../types/index.js";
+import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "../../types/index.js";
+import { makeCtx, mockExports, sessionCtorMock } from "../test-support.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import {
     createSession,
@@ -22,57 +18,6 @@ import {
     resolveQqUserDataRoot,
     startSession,
 } from "../wrapper-loader.js";
-
-/** 构造最小可用的 mock exports（overrides 宽松透传，模拟 QQ 环境）。 */
-function mockExports(overrides: Record<string, unknown> = {}): WrapperNodeApi {
-    const engine = { initWithDeskTopConfig: vi.fn() };
-    const base = {
-        NodeIQQNTWrapperEngine: { get: () => engine },
-        NodeIQQNTWrapperSession: {
-            get: () => null,
-            getNTWrapperSession: () => null,
-            create: () => null,
-        },
-        NodeIQQNTStartupSessionWrapper: {
-            create: () => ({ start: vi.fn(), getSessionIdList: () => new Map() }),
-        },
-        NodeQQNTWrapperUtil: {
-            get: () => ({ getNTUserDataInfoConfig: () => null }),
-        },
-        NodeIKernelLoginService: {
-            get: () => null,
-        },
-    };
-    return { ...base, ...overrides } as unknown as WrapperNodeApi;
-}
-
-/** 构造 WrapperContext 便捷函数（engine 类型宽松断言）。 */
-function makeCtx(exports: WrapperNodeApi): WrapperContext {
-    const engine = (
-        exports.NodeIQQNTWrapperEngine as unknown as {
-            get: () => NodeIQQNTWrapperEngine;
-        }
-    ).get();
-    return {
-        exports,
-        engine,
-        versionInfo: { fullVersion: "9.9.31-49919", buildVersion: "49919" },
-        session: null,
-        startupSession: null,
-        loginService: null,
-    };
-}
-
-/** Session 构造器 mock：create 兜底返回传入的 session（不依赖 new 构造）。 */
-function sessionCtorMock(session: unknown): NodeIQQNTWrapperSessionCtor {
-    const ctor = vi.fn(() => session) as unknown as NodeIQQNTWrapperSessionCtor;
-    Object.assign(ctor, {
-        get: () => null,
-        getNTWrapperSession: () => null,
-        create: () => session,
-    });
-    return ctor;
-}
 
 describe("createWrapper", () => {
     it("exports 有效时返回完整上下文", () => {
