@@ -32,19 +32,16 @@ export default defineConfig({
             // （mock 上下文 / fake 服务端的 `test-support.ts`，被 *.test.ts
             // import 后进 lcov）。Codecov 的 patch 视角把它当生产代码，报
             // 「patch coverage 57% · 6 lines missing」要求给测试助手补单测——
-            // 测试支撑不是发布产物，不该进入分子/分母。两条模式互补：
-            // `__tests__/**` 挡住测试目录里的任何助手（含 adapter 的
-            // kurobot/milky/satori/onebot11 与 network/media/loader），
-            // `test-support.ts` 挡住 2026-11 补测时放在 src 根的那几个
-            // （apps/cli、kernel 的 apis/bridge/wrapper）。新增助手命名沿用
-            // test-support.ts 或放 `__tests__/` 内即可自动豁免。
+            // 测试支撑不是发布产物，不该进入分子/分母。整个 `__tests__/`
+            // 目录排除即可：助手文件一律放测试目录内。同日把 2026-11 补测时
+            // 错放在 src 根的 4 个 test-support.ts（apps/cli 与 kernel 的
+            // apis/bridge/wrapper）迁回各自 `__tests__/`，与其余包一致。
             exclude: [
                 "coverage/**",
                 "**/node_modules/**",
                 "**/dist/**",
                 "packages/*/test?(s)/**",
                 "**/__tests__/**",
-                "**/test-support.ts",
                 "**/*.test.ts",
                 "**/*.test-d.ts",
                 "**/*.d.ts",
