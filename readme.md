@@ -13,8 +13,6 @@
 &emsp;
 [![npm](https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/create-napukettoqq)
 &emsp;
-![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript&logoColor=white)
-&emsp;
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
 <p>
