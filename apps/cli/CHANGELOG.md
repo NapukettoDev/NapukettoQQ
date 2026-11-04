@@ -1,5 +1,12 @@
 # @napuketto/cli
 
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [c246bcc]
+  - @napuketto/loader@0.5.1
+
 ## 0.5.3
 
 ### Patch Changes
