@@ -87,6 +87,10 @@ describe("resolveLocalMediaFile", () => {
         );
     });
 
+    it("mediaBaseDir 未注入 → 相对路径直接 null（base 分支跳过）", () => {
+        expect(resolveLocalMediaFile("nt_data/a.jpg", {})).toBeNull();
+    });
+
     it("未命中返回 null", () => {
         expect(resolveLocalMediaFile("nt_data/nope.jpg", { mediaBaseDir: "C:/nope" })).toBeNull();
         expect(resolveLocalMediaFile("", {})).toBeNull();
@@ -135,6 +139,46 @@ describe("GetImageAction", () => {
         const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeUndefined();
+    });
+
+    it("未注入 cacheDir + picUrl → 跳过主动下载，仅返回 url", async () => {
+        const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {});
+        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        expect(result?.url).toBe("https://x/img.jpg");
+        expect(result?.file).toBeUndefined();
+    });
+
+    it("消息无 pic 元素 → retcode 102「不包含图片」", async () => {
+        const deps = makeDeps(pttMsg({ filePath: "nt_data/Ptt/1.silk" }), {});
+        const result = await new GetImageAction(deps).handle({ message_id: 1 });
+        expect(result.retcode).toBe(102);
+        expect(result.message).toContain("不包含图片");
+    });
+
+    it("message_id 与 file 都缺 → retcode 105「需要 message_id 或 file」", async () => {
+        const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {});
+        const result = await new GetImageAction(deps).handle({});
+        expect(result.retcode).toBe(105);
+        expect(result.message).toContain("get_image 需要 message_id 或 file");
+    });
+
+    it("消息已登记但 fetch 为空 → retcode 102「不存在或已被撤回」", async () => {
+        const deps = makeDeps(null, {});
+        const result = await new GetImageAction(deps).handle({ message_id: 1 });
+        expect(result.retcode).toBe(102);
+        expect(result.message).toContain("不存在或已被撤回");
+    });
+
+    it("file 参数兜底（message_id 缺省时用 file 反查）", async () => {
+        const base = tempDir("img-file");
+        const file = join(base, "nt_data/Pic/y.jpg").replaceAll("\\", "/");
+        mkdirSync(join(base, "nt_data", "Pic"), { recursive: true });
+        writeFileSync(file, "x");
+        const deps = makeDeps(picMsg({ sourcePath: "nt_data/Pic/y.jpg", fileName: "y.jpg" }), {
+            mediaBaseDir: base,
+        });
+        const result = (await new GetImageAction(deps).handle({ file: "1" })).data;
+        expect(result?.file?.replaceAll("\\", "/")).toBe(file);
     });
 });
 
@@ -188,6 +232,83 @@ describe("GetRecordAction", () => {
         expect(result?.file_name).toBe("gone.silk");
     });
 
+    it("下载返回缺 fileSize/fileName → 省略元数据字段；无 filePath → 回退原始路径", async () => {
+        const base = tempDir("voice-bare");
+        mkdirSync(join(base, "nt_data", "Ptt"), { recursive: true });
+        const downloaded = join(base, "nt_data/Ptt/bare.silk").replaceAll("\\", "/");
+        writeFileSync(downloaded, "silk");
+        // 返回值只有 filePath → file_size/file_name 省略（?? 判定右支）
+        const bare = (
+            await new GetRecordAction(
+                makeDeps(pttMsg({ filePath: "nt_data/Ptt/bare.silk" }), {
+                    mediaBaseDir: base,
+                    downloadPtt: async () => ({ filePath: downloaded }),
+                }),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(bare?.file?.replaceAll("\\", "/")).toBe(downloaded);
+        expect("file_size" in (bare as object)).toBe(false);
+        expect("file_name" in (bare as object)).toBe(false);
+        // 连 filePath 都没有 → 走回退（原始路径）
+        const fallback = (
+            await new GetRecordAction(
+                makeDeps(
+                    pttMsg({
+                        filePath: "nt_data/Ptt/gone.silk",
+                        fileName: "gone.silk",
+                        fileSize: "3",
+                    }),
+                    { mediaBaseDir: tempDir("voice-none"), downloadPtt: async () => ({}) },
+                ),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(fallback?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(fallback?.file_name).toBe("gone.silk");
+    });
+
+    it("下载落盘返回值缺 fileSize/fileName → 本地命中后仅返回 file（元数据省略）", async () => {
+        const base = tempDir("voice-dl-bare");
+        mkdirSync(join(base, "nt_data", "Ptt"), { recursive: true });
+        const landed = join(base, "nt_data/Ptt/landed.silk").replaceAll("\\", "/");
+        writeFileSync(landed, "silk");
+        const result = (
+            await new GetRecordAction(
+                makeDeps(pttMsg({ filePath: "nt_data/Ptt/gone.silk" }), {
+                    mediaBaseDir: base,
+                    downloadPtt: async () => ({ filePath: "nt_data/Ptt/landed.silk" }),
+                }),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(result?.file?.replaceAll("\\", "/")).toBe(landed);
+        expect("file_size" in (result as object)).toBe(false);
+        expect("file_name" in (result as object)).toBe(false);
+    });
+
+    it("下载返回的 filePath 本地仍不可解析 → 回退原始 filePath（transferStatus=2 空转场景）", async () => {
+        const result = (
+            await new GetRecordAction(
+                makeDeps(
+                    pttMsg({
+                        filePath: "nt_data/Ptt/gone.silk",
+                        fileName: "gone.silk",
+                        fileSize: "10",
+                    }),
+                    {
+                        mediaBaseDir: tempDir("voice-void"),
+                        downloadPtt: async () => ({
+                            filePath: "nt_data/Ptt/still-gone.silk",
+                            fileName: "still-gone.silk",
+                            fileSize: "99",
+                        }),
+                    },
+                ),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(result?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(result?.file_name).toBe("gone.silk");
+        expect(result?.file_size).toBe("10");
+    });
+
     it("本地未命中 + 下载失败/未落盘 → 回退原始 filePath + 元数据（不抛错）", async () => {
         const result = (
             await new GetRecordAction(
@@ -209,6 +330,59 @@ describe("GetRecordAction", () => {
         expect(result?.file).toBe("nt_data/Ptt/gone.silk");
         expect(result?.file_name).toBe("gone.silk");
         expect(result?.file_size).toBe("10");
+    });
+
+    it("消息已登记但 fetch 为空 → retcode 102（record 同口径）", async () => {
+        const deps = makeDeps(null, {});
+        const result = await new GetRecordAction(deps).handle({ message_id: 1 });
+        expect(result.retcode).toBe(102);
+        expect(result.message).toContain("不存在或已被撤回");
+    });
+
+    it("原生下载落到 mediaBaseDir 外的绝对路径 → 返回下载后路径（B1 成功分支）", async () => {
+        const base = tempDir("voice-dl-abs");
+        const out = tempDir("voice-dl-abs-out");
+        const downloaded = join(out, "gone.silk");
+        writeFileSync(downloaded, "silk");
+        const result = (
+            await new GetRecordAction(
+                makeDeps(
+                    pttMsg({
+                        filePath: "nt_data/Ptt/gone.silk",
+                        fileName: "gone.silk",
+                        fileSize: "10",
+                    }),
+                    {
+                        mediaBaseDir: base,
+                        downloadPtt: async () => ({
+                            filePath: downloaded,
+                            fileName: "gone.silk",
+                            fileSize: "10",
+                        }),
+                    },
+                ),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(result?.file?.replaceAll("\\", "/")).toBe(downloaded.replaceAll("\\", "/"));
+    });
+
+    it("原生下载成功但未落盘（无 filePath）→ 回退原始路径", async () => {
+        const result = (
+            await new GetRecordAction(
+                makeDeps(
+                    pttMsg({
+                        filePath: "nt_data/Ptt/gone.silk",
+                        fileName: "gone.silk",
+                        fileSize: "10",
+                    }),
+                    {
+                        mediaBaseDir: tempDir("voice-empty"),
+                        downloadPtt: async () => ({ fileName: "gone.silk", fileSize: "10" }),
+                    },
+                ),
+            ).handle({ message_id: 1 })
+        ).data;
+        expect(result?.file).toBe("nt_data/Ptt/gone.silk");
     });
 
     it("消息无 ptt → NOT_FOUND", async () => {
