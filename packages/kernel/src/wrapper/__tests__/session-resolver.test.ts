@@ -172,3 +172,66 @@ describe("getMainSession", () => {
         expect(getMainSession(ctx)).toBeNull();
     });
 });
+
+describe("getSessionIdList 边界形态", () => {
+    it("created 无 getSessionIdList 方法 → null（不再取 session）", () => {
+        const created = { start: vi.fn() };
+        const ctx = makeCtx(
+            partialExports({
+                NodeIQQNTStartupSessionWrapper: { create: () => created },
+                NodeIQQNTWrapperSession: { getNTWrapperSession: () => fakeSession() },
+            }),
+        );
+        expect(getMainSession(ctx)).toBeNull();
+        expect(created.start).toHaveBeenCalledOnce();
+        expect(ctx.session).toBeNull();
+    });
+
+    it("sessionIdList 值非字符串（数字值 + 字符串键）→ 退化取键名", () => {
+        const created = {
+            start: vi.fn(),
+            getSessionIdList: () => new Map<unknown, unknown>([["nt_5", 123]]),
+        };
+        const getNT = vi.fn((_id: string) => fakeSession());
+        const ctx = makeCtx(
+            partialExports({
+                NodeIQQNTStartupSessionWrapper: { create: () => created },
+                NodeIQQNTWrapperSession: { getNTWrapperSession: getNT },
+            }),
+        );
+        expect(getMainSession(ctx)).not.toBeNull();
+        expect(getNT.mock.calls[0]?.[0]).toBe("nt_5");
+    });
+
+    it("Map 键为非字符串（数字键 + 字符串值匹配失败）→ 取第一个字符串值/键兜底", () => {
+        const created = {
+            start: vi.fn(),
+            getSessionIdList: () => new Map<unknown, unknown>([[7, "nt_7"]]),
+        };
+        const ctx = makeCtx(
+            partialExports({
+                NodeIQQNTStartupSessionWrapper: { create: () => created },
+                NodeIQQNTWrapperSession: {
+                    getNTWrapperSession: vi.fn(() => fakeSession()),
+                },
+            }),
+        );
+        expect(getMainSession(ctx)).not.toBeNull();
+    });
+
+    it("Map 全为非字符串键值 → 找不到主 id 返回 null", () => {
+        const created = {
+            start: vi.fn(),
+            getSessionIdList: () => new Map<unknown, unknown>([[7, 8]]),
+        };
+        const ctx = makeCtx(
+            partialExports({
+                NodeIQQNTStartupSessionWrapper: { create: () => created },
+                NodeIQQNTWrapperSession: {
+                    getNTWrapperSession: vi.fn(() => fakeSession()),
+                },
+            }),
+        );
+        expect(getMainSession(ctx)).toBeNull();
+    });
+});

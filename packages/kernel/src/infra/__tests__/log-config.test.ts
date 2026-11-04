@@ -121,3 +121,17 @@ describe("parseLogConfig env 覆盖", () => {
         expect(implicit.file?.level).toBe("warn");
     });
 });
+
+describe("形状校验补充（报错文案）", () => {
+    it("log 段非对象（字符串）→ INVALID_PARAM", () => {
+        expect(() => parseLogConfig("not-an-object")).toThrow(/log 段必须是对象/);
+    });
+
+    it("log.levels 非对象 → INVALID_PARAM", () => {
+        expect(() => parseLogConfig({ levels: "debug" })).toThrow(/log\.levels 必须是对象/);
+    });
+
+    it("log.file 非对象 → INVALID_PARAM", () => {
+        expect(() => parseLogConfig({ file: "logs/x.log" })).toThrow(/log\.file 必须是对象/);
+    });
+});

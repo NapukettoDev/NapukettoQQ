@@ -125,3 +125,36 @@ describe("未知载荷与生命周期", () => {
         cache.unregister();
     });
 });
+
+describe("拍平边界补充", () => {
+    it("分类缺 buddyList → 该分类跳过（不炸）", async () => {
+        const { cache, channel } = makeCache();
+        cache.register();
+        channel.emit("Buddy/onBuddyListChange", [
+            { categoryId: 1, categorySortId: 0, categroyName: "无明细" },
+            {
+                categoryId: 2,
+                categorySortId: 1,
+                categroyName: "有明细",
+                buddyList: [{ uid: "u1", uin: "10001", nick: "A" }],
+            },
+        ] as never);
+        expect(cache.listBuddies()).toHaveLength(1);
+    });
+
+    it("buddyList 内 uid 非字符串 / 空串 → 条目跳过", async () => {
+        const { cache, channel } = makeCache();
+        cache.register();
+        channel.emit("Buddy/onBuddyListChange", [
+            {
+                categoryId: 1,
+                categorySortId: 0,
+                categroyName: "脏数据",
+                buddyList: [{ uid: "", uin: "1" }, { uin: "2" }, { uid: "u9", uin: "9" }],
+            },
+        ] as never);
+        const list = cache.listBuddies();
+        expect(list).toHaveLength(1);
+        expect(list[0]?.uid).toBe("u9");
+    });
+});

@@ -55,6 +55,10 @@ describe("extractDataRoot", () => {
         expect(extractDataRoot('{"a":1,"b":"c"}')).toBeNull();
     });
 
+    it("数组内无 QQ 路径特征 → null（数组遍历耗尽）", () => {
+        expect(extractDataRoot('{"list":["C:/Users/x","C:/Program Files"]}')).toBeNull();
+    });
+
     it("非法 JSON → null（宽容不抛）", () => {
         expect(extractDataRoot("{not-json")).toBeNull();
     });

@@ -142,3 +142,14 @@ describe("isServiceGetter", () => {
         expect(isServiceGetter("getMsgServiceList")).toBe(false);
     });
 });
+
+describe("listMethods 原型链边界", () => {
+    it("函数自身的原型是 Function.prototype → 终止且不炸", () => {
+        const fn = function probeTargetFn() {
+            return 1;
+        };
+        const names = listMethods(fn);
+        expect(names).not.toContain("constructor");
+        expect(names).not.toContain("probeTargetFn");
+    });
+});

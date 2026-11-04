@@ -112,3 +112,23 @@ describe("listQQVersions", () => {
         expect(versions).toEqual(["9.9.31-49919"]);
     });
 });
+
+describe("版本元数据缺省分支", () => {
+    it("缺 package.json 抛 NOT_FOUND（明确失败而非静默）", () => {
+        rmSync(join(installDir, "versions", "9.9.31-49919", "resources", "app", "package.json"));
+        expect(() => resolveQQVersion(installDir, "9.9.31-49919")).toThrow(
+            /QQ 版本目录缺少 package\.json/,
+        );
+    });
+
+    it("package.json 缺 name/version → name/version 空串，fullVersion 回退目录版本号", () => {
+        writeFileSync(
+            join(installDir, "versions", "9.9.31-49919", "resources", "app", "package.json"),
+            "{}",
+            "utf8",
+        );
+        const info = resolveQQVersion(installDir, "9.9.31-49919");
+        expect(info.fullVersion).toBe("9.9.31-49919");
+        expect(info.buildVersion).toBe("");
+    });
+});

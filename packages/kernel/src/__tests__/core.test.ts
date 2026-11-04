@@ -343,3 +343,76 @@ describe("loginService.initConfig 装配链", () => {
         expect(initConfig).toHaveBeenCalledOnce();
     });
 });
+
+describe("装配与收尾补充", () => {
+    it("attachWrapper：无 env（QQ 主进程直连形态）→ startNapuketto 收到纯 exports", () => {
+        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
+        const wrapper = {
+            session: null,
+            loginService: {},
+            engine: {},
+            exports: {},
+            versionInfo: { fullVersion: "9.9.9-12345" },
+        } as unknown as WrapperContext;
+        startNapukettoMock.mockReturnValueOnce(wrapper);
+        const attached = core.attachWrapper({} as never);
+        expect(attached).toBe(wrapper);
+        expect(startNapukettoMock).toHaveBeenCalledWith(
+            expect.objectContaining({ wrapperExports: {} }),
+        );
+        const arg = startNapukettoMock.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+        expect("env" in arg).toBe(false);
+    });
+
+    it("qrOnly 强制扫码：loginService 为 null → INVALID_STATE（不触登录流程）", async () => {
+        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
+        const wrapper = {
+            session: null,
+            loginService: null,
+            engine: {},
+            exports: {},
+            versionInfo: { fullVersion: "9.9.9-12345" },
+        } as unknown as WrapperContext;
+        startNapukettoMock.mockReturnValueOnce(wrapper);
+        core.attachWrapper({} as never, { qqVersion: "9.9.9", dataDir: tmp } as never);
+        await expect(core.login({ appid: "537", qrOnly: true })).rejects.toMatchObject({
+            code: "INVALID_STATE",
+            message: /wrapper\/loginService 不可用/,
+        });
+        expect(quickLoginMock).not.toHaveBeenCalled();
+    });
+
+    it("stop：日志收尾不抛错（资源清理留给进程生命周期）", () => {
+        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
+        expect(() => core.stop()).not.toThrow();
+    });
+
+    it("QQ 主进程形态（process.type=browser）→ initConfig commonPath 用账号目录（不解析 QQ 数据根）", async () => {
+        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
+        const initConfig = vi.fn();
+        const wrapper = {
+            session: null,
+            loginService: { initConfig },
+            engine: {},
+            exports: {},
+            versionInfo: { fullVersion: "9.9.9-12345" },
+        } as unknown as WrapperContext;
+        startNapukettoMock.mockReturnValueOnce(wrapper);
+        core.attachWrapper({} as never, { qqVersion: "9.9.9", dataDir: tmp } as never);
+        quickLoginMock.mockResolvedValueOnce({
+            uin: "10001",
+            uid: "uid-1",
+            nick: "",
+        } as LoginResult);
+        const p = process as unknown as { type?: string };
+        p.type = "browser";
+        try {
+            await core.login({ appid: "537" });
+        } finally {
+            delete p.type;
+        }
+        const cfg = initConfig.mock.calls[0]?.[0] as { commonPath?: string };
+        // browser 下不走 resolveQqUserDataRoot（QQ 自己已配置 engine）
+        expect(cfg["commonPath"]).toBe(core["ctx"]["paths"]["accountDir"]);
+    });
+});
