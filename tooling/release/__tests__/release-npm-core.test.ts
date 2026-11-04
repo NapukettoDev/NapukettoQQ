@@ -261,3 +261,57 @@ describe("rewriteWorkspaceProtocol", () => {
         expect(() => rewriteWorkspaceProtocol(raw, versions)).toThrow(/工作区内找不到该包版本/);
     });
 });
+
+describe("loadPackage 形状兜底（补充）", () => {
+    it("缺 version → 0.0.0；缺 dependencies → 空表", async () => {
+        const dir = join(tmpRoot, "packages", "bare");
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, "package.json"), JSON.stringify({ name: "bare" }), "utf8");
+        const pkgs = await discoverPackages(tmpRoot);
+        expect(pkgs).toHaveLength(1);
+        expect(pkgs[0]?.name).toBe("bare");
+        expect(pkgs[0]?.version).toBe("0.0.0");
+        expect(pkgs[0]?.dependencies).toEqual({});
+    });
+
+    it("无 name 的 package.json → 跳过（不可发布）", async () => {
+        const dir = join(tmpRoot, "packages", "noname");
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, "package.json"), JSON.stringify({ version: "1.0.0" }), "utf8");
+        const pkgs = await discoverPackages(tmpRoot);
+        expect(pkgs).toEqual([]);
+    });
+
+    it("apps 目录不存在 → 空数组不抛错（工作区可能只有 packages）", async () => {
+        const dir = join(tmpRoot, "packages", "only");
+        await mkdir(dir, { recursive: true });
+        await writeFile(
+            join(dir, "package.json"),
+            JSON.stringify({ name: "only", version: "0.0.1" }),
+            "utf8",
+        );
+        const pkgs = await discoverPackages(tmpRoot);
+        expect(pkgs.map((p) => p.name)).toEqual(["only"]);
+    });
+});
+
+describe("topoSort 传递依赖链（补充）", () => {
+    it("三级链：无依赖者先出队，后继依次归零入度", () => {
+        const a: WorkspacePkg = { name: "a", dir: "a", version: "0.0.1", dependencies: {} };
+        const b: WorkspacePkg = {
+            name: "b",
+            dir: "b",
+            version: "0.0.1",
+            dependencies: { a: "workspace:*" },
+        };
+        const c: WorkspacePkg = {
+            name: "c",
+            dir: "c",
+            version: "0.0.1",
+            dependencies: { b: "workspace:*" },
+        };
+        expect(topoSort([c, b, a]).map((p) => p.name)).toEqual(["a", "b", "c"]);
+        // 单包工作区：无依赖者直接返回
+        expect(topoSort([a]).map((p) => p.name)).toEqual(["a"]);
+    });
+});
