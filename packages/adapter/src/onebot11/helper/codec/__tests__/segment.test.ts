@@ -199,6 +199,27 @@ describe("cqCodeToSegment", () => {
     });
 });
 
+describe("cqCodeToSegment：params 缺失兜底", () => {
+    it("各已知类型 params 为空对象 → data 值用空串兜底", () => {
+        const cases: [string, Record<string, unknown>][] = [
+            ["text", { text: "" }],
+            ["at", { qq: "" }],
+            ["face", { id: "" }],
+            ["image", { file: "" }],
+            ["record", { file: "" }],
+            ["video", { file: "" }],
+            ["file", { file: "" }],
+            ["reply", { id: "" }],
+            ["forward", { id: "" }],
+            ["json", { data: "" }],
+            ["xml", { data: "" }],
+        ];
+        for (const [type, data] of cases) {
+            expect(cqCodeToSegment({ type, params: {} })).toEqual({ type, data });
+        }
+    });
+});
+
 describe("segmentsToCqMessage", () => {
     it("text 转义（& [ ]）+ 特殊段编码（< > 不转义）", () => {
         expect(

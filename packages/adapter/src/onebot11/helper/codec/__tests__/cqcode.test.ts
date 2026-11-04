@@ -37,6 +37,14 @@ describe("CQ 码转义", () => {
     });
 });
 
+describe("parseCqMessage：畸形参数", () => {
+    it("无 = 的参数段跳过（eq<=0 防御分支），其余参数照常", () => {
+        const parts = parseCqMessage("[CQ:at,qq,qq2=9]");
+        expect(parts).toHaveLength(1);
+        expect(parts[0]).toEqual({ type: "at", params: { qq2: "9" } });
+    });
+});
+
 describe("encodeCqCode", () => {
     it("无参数 → [CQ:type]", () => {
         expect(encodeCqCode("text", {})).toBe("[CQ:text]");

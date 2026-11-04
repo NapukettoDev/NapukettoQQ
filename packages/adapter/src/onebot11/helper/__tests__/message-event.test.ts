@@ -30,6 +30,17 @@ function makeMsg(overrides: Partial<RawMessage> = {}): RawMessage {
     };
 }
 
+describe("toOb11MessageEvent messageFormat", () => {
+    it("messagePostFormat=string → message 字段为 CQ 码字符串（raw_message 同源）", () => {
+        const event = toOb11MessageEvent(makeMsg(), "10000", new MessageUnique(), "string");
+        if (event.post_type !== "message") {
+            throw new Error("预期 message 事件");
+        }
+        expect(event.message).toBe("你好");
+        expect(event.raw_message).toBe("你好");
+    });
+});
+
 describe("toOb11MessageEvent sender.role", () => {
     it("群消息缺省 role=member（ctx 未注入角色）", () => {
         const event = toOb11MessageEvent(makeMsg(), "10000", new MessageUnique());
@@ -84,5 +95,40 @@ describe("toOb11MessageInfo sender.role", () => {
             },
         );
         expect("role" in info.sender).toBe(false);
+    });
+
+    it("群消息 sendMemberName → sender.card（事件与信息两套结构同口径）", () => {
+        const msg = makeMsg({ sendMemberName: "群名片" });
+        const event = toOb11MessageEvent(msg, "10000", new MessageUnique());
+        expect(
+            event.post_type === "message" && event.message_type === "group"
+                ? event.sender.card
+                : undefined,
+        ).toBe("群名片");
+        const info = toOb11MessageInfo(msg, new MessageUnique());
+        expect(info.sender.card).toBe("群名片");
+    });
+});
+
+describe("toOb11MessageEvent 私聊 sub_type", () => {
+    it("C2C_TEMP（群内临时会话）→ sub_type=group；普通 C2C → friend", () => {
+        const temp = toOb11MessageEvent(
+            makeMsg({ chatType: ChatType.C2C_TEMP, peerUid: "u2" }),
+            "10000",
+            new MessageUnique(),
+        );
+        expect(
+            temp.post_type === "message" && temp.message_type === "private" ? temp.sub_type : "",
+        ).toBe("group");
+        const friend = toOb11MessageEvent(
+            makeMsg({ chatType: ChatType.C2C, peerUid: "u2" }),
+            "10000",
+            new MessageUnique(),
+        );
+        expect(
+            friend.post_type === "message" && friend.message_type === "private"
+                ? friend.sub_type
+                : "",
+        ).toBe("friend");
     });
 });
