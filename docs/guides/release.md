@@ -50,10 +50,19 @@ on:
 
 ## 3. 一次性仓库配置（非代码）
 
-### 3.1 GitHub App（NapukettoBot：检出 submodule + 版本提交直推 main）
+### 3.1 GitHub App（NapukettoBot：检出 submodule + 版本提交直推 main + 自动开 PR）
 
-1. 组织设置 → Developer settings → GitHub Apps：`NapukettoBot`（Repository permissions
-   只给 **Contents: Read and write**；Webhook 关闭）。
+1. 组织设置 → Developer settings → GitHub Apps：`NapukettoBot`，Repository permissions 给
+   **Contents: Read and write** 与 **Pull requests: Read and write**；Webhook 关闭。
+   - `Contents` 负责私有 submodule 检出与版本提交直推 main。
+   - `Pull requests` 是 `update-qq-releases.yml` 提数据 PR 用的（2026-11-04 加）：默认
+     `GITHUB_TOKEN` 在本仓建不了 PR（仓库设置「Allow GitHub Actions to create and approve
+     pull requests」关闭 → `GitHub Actions is not permitted to create or approve pull
+     requests`），**且即便打开该开关也不够**——`GITHUB_TOKEN` 创建 PR 不触发 `pull_request`
+     workflow，CI 不跑 → `gate / windows / audit` 三个必需检查缺报 → PR 进不了 merge queue。
+     App token 建的 PR 会正常触发 CI。
+   - 改 App 权限后**组织里有 installation 的人要点一次「Review / Accept new permissions」**，
+     否则铸出来的 token 仍然没有新权限，表现为 `Resource not accessible by integration`。
 2. 安装到 `NapukettoDev/NapukettoQQ` **与** `NapukettoDev/Napuketto-Native`——后者是
    私有 submodule `packages/loader/native`（闭源 stub；loader 包 `files` 里的
    `native/build/stub-test-env` 只有它能提供）。不检出则该条目匹配不到文件，npm 打包
