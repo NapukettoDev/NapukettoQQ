@@ -5,6 +5,9 @@
  * 保证钩子队列与 shutdownStarted 从零开始。信号测试直调新挂的监听器
  * （不 process.emit，避免触发测试 runner 自身的信号处理）。
  */
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -109,6 +112,41 @@ describe("installSignalShutdown", () => {
                     process.removeListener(signal as NodeJS.Signals, listener);
                 }
             }
+        }
+    });
+});
+
+describe("停止哨兵文件（write / remove / path）", () => {
+    it("stopSentinelPath：数据根 + 固定文件名", async () => {
+        const mod = await freshShutdown();
+        expect(mod.stopSentinelPath("/data")).toContain("napuketto.stop");
+    });
+
+    it("writeStopSentinel：all → 'all\\n'；单账号 → '<uin>\\n'", async () => {
+        const mod = await freshShutdown();
+        const dir = mkdtempSync(join(tmpdir(), "napuketto-shutdown-test-"));
+        try {
+            mod.writeStopSentinel(dir, "all");
+            expect(readFileSync(mod.stopSentinelPath(dir), "utf8")).toBe("all\n");
+            mod.writeStopSentinel(dir, "10001");
+            expect(readFileSync(mod.stopSentinelPath(dir), "utf8")).toBe("10001\n");
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it("removeStopSentinel：存在删除；不存在幂等", async () => {
+        const mod = await freshShutdown();
+        const dir = mkdtempSync(join(tmpdir(), "napuketto-shutdown-test-"));
+        try {
+            mod.writeStopSentinel(dir, "all");
+            expect(existsSync(mod.stopSentinelPath(dir))).toBe(true);
+            mod.removeStopSentinel(dir);
+            expect(existsSync(mod.stopSentinelPath(dir))).toBe(false);
+            // 幂等：再删不抛
+            expect(() => mod.removeStopSentinel(dir)).not.toThrow();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
         }
     });
 });
