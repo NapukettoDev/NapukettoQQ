@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
     launchSelfHost,
 } from "../launcher.js";
 import type { QqInstallInfo } from "../locate-qq.js";
+import { toWinePath } from "../wine.js";
 
 /** child_process mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -186,11 +187,19 @@ describe("launchSelfHost 前置校验", () => {
 
     it.skipIf(
         !existsSync(
-            join(dirname(fileURLToPath(import.meta.url)), "..", "dist", "host", "self-host.cjs"),
+            join(
+                dirname(fileURLToPath(import.meta.url)),
+                "..",
+                "..",
+                "dist",
+                "host",
+                "self-host.cjs",
+            ),
         ),
     )("默认 self-host 入口（dist 产物存在时）+ defaultStubDir 指向包内路径", async () => {
         const defaultEntry = join(
             dirname(fileURLToPath(import.meta.url)),
+            "..",
             "..",
             "dist",
             "host",
@@ -198,37 +207,43 @@ describe("launchSelfHost 前置校验", () => {
         );
         const options = baseOptions({ stubDir: makeStubDir() });
         delete options.selfHostEntry;
-        await launchSelfHost(options);
-        // selfHostEntry 未传 → 走默认入口分支（dist 产物）
-        expect(h.spawnCalls[0]?.args[0]).toBe(defaultEntry);
-        // defaultStubDir 纯路径推导（不读 native 子模块内容）
-        expect(defaultStubDir().endsWith(join("native", "build", "stub-test-env"))).toBe(true);
+        // 平台钉死 win32：否则 ubuntu 上会走 wine 探测分支（探测被 mock，但断言是 win32 形态）
+        await withPlatform("win32", async () => {
+            await launchSelfHost(options);
+            // selfHostEntry 未传 → 走默认入口分支（dist 产物）
+            expect(h.spawnCalls[0]?.args[0]).toBe(defaultEntry);
+            // defaultStubDir 纯路径推导（不读 native 子模块内容）
+            expect(defaultStubDir().endsWith(join("native", "build", "stub-test-env"))).toBe(true);
+        });
     });
 
-    it("onStage 播报 stub 就绪与 spawn 命令", async () => {
+    it("onStage 播报 stub 就绪与 spawn 命令（win32 形态，平台钉死）", async () => {
         const stages: string[] = [];
-        await launchSelfHost(baseOptions({ onStage: (m) => stages.push(m) }));
+        await withPlatform("win32", async () => {
+            await launchSelfHost(baseOptions({ onStage: (m) => stages.push(m) }));
+        });
         expect(stages.some((m) => m.includes("stub QQNT.dll 就绪"))).toBe(true);
         expect(stages.some((m) => m.includes("启动自建宿主子进程"))).toBe(true);
     });
 });
 
 describe("launchSelfHost win32 分支", () => {
-    it.skipIf(process.platform === "linux")(
-        "标准 node 宿主：spawn node selfHostPath，env 注入 QQ 路径与可选变量，PATH 前置 stub/wrapper",
-        async () => {
-            const stubDir = makeStubDir();
-            const options = baseOptions({
-                selfHost: true,
-                quickUin: "10001",
-                qrOnly: true,
-                ipc: true,
-                adapterEntry: join(tmpRoot, "adapter.mjs"),
-                networkEntry: join(tmpRoot, "network.mjs"),
-                configPath: join(tmpRoot, "napuketto.toml"),
-                extraEnv: { NAPUTO_DATA_ROOT: tmpRoot },
-                cwd: join(tmpRoot, "data"),
-            });
+    it("标准 node 宿主：spawn node selfHostPath，env 注入 QQ 路径与可选变量，PATH 前置 stub/wrapper", async () => {
+        const stubDir = makeStubDir();
+        const options = baseOptions({
+            selfHost: true,
+            quickUin: "10001",
+            qrOnly: true,
+            ipc: true,
+            adapterEntry: join(tmpRoot, "adapter.mjs"),
+            networkEntry: join(tmpRoot, "network.mjs"),
+            configPath: join(tmpRoot, "napuketto.toml"),
+            extraEnv: { NAPUTO_DATA_ROOT: tmpRoot },
+            cwd: join(tmpRoot, "data"),
+        });
+        // 平台钉死 win32：isLinux() 为 false 才走本分支（不真实执行任何外部二进制——
+        // spawn/spawnSync 全 mock）
+        await withPlatform("win32", async () => {
             await launchSelfHost(options);
             const call = h.spawnCalls[0];
             expect(call?.command).toBe(process.execPath);
@@ -247,31 +262,30 @@ describe("launchSelfHost win32 分支", () => {
             expect(env[ENV.CONFIG_PATH]).toBe(join(tmpRoot, "napuketto.toml"));
             expect(env["NAPUTO_DATA_ROOT"]).toBe(tmpRoot);
             expect(env[ENV.STUB_DIR]).toBe(stubDir);
-            // PATH 前置 stub 目录与 wrapper.node 目录（分号连接，win32 原样）
+            // PATH 前置 stub 目录与 wrapper.node 目录（win32 原样；真实 PATH 仅为
+            // 尾部透传，不参与断言——跨平台形态差异不碰）
             const entries = (env["PATH"] as string).split(";");
             expect(entries[0]).toBe(stubDir);
             expect(entries[1]).toBe(dirname(fakeQq().wrapperPath));
             // cwd 显式建目录（QQ 原生层 fallback 落盘不污染项目根）
             expect(call?.options["cwd"]).toBe(join(tmpRoot, "data"));
             expect(existsSync(join(tmpRoot, "data"))).toBe(true);
-        },
-    );
+        });
+    });
 
-    it.skipIf(process.platform === "linux")(
-        "非 node 宿主（bun.exe execPath）→ 解析真 node（显式路径）后 spawn",
-        async () => {
+    it("非 node 宿主（bun.exe execPath）→ 解析真 node（显式路径）后 spawn", async () => {
+        await withPlatform("win32", async () => {
             await withExecPath("C:\\runtime\\bun.exe", async () => {
                 const explicit = join(tmpRoot, "node.exe");
                 writeFileSync(explicit, "");
                 await launchSelfHost(baseOptions({ winNodePath: explicit }));
                 expect(h.spawnCalls[0]?.command).toBe(explicit);
             });
-        },
-    );
+        });
+    });
 
-    it.skipIf(process.platform === "linux")(
-        "非 node 宿主且无显式路径 → findSystemNode 系统 node 兜底（spawnSync where）",
-        async () => {
+    it("非 node 宿主且无显式路径 → findSystemNode 系统 node 兜底（spawnSync where）", async () => {
+        await withPlatform("win32", async () => {
             await withExecPath("bun.exe", async () => {
                 const sysNode = join(tmpRoot, "sys-node.exe");
                 writeFileSync(sysNode, "");
@@ -280,58 +294,72 @@ describe("launchSelfHost win32 分支", () => {
                 await launchSelfHost(baseOptions());
                 expect(h.spawnCalls[0]?.command).toBe(sysNode);
             });
-        },
-    );
+        });
+    });
 
     it("spawn error（ENOENT）→ stderr 兜底输出，宿主进程不崩", async () => {
-        await launchSelfHost(baseOptions());
-        const handler = h.spawnErrorHandlers[0];
-        expect(handler).toBeTypeOf("function");
-        const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-        try {
-            handler?.(Object.assign(new Error("spawn node ENOENT"), { code: "ENOENT" }));
-            expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("无法启动子进程"));
-        } finally {
-            errSpy.mockRestore();
-        }
+        await withPlatform("win32", async () => {
+            await launchSelfHost(baseOptions());
+            const handler = h.spawnErrorHandlers[0];
+            expect(handler).toBeTypeOf("function");
+            const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+            try {
+                handler?.(Object.assign(new Error("spawn node ENOENT"), { code: "ENOENT" }));
+                expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("无法启动子进程"));
+            } finally {
+                errSpy.mockRestore();
+            }
+        });
     });
 
     it("spawn error（非 ENOENT）→ 通用失败消息（无 wine 指引）", async () => {
-        await launchSelfHost(baseOptions());
-        const handler = h.spawnErrorHandlers[0];
-        const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-        try {
-            handler?.(new Error("权限不足"));
-            expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("子进程启动失败"));
-            expect(errSpy).toHaveBeenCalledWith(expect.not.stringContaining("wine64"));
-        } finally {
-            errSpy.mockRestore();
-        }
+        await withPlatform("win32", async () => {
+            await launchSelfHost(baseOptions());
+            const handler = h.spawnErrorHandlers[0];
+            const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+            try {
+                handler?.(new Error("权限不足"));
+                expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("子进程启动失败"));
+                expect(errSpy).toHaveBeenCalledWith(expect.not.stringContaining("wine64"));
+            } finally {
+                errSpy.mockRestore();
+            }
+        });
     });
 });
 
 describe("launchSelfHost linux/wine 分支", () => {
-    it.skipIf(process.platform !== "linux")(
-        "wine 就绪 → ensureWinNode 下载 → spawn wine（Z:\\ 路径 + 纯 Windows PATH）",
-        async () => {
-            vi.stubEnv("NAPUTO_WINE", "/usr/bin/wine-stable");
-            await withPlatform("linux", async () => {
-                h.syncResults.set("/usr/bin/wine-stable", { status: 0, stdout: "wine-9.0\n" });
-                await launchSelfHost(baseOptions());
-                expect(h.ensureWinNodeCalls).toBe(1);
-                const call = h.spawnCalls[0];
-                expect(call?.command).toBe("/usr/bin/wine-stable");
-                expect(call?.args[0]).toBe((h.winNode as { exePath: string }).exePath);
-                expect(call?.args[1]).toMatch(/^Z:\\/); // selfHostPath 转 wine 路径
-                const env = call?.options["env"] as Record<string, string>;
-                // wine 场景 PATH 必须纯 Windows 风格（Z:\ 条目 + 分号分隔）
-                expect((env["PATH"] as string).startsWith("Z:\\")).toBe(true);
-                expect(env["PATH"]).not.toContain(":");
-                expect(env[ENV.QQ_PATH]).toMatch(/^Z:\\/);
-                expect(env[ENV.STUB_DIR]).toMatch(/^Z:\\/);
-            });
-        },
-    );
+    it("wine 就绪 → ensureWinNode 下载 → spawn wine（路径全过 toWinePath + 受控 PATH fixture）", async () => {
+        vi.stubEnv("NAPUTO_WINE", "/usr/bin/wine-stable");
+        // 受控 PATH fixture：不读真实环境 PATH（runner 的 PATH 形态不可预期）；
+        // unix 风格 fixture 在任意宿主平台上经 unixPathToWinePath 得到同一产物
+        vi.stubEnv("PATH", "/a:/b");
+        await withPlatform("linux", async () => {
+            h.syncResults.set("/usr/bin/wine-stable", { status: 0, stdout: "wine-9.0\n" });
+            const stubDir = makeStubDir();
+            const options = baseOptions({ stubDir });
+            await launchSelfHost(options);
+            expect(h.ensureWinNodeCalls).toBe(1);
+            const call = h.spawnCalls[0];
+            expect(call?.command).toBe("/usr/bin/wine-stable");
+            expect(call?.args[0]).toBe((h.winNode as { exePath: string }).exePath);
+            // selfHostPath 转 wine 路径（toWinePath 纯函数，宿主平台无关）
+            expect(call?.args[1]).toBe(toWinePath(options.selfHostEntry as string));
+            const env = call?.options["env"] as Record<string, string>;
+            // PATH：stub 目录 + wrapper 目录 + 受控 fixture 全部 Z:\ 化，';' 连接——
+            // 对分隔后的条目数组做精确断言（不写 not.toContain(':') 这类跨平台必炸断言）
+            const entries = (env["PATH"] as string).split(";");
+            expect(entries).toEqual([
+                toWinePath(stubDir),
+                toWinePath(dirname(options.qq.wrapperPath)),
+                "Z:\\a",
+                "Z:\\b",
+            ]);
+            expect(env[ENV.QQ_PATH]).toBe(toWinePath(options.qq.qqPath));
+            expect(env[ENV.CFG_DIR]).toBe(toWinePath(resolve(options.cfgDir)));
+            expect(env[ENV.STUB_DIR]).toBe(toWinePath(stubDir));
+        });
+    });
 
     it("wine 缺失（ENOENT）→ spawn 前抛可读错误（含安装指引，宿主不崩）", async () => {
         await withPlatform("linux", async () => {
