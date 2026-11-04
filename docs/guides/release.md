@@ -73,8 +73,10 @@ on:
 4. 把 App 加进主分支 ruleset 的 **bypass 名单**，模式 `exempt`。
 
 > bypass 的语义是“免于该 ruleset 的全部规则”，不是“只免签名”。App 被滥用即可往 main 推
-> 任意内容（绕过 PR、merge queue、签名）。它只出现在 `prepare`，推送时用
-> `git -c core.hooksPath=/dev/null` 禁用 hook；剩余面靠 CODEOWNERS 兜底。
+> 任意内容（绕过 PR、merge queue、签名）。公开仓里它出现在两处：`release.yml` 的
+> `prepare`（直推版本提交与 tag，推送时用 `git -c core.hooksPath=/dev/null` 禁用 hook）、
+> `update-qq-releases.yml`（提数据 PR，token 在更新脚本跑完之后才铸造且只限本仓）；
+> 剩余面靠 CODEOWNERS 兜底。
 
 > 为什么单 App 复用而不是再建一个只读检出 App：GitHub App 权限按 App 级生效，无法对
 > 单仓降级，而 `actions/checkout` 主仓与 submodule 只接受单一 token，读写隔离只能靠
