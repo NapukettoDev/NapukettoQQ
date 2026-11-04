@@ -56,6 +56,17 @@ describe("narrowOfflineFiles：防御性收窄", () => {
         ]);
     });
 
+    it("RawMessage 型 fileName 缺失 → 空串；fileSize 缺失 → 0 兜底", () => {
+        const noName = [{ senderUin: "90009", elements: [{ fileElement: { fileSize: "10" } }] }];
+        expect(narrowOfflineFiles(noName)).toEqual([
+            { senderUin: "90009", name: "", size: 10, url: "" },
+        ]);
+        const noSize = [{ senderUin: "90009", elements: [{ fileElement: { fileName: "x.bin" } }] }];
+        expect(narrowOfflineFiles(noSize)).toEqual([
+            { senderUin: "90009", name: "x.bin", size: 0, url: "" },
+        ]);
+    });
+
     it("未知形状 / 无文件元素 / 空数组 → null（调用方打 raw 日志）", () => {
         expect(narrowOfflineFiles({ foo: 1 })).toBeNull();
         expect(narrowOfflineFiles([{ elements: [{ picElement: {} }] }])).toBeNull();

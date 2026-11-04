@@ -692,6 +692,53 @@ describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）"
         expect(events).toHaveLength(0);
     });
 
+    it("add_digest_uin 缺失 → add 事件省略 operator_id；fetchMessages 命中反查", async () => {
+        const { adapter, group, events, getEssenceList, fetchMsgs } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        // 新增项无加精操作者（add_digest_uin 空串）→ operator_id 无数据源省略
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(151, "")]);
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-151", msgSeq: "151" }]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        const event = events[0] as Record<string, unknown>;
+        expect(event["sub_type"]).toBe("add");
+        expect(event["sender_id"]).toBe(10001);
+        expect("operator_id" in event).toBe(false);
+        expect(typeof event["message_id"]).toBe("number");
+    });
+
+    it("add_digest_time 缺失（0 → null）→ add 事件 time 取当前时刻兜底", async () => {
+        const { adapter, group, events, getEssenceList, fetchMsgs } = makeEssenceHarness();
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        // add_digest_time = 0 → diff 层归一为 null → time 兜底 Date.now()/1000
+        const beforeSec = Math.floor(Date.now() / 1000);
+        getEssenceList.mockResolvedValue([
+            { ...essenceItem(150, "10002"), add_digest_time: 0 },
+            { ...essenceItem(151, "10003"), add_digest_time: 0 },
+        ]);
+        fetchMsgs.mockResolvedValue([{ msgId: "nt-151", msgSeq: "151" }]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        const afterSec = Math.floor(Date.now() / 1000);
+        const time = (events[0] as { time?: number }).time as number;
+        expect(time).toBeGreaterThanOrEqual(beforeSec);
+        expect(time).toBeLessThanOrEqual(afterSec);
+    });
+
     it("精华列表拉取失败 → warn 校准，无事件", async () => {
         const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness();
         await adapter.subscribeOnly();

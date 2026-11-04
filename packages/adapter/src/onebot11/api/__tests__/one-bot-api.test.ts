@@ -42,6 +42,37 @@ function makeApi(groupCache: GroupCache | undefined): OneBotApi {
     } as unknown as ConstructorParameters<typeof OneBotApi>[0]);
 }
 
+describe("OneBotApi uin/uid 转换委托", () => {
+    it("uinToUid / uidToUin 委托 groupApi 对应方法", async () => {
+        const uinToUid = vi.fn(async (uins: string[]) => new Map(uins.map((u) => [u, `u${u}`])));
+        const uidToUin = vi.fn(
+            async (uids: string[]) => new Map(uids.map((u) => [u, u.replace("u", "")])),
+        );
+        const api = makeApiWithGroupApi({ uinToUid, uidToUin });
+        expect(await api.uinToUid(["90001"])).toEqual(new Map([["90001", "u90001"]]));
+        expect(await api.uidToUin(["u90001"])).toEqual(new Map([["u90001", "90001"]]));
+        expect(uinToUid).toHaveBeenCalledWith(["90001"]);
+        expect(uidToUin).toHaveBeenCalledWith(["u90001"]);
+    });
+});
+
+/** 构造 OneBotApi（注入带方法的 groupApi 桩）。 */
+function makeApiWithGroupApi(groupApi: Record<string, unknown>): OneBotApi {
+    return new OneBotApi({
+        msgApi: {},
+        groupApi,
+        groupNotifyApi: {},
+        friendApi: {},
+        ticketApi: {},
+        richMediaApi: {},
+        profileApi: {},
+        profileLikeApi: {},
+        webApi: {},
+        self: { uin: "10000", nickname: "机器人" },
+        system: { appVersion: "test" },
+    } as unknown as ConstructorParameters<typeof OneBotApi>[0]);
+}
+
 describe("OneBotApi.groupMemberRole", () => {
     it("缓存命中 → roleToString 映射", async () => {
         const cache = {

@@ -56,6 +56,15 @@ describe("toOb11GroupRequestEvent", () => {
         }
     });
 
+    it("group / postscript 缺失 → group_id=0、comment 空串兜底", () => {
+        const notify = makeNotify({ status: GroupNotifyMsgStatus.KUNHANDLE });
+        // delete 模拟字段缺失（exactOptionalPropertyTypes 下不能显式 undefined）
+        delete (notify as { group?: unknown }).group;
+        delete (notify as { postscript?: unknown }).postscript;
+        const event = toOb11GroupRequestEvent(notify, CTX);
+        expect(event).toMatchObject({ request_type: "group", group_id: 0, comment: "" });
+    });
+
     it("已处理状态（非 KUNHANDLE）不产生事件", () => {
         const event = toOb11GroupRequestEvent(
             makeNotify({ status: GroupNotifyMsgStatus.KAGREED }),
