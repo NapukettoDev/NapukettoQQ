@@ -27,6 +27,8 @@ class FakeBroadcaster {
 class FakeOb11Adapter {
     static lastInstance: FakeOb11Adapter | null = null;
     static readonly constructOptions: Record<string, unknown>[] = [];
+    /** registry.get 返回 undefined 的动作名（挂载跳过分支用；null = 全部存在）。 */
+    static undefinedActionName: string | null = null;
     readonly subscribeOnly = vi.fn(async () => undefined);
     readonly unsubscribeOnly = vi.fn();
     readonly broadcaster: FakeBroadcaster;
@@ -37,15 +39,19 @@ class FakeOb11Adapter {
         this.broadcaster = options["broadcaster"] as FakeBroadcaster;
         this.registry = {
             names: ["send_like", "get_login_info"],
-            get: (name: string) =>
-                ({
+            get: (name: string) => {
+                if (FakeOb11Adapter.undefinedActionName === name) {
+                    return undefined;
+                }
+                return {
                     handle: async (params: unknown) => ({
                         retcode: 0,
                         status: "ok",
                         data: { action: name, params },
                         message: "",
                     }),
-                }) as { handle: (payload: unknown) => Promise<unknown> } | undefined,
+                } as { handle: (payload: unknown) => Promise<unknown> };
+            },
         };
     }
 }
@@ -214,5 +220,128 @@ describe("attachOb11IpcBridge", () => {
         const { stop, actions } = await attach({}, { fails: true });
         expect(actions.size).toBe(0);
         expect(stop()).toBeUndefined();
+    });
+
+    it("registry act 缺失 → 跳过挂载（names 是挂载面超集，stop 多删无害）", async () => {
+        FakeOb11Adapter.undefinedActionName = "send_like";
+        try {
+            const { actions, stop } = await attach();
+            expect([...actions.keys()].sort()).toEqual(["get_login_info"]);
+            stop();
+            expect(actions.size).toBe(0);
+        } finally {
+            FakeOb11Adapter.undefinedActionName = null;
+        }
+    });
+
+    it("stop 移除挂载的动作条目（软重登重装配清理；不误删既有 kernel 动作）", async () => {
+        const actions = new Map<string, IpcActionHandler>();
+        actions.set("msg.sendMessage", async () => "kernel");
+        const stop = await attachOb11IpcBridge(actions, mockServices(), {
+            importModule: fakeImport(),
+            emitEvent: () => undefined,
+            env: { ...baseEnv },
+        });
+        expect(actions.has("send_like")).toBe(true);
+        stop();
+        expect(actions.has("send_like")).toBe(false);
+        expect(await actions.get("msg.sendMessage")?.({})).toBe("kernel");
+    });
+
+    it("qqVersion 为空串 → system.appVersion 兜底 unknown", async () => {
+        FakeOb11Adapter.constructOptions.length = 0;
+        await attach({ qqVersion: "" });
+        const system = FakeOb11Adapter.constructOptions[0]?.["system"] as { appVersion: string };
+        expect(system.appVersion).toBe("unknown");
+    });
+
+    it("system.cleanCache → PathWrapper(dataRoot, account=uin) + clearCache", async () => {
+        const cleared: Record<string, unknown>[] = [];
+        const services = mockServices();
+        (services as unknown as Record<string, unknown>)["kernel"] = {
+            PathWrapper: class {
+                options: Record<string, unknown>;
+                constructor(options: Record<string, unknown>) {
+                    this.options = options;
+                }
+                clearCache(): void {
+                    cleared.push(this.options);
+                }
+            },
+        };
+        FakeOb11Adapter.constructOptions.length = 0;
+        const actions = new Map<string, IpcActionHandler>();
+        await attachOb11IpcBridge(actions, services, {
+            importModule: fakeImport(),
+            emitEvent: () => undefined,
+            env: { ...baseEnv },
+        });
+        const system = FakeOb11Adapter.constructOptions[0]?.["system"] as {
+            cleanCache: () => Promise<void>;
+        };
+        await system.cleanCache();
+        expect(cleared).toEqual([{ dataRoot: "C:/data", account: "10001" }]);
+    });
+
+    it("system.exit / restart → process.exit(0)（driver 重启机制接管）", async () => {
+        FakeOb11Adapter.constructOptions.length = 0;
+        const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+        try {
+            await attach();
+            const system = FakeOb11Adapter.constructOptions[0]?.["system"] as {
+                exit: () => Promise<void>;
+                restart: () => Promise<void>;
+            };
+            await system.exit();
+            await system.restart();
+            expect(exitSpy).toHaveBeenCalledWith(0);
+            expect(exitSpy).toHaveBeenCalledTimes(2);
+        } finally {
+            exitSpy.mockRestore();
+        }
+    });
+
+    it("mediaBaseDir：ctx.wrapper.exports 经 resolveQqUserDataRoot 解析（T5 基准）", async () => {
+        const services = mockServices();
+        (services as unknown as Record<string, unknown>)["ctx"] = {
+            wrapper: { exports: {} },
+        };
+        (services as unknown as Record<string, unknown>)["kernel"] = {
+            resolveQqUserDataRoot: () => "C:/qqroot",
+            resolveQqGlobalPath: (root: string) => `${root}/global`,
+            PathWrapper: class {
+                clearCache(): void {
+                    // 桩
+                }
+            },
+        };
+        FakeOb11Adapter.constructOptions.length = 0;
+        await attachOb11IpcBridge(new Map(), services, {
+            importModule: fakeImport(),
+            emitEvent: () => undefined,
+            env: { ...baseEnv },
+        });
+        const system = FakeOb11Adapter.constructOptions[0]?.["system"] as Record<string, unknown>;
+        expect(system["mediaBaseDir"]).toBe("C:/qqroot/global");
+    });
+
+    it("ctx 无 wrapper → mediaBaseDir 不注入（字段缺省）", async () => {
+        const services = mockServices();
+        (services as unknown as Record<string, unknown>)["ctx"] = {};
+        (services as unknown as Record<string, unknown>)["kernel"] = {
+            PathWrapper: class {
+                clearCache(): void {
+                    // 桩
+                }
+            },
+        };
+        FakeOb11Adapter.constructOptions.length = 0;
+        await attachOb11IpcBridge(new Map(), services, {
+            importModule: fakeImport(),
+            emitEvent: () => undefined,
+            env: { ...baseEnv },
+        });
+        const system = FakeOb11Adapter.constructOptions[0]?.["system"] as Record<string, unknown>;
+        expect("mediaBaseDir" in system).toBe(false);
     });
 });
