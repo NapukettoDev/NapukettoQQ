@@ -127,8 +127,10 @@ function expectedSha256(buf: Buffer): string {
     return createHash("sha256").update(buf).digest("hex");
 }
 
-/** fetch mock：按 URL 分流（rainbow 配置源 / 其他一律 404）。 */
-function stubConfigFetch(responses: Array<{ status: number; body: string }>): void {
+/** fetch mock：按 URL 分流（rainbow 配置源 / 其他一律 404）；reject 项模拟 fetch 本身异常。 */
+function stubConfigFetch(
+    responses: Array<{ status?: number; body?: string; reject?: unknown }>,
+): void {
     let next = 0;
     vi.stubGlobal(
         "fetch",
@@ -138,16 +140,31 @@ function stubConfigFetch(responses: Array<{ status: number; body: string }>): vo
                 body: "",
             };
             next += 1;
-            return Promise.resolve(new Response(res.body, { status: res.status }));
+            if (res.reject !== undefined) {
+                return Promise.reject(res.reject);
+            }
+            return Promise.resolve(new Response(res.body ?? "", { status: res.status ?? 200 }));
         }),
-    ); /* stubbed */
+    );
 }
 
-/** 下载行为队列：每次 https get 消耗一个（error = 连接失败；truncated = 少发字节）。 */
-let downloadBehaviors: Array<"error" | "ok" | "truncated">;
+/**
+ * 下载行为队列：每次 https get 消耗一个。
+ * error = 连接失败；error-string = 非 Error 拒因；truncated = 少发字节；
+ * redirect = 302 + location；http403 = 非 200；ok-no-length = 无 Content-Length。
+ */
+type DownloadBehavior =
+    | "error"
+    | "error-string"
+    | "ok"
+    | "truncated"
+    | "redirect"
+    | "http403"
+    | "ok-no-length";
+let downloadBehaviors: DownloadBehavior[];
 let installerBuf: Buffer;
 
-/** 装配 node:https.get 假实现（流式回放安装包字节）。 */
+/** 装配 node:https.get 假实现（流式回放安装包字节；行为驱动数据化，避免分支膨胀）。 */
 function stubHttpsGet(): void {
     mocks.httpsGet.mockImplementation(
         (
@@ -174,14 +191,42 @@ function stubHttpsGet(): void {
                     req.emit("error", new Error("fake-connection-reset"));
                     return;
                 }
+                if (behavior === "error-string") {
+                    req.emit("error", "plain-string-reason");
+                    return;
+                }
+                // 各行为的响应三元组查表构造（无分支）
+                const table: Record<
+                    Exclude<DownloadBehavior, "error" | "error-string">,
+                    { statusCode: number; headers: Record<string, string>; body: Buffer }
+                > = {
+                    ok: {
+                        statusCode: 200,
+                        headers: { "content-length": String(installerBuf.length) },
+                        body: installerBuf,
+                    },
+                    truncated: {
+                        statusCode: 200,
+                        headers: { "content-length": String(installerBuf.length) },
+                        body: installerBuf.subarray(0, 8),
+                    },
+                    redirect: {
+                        statusCode: 302,
+                        headers: { location: "https://cdn.example/redirected.exe" },
+                        body: Buffer.alloc(0),
+                    },
+                    http403: { statusCode: 403, headers: {}, body: Buffer.alloc(0) },
+                    "ok-no-length": { statusCode: 200, headers: {}, body: installerBuf },
+                };
+                const spec = table[behavior];
                 const res = new PassThrough() as PassThrough & {
                     statusCode: number;
                     headers: Record<string, string>;
                 };
-                res.statusCode = 200;
-                res.headers = { "content-length": String(installerBuf.length) };
+                res.statusCode = spec.statusCode;
+                res.headers = spec.headers;
                 callback(res);
-                res.write(behavior === "truncated" ? installerBuf.subarray(0, 8) : installerBuf);
+                res.write(spec.body);
                 res.end();
             });
             return req;
@@ -481,5 +526,405 @@ describe("下载与版本解析、清单落盘", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe("下载传输边角", () => {
+    it("302 重定向跟随一次后 200 → 正常下载落盘", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["redirect", "ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+        // 首跳 302 + 重定向目标请求 = 两次 get
+        expect(mocks.httpsGet).toHaveBeenCalledTimes(2);
+    });
+
+    it("重定向次数过多（单次尝试连跳 6 跳）→ 报错重试，第二次尝试成功落盘", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = [
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "redirect",
+            "ok",
+        ];
+        vi.useFakeTimers();
+        try {
+            await import("./update-qq-releases.ts");
+            await pumpRealIo();
+            await vi.runAllTimersAsync();
+            await pumpRealIo();
+            expect(process.exitCode).toBe(0);
+            expect(writtenManifests).toHaveLength(1);
+            expect(
+                stderrSpy.mock.calls.some((call: unknown[]) =>
+                    String(call[0]).includes("重定向次数过多"),
+                ),
+            ).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("下载 403（穷尽 3 次）→ exitCode 1，不写清单", async () => {
+        vi.useFakeTimers();
+        try {
+            manifestContent = fixtureManifest("https://old.example/qq.exe");
+            stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+            downloadBehaviors = ["http403", "http403", "http403"];
+            await import("./update-qq-releases.ts");
+            await pumpRealIo();
+            await vi.runAllTimersAsync();
+            await pumpRealIo();
+            expect(process.exitCode).toBe(1);
+            expect(mocks.httpsGet).toHaveBeenCalledTimes(3);
+            expect(writtenManifests).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("无 Content-Length 头 → 完整性校验跳过，正常落盘", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok-no-length"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+    });
+
+    it("req error 为非 Error（字符串拒因）→ warn 带出字符串，重试后成功", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["error-string", "error-string", "ok"];
+        vi.useFakeTimers();
+        try {
+            await import("./update-qq-releases.ts");
+            await pumpRealIo();
+            await vi.runAllTimersAsync();
+            await pumpRealIo();
+            expect(process.exitCode).toBe(0);
+            expect(
+                stderrSpy.mock.calls.some((call: unknown[]) =>
+                    String(call[0]).includes("plain-string-reason"),
+                ),
+            ).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe("版本解析与清单合并边角", () => {
+    it("NAPUTO_7Z_PATH 环境变量优先（指向存在文件）→ execFile 使用该路径", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        process.env["NAPUTO_7Z_PATH"] = MODULE_PATH; // 存在的文件即可（execFile 已 mock）
+        try {
+            downloadBehaviors = ["ok"];
+            await import("./update-qq-releases.ts");
+            await pumpRealIo();
+            await pumpRealIo();
+            expect(process.exitCode).toBe(0);
+            expect(mocks.execFile.mock.calls[0]?.[0]).toBe(MODULE_PATH);
+        } finally {
+            delete process.env["NAPUTO_7Z_PATH"];
+        }
+    });
+
+    it("7z ENOENT（可执行文件缺失）→ 提示未找到并回退字节扫描（ASCII 版本串）", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        const enoent = new Error("spawn 7z ENOENT");
+        (enoent as NodeJS.ErrnoException).code = "ENOENT";
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: Error) => void,
+        ) => {
+            cb(enoent);
+        }) as never);
+        // 安装包仅含 ASCII 版本串：utf16le 候选全部落空，ASCII 候选命中
+        installerBuf = Buffer.concat([
+            Buffer.from("pad-"),
+            Buffer.from("9.99.91.777777-rc"),
+            Buffer.from("tail"),
+        ]);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        expect(
+            stderrSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("未找到 7-Zip"),
+            ),
+        ).toBe(true);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ version: string }>;
+        };
+        expect(saved.known.at(-1)?.version).toBe("9.99.91-777777");
+    });
+
+    it("7z 列表无匹配版本目录（旧版本前缀不符）→ 回退字节扫描成功", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\8.8.8-11111\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ version: string }>;
+        };
+        expect(saved.known.at(-1)?.version).toBe("9.99.91-777777");
+    });
+
+    it("安装包无数字后缀（版本串残缺）→ 解析失败 exitCode 1，不写清单", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: Error) => void,
+        ) => {
+            cb(new Error("7z missing"));
+        }) as never);
+        // utf16le "9.99.91-" 后无数字 → scanEncoding 返回 null → 全候选落空
+        installerBuf = Buffer.concat([Buffer.from("9.99.91-abc", "utf16le")]);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(1);
+        expect(writtenManifests).toEqual([]);
+        expect(stderrSpy).toHaveBeenCalledWith(
+            expect.stringContaining("无法从安装包解析版本目录名"),
+        );
+    });
+
+    it("同版本替换保留已有非零 appid；下载 URL 无 QQNTV2 段时不打印归一化日志", async () => {
+        manifestContent = JSON.stringify({
+            schema: 1,
+            known: [
+                {
+                    version: "9.99.91-777777",
+                    url: "https://old.example/qq.exe",
+                    sha256: "cc".repeat(32),
+                    appid: 42,
+                    source: "official",
+                },
+            ],
+        });
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig("https://qqdl.gtimg.cn/qqfile/QQNT/x.exe") },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ version: string; appid: number; url: string }>;
+        };
+        expect(saved.known).toHaveLength(1);
+        expect(saved.known[0]?.version).toBe("9.99.91-777777");
+        expect(saved.known[0]?.appid).toBe(42); // 保留已有 appid
+        expect(saved.known[0]?.url).toBe("https://qqdl.gtimg.cn/qqfile/QQNT/x.exe");
+        // URL 无 /QQNTV2/ 段 → 归一化前后相同 → 不打印归一化日志
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("请求 URL 归一化"),
+            ),
+        ).toBe(false);
+    });
+});
+
+describe("官方配置结构变体", () => {
+    it("主源根非对象（数组）→ 备源成功（PC_CONFIG_URLS 共两源：坏源 + 好源）", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([
+            { status: 200, body: JSON.stringify([1, 2]) },
+            { status: 200, body: rainbowConfig("https://third.example/QQNTV2/x.exe") },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ url: string }>;
+        };
+        expect(saved.known.at(-1)?.url).toBe("https://third.example/QQNTV2/x.exe");
+    });
+
+    it("主源 Windows 段缺失 → 备源成功", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([
+            {
+                status: 200,
+                // rainbow 配置键为 Windows（官方结构），经计算键满足命名规范
+                body: JSON.stringify({ ["Windows"]: { updateDate: "2026-01-01" } }),
+            },
+            { status: 200, body: rainbowConfig("https://third.example/QQNTV2/x.exe") },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ url: string }>;
+        };
+        expect(saved.known.at(-1)?.url).toBe("https://third.example/QQNTV2/x.exe");
+    });
+
+    it("主源版本非三段数字 → 备源成功", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([
+            {
+                status: 200,
+                body: JSON.stringify({
+                    ["Windows"]: {
+                        version: "bad",
+                        updateDate: "2026-01-01",
+                        ntDownloadX64Url: OFFICIAL_URL,
+                    },
+                }),
+            },
+            { status: 200, body: rainbowConfig("https://third.example/QQNTV2/x.exe") },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ url: string }>;
+        };
+        expect(saved.known.at(-1)?.url).toBe("https://third.example/QQNTV2/x.exe");
+    });
+
+    it("配置源 fetch 抛出非 Error（字符串）→ warn 带出字符串，下一源接管", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([
+            { reject: "fetch-network-string" },
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await pumpRealIo();
+        await pumpRealIo();
+        expect(process.exitCode).toBe(0);
+        expect(
+            stderrSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("fetch-network-string"),
+            ),
+        ).toBe(true);
     });
 });
