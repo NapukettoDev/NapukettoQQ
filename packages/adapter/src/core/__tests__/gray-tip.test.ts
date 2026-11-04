@@ -8,7 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { collectGrayTipUids } from "../shared/gray-tip.js";
+import { collectGrayTipUids, firstUntranslatedGrayTip } from "../shared/gray-tip.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */
 function makeMsg(elements: RawMessage["elements"]): RawMessage {
@@ -105,5 +105,38 @@ describe("collectGrayTipUids", () => {
             { elementType: 8, grayTipElement: { revokeElement: { operatorUid: "" } } },
         ]);
         expect(collectGrayTipUids(msg)).toEqual(["u_1", "u_2"]);
+    });
+});
+
+describe("firstUntranslatedGrayTip", () => {
+    it("首个非撤回 grayTip 即返回（跳过 REVOKE，撤回翻译独立成事件）", () => {
+        const msg = makeMsg([
+            {
+                elementType: 8,
+                grayTipElement: { subElementType: 1, revokeElement: { operatorUid: "op" } },
+            },
+            {
+                elementType: 8,
+                grayTipElement: { subElementType: 4, groupElement: { memberUid: "m" } },
+            },
+        ]);
+        const found = firstUntranslatedGrayTip(msg);
+        expect(found?.groupElement?.memberUid).toBe("m");
+    });
+
+    it("只有撤回元素：返回 undefined", () => {
+        const msg = makeMsg([
+            { elementType: 8, grayTipElement: { revokeElement: { operatorUid: "op" } } },
+        ]);
+        expect(firstUntranslatedGrayTip(msg)).toBeUndefined();
+    });
+
+    it("无 grayTipElement / 空元素列表：返回 undefined", () => {
+        expect(
+            firstUntranslatedGrayTip(
+                makeMsg([{ elementType: 1, textElement: { content: "文本" } }]),
+            ),
+        ).toBeUndefined();
+        expect(firstUntranslatedGrayTip(makeMsg([]))).toBeUndefined();
     });
 });

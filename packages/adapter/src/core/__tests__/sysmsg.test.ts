@@ -314,3 +314,14 @@ describe("nodeAt / varintAt / varintOf / textOf：规则路径导航原语", () 
         expect(textOf(inner, 9)).toBeNull();
     });
 });
+
+describe("varintAt 空路径守卫（defensive 分支补漏）", () => {
+    it("path 为空：直接返回 null（不触树）", () => {
+        expect(varintAt(null, [])).toBeNull();
+        expect(varintAt([], [])).toBeNull();
+    });
+
+    it("末段字段不存在：返回 null", () => {
+        expect(varintAt([], [99])).toBeNull();
+    });
+});
