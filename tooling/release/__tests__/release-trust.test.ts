@@ -142,3 +142,70 @@ describe("fetchGithubIdToken", () => {
         await expect(fetchGithubIdToken(REGISTRY, fetchImpl)).rejects.toThrow(/403/);
     });
 });
+
+describe("响应解析边角（补充）", () => {
+    it("200 但响应缺 value / 空串 → 抛「缺少 value」", async () => {
+        vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://token.actions.example/");
+        vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token");
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(jsonResponse({ value: "" }));
+        await expect(fetchGithubIdToken(REGISTRY, fetchImpl)).rejects.toThrow(/缺少 value/);
+        fetchImpl.mockResolvedValue(jsonResponse({ nope: 1 }));
+        await expect(fetchGithubIdToken(REGISTRY, fetchImpl)).rejects.toThrow(/缺少 value/);
+    });
+
+    it("404 响应体非 JSON → missing，detail 退回「HTTP 404」", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(new Response("<html>bad gateway</html>", { status: 404 }));
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("missing");
+        expect(result.detail).toBe("HTTP 404");
+    });
+
+    it("404 响应体 JSON 无 message 字段 → missing，detail 退回「HTTP 404」", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(jsonResponse({ unrelated: true }, 404));
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("missing");
+        expect(result.detail).toBe("HTTP 404");
+    });
+
+    it("非 2xx 且响应体无 message → error，detail 仅含状态码", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(new Response("", { status: 500 }));
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("error");
+        expect(result.detail).toBe("HTTP 500");
+    });
+
+    it("非 Error 拒因（字符串）→ error，detail 含字符串化原因", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockRejectedValue("plain-string-reject");
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("error");
+        expect(result.detail).toContain("plain-string-reject");
+    });
+
+    it("200 且 token 为空串 → error（交换响应缺少 token）", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(jsonResponse({ token: "" }));
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("error");
+        expect(result.detail).toBe("交换响应缺少 token");
+    });
+
+    it("200 且响应体非 JSON → error（交换响应无法解析）", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        fetchImpl.mockResolvedValue(new Response("<html/>", { status: 200 }));
+        const result = await probePackageTrust("id", REGISTRY, "pkg", fetchImpl);
+        expect(result.status).toBe("error");
+        expect(result.detail).toBe("交换响应无法解析");
+    });
+
+    it("空包名列表 → 不发起请求，返回空数组", async () => {
+        const fetchImpl = vi.fn<typeof fetch>();
+        const results = await probeTrustConfigs("id", REGISTRY, [], fetchImpl);
+        expect(results).toEqual([]);
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+});
