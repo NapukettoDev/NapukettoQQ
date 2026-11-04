@@ -156,4 +156,83 @@ describe("bootstrap() 结果信号（失败收敛 false）", () => {
         const mod = await freshBootstrap();
         expect(await mod.bootstrap(freshState())).toBe(false);
     });
+
+    it("appid 解析：resolveAppidQua 缺失 → parseAppidFromMajor 兜底（fallback 路径成功）", async () => {
+        stubBootEnv(
+            [
+                "let calls = [];",
+                "export function parseAppidFromMajor(majorPath) { calls.push(majorPath); return '537376818'; }",
+                "export function startNapuketto() { return { engine: {}, session: null, loginService: null, __calls: calls }; }",
+                "export function quickLogin() { return Promise.resolve({ uin: '12345', uid: 'u1' }); }",
+                "export function buildSessionConfig() { return {}; }",
+                "export function createLifecycleSessionListener() { return {}; }",
+                "export function initAndStartSession() { return Promise.resolve(); }",
+            ].join("\n"),
+        );
+        const mod = await freshBootstrap();
+        expect(await mod.bootstrap(freshState())).toBe(true);
+    });
+
+    it("appid 解析：parseAppidFromMajor 返回 null → 显式报错收敛 false", async () => {
+        stubBootEnv(
+            [
+                "export function parseAppidFromMajor() { return null; }",
+                "export function startNapuketto() { return { engine: {}, session: null, loginService: null }; }",
+            ].join("\n"),
+        );
+        const mod = await freshBootstrap();
+        expect(await mod.bootstrap(freshState())).toBe(false);
+    });
+
+    it("appid 解析：两个解析器都缺失 → false（不再静默回退硬编码）", async () => {
+        stubBootEnv(
+            [
+                "export function startNapuketto() { return { engine: {}, session: null, loginService: null }; }",
+            ].join("\n"),
+        );
+        const mod = await freshBootstrap();
+        expect(await mod.bootstrap(freshState())).toBe(false);
+    });
+
+    it("fallback：buildLoginConfig + loginService.initConfig 前置（能力缺失跳过不阻塞）", async () => {
+        stubBootEnv(
+            [
+                "let initConfigCalls = 0;",
+                "export function resolveAppidQua() { return { appid: 537376818 }; }",
+                "export function startNapuketto() {",
+                "    return {",
+                "        engine: {},",
+                "        session: null,",
+                "        loginService: { initConfig() { initConfigCalls += 1; } },",
+                "    };",
+                "}",
+                "export function buildLoginConfig(appid, version, dataDir) { return { appid, version, dataDir }; }",
+                "export function quickLogin() { return Promise.resolve({ uin: '12345', uid: 'u1' }); }",
+                "export function buildSessionConfig() { return {}; }",
+                "export function createLifecycleSessionListener() { return {}; }",
+                "export function initAndStartSession() { return Promise.resolve(); }",
+                "export function __initConfigCalls() { return initConfigCalls; }",
+            ].join("\n"),
+        );
+        const mod = await freshBootstrap();
+        expect(await mod.bootstrap(freshState())).toBe(true);
+    });
+
+    it("探测模式（NAPUTO_PROBE=1）：fallback 路径 probeOnce 执行（probeRuntime 结果进日志）", async () => {
+        vi.stubEnv("NAPUTO_PROBE", "1");
+        stubBootEnv(
+            [
+                "export function resolveAppidQua() { return { appid: 537376818 }; }",
+                "let probed = 0;",
+                "export function startNapuketto() { return { engine: {}, session: null, loginService: null }; }",
+                "export function probeRuntime(ctx, filename) { probed += 1; return { session: {}, services: { a: 1 } }; }",
+                "export function quickLogin() { return Promise.resolve({ uin: '12345', uid: 'u1' }); }",
+                "export function buildSessionConfig() { return {}; }",
+                "export function createLifecycleSessionListener() { return {}; }",
+                "export function initAndStartSession() { return Promise.resolve(); }",
+            ].join("\n"),
+        );
+        const mod = await freshBootstrap();
+        expect(await mod.bootstrap(freshState())).toBe(true);
+    });
 });

@@ -150,3 +150,106 @@ describe("setupMsgLogging 绑定过滤（P1-7）", () => {
         expect(sink).toHaveLength(2);
     });
 });
+
+describe("消息渲染元素占位（elementToText 全分支）", () => {
+    /** 构造独立订阅（自定义 kernel + sink），返回 emit 与 sink。 */
+    async function subscribe(
+        kernel: KernelLike,
+    ): Promise<{ emit: (payload: unknown) => void; sink: unknown[] }> {
+        const { setupMsgLogging } = await import("../msg-log.js");
+        const sink: unknown[] = [];
+        let handler: ((payload: unknown) => void) | undefined;
+        const channel: EventChannelLike = {
+            on: (_event, h) => {
+                handler = h;
+                return undefined;
+            },
+        };
+        setupMsgLogging(kernel, channel, stubLogger(sink), false);
+        return { emit: (p) => handler?.(p), sink };
+    }
+
+    it("at 元素：display 优先 → target=all 全体 → target uid", async () => {
+        const kernel = stubKernel();
+        const { emit, sink } = await subscribe(kernel);
+        emit({
+            chatType: 1,
+            peerUin: "100",
+            senderUin: "200",
+            elements: [
+                { type: "at", target: "u_1", display: "小明" },
+                { type: "at", target: "all" },
+                { type: "at", target: "u_2" },
+            ],
+        });
+        const line = sink[0] as string;
+        expect(line).toContain("@小明");
+        expect(line).toContain("@全体");
+        expect(line).toContain("@u_2");
+    });
+
+    it("file / forward / 未知类型占位；空渲染兜底 [空消息/媒体]", async () => {
+        const { emit, sink } = await subscribe(stubKernel());
+        emit({
+            chatType: 1,
+            peerUin: "100",
+            senderUin: "200",
+            elements: [
+                { type: "file", name: "doc.pdf" },
+                { type: "file" },
+                { type: "forward" },
+                { type: "face", faceId: "5" },
+            ],
+        });
+        const line = sink[0] as string;
+        expect(line).toContain("[文件doc.pdf]");
+        expect(line).toContain("[文件]");
+        expect(line).toContain("[合并转发]");
+        expect(line).toContain("[face]");
+        // 空消息
+        emit({ chatType: 1, peerUin: "100", senderUin: "200", elements: [] });
+        expect(sink[1]).toContain("[空消息/媒体]");
+    });
+
+    it("内容换行补 4 空格缩进（多行消息不顶格）", async () => {
+        const { emit, sink } = await subscribe(stubKernel());
+        emit({
+            chatType: 1,
+            peerUin: "100",
+            senderUin: "200",
+            elements: [{ type: "text", text: "第一行\n第二行" }],
+        });
+        expect(sink[0]).toContain("第一行\n    第二行");
+    });
+
+    it("senderUin 缺失 → 回退 peerUin；双缺 → 未知", async () => {
+        const { emit, sink } = await subscribe(stubKernel());
+        emit({ chatType: 2, peerUin: "300", elements: [{ type: "text", text: "a" }] });
+        expect(sink[0]).toContain("[用户300]");
+        emit({ chatType: 2, elements: [{ type: "text", text: "b" }] });
+        expect(sink[1]).toContain("[用户未知]");
+    });
+
+    it("toCanonicalElements 抛错（解析失败）→ 记 boot 日志 + logger.warn，不崩", async () => {
+        const kernel = {
+            [CHAT_TYPE]: { GROUP: 1, C2C: 2 },
+            toCanonicalElements: () => {
+                throw new Error("元素断言");
+            },
+        } as unknown as KernelLike;
+        const { emit, sink } = await subscribe(kernel);
+        expect(() => emit(groupMsg())).not.toThrow();
+        expect(sink).toHaveLength(1);
+        expect(sink[0]).toContain("解析失败");
+        expect(sink[0]).toContain("元素断言");
+    });
+
+    it("channel.on 返回非函数 → 退订退化为 no-op（不崩）", async () => {
+        const { setupMsgLogging } = await import("../msg-log.js");
+        const channel: EventChannelLike = {
+            on: () => "不是函数",
+        };
+        const off = setupMsgLogging(stubKernel(), channel, stubLogger([]), false);
+        expect(() => off()).not.toThrow();
+    });
+});
