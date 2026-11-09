@@ -35,11 +35,11 @@
         "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts"
     },
     "devDependencies": {
-        "@biomejs/biome": "^2.6.4",
+        "@biomejs/biome": "^2.6.5",
         "@changesets/cli": "^3.0.3",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
-        "fallow": "^3.38.1",
+        "fallow": "^3.40.0",
         "typescript": "^7.0.2",
         "vitest": "catalog:"
     }
