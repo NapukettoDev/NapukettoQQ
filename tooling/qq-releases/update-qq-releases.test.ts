@@ -9,7 +9,7 @@
  * 回退、清单合并落盘（按版本递增、官方 URL 原样入库）。
  */
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -924,6 +924,226 @@ describe("官方配置结构变体", () => {
         expect(
             stderrSpy.mock.calls.some((call: unknown[]) =>
                 String(call[0]).includes("fetch-network-string"),
+            ),
+        ).toBe(true);
+    });
+});
+
+// —— Linux（deb）条目自动维护（2026-11-10）——
+
+/** 官方 linuxConfig.js 的 deb URL（含大写 QQNTV2 段，验证下载归一化）。 */
+const LINUX_X64_DEB =
+    "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_amd64_01.deb";
+const LINUX_ARM_DEB =
+    "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_arm64_01.deb";
+
+/** linuxConfig.js 夹具（脚本只解析 `var params = {...};` 载荷）。 */
+function linuxConfig(x64Deb = LINUX_X64_DEB, armDeb = LINUX_ARM_DEB): string {
+    const params = JSON.stringify({
+        version: "3.2.35",
+        x64DownloadUrl: { deb: x64Deb, rpm: "https://x/x.rpm" },
+        armDownloadUrl: { deb: armDeb },
+        updateDate: "2026-11-03",
+    });
+    return `      ;(function(){var params= ${params};\n      return params})()`;
+}
+
+/** 清单夹具：Windows 一条（url 可设成官方 URL 触发 no-op）+ Linux x64/arm64 两条旧条目。 */
+function fixtureManifestWithLinux(x64Url: string, armUrl: string): string {
+    return JSON.stringify({
+        schema: 2,
+        known: [
+            {
+                version: "9.99.91-777777",
+                url: OFFICIAL_URL,
+                sha256: "bb".repeat(32),
+                appid: 42,
+                source: "official",
+                buildDate: "2026-02-02",
+            },
+            {
+                version: "3.2.35-54395",
+                platform: "linux",
+                arch: "x64",
+                coreVersion: "9.9.37",
+                url: x64Url,
+                sha256: "cc".repeat(32),
+                appid: 537403759,
+                source: "official",
+                buildDate: "2026-11-03",
+            },
+            {
+                version: "3.2.35-54395",
+                platform: "linux",
+                arch: "arm64",
+                coreVersion: "9.9.36",
+                url: armUrl,
+                sha256: "dd".repeat(32),
+                appid: 0,
+                source: "official",
+                buildDate: "2026-10-01",
+            },
+        ],
+    });
+}
+
+/** 7z 桩：Linux 三层解包后只留 data.tar(.xz) 与 resources/app/package.json。 */
+function stubLinuxSevenZip(version = "3.2.35-54395"): void {
+    mocks.execFile.mockImplementation(((
+        _cmd: string,
+        args: string[],
+        _opts: unknown,
+        cb: (err: null, stdout: string) => void,
+    ) => {
+        const [op = "", source = ""] = args;
+        const outDir = String(args[args.length - 2] ?? "").replace(/^-o/, "");
+        mkdirSync(outDir, { recursive: true });
+        if (op === "x" && source.endsWith(".deb")) {
+            writeFileSync(join(outDir, "data.tar.xz"), "");
+            cb(null, "");
+            return;
+        }
+        if (op === "x") {
+            writeFileSync(join(outDir, "data.tar"), "");
+            cb(null, "");
+            return;
+        }
+        writeFileSync(join(outDir, "package.json"), JSON.stringify({ name: "QQ", version }));
+        cb(null, "");
+    }) as never);
+}
+
+describe("Linux（deb）条目自动维护", () => {
+    /** 跑一次「Windows no-op + Linux 有新版」的更新，返回落盘清单（Linux 侧断言共用）。 */
+    async function runLinuxUpdate(): Promise<{
+        known: Array<{
+            version: string;
+            platform?: string;
+            arch?: string;
+            coreVersion?: string;
+            url: string;
+            sha256: string;
+            appid: number;
+        }>;
+    }> {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        // fetch 路由：Windows rainbow 配置 + Linux linuxConfig（按 URL 分流）
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string) =>
+                Promise.resolve(
+                    new Response(
+                        String(url).includes("linuxConfig")
+                            ? linuxConfig()
+                            : rainbowConfig(OFFICIAL_URL),
+                        { status: 200 },
+                    ),
+                ),
+            ),
+        );
+        stubLinuxSevenZip();
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+        return JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{
+                version: string;
+                platform?: string;
+                arch?: string;
+                coreVersion?: string;
+                url: string;
+                sha256: string;
+                appid: number;
+            }>;
+        };
+    }
+
+    it("x64 deb URL 变化 → 下载 + 从 deb 取版本 → 写入 platform/arch/coreVersion（appid 沿用）", async () => {
+        const saved = await runLinuxUpdate();
+        const x64Entry = saved.known.find(
+            (entry) => entry.platform === "linux" && entry.arch === "x64",
+        );
+        expect(x64Entry).toBeDefined();
+        expect(x64Entry?.version).toBe("3.2.35-54395"); // 版本取自 deb 内 package.json
+        expect(x64Entry?.coreVersion).toBe("9.9.37"); // 核心版本取自 URL 段
+        expect(x64Entry?.url).toBe(LINUX_X64_DEB); // 清单存官方原样 URL（大写 QQNTV2）
+        expect(x64Entry?.sha256).toBe(expectedSha256(installerBuf));
+        expect(x64Entry?.appid).toBe(537403759); // 沿用已有非零 appid
+    });
+
+    it("arm64 不自动维护（真机验证前）：原条目不动、只下一个 deb、Windows 仍在最前", async () => {
+        const saved = await runLinuxUpdate();
+        const armEntry = saved.known.find(
+            (entry) => entry.platform === "linux" && entry.arch === "arm64",
+        );
+        expect(armEntry?.url).toBe("https://old.example/qq-arm64.deb");
+        expect(armEntry?.coreVersion).toBe("9.9.36");
+        expect(armEntry?.sha256).toBe("dd".repeat(32));
+        // 平台分段排序：Windows 段在前，Linux 段在后且 x64 在 arm64 前
+        expect(saved.known[0]?.version).toBe("9.99.91-777777");
+        expect(
+            saved.known.filter((entry) => entry.platform === "linux").map((entry) => entry.arch),
+        ).toEqual(["x64", "arm64"]);
+        // 只下载了 x64 一个 deb，且请求走小写路径段
+        const requestedUrls = mocks.httpsGet.mock.calls.map((call) => String(call[0]));
+        expect(requestedUrls).toHaveLength(1);
+        expect(requestedUrls[0]).toContain("/qqntv2/");
+    });
+
+    it("Linux 配置不可用（HTTP 404）→ 只更新 Windows、不抛错、不写 Linux 条目", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }, { status: 404 }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ platform?: string }>;
+        };
+        expect(saved.known.some((entry) => entry.platform === "linux")).toBe(false);
+    });
+
+    it("Linux 两个架构 URL 都未变 → 完全不下载、不写清单", async () => {
+        manifestContent = fixtureManifestWithLinux(LINUX_X64_DEB, LINUX_ARM_DEB);
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+    });
+
+    it("--dry-run 且 Linux 有新版 → 只打印计划，不下载、不写清单", async () => {
+        manifestContent = fixtureManifestWithLinux("https://old.example/qq-x64.deb", LINUX_ARM_DEB);
+        process.argv = ["node", MODULE_PATH, "--dry-run"];
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("将更新 Linux x64 条目"),
             ),
         ).toBe(true);
     });
