@@ -573,6 +573,32 @@ arm64 node）。
    也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
    （避免给用户一个未验证的下载入口）。
 
+**arm64 运行期验证（qemu 模拟，2026-11-10）**
+
+在 Docker Desktop 的 `linux/arm64` 容器（qemu 用户态模拟，`uname -m` = `aarch64`）里跑
+通了真 `dlopen`，静态核验的结论在运行期成立：
+
+| 步骤 | 结果 |
+|---|---|
+| 容器架构 | `aarch64`（qemu 模拟，非真机） |
+| arm64 node | `v24.16.0`（官方 `node-v24.16.0-linux-arm64`，qemu 下正常） |
+| 官方 arm64 `wrapper.node` | 147,183,032 字节，ELF |
+| arm64 stub | 本机交叉编译产物 69,424 字节（同 `stub-linux.cc` 源码） |
+| 预加载 | `stub:libgnutls.so.30:libuuid.so.1`（**三个都要**：gnutls 是 libbugly 隐藏依赖，libuuid 是 arm64 缺 `DT_NEEDED` 的那条） |
+| 系统依赖 | `libx11-6`（arm64 wrapper 的 `DT_NEEDED` 里有 X11；缺了直接 `libX11.so.6: cannot open shared object file`）、`libx11-xcb1` / `libxext6` / `libxcb1` / `libgnutls30t64` / `libuuid1` |
+| dlopen 结果 | **`exports=104 engine=true`**，进程正常退出 |
+
+结论与边界：
+
+- **arm64 加载链路已运行期验证**（stub + gnutls + libuuid 三件套齐了就能 dlopen）；
+  `libuuid` 预加载从静态推断变成实测必需——只 preload stub + gnutls 时 dlopen 能过，
+  但首次 `uuid_generate` 会报 symbol lookup error。
+- **仍未验证**：arm64 上的登录 / session READY / 收发（qemu 下跑完整 CLI 需 ~10x 时间，
+  且需要账号）；也未在真机（Apple Silicon / 鲲鹏 / 树莓派）上跑过。
+- **因此仍未登记**：arm64 stub 没进私有 `native/`、清单没有 arm64 条目、loader 的
+  `linuxPreload` 也还没加 `libuuid`——这三件事在真机验证后一起做（否则等于给用户
+  一个必然 `symbol lookup error` 的下载入口）。
+
 ## 10. 决策建议与待决事项
 
 **建议**：
