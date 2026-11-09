@@ -260,13 +260,16 @@ function elfBytes(): Buffer {
  */
 function makeLinuxInstall(
     version = "3.2.35-54395",
-    variant: "ok" | "pe" | "no-package" | "no-version" = "ok",
+    variant: "ok" | "pe" | "no-package" | "no-version" | "null-json" = "ok",
 ): string {
     const root = mkdtempSync(join(tmpdir(), "napuketto-linux-qq-"));
     const appDir = join(root, "resources", "app");
     mkdirSync(appDir, { recursive: true });
     writeFileSync(join(appDir, "wrapper.node"), variant === "pe" ? "MZ" : elfBytes());
-    if (variant !== "no-package") {
+    if (variant === "null-json") {
+        // JSON.parse("null") → null：合法 JSON 但不是对象（非对象分支）
+        writeFileSync(join(appDir, "package.json"), "null");
+    } else if (variant !== "no-package") {
         const pkg = variant === "no-version" ? { name: "QQ" } : { name: "QQ", version };
         writeFileSync(join(appDir, "package.json"), JSON.stringify(pkg));
     }
@@ -525,9 +528,10 @@ describe("resolveLinuxQqInstall（扁平布局纯定位）", () => {
         expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "pe"))).toBeNull();
     });
 
-    it("缺 package.json / 缺 version 字段 → null（版本号参与登录，不能瞎填）", () => {
+    it("缺 package.json / 缺 version 字段 / 非对象 JSON → null（版本号参与登录，不能瞎填）", () => {
         expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "no-package"))).toBeNull();
         expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "no-version"))).toBeNull();
+        expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "null-json"))).toBeNull();
     });
 
     it("目录不存在 → null（不抛错）", () => {
