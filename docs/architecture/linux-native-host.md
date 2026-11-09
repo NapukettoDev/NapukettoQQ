@@ -81,7 +81,8 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
   `libgssapi-krb5-2` / `libgcrypt20` / `libgnutls30t64`；`DISPLAY` 未设置；
   `LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`。
 - **未做**：X11 运行期功能（本仓当前无截图 / 剪贴板消费方，见附录 C）；他人消息的
-  实时入站；富媒体发送；arm64 运行期（arm64 静态核验见 §9.11）。完整 Stage 0 仍需补这些。
+  实时入站；视频 / 文件上传（图片 + 语音已实测，见附录 D）；arm64 运行期（arm64 静态核验
+  见 §9.11）。完整 Stage 0 仍需补这些。
 
 > 版本相关数字只用于这次研判；QQ 升级后重跑附录 A 的命令即可重新确认。
 
@@ -610,8 +611,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - X11 运行期功能：**当前不是缺口**——本仓没有截图 / 剪贴板消费方（附录 C 有 grep 证据），
   启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
   再按附录 C 的清单补验证。
-- 消息**发送 + 撤回已实测通过**（§9.10）；未覆盖他人消息的实时入站事件（需第二个账号）
-  与富媒体发送。
+- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音也已实测通过**（附录 D）；
+  未覆盖他人消息的实时入站事件（需第二个账号）、视频发送（需真实 mp4 + 缩略图）与
+  文件上传（协议侧无 `upload_group_file` 动作）。
 - arm64 符号与解包**已静态核验**（§9.11）：缺口集与 x64 一致、stub 可交叉编译、
   真 loader 管线可提取；**运行期未验证**（需 arm64 机器）。stub 的 arm64 产物尚未进
   私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
@@ -730,4 +732,34 @@ NapCat 的 launcher 简单——那边要靠 Xvfb 哄 Electron 主进程，我�
 2. `libX11` / `libxcb` / `libXext` 是随包（deb 里有 `libEGL.so` 等）还是系统依赖；
 3. 容器场景的 `xauth` / `XAUTHORITY` 与 `/tmp/.X11-unix` 挂载；
 4. 无 X 环境下这些 API 的可读降级错误（不能崩宿主）。
+
+## 附录 D：富媒体发送实测（Stage 4，2026-11-09）
+
+环境同 Stage 3/3d：WSL2 + 真 x64 ELF `wrapper.node`（`/tmp/opt-qq` 扁平布局）+ 真 CLI
+（OneBot 11 HTTP），群 `1101729931`，发送后 `get_*` 取回、再 `delete_msg` 撤回。
+
+| 媒体 | 发送 | 取回（媒体落盘） | 撤回 |
+|---|---|---|---|
+| 文本（对照） | `retcode 0` | — | ✅ |
+| 图片 64×64 PNG（210 字节） | `retcode 0` | `get_image`：`file_size=210`、`file_name=BEE3…C24BE.png`、`file=<数据根>/…/nt_data/Pic/2026-11/Ori/bee354a1c2c8ff1b5d3d056712fc24be.png`（md5 与文件名一致） | ✅ |
+| 语音 WAV（24kHz / mono / 16-bit / 0.6s） | `retcode 0` | `get_record`：`file_size=2461`、`file_name=voice.silk`、`file=…/nt_data/Ptt/2026-11/Ori/e4627f2ee64867430bf01673cffb9372.silk`；历史消息里即是该 `record` 段 | ✅ |
+
+链路与 Windows 一致：`md5 → getRichMediaFilePathForGuild → util.copyFile → 完整
+picElement / pttElement → sendMsg`；语音的非 silk 输入由 **adapter** 层
+`ensureSilk`（`@napuketto/media`）转码，kernel 只收 silk 路径。宿主退出 `code=0`，
+服务端无异常日志。
+
+**踩坑（重要，别误判成平台缺陷）**：Stage 4 首轮用一段手写 base64 的“1×1 PNG”测试，
+`send_msg` 稳定返回 `sendStatus=0`，一度以为是 Linux 缺能力；换成程序生成、**结构合法**的
+PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序应是「先校验素材是否合法
+（PNG 签名/IHDR/IEND、silk `#!SILK_V3` 头），再怀疑平台」。
+
+**未覆盖**：
+
+- **视频**：需要真实 mp4 + 缩略图（`thumbPath` 必须是 `Map<0, path>`，缩略图目标路径用
+  视频 md5），本轮没造素材，留待后续；
+- **文件**：OneBot 11 侧没有 `upload_group_file` 动作（实测返回 `未知动作`），kernel 的
+  `prepareFileElement` 是预留实现，等协议动作落地再测；
+- 大批量 / 大体积图片（如 4MB+ 照片）未压测。
+
 
