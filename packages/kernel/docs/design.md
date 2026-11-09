@@ -435,3 +435,11 @@ listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Li
   `major.node` 扫 qua + `os.version()`；Linux 打开 `use_xlog`。Windows 旧行为（qua 空）
   只在拿不到版本/major 时保底。
 - 只改平台字段与 qua 来源，不动登录/会话流程；Windows 仍走 PE stub。
+- **QQ 数据根按平台分流**（2026-11-09 Stage 1 E2E 修正）：`resolveQqUserDataRoot(exports, { dataRoot })`
+  Windows 保持 `getNTUserDataInfoConfig()` → `$HOME/Documents/Tencent Files` 兜底；Linux
+  （`KLINUX`）直接返回数据根，QQ 数据固定落 `<数据根>/nt_qq`。`commonPath` 与
+  `desktopGlobalPath` 同源（`resolveQqGlobalPath`），不再读写 `$HOME`——否则换机器/换用户
+  读不到历史账号，还会污染用户主目录。
+- 数据根来源：`attachWrapper` 的 `env.dataRoot`（loader 由 `NAPUTO_DATA_ROOT` 注入）；
+  直连/裸脚本场景回退 `NAPUTO_DATA_ROOT` 环境变量；两者都缺才回落 QQ 官方 API。
+  Linux 想复用已有 QQ 数据时把 `nt_qq` 拷到数据根（不提供隐式 `$HOME` 复用）。

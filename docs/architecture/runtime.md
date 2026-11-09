@@ -121,6 +121,9 @@ boot 进程；boot 退出且 `autoRestart=true` 时延迟重启。
 
 1. `loginService.initConfig`。`commonPath` 必须指向 QQ 真实数据目录
    （`<QQ 用户数据根>/nt_qq/global`），否则读不到历史账号、快速登录列表为空。
+   Windows 的 QQ 用户数据根来自 `getNTUserDataInfoConfig()`（兜底
+   `$HOME/Documents/Tencent Files`）；Linux 原生分支直接使用 Napuketto 数据根，
+   即 QQ 数据固定落 `<数据根>/nt_qq`（不再读写 `$HOME`）。
 2. 自建宿主先 `connect()` 并等 `onLoginConnected`，再留短暂缓冲；不等连接直接快速登录会报
    “登录系统连接异常”。
 3. 快速登录：默认自动选第一个可快速登录账号；`-q` / `NAPUTO_QUICK_UIN` 可强制指定。

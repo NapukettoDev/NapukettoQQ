@@ -273,7 +273,9 @@ Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原�
 - **不做**：PATH 前置、stub 目录、QQNT.dll 校验——这些只属于 wine 分支。
 - **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
 - **与 kernel 的衔接**：kernel 已按 `process.platform` 生成 KLINUX engine/session 配置并从
-  `major.node` 扫 qua；本分支只负责进程与预加载。
+  `major.node` 扫 qua；本分支只负责进程与预加载。`bootEnv` 额外带 `dataRoot`
+  （`NAPUTO_DATA_ROOT`），kernel 据此把 QQ 数据根固定到 `<数据根>/nt_qq`，不再读写
+  `$HOME/Documents/Tencent Files`。
 - 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
   Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
 

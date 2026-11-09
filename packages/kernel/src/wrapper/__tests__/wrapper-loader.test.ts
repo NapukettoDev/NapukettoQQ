@@ -6,8 +6,9 @@
  * resolveQqUserDataRoot / defaultEngineConfig 等引导路径，用 mock exports
  * 对象模拟 QQ 环境，不依赖真实 wrapper.node。
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "../../types/index.js";
+import { PlatformType } from "../../types/index.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import {
     createSession,
@@ -136,7 +137,11 @@ describe("startSession", () => {
 });
 
 describe("resolveQqUserDataRoot", () => {
-    it("QQ 官方 API 返回字符串时提取数据根", () => {
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
+    it("Windows：QQ 官方 API 返回字符串时提取数据根", () => {
         const exports = mockExports({
             NodeQQNTWrapperUtil: {
                 get: () => ({
@@ -144,18 +149,20 @@ describe("resolveQqUserDataRoot", () => {
                 }),
             },
         });
-        expect(resolveQqUserDataRoot(exports)).toContain("Tencent Files");
+        expect(resolveQqUserDataRoot(exports, { platform: PlatformType.KWINDOWS })).toContain(
+            "Tencent Files",
+        );
     });
 
-    it("API 不可用时回退默认位置", () => {
+    it("Windows：API 不可用时回退默认位置", () => {
         const exports = mockExports({
             NodeQQNTWrapperUtil: { get: () => ({ getNTUserDataInfoConfig: () => null }) },
         });
-        const result = resolveQqUserDataRoot(exports);
+        const result = resolveQqUserDataRoot(exports, { platform: PlatformType.KWINDOWS });
         expect(result).toContain("Tencent Files");
     });
 
-    it("API 抛异常时回退默认位置", () => {
+    it("Windows：API 抛异常时回退默认位置", () => {
         const exports = mockExports({
             NodeQQNTWrapperUtil: {
                 get: () => {
@@ -163,7 +170,59 @@ describe("resolveQqUserDataRoot", () => {
                 },
             },
         });
-        const result = resolveQqUserDataRoot(exports);
+        const result = resolveQqUserDataRoot(exports, { platform: PlatformType.KWINDOWS });
+        expect(result).toContain("Tencent Files");
+    });
+
+    it("Linux：显式数据根优先，不读 QQ 官方 API", () => {
+        const getNTUserDataInfoConfig = vi.fn(() => "/home/test/Documents/Tencent Files");
+        const exports = mockExports({
+            NodeQQNTWrapperUtil: { get: () => ({ getNTUserDataInfoConfig }) },
+        });
+        const result = resolveQqUserDataRoot(exports, {
+            platform: PlatformType.KLINUX,
+            dataRoot: "/data/napuketto",
+        });
+        expect(result).toBe("/data/napuketto");
+        expect(getNTUserDataInfoConfig).not.toHaveBeenCalled();
+    });
+
+    it("Linux：未显式传数据根时读 NAPUTO_DATA_ROOT", () => {
+        vi.stubEnv("NAPUTO_DATA_ROOT", "/env/napuketto");
+        const exports = mockExports({
+            NodeQQNTWrapperUtil: { get: () => ({ getNTUserDataInfoConfig: () => null }) },
+        });
+        expect(resolveQqUserDataRoot(exports, { platform: PlatformType.KLINUX })).toBe(
+            "/env/napuketto",
+        );
+    });
+
+    it("Linux：数据根缺失时回退 QQ 官方 API", () => {
+        vi.stubEnv("NAPUTO_DATA_ROOT", "");
+        const exports = mockExports({
+            NodeQQNTWrapperUtil: {
+                get: () => ({
+                    getNTUserDataInfoConfig: () => "/home/test/Documents/Tencent Files",
+                }),
+            },
+        });
+        expect(resolveQqUserDataRoot(exports, { platform: PlatformType.KLINUX })).toBe(
+            "/home/test/Documents/Tencent Files",
+        );
+    });
+
+    it("Windows：忽略 dataRoot（仍走 QQ 官方 API）", () => {
+        const exports = mockExports({
+            NodeQQNTWrapperUtil: {
+                get: () => ({
+                    getNTUserDataInfoConfig: () => "C:\\Users\\test\\Documents\\Tencent Files",
+                }),
+            },
+        });
+        const result = resolveQqUserDataRoot(exports, {
+            platform: PlatformType.KWINDOWS,
+            dataRoot: "/data/napuketto",
+        });
         expect(result).toContain("Tencent Files");
     });
 });

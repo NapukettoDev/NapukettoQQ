@@ -186,7 +186,10 @@ export interface KernelLike {
     // 路径 / appid
     parseAppidFromMajor?: (majorPath: string) => string | null;
     resolveAppidQua?: (fullVersion: string, majorPath?: string) => { appid: string; qua: string };
-    resolveQqUserDataRoot?: (wrapperExports: unknown) => string | null;
+    resolveQqUserDataRoot?: (
+        wrapperExports: unknown,
+        options?: { dataRoot?: string },
+    ) => string | null;
     resolveQqGlobalPath?: (qqDataRoot: string) => string;
     // 探测
     probeRuntime?: (ctx: CoreContextLike, filename?: string) => ProbeResultLike;

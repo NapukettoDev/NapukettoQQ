@@ -460,10 +460,14 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 
 新发现（Stage 2/3 要处理）：
 
-- **commonPath 仍落在 `$HOME`**：kernel 的 `resolveQqUserDataRoot` 走
-  `getNTUserDataInfoConfig()`，Linux 上返回 `$HOME/Documents/Tencent Files`，不是数据根；
-  本次用软链把该目录指到 `<数据根>/nt_qq` 才复用已有登录。Linux 原生宿主应改为优先
-  数据根（或显式注入），否则换机器/换用户会读不到历史账号，并污染 `$HOME`。
+- ~~commonPath 落在 `$HOME`~~ **已修（2026-11-09）**：kernel 的 `resolveQqUserDataRoot`
+  改为按平台分流——Windows 仍走 `getNTUserDataInfoConfig()`，Linux 直接用数据根，
+  QQ 数据固定 `<数据根>/nt_qq`（多账号共享，与 Windows QQ 数据目录语义一致）。
+  loader 把 `NAPUTO_DATA_ROOT` 注入 `BootEnv.dataRoot`，并让 kernel 的 `paths.dataRoot`
+  是全局数据根（账号目录仍是 `<数据根>/<uin>`）。复测：删掉
+  `$HOME/Documents/Tencent Files/nt_qq` 软链后快速登录仍成功，`commonPath` 为
+  `/tmp/ntqq2/nt_qq/global`，`$HOME/Documents/Tencent Files` 保持空目录。
+  迁移已有 QQ 数据时把 `nt_qq` 拷到数据根即可。
 - Bugly 依旧写 `$HOME/.config/QQ/crash_files/`（§7 已记）。
 - `setStatus` 报 `cs return ok, but response empty!`，Login 桥未注册；不影响登录与
   消息接收，属于既有兼容性问题。

@@ -177,7 +177,12 @@ afterAll(() => {
     }
 });
 
-const BOOT_ENV = { qqVersion: "9.9.9-Test", dataDir: "测试数据目录", wrapperPath: "wrapper.node" };
+const BOOT_ENV = {
+    qqVersion: "9.9.9-Test",
+    dataDir: "测试数据目录",
+    dataRoot: "",
+    wrapperPath: "wrapper.node",
+};
 
 describe("bootstrapWithCore 软重登重装配（A2）", () => {
     it("初次引导装配链 + ready 态 control login → 清理旧装配 → 重装配 → 重播 ready", async () => {
