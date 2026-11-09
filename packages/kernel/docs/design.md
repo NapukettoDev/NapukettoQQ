@@ -443,3 +443,25 @@ listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Li
 - 数据根来源：`attachWrapper` 的 `env.dataRoot`（loader 由 `NAPUTO_DATA_ROOT` 注入）；
   直连/裸脚本场景回退 `NAPUTO_DATA_ROOT` 环境变量；两者都缺才回落 QQ 官方 API。
   Linux 想复用已有 QQ 数据时把 `nt_qq` 拷到数据根（不提供隐式 `$HOME` 复用）。
+
+## 12. sendMessage 返回的 msgId（Linux 原生宿主 E2E 修正，2026-11-09）
+
+**现象**：Linux 原生宿主下 `OneBot send_msg` 返回的 `message_id` 无法用于
+`get_msg` / `delete_msg`——前者报「消息不存在或已被撤回」，后者 `recallMsg` 失败；
+同一条消息走 `get_group_msg_history` 拿到的是另一个 `message_id`（内容、时间一致）。
+
+**根因**：`MsgApi.sendMessage` 自己 `generateMsgUniqueId()` 生成 msgId，按 NapCat 式
+把它塞进 `peer.guildId` 再 `sendMsg("0", ...)`；确认监听按 `m.guildId === msgId` 命中
+（所以发送成功判定没问题）。但 Linux wrapper 实际落库的消息 `msgId` 是它自己另生成的
+一个 id——**生成的 id 只活在 `guildId` 字段上**，拿它 `getMsgsByMsgId` / `recallMsg`
+自然查不到。Windows 侧实测两者一致（§8 的 `7771794519560903400` 可直接用），故该缺陷
+直到 Linux E2E 才暴露。
+
+**修复**：`confirmSend` 不再只 resolve 成功信号，而是把命中的那条 `RawMessage`
+交回；`sendMessage` 优先返回 `confirmed.msgId`（非空字符串），缺失时回退生成的 id。
+语义仍是「发送确认后返回可用的 NT msgId」，Windows 行为不变（两者相同）。
+
+**验证**：WSL Ubuntu 24.04 + Linux QQ 3.2.35 / QQNT 9.9.37，真 CLI 经 OneBot HTTP：
+`send_msg` → `message_id:1`，`get_msg(1)` 返回原文，`delete_msg(1)` 成功，随后
+`get_group_msg_history` 里同一条消息 `message_id` 仍为 1、内容已清空（撤回墓碑）。
+修复前同流程为 1（发送）/ 2（历史）两个 id。

@@ -499,6 +499,30 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 未覆盖：真实网络下载（`downloadFile` 的 https 链路未在 CI 跑，但 URL/sha256 已用官方
 文件核对）；Linux 本地 `/opt/QQ` 安装探测；arm64 条目与符号核验。
 
+### 9.10 Stage 3：消息发送/撤回实测（2026-11-09）
+
+环境同 §9.9（WSL2 Ubuntu 24.04 / Node v24.16.0 / 无 DISPLAY / `NAPUTO_LINUX_NATIVE=1`），
+真 CLI + OneBot 11 HTTP，对开发群（1101729931）走完整消息动作链：
+
+| 项 | 结果 |
+|---|---|
+| `send_msg`（文本） | retcode 0、424ms，返回 `message_id` |
+| 真实送达 | `get_group_msg_history` 能查到该文本 |
+| `get_msg` | retcode 0，返回原文（**修复前** retcode 102「不存在或已被撤回」） |
+| `delete_msg`（撤回） | retcode 0；历史里该消息内容清空（撤回墓碑），撤回真生效 |
+| id 一致性 | 发送返回 / 历史 / `get_msg` / `delete_msg` 是同一个 `message_id` |
+| 自身消息事件 | WS 订阅窗口内 0 条——同进程发送不产生 `onRecvMsg`，与 Windows 一致 |
+
+**发现并修复（kernel，详见 `packages/kernel/docs/design.md` §12）**：Linux wrapper 落库的
+`msgId` 与 `generateMsgUniqueId()` 生成的不一致——生成的 id 只出现在确认事件的
+`guildId` 字段上（`confirmSend` 靠它判成功，所以发送判定没坏）。于是 `send_msg` 返回的
+`message_id` 拿去 `get_msg`/`delete_msg` 查不到（历史里同一条消息是另一个 id）。
+修复：`confirmSend` 把命中的 `RawMessage` 交回，`sendMessage` 优先返回它的 `msgId`，
+缺失才回退生成值；Windows 侧两者本就相同，行为不变。
+
+未覆盖：他人消息的**实时入站事件**（需要第二个账号发消息；离线历史事件已在 Stage 1
+验证）；富媒体（图片/语音/文件）发送未实测。
+
 ## 10. 决策建议与待决事项
 
 **建议**：
@@ -523,12 +547,15 @@ KLINUX engine init、`getLoginList`、gnutls 隐藏依赖、`PerfTrace` 运行�
 `onOpentelemetryInit` / `onSessionInitComplete`、`getMsgService` READY、七个核心
 service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → session READY → 适配器启动
 → 收到离线消息 → SIGTERM 优雅退出（code=0），全程无 wine；Stage 2 用官方 deb 跑通
-三层解包 + 缓存布局，并以该缓存再次完成登录 → READY → 适配器启动 → code=0。
+三层解包 + 缓存布局，并以该缓存再次完成登录 → READY → 适配器启动 → code=0；Stage 3
+走 OneBot 11 动作链实测 `send_msg` → `get_group_msg_history` 可见 → `get_msg` →
+`delete_msg` 撤回全部成功（同时修掉 Linux 下发送返回 id 与历史 id 不一致的缺陷）。
 
 **待决/待验证**：
 
 - X11 运行期功能（截图 / 剪贴板等）；init 阶段已通过，但这些功能未测。
-- 消息收发（`sendMsg` / 消息事件）——登录与 READY 已过，收发链路未测。
+- 消息**发送 + 撤回已实测通过**（§9.10）；未覆盖他人消息的实时入站事件（需第二个账号）
+  与富媒体发送。
 - arm64 的符号集是否与 x64 一致（需对 arm64 wrapper 重跑符号核验）。
 - Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
