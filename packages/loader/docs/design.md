@@ -315,6 +315,11 @@ Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原�
   `$HOME/Documents/Tencent Files`。
 - 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
   Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
+- **本地 deb 安装（Stage 3d，2026-11-09）**：Linux 原生分支优先识别扁平布局
+  `/opt/QQ`（`NAPUTO_QQ_DIR` 可覆盖）：`<根>/qq` + `<根>/resources/app/wrapper.node`，
+  版本号取自 `resources/app/package.json`。命中即用本机安装，省掉 190MB deb 下载。
+  校验 ELF 魔数（防 WSL 下误指 `/mnt/c` 的 Windows PE 安装）与版本字段（缺失就跳过，
+  不瞎填——版本参与登录）。Wine 分支不认该布局（需要 PE）。
 
 ---
 

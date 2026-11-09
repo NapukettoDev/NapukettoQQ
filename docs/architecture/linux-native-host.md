@@ -290,9 +290,11 @@ V1_LNX_NQ_3.2.35_54395_GW_B
 
 其他平台相关点：
 
-- **本地安装探测**：Linux 应识别 `/opt/QQ/resources/app`；同时要避免把
-  `/mnt/c/.../QQNT` 下的 Windows PE `wrapper.node` 当成 Linux 文件（原生 node
-  `dlopen` 会报 invalid ELF header）。本地探测需校验 ELF 魔数或按平台过滤。
+- **本地安装探测**：Linux 原生分支已识别 `/opt/QQ`（deb 扁平布局：
+  `<根>/qq` + `<根>/resources/app/wrapper.node`，`NAPUTO_QQ_DIR` 可覆盖，版本取自
+  `resources/app/package.json`），优先于数据根缓存，省掉 190MB deb 下载（§9.13）。
+  探测自带 ELF 魔数校验，不会把 `/mnt/c/.../QQNT` 下的 Windows PE `wrapper.node`
+  当成 Linux 文件（原生 `dlopen` 会报 invalid ELF header）。
 - **宿主是 Bun 时**：与 Windows 同理，wrapper 需要真 node 的 `napi_*`；Linux 分支要有
   `which node` 之类解析，现有 `findSystemNode` 用的是 Windows `where`。
 - **数据目录**：建议把 `HOME` / `XDG_CONFIG_HOME` / `XDG_DATA_HOME` 收敛到数据根，
@@ -573,6 +575,32 @@ arm64 node）。
    也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
    （避免给用户一个未验证的下载入口）。
 
+### 9.13 Stage 3d：本地 deb 安装（扁平 `/opt/QQ`）探测（2026-11-09）
+
+**问题**：deb 装出来的 QQ 没有 Windows 的 `versions/<版本>/resources/app/` 结构，
+是扁平的 `/opt/QQ/{qq,resources/app/...}`；此前 loader 只认 `versions/` 布局，Linux
+用户即使本机装了 QQ 也会被当成「未安装」，白下 190MB deb。
+
+**做法**：`resolveQqFiles` 新增 L1b（仅 Linux 原生分支）：`NAPUTO_QQ_DIR` > `/opt/QQ`，
+校验 `resources/app/wrapper.node` 是 ELF、版本取自 `resources/app/package.json`
+（缺失/非法即跳过，不猜版本）；命中返回 `source: "local"`、`qqPath = <根>/qq`。
+Wine 分支不启用（要 PE）。
+
+**实测（WSL2，真 x64 ELF wrapper，数据根拷贝去掉 `qq-files` 以排除 L2 命中）**：
+
+| 项 | 结果 |
+|---|---|
+| 合成扁平安装 | `/tmp/opt-qq/qq` + `/tmp/opt-qq/resources/app/*`（来自 Stage 2 解包产物） |
+| 实际加载路径 | `/proc/<self-host pid>/maps` → `/tmp/opt-qq/resources/app/wrapper.node` |
+| 数据根 `qq-files/` | 未生成（既未下载也未用缓存） |
+| kernel 装配 | `wrapper 装配完成 … version=3.2.35-54395` |
+| 登录 | 快速登录成功（同一账号会话） |
+| 退出 | SIGTERM → `code=0` 优雅退出 |
+
+**边界**：只覆盖 deb 安装的扁平布局；AppImage / 手工解包到任意目录走
+`NAPUTO_QQ_DIR` 显式指定。版本号仍只从 `package.json` 取，不从 `wrapper.node`
+猜。
+
 ## 10. 决策建议与待决事项
 
 **建议**：
@@ -615,7 +643,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
   私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
 - arm64 需要额外预加载系统 `libuuid.so.1`（`uuid_generate` / `uuid_unparse` 是
   lazy UND 且无 `DT_NEEDED`），x64 靠 `DT_NEEDED` 自动解析。
-- Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
+- ~~Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）~~
+  **已修（Stage 3d，2026-11-09）**：L1b 识别 `/opt/QQ`（`NAPUTO_QQ_DIR` 覆盖），
+  ELF + `package.json` 版本双校验，命中即用本机安装（§9.13）。
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。
