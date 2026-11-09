@@ -217,7 +217,9 @@ Linux 原生宿主不下载 Windows exe，改下载官方 **deb**，并在缓存
   同样经 `normalizeDownloadUrl` 处理 `/QQNTV2/` 大小写；基线 x64 deb
   `QQ_3.2.35_261103_amd64_01.deb`（188,287,504 字节，sha256 `7de0386…f9ac`）。
 - **暂未覆盖**：manifest 的 Linux 自动更新（cron 目前只维护 Windows，Linux 条目手工
-  PR）；arm64 条目待符号核验后补；本地 `/opt/QQ` 扁平安装探测。
+  PR）；arm64 条目（符号与解包已静态核验，见 `docs/architecture/linux-native-host.md`
+  §9.11；仍缺私有 `native/` 的 arm64 stub 产物与真机运行，登记前需要这两项）；
+  本地 `/opt/QQ` 扁平安装探测。
 
 ---
 

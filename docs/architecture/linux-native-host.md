@@ -4,17 +4,19 @@
 > wine + Windows `node.exe`（见 [decisions.md](decisions.md) 的 ADR-019 与
 > [runtime.md](runtime.md) §1）。2026-11-08 完成 Stage 0 核心链路实测
 > （dlopen / exports / O3 / engine init / getLoginList）；2026-11-09 完成 Stage 0b
-> （真实扫码 + 快速登录 + session READY，wrapper 层）与 Stage 1 端到端（CLI +
-> kernel 平台参数 + loader 原生分支）。X11 运行期、消息发送与 arm64 未验证，完整
+> （真实扫码 + 快速登录 + session READY，wrapper 层）、Stage 1 端到端（CLI +
+> kernel 平台参数 + loader 原生分支）、Stage 2（deb 下载/解包/缓存管线）、Stage 3
+> （消息发送/撤回）与 Stage 3b（arm64 符号 + 解包 + stub 交叉编译的静态核验）。
+> X11 运行期、他人消息的实时入站、富媒体发送、arm64 运行期仍未验证，完整
 > Stage 0 通过后再按 ADR 规则追加决策。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
 >
 > **核验基线**：官方 Linux QQ `3.2.35`（QQNT `9.9.37`，2026-11-03）amd64 deb；
-> Node.js `v24.16.0` linux-x64；临时 WSL2 Ubuntu 24.04.3。核验 = 静态分析
-> （ELF dynsym / DT_NEEDED / 字符串 + Node 源码）+ 运行时 spike（`LD_PRELOAD`，
-> 无 DISPLAY）。
+> arm64 用同版本 `arm64` deb；Node.js `v24.16.0` linux-x64；临时 WSL2 Ubuntu 24.04.3。
+> 核验 = 静态分析（ELF dynsym / DT_NEEDED / 字符串 + Node 源码）+ 运行时 spike
+> （`LD_PRELOAD`，无 DISPLAY）。
 
 ## 1. 结论摘要
 
@@ -32,8 +34,9 @@
   无 DISPLAY 的 dlopen / engine init 已实测通过，但 X11 运行期功能（截图等）未测。
 - **工程量不在 3 个点**：真正的成本在 deb 包获取与布局、双版本号、平台参数、无头依赖、
   清单/更新链、arm64、CI/发布与 ADR。
-- **建议**：Stage 0 核心链路与登录/session READY 已通过；下一步补 X11 运行期、消息
-  收发与 arm64 验证，再决定立项。Wine 先保留一个版本作为回退，不要直接删除。
+- **建议**：Stage 0 核心链路、登录/session READY、消息发送/撤回与 arm64 静态核验
+  已通过；下一步补 X11 运行期与 arm64 真机运行，再决定立项。Wine 先保留一个版本
+  作为回退，不要直接删除。
 
 ## 2. 背景：Windows 为什么需要近百条 forwarder
 
@@ -65,9 +68,11 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
 - **QQ 包**：官方 Linux 下载配置
   [`linuxConfig.js`](https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js)
   （页面 [im.qq.com/linuxqq](https://im.qq.com/linuxqq/index.shtml)）。基线版本
-  `3.2.35`，deb 188,287,504 字节，内部目录 `9.9.37`。
-- **解包**：`7z x` 两次（deb 本质是 `ar`，内含 `data.tar.xz`），或 `ar x` + `tar -xf`。
-- **ELF 分析**：`readelf --dyn-syms --wide`、`readelf -d`、`readelf --version-info`。
+  `3.2.35`，amd64 deb 188,287,504 字节（arm64 deb 208,717,176 字节），内部目录
+  `9.9.37`。
+- **解包**：`7z x` 三次（deb 本质是 `ar`，内含 `data.tar.xz`），或 `ar x` + `tar -xf`。
+- **ELF 分析**：`readelf --dyn-syms --wide`、`readelf -d`、`readelf --version-info`
+  （`readelf` 跨架构可用，arm64 结论见 §9.11）。
 - **Node 符号**：Node.js `v24.16.0` linux-x64 官方 tar.xz。
 - **Node 行为**：`process.dlopen` 的 `flags` 传递与自注册规则，核对 Node
   [`src/node_binding.cc`](https://github.com/nodejs/node/blob/v24.16.0/src/node_binding.cc)。
@@ -75,14 +80,14 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
   linux-x64；装 `libx11-6` / `libx11-xcb1` / `libxext6` / `libuuid1` /
   `libgssapi-krb5-2` / `libgcrypt20` / `libgnutls30t64`；`DISPLAY` 未设置；
   `LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`。
-- **未做**：真实账号的快速登录 / 扫码 / session READY / 消息收发；X11 运行期功能
-  （截图、剪贴板等）；arm64。完整 Stage 0 仍需补这些。
+- **未做**：X11 运行期功能（截图、剪贴板等）；他人消息的实时入站；富媒体发送；
+  arm64 运行期（arm64 静态核验见 §9.11）。完整 Stage 0 仍需补这些。
 
 > 版本相关数字只用于这次研判；QQ 升级后重跑附录 A 的命令即可重新确认。
 
 ## 4. 符号缺口：2 个必需 + 1 个可选
 
-基线 deb 的 `wrapper.node` 共有 641 个唯一 undefined 符号，其中：
+基线 deb 的 `wrapper.node` 共有 641 条 undefined 记录（640 个唯一名），其中：
 
 - `napi_*`：41 个；
 - `uv_*`：53 个；
@@ -523,6 +528,51 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 未覆盖：他人消息的**实时入站事件**（需要第二个账号发消息；离线历史事件已在 Stage 1
 验证）；富媒体（图片/语音/文件）发送未实测。
 
+### 9.11 Stage 3b：arm64 符号 / 解包 / stub 静态核验（2026-11-09）
+
+arm64 deb（`QQ_3.2.35_261103_arm64_01.deb`，208,717,176 字节，sha256
+`5f93ea62…43cf2`）走与 x64 相同的工具链：`readelf` 静态分析 + loader 真提取管线 +
+`aarch64-linux-gnu-g++` 交叉编译 stub。**运行期未验证**（需要 arm64 机器 / qemu +
+arm64 node）。
+
+| 项 | x64 | arm64 |
+|---|---|---|
+| deb 字节 | 188,287,504 | 208,717,176 |
+| `wrapper.node` | 152,431,496 | 147,183,032 |
+| `major.node` | 111,947,856 | 112,209,336 |
+| UND 记录 / 唯一名 | 641 / 640 | 656 / 655 |
+| `napi_*` / `uv_*` / v8 / node | 41 / 53 / 1 / 1 | 41 / 53 / 1 / 1 |
+| `qq_magic` / `IsEnvironmentStopping` / `PerfTrace(静态)` | 1 / 1 / 0 | 1 / 1 / 0 |
+| 静态导出（GLOBAL DEFINED） | 381 | 385 |
+| `libbugly.so` gnutls UND（无 `DT_NEEDED`） | 71 | 71 |
+| 解包 + 提取 | 5.5s / 65ms | 6.6s / 67ms，20 文件 / 288,021,818 字节 |
+| stub 交叉编译 | `build/linux-x64` | `build/linux-arm64`，69,424 字节 |
+
+**结论**
+
+1. **缺口集完全一致**：arm64 也只是缺同样的 2 个必需符号 + 运行期 `PerfTrace`；两份
+   `wrapper.node` 的 `napi_*` / `uv_*` / v8 / node 计数逐一相同，`libbugly` 的 gnutls
+   隐藏依赖也相同（71 个 UND、无 `DT_NEEDED`）→ arm64 同样要预加载
+   `libgnutls.so.30`。stub **同一份源码**交叉编译即可：产物导出恰好 3 个符号
+   （`qq_magic_napi_register`、`_ZN4node21IsEnvironmentStoppingEPN2v87IsolateE`、
+   `PerfTrace`），无 `DT_NEEDED`，只 UND `napi_module_register`（由 node 提供）。
+2. UND 差异只在架构细节：arm64 多出的 15 条是 glibc 2.17 版本后缀与 aarch64 的
+   `__addtf3` / `__multf3` / `__clear_cache` / `__getauxval` 等 GCC/内核辅助符号，
+   都来自系统 libc / libgcc，不是新缺口。
+3. **arm64 额外缺 `libuuid`**（新发现）：两架构都引用 `uuid_generate` /
+   `uuid_unparse`，但只有 x64 的 `DT_NEEDED` 里有 `libuuid.so.1`；arm64 既没
+   `DT_NEEDED` 也没随包库（`liblinux_compat.so` 不导出 uuid/gnutls）。惰性绑定时
+   加载能过，**首次调用会 symbol lookup error** → arm64 宿主需要额外预加载系统
+   `libuuid.so.1`（与 gnutls 同类处理）。
+4. **解包管线对 arm64 直接可用**：真 loader 管线（`extractDebInstaller` +
+   `extractLinuxWrapperFiles`）提取出 20 个文件，arm64 专有文件名都在白名单覆盖内
+   （`libparent-ipc-core-arm64.so`、`libunwind-aarch64.so.8`、
+   `sharp-linux-arm64v8.node`），`sharp-lib/libvips-cpp.so.42` 保留。
+5. 运行时仍待验证：登录 / session READY / 收发在 arm64 上未跑过；stub 的 arm64
+   产物尚未进私有 `native/`（`build/linux-arm64/` 只是本机交叉编译产物），清单里
+   也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
+   （避免给用户一个未验证的下载入口）。
+
 ## 10. 决策建议与待决事项
 
 **建议**：
@@ -549,14 +599,22 @@ service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → sessio
 → 收到离线消息 → SIGTERM 优雅退出（code=0），全程无 wine；Stage 2 用官方 deb 跑通
 三层解包 + 缓存布局，并以该缓存再次完成登录 → READY → 适配器启动 → code=0；Stage 3
 走 OneBot 11 动作链实测 `send_msg` → `get_group_msg_history` 可见 → `get_msg` →
-`delete_msg` 撤回全部成功（同时修掉 Linux 下发送返回 id 与历史 id 不一致的缺陷）。
+`delete_msg` 撤回全部成功（同时修掉 Linux 下发送返回 id 与历史 id 不一致的缺陷）；
+Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*` / 53 `uv_*` / 1 v8 /
+1 node / 2 必需 + `PerfTrace`）、`libbugly` 同样有 71 个 gnutls UND 且无 `DT_NEEDED`、
+真 loader 管线可提取 arm64 deb（20 文件 / 288MB）、stub 用同一份源码交叉编译出 3 符号
+无依赖的 `.so`；同时发现 arm64 缺 `libuuid` 的 `DT_NEEDED`（需额外预加载）。
 
 **待决/待验证**：
 
 - X11 运行期功能（截图 / 剪贴板等）；init 阶段已通过，但这些功能未测。
 - 消息**发送 + 撤回已实测通过**（§9.10）；未覆盖他人消息的实时入站事件（需第二个账号）
   与富媒体发送。
-- arm64 的符号集是否与 x64 一致（需对 arm64 wrapper 重跑符号核验）。
+- arm64 符号与解包**已静态核验**（§9.11）：缺口集与 x64 一致、stub 可交叉编译、
+  真 loader 管线可提取；**运行期未验证**（需 arm64 机器）。stub 的 arm64 产物尚未进
+  私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
+- arm64 需要额外预加载系统 `libuuid.so.1`（`uuid_generate` / `uuid_unparse` 是
+  lazy UND 且无 `DT_NEEDED`），x64 靠 `DT_NEEDED` 自动解析。
 - Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
@@ -586,6 +644,19 @@ service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → sessio
 | Node v24.16.0 最高 GLIBC | 2.28 |
 | Node 导出 | 145 `napi_*` / 318 `uv_*` / 1558 v8 / 5774 `node::*` |
 
+arm64 基线（同版本 `arm64` deb，见 §9.11）：
+
+| 项 | 值 |
+|---|---|
+| deb | 208,717,176 字节，sha256 `5f93ea62347dd772c7be4115413c95d2a60d189f3dd81bc194834bd4d7343cf2` |
+| `wrapper.node` / `major.node` | 147,183,032 / 112,209,336 字节，ELF64 AArch64 |
+| wrapper undefined（唯一） / 静态导出 | 655 / 385 |
+| `napi_*` / `uv_*` / v8 / node | 41 / 53 / 1 / 1（与 x64 相同） |
+| 非系统必需符号 | 同 x64：2（`qq_magic` + `IsEnvironmentStopping`）+ `PerfTrace` |
+| `libbugly.so` gnutls UND（无 `DT_NEEDED`） | 71 |
+| 缺失的系统 `DT_NEEDED` | `libuuid.so.1`（x64 有；arm64 需预加载） |
+| stub 交叉编译 | 69,424 字节，导出 3 符号，无 `DT_NEEDED` |
+
 重跑：
 
 ```bash
@@ -602,7 +673,19 @@ readelf --version-info --wide wrapper.node | grep 'Name: GLIBC_'
 
 # Node 侧对照
 readelf --dyn-syms --wide node | grep -c 'napi_'
+
+# arm64：解包 + 交叉编译 stub（产物不入公共仓库）
+7zz x QQ_*_arm64_01.deb -od0 && 7zz x d0/data.tar.xz -od1 && 7zz x d1/data.tar -od2
+readelf --dyn-syms --wide d2/opt/QQ/resources/app/wrapper.node \
+  | awk '$7=="UND" && $8!=""{print $8}' | sort -u
+cd packages/loader/native
+ARCH=arm64 CXX=aarch64-linux-gnu-g++ bash stub/build-linux.sh
+readelf --dyn-syms --wide build/linux-arm64/libnapuketto_stub.so | grep -v UND
 ```
+
+> 注：arm64 的 `linuxConfig.js` 字段是 `armDownloadUrl.deb`
+> （`…/QQ_3.2.35_261103_arm64_01.deb`）；`qqdl.gtimg.cn` 的 `/QQNTV2/` 段需降为
+> `/qqntv2/` 才能下载（`normalizeDownloadUrl` 已处理，手测时注意）。
 
 ## 附录 B：参考
 
