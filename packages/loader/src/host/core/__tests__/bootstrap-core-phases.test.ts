@@ -268,7 +268,12 @@ function freshState(overrides: Partial<SharedState> = {}): SharedState {
     };
 }
 
-const BOOT_ENV = { qqVersion: "9.9.9-Test", dataDir: "数据目录", wrapperPath: "wrapper.node" };
+const BOOT_ENV = {
+    qqVersion: "9.9.9-Test",
+    dataDir: "数据目录",
+    dataRoot: "",
+    wrapperPath: "wrapper.node",
+};
 const LOGIN_RESULT = { uin: "10001", uid: "u1", nick: "甲" };
 
 describe("bootstrapWithCore：session 替换（非自建宿主）", () => {
@@ -539,6 +544,18 @@ describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅�
 });
 
 describe("bootstrapWithCore：NapukettoCore.create 选项折叠", () => {
+    it("NAPUTO_DATA_ROOT 是账号目录父级 → paths 拆成数据根 + 账号名（ctx.paths.root 为数据根）", async () => {
+        stubBootEnv();
+        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        const { core } = fakeCore(LOGIN_RESULT);
+        const kernel = fakeKernel(core);
+        const mod = await freshModule();
+        const dataRoot = join("数据根", "napuketto");
+        const bootEnv = { ...BOOT_ENV, dataDir: join(dataRoot, "10001"), dataRoot };
+        await mod.bootstrapWithCore(kernel, freshState(), bootEnv, 537376818);
+        expect(h.createOptions[0]?.["paths"]).toEqual({ dataRoot, account: "10001" });
+    });
+
     it("[log] 段折叠进 create 选项（级别/格式/时间戳/颜色/文件）；IPC 模式 consoleLog:false", async () => {
         stubBootEnv();
         vi.stubEnv("NAPUTO_IPC", "1");

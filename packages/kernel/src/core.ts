@@ -377,11 +377,12 @@ function waitQrLoggedIn(session: QrLoginSession): Promise<void> {
 /**
  * loginService.initConfig 的 commonPath：
  * worker/自建宿主（非 browser）优先 QQ 真实数据目录（数据根/nt_qq/global），
- * 否则回退账号目录。
+ * 否则回退账号目录。Linux 下数据根即 Napuketto 数据根（`ctx.paths.root`），
+ * Windows 由 QQ 官方 API 定位。
  */
 function resolveCommonPath(ctx: CoreContext, wrapper: WrapperContext): string {
     if (electronProcessType() !== "browser") {
-        const root = resolveQqUserDataRoot(wrapper.exports);
+        const root = resolveQqUserDataRoot(wrapper.exports, { dataRoot: ctx.paths.root });
         if (root !== null) {
             return resolveQqGlobalPath(root);
         }

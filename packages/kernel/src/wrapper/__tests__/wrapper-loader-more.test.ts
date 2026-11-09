@@ -8,6 +8,7 @@
  *  - loginService 解析：捕获实例 > 单例 get() > new 回退 > 全失败 null
  *  - engine 配置：显式覆盖优先，缺省走默认（desktopGlobalPath 解析）
  */
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type {
     EnginInitDesktopConfig,
@@ -41,6 +42,19 @@ function withProcessType(type: string | undefined, fn: () => void): void {
             delete p.type;
         } else {
             p.type = saved;
+        }
+    }
+}
+
+/** 模拟平台（process.platform 属性注入，用后恢复；仅用于平台分流测试）。 */
+function withProcessPlatform(platform: NodeJS.Platform, fn: () => void): void {
+    const original = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+    try {
+        fn();
+    } finally {
+        if (original !== undefined) {
+            Object.defineProperty(process, "platform", original);
         }
     }
 }
@@ -102,6 +116,39 @@ describe("startNapuketto 自建宿主（无 process.type）", () => {
             ] as string;
             expect(globalPath).toContain("nt_qq");
             expect(globalPath).toContain("global");
+        });
+    });
+
+    it("Linux 默认 engine 配置：desktopGlobalPath 用数据根（不读 $HOME）", () => {
+        withProcessType(undefined, () => {
+            const engine = { initWithDeskTopConfig: vi.fn() };
+            const exports = mockExports({
+                NodeIQQNTWrapperEngine: { get: () => engine },
+            });
+            const getNTUserDataInfoConfig = vi.fn(() => "/home/test/Documents/Tencent Files");
+            (exports as unknown as Record<string, unknown>)["NodeQQNTWrapperUtil"] = {
+                get: () => ({ getNTUserDataInfoConfig }),
+            };
+            withProcessPlatform("linux", () => {
+                startNapuketto({
+                    wrapperExports: exports,
+                    env: {
+                        qqVersion: "3.2.35-54395",
+                        dataDir: "/data/acct",
+                        dataRoot: "/data/root",
+                    },
+                });
+            });
+            const config = engine.initWithDeskTopConfig.mock.calls[0]?.[0] as Record<
+                string,
+                unknown
+            >;
+            expect(config["platform_type"]).toBe(PlatformType.KLINUX);
+            expect(config["base_path_prefix"]).toBe("/data/acct");
+            expect(
+                (config["global_path_config"] as Record<string, unknown>)["desktopGlobalPath"],
+            ).toBe(join("/data/root", "nt_qq", "global"));
+            expect(getNTUserDataInfoConfig).not.toHaveBeenCalled();
         });
     });
 

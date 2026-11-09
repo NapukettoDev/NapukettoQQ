@@ -76,6 +76,14 @@ export function electronProcessType(): string | undefined {
     return (process as unknown as { type?: string }).type;
 }
 
+/** `resolveQqUserDataRoot` 选项（平台覆盖供测试/联调，缺省按 `process.platform` 探测）。 */
+export interface QqDataRootOptions {
+    /** 数据根（`NAPKETTO_DATA` / `--data-dir` 解析结果）。Linux 下 QQ 数据落 `<dataRoot>/nt_qq`。 */
+    dataRoot?: string;
+    /** 平台覆盖（缺省 `detectPlatformType()`）。 */
+    platform?: PlatformType;
+}
+
 /**
  * 解析 QQ 用户数据根（登录数据目录，如 `C:\Users\<user>\Documents\Tencent Files`）。
  * 优先 NodeQQNTWrapperUtil.getNTUserDataInfoConfig()（QQ 官方 API），回退默认位置。
@@ -85,8 +93,22 @@ export function electronProcessType(): string | undefined {
  * QQ 真实数据路径才能读到历史账号——cli 的 `.napuketto\default` 数据目录读不到
  * （getLoginList 返回空 → 只能 QR 登录）。V1 主进程模式 QQ 自己 initConfig 过
  * 正确路径，无需此解析。
+ *
+ * 平台分流（2026-11-09 Stage 1 E2E）：Linux（KLINUX）自建宿主持有 QQ 数据，直接
+ * 用数据根（`<数据根>/nt_qq`），不读 `$HOME`——否则换机器/换用户读不到历史账号，
+ * 还会把 QQ 崩溃目录等写进用户主目录。Windows 保持官方 API + 默认位置兜底。
  */
-export function resolveQqUserDataRoot(exports: WrapperNodeApi): string | null {
+export function resolveQqUserDataRoot(
+    exports: WrapperNodeApi,
+    opts: QqDataRootOptions = {},
+): string | null {
+    const platform = opts.platform ?? detectPlatformType();
+    if (platform === PlatformType.KLINUX) {
+        const dataRoot = opts.dataRoot ?? process.env["NAPUTO_DATA_ROOT"] ?? "";
+        if (dataRoot !== "") {
+            return dataRoot;
+        }
+    }
     return extractUserDataRoot(exports) ?? join(homedir(), "Documents", "Tencent Files");
 }
 
@@ -325,7 +347,7 @@ function resolveEngineConfig(
     if (engineConfig !== undefined) {
         return engineConfig;
     }
-    return defaultEngineConfig(env ?? {}, resolveBootQqGlobalPath(ctx));
+    return defaultEngineConfig(env ?? {}, resolveBootQqGlobalPath(ctx, env?.dataRoot));
 }
 
 /** 捕获 QQ 已 init 的 session（boot.cjs 拦截 `new` 窃取），返回是否捕获成功。 */
@@ -346,12 +368,18 @@ function captureSession(
  * 数据目录（数据根/nt_qq/global，HANDOVER-V6），否则登录数据读写错位
  * （P2-1 实测 2026-08-06；getLoginList 空）。QQ 主进程（V1）QQ 自己已配置
  * engine，无需解析。
+ *
+ * `dataRoot` 仅 Linux 生效（`resolveQqUserDataRoot` 平台分流）：loader 由
+ * `NAPUTO_DATA_ROOT` 注入，QQ 数据固定落 `<数据根>/nt_qq/global`。
  */
-function resolveBootQqGlobalPath(ctx: WrapperContext): string | undefined {
+function resolveBootQqGlobalPath(ctx: WrapperContext, dataRoot?: string): string | undefined {
     if (electronProcessType() === "browser") {
         return undefined;
     }
-    const root = resolveQqUserDataRoot(ctx.exports);
+    const root = resolveQqUserDataRoot(
+        ctx.exports,
+        dataRoot !== undefined && dataRoot !== "" ? { dataRoot } : {},
+    );
     if (root === null) {
         return undefined;
     }
@@ -392,6 +420,8 @@ export interface BootEnv {
     qqVersion?: string;
     /** 用户数据目录（cfgDir 的父级，用于 desktopPathConfig）。 */
     dataDir?: string;
+    /** 数据根（Linux 下 QQ 数据根 = `<dataRoot>/nt_qq`；Windows 忽略）。 */
+    dataRoot?: string;
     /** 账号 uin（可选，提供则一步 init+start）。 */
     selfUin?: string;
     /** 账号 uid（可选）。 */

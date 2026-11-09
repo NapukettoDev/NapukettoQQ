@@ -415,4 +415,35 @@ describe("装配与收尾补充", () => {
         // browser 下不走 resolveQqUserDataRoot（QQ 自己已配置 engine）
         expect(cfg["commonPath"]).toBe(core["ctx"]["paths"]["accountDir"]);
     });
+
+    it("Linux 自建宿主 → initConfig commonPath 用数据根（数据根/nt_qq/global）", async () => {
+        const dataRoot = freshRoot();
+        const core = NapukettoCore.create({ paths: { dataRoot }, consoleLog: false });
+        const initConfig = vi.fn();
+        const wrapper = {
+            session: null,
+            loginService: { initConfig },
+            engine: {},
+            exports: {},
+            versionInfo: { fullVersion: "9.9.9-12345" },
+        } as unknown as WrapperContext;
+        startNapukettoMock.mockReturnValueOnce(wrapper);
+        core.attachWrapper({} as never, { qqVersion: "9.9.9", dataDir: tmp } as never);
+        quickLoginMock.mockResolvedValueOnce({
+            uin: "10001",
+            uid: "uid-1",
+            nick: "",
+        } as LoginResult);
+        const original = Object.getOwnPropertyDescriptor(process, "platform");
+        Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+        try {
+            await core.login({ appid: "537" });
+        } finally {
+            if (original !== undefined) {
+                Object.defineProperty(process, "platform", original);
+            }
+        }
+        const cfg = initConfig.mock.calls[0]?.[0] as { commonPath?: string };
+        expect(cfg["commonPath"]).toBe(join(dataRoot, "nt_qq", "global"));
+    });
 });

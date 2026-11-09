@@ -4,7 +4,7 @@
  * NapukettoCore.create → attachWrapper → 登录（pickLoginAccount + doLogin）→
  * session 替换/激活 → 就绪等待 → 冒烟自检 → 协议装配 → 探测模式。
  */
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { registerShutdownHook } from "../../shutdown.js";
 import { env } from "../env.js";
@@ -41,10 +41,12 @@ import {
 } from "./session.js";
 import { runSmokeTest } from "./smoke.js";
 
-/** 引导环境（qqVersion / dataDir / wrapperPath，来自 env）。 */
+/** 引导环境（qqVersion / dataDir / dataRoot / wrapperPath，来自 env）。 */
 export interface BootstrapEnv {
     qqVersion: string;
     dataDir: string;
+    /** 数据根（Linux 下 QQ 数据根 = `<dataRoot>/nt_qq`；Windows 忽略）。 */
+    dataRoot: string;
     wrapperPath: string;
 }
 
@@ -172,7 +174,10 @@ async function activateSession(
         // cfgDir 下 init 的 onOpentelemetryInit 不触发（p0-kernel-flow 实证——accountPath 必须是 nt_qq/global）。
         const qqDataRoot =
             typeof kernel.resolveQqUserDataRoot === "function"
-                ? kernel.resolveQqUserDataRoot(state.wrapperExports)
+                ? kernel.resolveQqUserDataRoot(
+                      state.wrapperExports,
+                      bootEnv.dataRoot !== "" ? { dataRoot: bootEnv.dataRoot } : {},
+                  )
                 : null;
         const accountPath =
             qqDataRoot && typeof kernel.resolveQqGlobalPath === "function"
@@ -295,13 +300,26 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
     }, 35000);
 }
 
+/**
+ * kernel 数据根 / 账号目录：`paths.dataRoot` 传全局数据根、`paths.account` 传账号目录名，
+ * 使 `ctx.paths.root` 是数据根（Linux 下 QQ 数据根 = `<数据根>/nt_qq`，所有账号共享，
+ * 与 Windows QQ 数据目录语义一致）。`NAPUTO_DATA_ROOT` 缺失或不是账号目录父级时
+ * 退化为「账号目录当数据根」（旧行为，Windows 不受影响）。
+ */
+function resolveKernelPaths(bootEnv: BootstrapEnv): { dataRoot: string; account?: string } {
+    if (bootEnv.dataRoot !== "" && dirname(bootEnv.dataDir) === bootEnv.dataRoot) {
+        return { dataRoot: bootEnv.dataRoot, account: basename(bootEnv.dataDir) };
+    }
+    return { dataRoot: bootEnv.dataDir };
+}
+
 /** NapukettoCore.create 选项（[log] 段 + env 折叠；IPC 模式关 console）。 */
 function buildCoreCreateOptions(
     logCfg: ReturnType<typeof resolveLoaderLogConfig>,
     bootEnv: BootstrapEnv,
 ): Parameters<NonNullable<KernelLike["NapukettoCore"]>["create"]>[0] {
     return {
-        paths: { dataRoot: bootEnv.dataDir },
+        paths: resolveKernelPaths(bootEnv),
         logLevel: logCfg.levels.kernel ?? logCfg.level,
         ...(logCfg.format !== undefined ? { logFormat: logCfg.format } : {}),
         ...(logCfg.timestamp !== undefined ? { logTimestamp: logCfg.timestamp } : {}),

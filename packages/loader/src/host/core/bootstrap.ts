@@ -174,11 +174,12 @@ async function importKernel(): Promise<KernelLike | undefined> {
     return kernel;
 }
 
-/** bootEnv 三元组归一化（env 快照 string | undefined → string）。 */
+/** bootEnv 归一化（env 快照 string | undefined → string）。 */
 function buildBootEnv(): BootstrapEnv {
     return {
         qqVersion: env.NAPUTO_QQ_VERSION || "",
         dataDir: env.NAPUTO_CFG_DIR || "",
+        dataRoot: env.NAPUTO_DATA_ROOT || "",
         wrapperPath: env.NAPUTO_WRAPPER_PATH || "",
     };
 }
