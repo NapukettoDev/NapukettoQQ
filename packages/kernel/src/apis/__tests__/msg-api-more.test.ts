@@ -433,6 +433,19 @@ describe("事件通道发送确认（confirmSend）", () => {
         await assertion;
     });
 
+    it("确认事件带真实 msgId → 以事件 msgId 为准（Linux E2E 实测）", async () => {
+        const channel = makeChannel();
+        const { api } = makeApi({}, { channel });
+        const promise = api.sendMessage(target, []);
+        const assertion = expect(promise).resolves.toEqual({ msgId: "real-nt-id" });
+        await flush();
+        // 生成的 id 只落在 guildId 上；真正可 get_msg/recall 的是 msgId
+        channel.emit("Msg/onMsgInfoListUpdate", [
+            { guildId: "msgid-1", msgId: "real-nt-id", sendStatus: 2 } as never,
+        ]);
+        await assertion;
+    });
+
     it("sendStatus=3（成功无 seq）同样确认成功", async () => {
         const channel = makeChannel();
         const { api } = makeApi({}, { channel });

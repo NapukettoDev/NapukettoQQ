@@ -215,6 +215,10 @@ export class MsgApi {
      *  - 发送结果以 onMsgInfoListUpdate 事件确认（sendStatus===2 成功）：sendMsg
      *    返回值 result 可能为 5 但事件仍成功（异步确认），反之亦然。
      *  - ⚠️ 必须先注册事件监听再调 sendMsg（事件可能在 sendMsg 返回前就触发）。
+     *  - msgId 以确认事件里那条消息的 msgId 为准（2026-11-09 Linux E2E 实测）：
+     *    自己 generateMsgUniqueId 出来的 id 只落在确认事件的 guildId 字段上，
+     *    按它去 get_msg / recallMsg 会查不到（消息确实已发出去）。优先返回事件
+     *    消息的 msgId，缺失时回退生成的 id（老行为，Windows 侧不变）。
      */
     async sendMessage(target: Peer, elements: CanonicalElement[]): Promise<{ msgId: string }> {
         // NapCat 式富媒体预处理：PIC 元素补 md5/fileName/sourcePath 并放置文件
@@ -225,14 +229,15 @@ export class MsgApi {
         // NapCat 同款：msgId 塞 guildId，第一参 '0'
         const sendPeer: Peer = { ...target, guildId: msgId };
         // 无事件通道（老用法）：退化为看返回值
-        if (this.channel === null) {
+        const channel = this.channel;
+        if (channel === null) {
             const raw = await this.service.sendMsg("0", sendPeer, sendElements, new Map());
             unwrapResult("sendMsg", raw);
             return { msgId };
         }
         // 有事件通道：先注册确认监听（NapCat 式，事件可能早于 sendMsg 返回触发），
         // 再调 sendMsg。最终结果以事件 sendStatus 为准（raw.result 非 0 不判失败）。
-        const confirm = this.confirmSend(msgId, target);
+        const confirm = this.confirmSend(channel, msgId, target);
         // ⚠️ 预消费 confirm 的 rejection（2026-08-22 崩溃根因修复）：若下方
         // service.sendMsg 抛错（wrapper 内部异常），confirm 确认监听已注册却无人
         // await，事件回调里 reject 会变成 unhandledRejection，Node 默认抛错退出
@@ -241,8 +246,9 @@ export class MsgApi {
         // （Promise 允许多个消费者），失败语义不变。
         confirm.catch(() => undefined);
         await this.service.sendMsg("0", sendPeer, sendElements, new Map());
-        await confirm;
-        return { msgId };
+        const confirmed = await confirm;
+        // 事件消息的 msgId 为准；确认事件没带 msgId（老 wrapper/测试桩）时回退生成值
+        return { msgId: confirmed.msgId || msgId };
     }
 
     /**
@@ -479,12 +485,16 @@ export class MsgApi {
         return relPath;
     }
 
-    /** 注册 onMsgInfoListUpdate 确认监听（返回 Promise，resolve 时发送成功）。 */
-    private confirmSend(msgId: string, target: Peer): Promise<void> {
-        const channel = this.channel;
-        if (channel === null) {
-            return Promise.resolve();
-        }
+    /**
+     * 注册 onMsgInfoListUpdate 确认监听。
+     * resolve 时返回命中的那条消息（sendStatus 成功），发送失败/超时 reject。
+     * channel 由调用方传入（sendMessage 已在无通道时提前返回，这里不做空判）。
+     */
+    private confirmSend(
+        channel: MsgEventChannel,
+        msgId: string,
+        target: Peer,
+    ): Promise<RawMessage> {
         return new Promise((resolve, reject) => {
             const off = channel.on("Msg/onMsgInfoListUpdate", (list) => {
                 const mine = list.find((m) => m.guildId === msgId);
@@ -496,7 +506,7 @@ export class MsgApi {
                     mine.sendStatus === SEND_STATUS.SUCCESS_NO_SEQ
                 ) {
                     off();
-                    resolve();
+                    resolve(mine);
                 } else if (mine.sendStatus === SEND_STATUS.FAILED) {
                     off();
                     reject(
