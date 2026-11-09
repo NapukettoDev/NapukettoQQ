@@ -227,18 +227,30 @@ loader 的 `resolveFromRoot` 都按 Windows 结构解析。两个选择：
 - 至少带上 `libbugly.so`、`libcrbase.so`、`libunwind*.so*`、`libssh2.so.1`；
   `libssl` / `libcrypto` 属于随包其他模块，不在 wrapper 的闭包里，可不带。
 
+**已落地（2026-11-09 Stage 2）**：`extractLinuxWrapperFiles` 按上述白名单提取
+（另有 `pub.key` / `cacert.pem` / `package.json` / `application.json` 四个小文件）；
+`extractDebInstaller` 用内置 `7zz` 三层解包（`deb(ar)` → `data.tar.xz` →
+`data.tar` → `opt/QQ/resources/app`），不依赖 `dpkg-deb`，中间产物解完即删；
+`NAPUTO_LINUX_NATIVE=1` 时定位阶段校验 wrapper 为 ELF，误指向 Windows 安装立即报错。
+
 下载侧：
 
 - 官方配置是独立的 `linuxConfig.js`（不是 Windows 用的那份 rainbow 配置）；x64 /
   arm64 提供 deb、rpm、AppImage，loongarch / mips64el 以 deb 为主。
+  实测地址：
+  `https://im.qq.com/proxy/domain/qq-web.cdn-go.cn/im.qq.com_new/latest/rainbow/linuxConfig.js`
+  （`x64DownloadUrl.deb` / `armDownloadUrl.deb` / `updateDate`）。
 - URL 路径段 `/QQNTV2/` 大写会被边缘 WAF 403，改成小写 `/qqntv2/` 即 200——现有
   `normalizeDownloadUrl` 已覆盖。
 - **优先 deb，不用 AppImage**：AppImage 需要 FUSE 或 `unsquashfs`，7-Zip 不支持
   squashfs；deb 用 7z / ar 即可。
-- 清单（[`qq-releases.json`](../../packages/loader/qq-releases.json)）当前是“单 URL、
-  单版本”，Linux 需要增加 `platform` / `arch` / `clientVersion` / `coreVersion` /
-  `sha256`。每日 cron 再下载 188MB×2 的 deb 算 sha256 不划算，建议按 URL/ETag 缓存，
-  或改为按需刷新。
+- **清单已升级 schema 2（2026-11-09）**：条目新增 `platform`（缺省 `win32`）、
+  `arch`（缺省 `x64`）、`coreVersion`；`version` 是缓存目录名 / `app_version`
+  （Linux 用客户端版本 `3.2.35-54395`，core 版本记在 `coreVersion: "9.9.37"`）。
+  基线 x64 deb：`QQ_3.2.35_261103_amd64_01.deb`，188,287,504 字节，
+  sha256 `7de03862327abbd16da27130413698c9517782b27194afc593bc3abf9b55f9ac`。
+  cron 目前仍只自动维护 Windows 条目，Linux 新版本暂由手工 PR 补（每日下载
+  188MB×2 算 sha256 不划算，后续可按 ETag 缓存）。
 
 ## 7. 平台参数与版本：两套版本号
 
@@ -472,6 +484,21 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 - `setStatus` 报 `cs return ok, but response empty!`，Login 桥未注册；不影响登录与
   消息接收，属于既有兼容性问题。
 
+### 9.9 Stage 2：deb 管线实测（2026-11-09）
+
+用官方 deb（`QQ_3.2.35_261103_amd64_01.deb`，188,287,504 字节）跑真实管线：
+
+| 项 | 结果 |
+|---|---|
+| `extractDebInstaller`（内置 7zz 三层解包） | 5.5s 完成，`data.tar`（~642MB）等中间产物解完即删 |
+| `extractLinuxWrapperFiles` | 65ms；缓存布局 `<数据根>/qq-files/3.2.35-54395/versions/3.2.35-54395/resources/app/` |
+| 产物 | `wrapper.node` 152,431,496 / `major.node` 111,947,856 / `libbugly.so` / `libunwind.so.8` / `sharp-lib/libvips-cpp.so.42` 齐全 |
+| CLI（用该缓存作 `NAPUTO_QQ_FILES`） | 快速登录成功 → session READY → 适配器启动 → SIGTERM code=0 |
+| 清单 | schema 2 已含 Linux x64 条目；sha256 与官方文件一致（`7de0386…f9ac`） |
+
+未覆盖：真实网络下载（`downloadFile` 的 https 链路未在 CI 跑，但 URL/sha256 已用官方
+文件核对）；Linux 本地 `/opt/QQ` 安装探测；arm64 条目与符号核验。
+
 ## 10. 决策建议与待决事项
 
 **建议**：
@@ -495,15 +522,15 @@ KLINUX engine init、`getLoginList`、gnutls 隐藏依赖、`PerfTrace` 运行�
 另验证扫码登录、快速登录（`isQuickLogin` + `errMsg` 空）、session 创建顺序、
 `onOpentelemetryInit` / `onSessionInitComplete`、`getMsgService` READY、七个核心
 service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → session READY → 适配器启动
-→ 收到离线消息 → SIGTERM 优雅退出（code=0），全程无 wine。
+→ 收到离线消息 → SIGTERM 优雅退出（code=0），全程无 wine；Stage 2 用官方 deb 跑通
+三层解包 + 缓存布局，并以该缓存再次完成登录 → READY → 适配器启动 → code=0。
 
 **待决/待验证**：
 
 - X11 运行期功能（截图 / 剪贴板等）；init 阶段已通过，但这些功能未测。
 - 消息收发（`sendMsg` / 消息事件）——登录与 READY 已过，收发链路未测。
-- 9.9.37 与现有 kernel（按 9.9.33 验证）的兼容差异；需 Stage 3 平台参数化后跑真
-  kernel 启动。
 - arm64 的符号集是否与 x64 一致（需对 arm64 wrapper 重跑符号核验）。
+- Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。

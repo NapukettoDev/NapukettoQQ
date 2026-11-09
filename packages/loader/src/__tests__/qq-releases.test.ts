@@ -16,6 +16,7 @@ import {
     loadQqReleases,
     normalizeDownloadUrl,
     QqReleasesError,
+    releasePlatform,
     resolveDownloadUrl,
 } from "../qq-releases.js";
 
@@ -35,9 +36,9 @@ vi.mock("node:fs", async (importOriginal) => {
                 case "bad-json":
                     return "not-json{";
                 case "bad-schema":
-                    return JSON.stringify({ schema: 2, known: [{ version: "x" }] });
+                    return JSON.stringify({ schema: 3, known: [{ version: "x" }] });
                 case "empty-known":
-                    return JSON.stringify({ schema: 1, known: [] });
+                    return JSON.stringify({ schema: 2, known: [] });
                 default:
                     return actual.readFileSync(path, ...(rest as []));
             }
@@ -143,15 +144,22 @@ describe("resolveDownloadUrl", () => {
 });
 
 describe("loadQqReleases", () => {
-    it("读取真实包根清单：schema=1 + known 非空（条目字段完整）", () => {
+    it("读取真实包根清单：schema=2 + Windows/Linux 条目（字段完整）", () => {
         const file = loadQqReleases();
-        expect(file.schema).toBe(1);
+        expect(file.schema).toBe(2);
         expect(file.known.length).toBeGreaterThan(0);
-        const entry = file.known[file.known.length - 1] as QqReleaseEntry;
-        expect(entry.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
-        expect(entry.url).toMatch(/^https:\/\//);
-        expect(typeof entry.appid).toBe("number");
-        expect(entry.source).toBe("official");
+        const win = file.known.find((entry) => releasePlatform(entry) === "win32");
+        expect(win).toBeDefined();
+        expect(win?.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
+        expect(win?.url).toMatch(/^https:\/\//);
+        expect(typeof win?.appid).toBe("number");
+        expect(win?.source).toBe("official");
+        const linux = file.known.find((entry) => releasePlatform(entry) === "linux");
+        expect(linux).toBeDefined();
+        expect(linux?.version).toBe("3.2.35-54395");
+        expect(linux?.coreVersion).toBe("9.9.37");
+        expect(linux?.url.endsWith(".deb")).toBe(true);
+        expect(linux?.sha256).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it("清单文件缺失 → QqReleasesError（安装不完整提示）", () => {
@@ -165,7 +173,7 @@ describe("loadQqReleases", () => {
         expect(() => loadQqReleases()).toThrow(/版本清单解析失败/);
     });
 
-    it("schema 非 1 / known 非数组 → QqReleasesError（结构不合法）", () => {
+    it("schema 不是 2 / known 非数组 → QqReleasesError（结构不合法）", () => {
         fsMode.mode = "bad-schema";
         expect(() => loadQqReleases()).toThrow(QqReleasesError);
     });
@@ -177,31 +185,57 @@ describe("loadQqReleases", () => {
 });
 
 describe("latestRelease", () => {
-    it("known 按录入顺序取最后一项（最新）", () => {
-        const file = {
-            schema: 1,
-            known: [
-                {
-                    version: "9.9.30-1",
-                    url: "https://a/old.exe",
-                    sha256: "",
-                    appid: 0,
-                    source: "official",
-                },
-                {
-                    version: "9.9.31-2",
-                    url: "https://a/new.exe",
-                    sha256: "",
-                    appid: 0,
-                    source: "official",
-                },
-            ],
-        };
-        expect(latestRelease(file).version).toBe("9.9.31-2");
-        expect(latestRelease(file).url).toBe("https://a/new.exe");
+    /** 混装 Windows / Linux / arm64 的清单（按录入顺序，末项未必是目标平台最新）。 */
+    const file = {
+        schema: 2,
+        known: [
+            {
+                version: "9.9.30-1",
+                url: "https://a/old.exe",
+                sha256: "",
+                appid: 0,
+                source: "official",
+            },
+            {
+                version: "9.9.31-2",
+                url: "https://a/new.exe",
+                sha256: "",
+                appid: 0,
+                source: "official",
+            },
+            {
+                version: "3.2.35-54395",
+                platform: "linux",
+                arch: "x64",
+                coreVersion: "9.9.37",
+                url: "https://a/qq.deb",
+                sha256: "",
+                appid: 0,
+                source: "official",
+            },
+        ],
+    } satisfies Parameters<typeof latestRelease>[0];
+
+    it("Windows：忽略 Linux 末项，按平台取最后一项", () => {
+        expect(latestRelease(file, { platform: "win32", arch: "x64" }).version).toBe("9.9.31-2");
+        expect(latestRelease(file, { platform: "win32" }).url).toBe("https://a/new.exe");
+    });
+
+    it("Linux：只取 linux 条目（不能直接取数组末项）", () => {
+        const release = latestRelease(file, { platform: "linux", arch: "x64" });
+        expect(release.version).toBe("3.2.35-54395");
+        expect(release.url).toBe("https://a/qq.deb");
+        expect(releasePlatform(release)).toBe("linux");
+        expect(release.coreVersion).toBe("9.9.37");
+    });
+
+    it("无匹配平台/架构 → QqReleasesError", () => {
+        expect(() => latestRelease(file, { platform: "linux", arch: "arm64" })).toThrow(
+            QqReleasesError,
+        );
     });
 
     it("空 known → QqReleasesError（防御：loadQqReleases 已拦，直传空仍安全）", () => {
-        expect(() => latestRelease({ schema: 1, known: [] })).toThrow(QqReleasesError);
+        expect(() => latestRelease({ schema: 2, known: [] })).toThrow(QqReleasesError);
     });
 });

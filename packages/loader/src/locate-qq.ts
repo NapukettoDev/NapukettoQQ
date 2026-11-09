@@ -7,15 +7,35 @@
  *   L2: 数据根缓存 <数据根>/qq-files/<版本> —— 下载解包产物（P1 落地后才有）
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import {
+    closeSync,
+    existsSync,
+    mkdirSync,
+    openSync,
+    readdirSync,
+    readSync,
+    statSync,
+} from "node:fs";
 import { chmod, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveDataRoot } from "./data-root.js";
+import { isLinuxNativeEnabled } from "./linux-native.js";
 import { downloadFile } from "./qq-download.js";
-import { clearCacheVersion, extractInstaller, extractWrapperFiles } from "./qq-extract.js";
-import { latestRelease, loadQqReleases, resolveDownloadUrl } from "./qq-releases.js";
+import {
+    clearCacheVersion,
+    extractDebInstaller,
+    extractInstaller,
+    extractLinuxWrapperFiles,
+    extractWrapperFiles,
+} from "./qq-extract.js";
+import {
+    latestRelease,
+    loadQqReleases,
+    releasePlatform,
+    resolveDownloadUrl,
+} from "./qq-releases.js";
 
 /** 数据根下 QQ 文件缓存目录名（<数据根>/qq-files/<版本>/，P1 下载解包产物）。 */
 export const QQ_FILES_DIR_NAME = "qq-files";
@@ -150,6 +170,26 @@ export function locateQqPath(): string {
     throw new Error("未找到 QQ.exe（请先安装 QQ，或通过 NAPUTO_QQ_PATH 指定）");
 }
 
+/** ELF 魔数（Linux 原生 wrapper.node 校验，防误用 Windows PE 文件）。 */
+const ELF_MAGIC = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+
+/** 读文件头判断是否 ELF（仅读 4 字节，失败返回 false）。 */
+function isElfFile(path: string): boolean {
+    let fd: number | null = null;
+    try {
+        fd = openSync(path, "r");
+        const head = Buffer.alloc(ELF_MAGIC.length);
+        const read = readSync(fd, head, 0, head.length, 0);
+        return read === head.length && head.equals(ELF_MAGIC);
+    } catch {
+        return false;
+    } finally {
+        if (fd !== null) {
+            closeSync(fd);
+        }
+    }
+}
+
 /** 从文件根定位最新版本 wrapper.node（local/cached 共用）。 */
 function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
     const versionsDir = join(rootDir, "versions");
@@ -167,6 +207,14 @@ function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
     const wrapperPath = join(versionsDir, first, "resources", "app", "wrapper.node");
     if (!existsSync(wrapperPath)) {
         throw new Error(`未找到 wrapper.node: ${wrapperPath}`);
+    }
+    // Linux 原生模式只认 ELF：WSL 下容易误指向 /mnt/c 的 Windows 安装（PE），
+    // 原生 node dlopen 会报 invalid ELF header，这里提前给出可读错误。
+    if (process.platform === "linux" && isLinuxNativeEnabled() && !isElfFile(wrapperPath)) {
+        throw new Error(
+            `wrapper.node 不是 ELF（Linux 原生模式）: ${wrapperPath}\n` +
+                "请指向 Linux deb 解包产物，或改用 NAPUTO_LINUX_NATIVE=0 走 Wine",
+        );
     }
     return {
         qqPath: join(rootDir, "QQ.exe"),
@@ -345,11 +393,14 @@ export async function ensureQqFiles(
         return existing;
     }
 
-    // 1. 版本清单 → 最新可用版本
-    const releases = loadQqReleases();
-    const release = latestRelease(releases);
+    // 1. 版本清单 → 当前平台/架构最新可用版本（清单混装 Windows exe 与 Linux deb）
+    const release = latestRelease(loadQqReleases(), {
+        platform: process.platform,
+        arch: process.arch,
+    });
     const url = resolveDownloadUrl(release);
     const version = release.version;
+    const isLinuxRelease = releasePlatform(release) === "linux";
 
     // 2. 下载 + sha256 校验（清单无参考值时下载器跳过校验，完整性由解包/加载兜底）
     const tmpDir = join(dataRoot, "tmp");
@@ -360,19 +411,19 @@ export async function ensureQqFiles(
     // 加 pid + 时间戳后缀，实例间天然隔离。
     const installerPath = join(
         tmpDir,
-        `qq-installer-${version}-${process.pid}-${Date.now().toString(36)}.exe`,
+        `qq-installer-${version}-${process.pid}-${Date.now().toString(36)}` +
+            (isLinuxRelease ? ".deb" : ".exe"),
     );
-    options.onStage?.(`下载 QQ 官方安装包 ${version}（首次使用需下载，约 300MB）…`);
+    options.onStage?.(
+        `下载 QQ 官方安装包 ${version}（首次使用需下载，约 ${isLinuxRelease ? "180" : "300"}MB）…`,
+    );
     await downloadFile({ dest: installerPath, url, expectedSha256: release.sha256 });
     options.onStage?.(`QQ 安装包下载完成，sha256 校验通过（${release.sha256.slice(0, 12)}…）`);
 
     // 3. 解包 + 提取（失败清理缓存残留；临时文件无论如何清理）
     //    Linux 分支：确保 7zz（自动下载 7-Zip 官方 linux 版，2026-08-14 生产修复——
     //    此前依赖系统 p7zip-full，未安装则 7z 解包失败、QQ 文件无法就绪）
-    let sevenZipPath = options.sevenZipPath;
-    if (sevenZipPath === undefined && process.platform === "linux") {
-        sevenZipPath = (await ensureLinuxSevenZip({ dataRoot })).exe;
-    }
+    const sevenZipPath = await resolveSevenZipPath(options.sevenZipPath, dataRoot);
     const extractedDir = join(tmpDir, `qq-extracted-${version}-${process.pid}`);
     try {
         // 解包前再次确认安装包真实存在（downloadFile 已 stat 兜底；防御并发清理竞态）
@@ -383,6 +434,13 @@ export async function ensureQqFiles(
             );
         }
         options.onStage?.(`7z 解包安装包（${version}，需数分钟）…`);
+        if (isLinuxRelease) {
+            await extractDebInstaller(installerPath, extractedDir, sevenZipPath);
+            options.onStage?.("提取 wrapper.node / major.node 及 .so 依赖…");
+            const info = await extractLinuxWrapperFiles(extractedDir, version, cacheRoot);
+            options.onStage?.(`QQ 原生文件就绪：缓存版本 ${info.version}`);
+            return info;
+        }
         await extractInstaller(installerPath, extractedDir, sevenZipPath);
         options.onStage?.("提取 wrapper.node 及原生依赖 DLL…");
         const info = await extractWrapperFiles(extractedDir, version, cacheRoot);
@@ -395,4 +453,18 @@ export async function ensureQqFiles(
         await rm(installerPath, { force: true });
         await rm(extractedDir, { recursive: true, force: true });
     }
+}
+
+/** 解包用 7z：显式参数优先；Linux 确保内置 7zz 就绪；其他平台交给 findSevenZip 探测。 */
+async function resolveSevenZipPath(
+    explicit: string | undefined,
+    dataRoot: string,
+): Promise<string | undefined> {
+    if (explicit !== undefined) {
+        return explicit;
+    }
+    if (process.platform === "linux") {
+        return (await ensureLinuxSevenZip({ dataRoot })).exe;
+    }
+    return undefined;
 }

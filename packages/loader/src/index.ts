@@ -76,15 +76,27 @@ export { DownloadError, downloadFile } from "./qq-download.js";
 export type { ExtractOptions, SevenZipResult } from "./qq-extract.js";
 export {
     clearCacheVersion,
+    extractDebInstaller,
     extractInstaller,
+    extractLinuxWrapperFiles,
     extractWrapperFiles,
     findSevenZip,
+    isLinuxRuntimeFile,
 } from "./qq-extract.js";
-export type { QqReleaseEntry, QqReleasesFile } from "./qq-releases.js";
+export type {
+    LatestReleaseOptions,
+    QqReleaseArch,
+    QqReleaseEntry,
+    QqReleasePlatform,
+    QqReleasesFile,
+} from "./qq-releases.js";
 export {
     latestRelease,
     loadQqReleases,
+    QQ_RELEASES_SCHEMA,
     QqReleasesError,
+    releaseArch,
+    releasePlatform,
     resolveDownloadUrl,
 } from "./qq-releases.js";
 // 优雅关停（停止哨兵 + 关停钩子 + 信号接入；supervisor / cli boot / self-host 共用）

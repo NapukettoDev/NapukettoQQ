@@ -45,6 +45,8 @@ const h = vi.hoisted(() => {
         /** extractInstaller 记录；create = 是否创建解包目录。 */
         extracts: [] as Array<{ installerPath: string; destDir: string }>,
         extractCreatesDir: true,
+        /** extractDebInstaller 记录（Linux 分支）。 */
+        debExtracts: [] as Array<{ debPath: string; destDir: string }>,
         /** extractWrapperFiles 记录；error = 抛错注入。 */
         wrapperExtracts: [] as Array<{ extractedDir: string; version: string; cacheRoot: string }>,
         wrapperExtractError: null as null | Error,
@@ -129,6 +131,29 @@ vi.mock("./qq-download.js", () => ({
 
 vi.mock("./qq-extract.js", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./qq-extract.js")>();
+    /** 假提取：在缓存里落 wrapper.node，返回 cached QqInstallInfo。 */
+    const fakeWrapperExtract = (
+        extractedDir: string,
+        version: string,
+        cacheRoot: string,
+    ): QqInstallInfo => {
+        h.wrapperExtracts.push({ extractedDir, version, cacheRoot });
+        if (h.wrapperExtractError !== null) {
+            throw h.wrapperExtractError;
+        }
+        // 模拟成功提取：<cacheRoot>/<v>/versions/<v>/resources/app/wrapper.node
+        const appDir = join(cacheRoot, version, "versions", version, "resources", "app");
+        mkdirSync(appDir, { recursive: true });
+        writeFileSync(join(appDir, "wrapper.node"), "wrapper");
+        const versionDir = join(cacheRoot, version);
+        return {
+            qqPath: join(versionDir, "QQ.exe"),
+            installDir: versionDir,
+            version,
+            wrapperPath: join(appDir, "wrapper.node"),
+            source: "cached",
+        };
+    };
     return {
         ...actual,
         extractInstaller: vi.fn(async (installerPath: string, destDir: string) => {
@@ -137,25 +162,19 @@ vi.mock("./qq-extract.js", async (importOriginal) => {
                 mkdirSync(destDir, { recursive: true });
             }
         }),
+        extractDebInstaller: vi.fn(async (debPath: string, destDir: string) => {
+            h.debExtracts.push({ debPath, destDir });
+            if (h.extractCreatesDir) {
+                mkdirSync(destDir, { recursive: true });
+            }
+        }),
         extractWrapperFiles: vi.fn(
-            async (extractedDir: string, version: string, cacheRoot: string) => {
-                h.wrapperExtracts.push({ extractedDir, version, cacheRoot });
-                if (h.wrapperExtractError !== null) {
-                    throw h.wrapperExtractError;
-                }
-                // 模拟成功提取：<cacheRoot>/<v>/versions/<v>/resources/app/wrapper.node
-                const appDir = join(cacheRoot, version, "versions", version, "resources", "app");
-                mkdirSync(appDir, { recursive: true });
-                writeFileSync(join(appDir, "wrapper.node"), "wrapper");
-                const versionDir = join(cacheRoot, version);
-                return {
-                    qqPath: join(versionDir, "QQ.exe"),
-                    installDir: versionDir,
-                    version,
-                    wrapperPath: join(appDir, "wrapper.node"),
-                    source: "cached",
-                } satisfies QqInstallInfo;
-            },
+            async (extractedDir: string, version: string, cacheRoot: string) =>
+                fakeWrapperExtract(extractedDir, version, cacheRoot),
+        ),
+        extractLinuxWrapperFiles: vi.fn(
+            async (extractedDir: string, version: string, cacheRoot: string) =>
+                fakeWrapperExtract(extractedDir, version, cacheRoot),
         ),
     };
 });
@@ -177,6 +196,7 @@ beforeEach(() => {
     h.downloadCreatesFile = true;
     h.extracts.length = 0;
     h.extractCreatesDir = true;
+    h.debExtracts.length = 0;
     h.wrapperExtracts.length = 0;
     h.wrapperExtractError = null;
     for (const key of [
@@ -303,6 +323,106 @@ describe("resolveQqFiles 来源优先级", () => {
         expect(info.source).toBe("cached");
         expect(h.downloads).toHaveLength(1);
         expect(h.wrapperExtracts).toHaveLength(1);
+    });
+});
+
+describe("Linux 原生模式（平台注入）", () => {
+    /** 临时把 process.platform 切成指定平台（用后恢复，CI 在 Windows/Ubuntu 都覆盖该分支）。 */
+    async function withPlatform(platform: NodeJS.Platform, fn: () => Promise<void>): Promise<void> {
+        const original = Object.getOwnPropertyDescriptor(process, "platform");
+        Object.defineProperty(process, "platform", { value: platform, configurable: true });
+        try {
+            await fn();
+        } finally {
+            if (original !== undefined) {
+                Object.defineProperty(process, "platform", original);
+            }
+        }
+    }
+
+    /** 切成 linux（多数 Linux 分支测试用）。 */
+    function withLinuxPlatform(fn: () => Promise<void>): Promise<void> {
+        return withPlatform("linux", fn);
+    }
+
+    it("ELF 守卫：NAPUTO_LINUX_NATIVE=1 且 wrapper 非 ELF → 可读错误（不交给 dlopen）", async () => {
+        const root = makeInstall("3.2.35-54395");
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
+                /不是 ELF/,
+            );
+        });
+    });
+
+    it("ELF 守卫：wrapper 以 ELF 魔数开头 → 正常返回", async () => {
+        const root = makeInstall("3.2.35-54395");
+        const wrapperPath = join(
+            root,
+            "versions",
+            "3.2.35-54395",
+            "resources",
+            "app",
+            "wrapper.node",
+        );
+        writeFileSync(
+            wrapperPath,
+            Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from("rest")]),
+        );
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            const info = await resolveQqFiles({ qqFilesDir: root, autoDownload: false });
+            expect(info.wrapperPath).toBe(wrapperPath);
+        });
+    });
+
+    it("ELF 守卫：wrapper 不可读（目录）→ 读取失败按非 ELF 处理", async () => {
+        const root = makeInstall("3.2.35-54395");
+        const wrapperPath = join(
+            root,
+            "versions",
+            "3.2.35-54395",
+            "resources",
+            "app",
+            "wrapper.node",
+        );
+        rmSync(wrapperPath, { force: true });
+        mkdirSync(wrapperPath);
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
+                /不是 ELF/,
+            );
+        });
+    });
+
+    it("ensureQqFiles：Linux 平台下载 deb 并走 extractDebInstaller / extractLinuxWrapperFiles", async () => {
+        await withLinuxPlatform(async () => {
+            const info = await ensureQqFiles({
+                dataRoot: tmpRoot,
+                sevenZipPath: join(tmpRoot, "7zz"),
+            });
+            expect(info.version).toBe("3.2.35-54395");
+            expect(h.downloads[0]?.url).toMatch(/\.deb$/);
+            expect(h.debExtracts).toHaveLength(1);
+            expect(h.extracts).toHaveLength(0);
+        });
+    });
+
+    it("ensureQqFiles：未显式 7z → Linux 分支用内置 7zz（不下载）", async () => {
+        await withLinuxPlatform(async () => {
+            const info = await ensureQqFiles({ dataRoot: tmpRoot });
+            expect(info.version).toBe("3.2.35-54395");
+            expect(h.debExtracts).toHaveLength(1);
+        });
+    });
+
+    it("ensureQqFiles：非 Linux 平台未显式 7z → 交给 findSevenZip 探测", async () => {
+        await withPlatform("win32", async () => {
+            await ensureQqFiles({ dataRoot: tmpRoot });
+            expect(h.extracts).toHaveLength(1);
+            expect(h.debExtracts).toHaveLength(0);
+        });
     });
 });
 

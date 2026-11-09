@@ -20,7 +20,7 @@
  */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,30 @@ import type { QqInstallInfo } from "./locate-qq.js";
 
 /** resources/app 下需要提取的文件扩展名（.node 原生模块 + .dll 依赖）。 */
 const EXTRACT_EXTENSIONS = new Set([".node", ".dll"]);
+
+/** Linux 运行时额外小文件（Bugly pub.key / TLS 证书 / 版本元数据）。 */
+const LINUX_EXTRA_FILES = new Set(["pub.key", "cacert.pem", "package.json", "application.json"]);
+
+/** Linux resources/app 下需要整体保留的子目录（wrapper.node RUNPATH 含 $ORIGIN/sharp-lib）。 */
+const LINUX_APP_SUBDIRS = ["sharp-lib"] as const;
+
+/** deb 内层数据归档（data.tar / data.tar.xz / data.tar.gz）。 */
+const DEB_DATA_ARCHIVE_RE = /^data\.tar(?:\.[a-z0-9]+)?$/i;
+
+/** deb 解包中间产物（提取完成后清理，data.tar 可达 600MB+）。 */
+const DEB_INTERMEDIATE_FILES = [
+    "debian-binary",
+    "control.tar.gz",
+    "control.tar.xz",
+    "control.tar",
+] as const;
+
+/** Linux app 目录候选（deb 标准位置 opt/QQ/resources/app；兼容扁平/减层解包树）。 */
+const LINUX_APP_CANDIDATES = [
+    ["opt", "QQ", "resources", "app"],
+    ["QQ", "resources", "app"],
+    ["resources", "app"],
+] as const;
 
 /** 7-Zip 可执行文件来源。 */
 export interface SevenZipResult {
@@ -85,27 +109,92 @@ export async function extractInstaller(
 ): Promise<void> {
     const sevenZip = sevenZipPath ?? findSevenZip().exe;
     await mkdir(destDir, { recursive: true });
-    await new Promise<void>((resolve, reject) => {
-        execFile(
-            sevenZip,
-            ["x", installerPath, `-o${destDir}`, "-y"],
-            { maxBuffer: 64 * 1024 * 1024 },
-            (err, _stdout, stderr) => {
-                if (err !== null) {
-                    const code = (err as NodeJS.ErrnoException).code;
-                    const hint =
-                        code === "ENOENT"
-                            ? `未找到 7z 可执行文件: ${sevenZip}\n` +
-                              "（Windows 请安装 7-Zip 或用 NAPUTO_7Z_PATH 指定；" +
-                              "Linux 自动下载失败时请安装 p7zip-full 或用 NAPUTO_7Z_PATH 指定）"
-                            : "（QQ 安装包是 NSIS 格式，需完整版 7z 而非 7za）";
-                    reject(new Error(`7z 解包失败: ${installerPath}\n${stderr.trim()}\n${hint}`));
-                    return;
-                }
-                resolve();
-            },
-        );
+    await runSevenZip(sevenZip, ["x", installerPath, `-o${destDir}`, "-y"], {
+        hint: "（QQ 安装包是 NSIS 格式，需完整版 7z 而非 7za）",
     });
+}
+
+/** 7z 执行失败时的附加提示。 */
+interface SevenZipFailureHint {
+    /** 未找到可执行文件时的额外说明（安装指引）。 */
+    hint?: string;
+}
+
+/** 运行 7z 子命令（失败抛带 stderr 与安装指引的错误）。 */
+async function runSevenZip(
+    sevenZip: string,
+    args: readonly string[],
+    options: SevenZipFailureHint = {},
+): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+        execFile(sevenZip, args, { maxBuffer: 64 * 1024 * 1024 }, (err, _stdout, stderr) => {
+            if (err === null) {
+                resolve();
+                return;
+            }
+            const code = (err as NodeJS.ErrnoException).code;
+            const installHint =
+                code === "ENOENT"
+                    ? `未找到 7z 可执行文件: ${sevenZip}\n` +
+                      "（Windows 请安装 7-Zip 或用 NAPUTO_7Z_PATH 指定；" +
+                      "Linux 自动下载失败时请安装 p7zip-full 或用 NAPUTO_7Z_PATH 指定）"
+                    : "";
+            reject(
+                new Error(
+                    `7z 解包失败: ${args.join(" ")}\n${stderr.trim()}\n` +
+                        `${installHint}${options.hint ?? ""}`,
+                ),
+            );
+        });
+    });
+}
+
+/** 判断 Linux resources/app 顶层文件是否为运行时所需（*.node / *.so / *.so.N + 白名单）。 */
+export function isLinuxRuntimeFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    return (
+        lower.endsWith(".node") ||
+        lower.endsWith(".so") ||
+        lower.includes(".so.") ||
+        LINUX_EXTRA_FILES.has(lower)
+    );
+}
+
+/**
+ * 解包 Linux deb：deb(ar) → data.tar[.xz] → 文件树。
+ *
+ * 三层解包（实测 7-Zip 25.01 支持 Ar，但不递归内层归档）：deb 先出
+ * `data.tar.xz`，再出 `data.tar`，最后才是 `opt/QQ/resources/app`。中间产物
+ * （data.tar ~600MB）解完立即清理，避免缓存盘被临时文件占满。
+ */
+export async function extractDebInstaller(
+    debPath: string,
+    destDir: string,
+    sevenZipPath?: string,
+): Promise<void> {
+    const sevenZip = sevenZipPath ?? findSevenZip().exe;
+    await mkdir(destDir, { recursive: true });
+    await runSevenZip(sevenZip, ["x", debPath, `-o${destDir}`, "-y"]);
+    const dataArchive = (await readdir(destDir)).find((name) => DEB_DATA_ARCHIVE_RE.test(name));
+    if (dataArchive === undefined) {
+        throw new Error(`deb 解包产物缺少 data.tar*: ${destDir}`);
+    }
+    const dataArchivePath = join(destDir, dataArchive);
+    if (dataArchive !== "data.tar") {
+        await runSevenZip(sevenZip, ["x", dataArchivePath, `-o${destDir}`, "-y"]);
+    }
+    const dataTar = join(destDir, "data.tar");
+    if (!existsSync(dataTar)) {
+        throw new Error(`deb 解包缺少 data.tar: ${destDir}`);
+    }
+    await runSevenZip(sevenZip, ["x", dataTar, `-o${destDir}`, "-y"]);
+    await rm(dataTar, { force: true });
+    if (dataArchivePath !== dataTar) {
+        await rm(dataArchivePath, { force: true });
+    }
+    for (const name of DEB_INTERMEDIATE_FILES) {
+        await rm(join(destDir, name), { force: true });
+    }
 }
 
 /**
@@ -152,6 +241,60 @@ export async function extractWrapperFiles(
     }
 
     return buildCachedInfo(cacheRoot, version);
+}
+
+/**
+ * 从 deb 解包树提取 Linux 运行时文件到缓存（Windows 同构布局，kernel 无需改路径）：
+ *   <cacheRoot>/<version>/versions/<version>/resources/app/
+ * 顶层收 *.node / *.so / *.so.N + 小文件白名单；`sharp-lib/` 整体保留
+ * （wrapper.node 的 RUNPATH 是 `$ORIGIN:$ORIGIN/sharp-lib`）。
+ * 幂等：目标 wrapper.node 已存在则跳过。
+ */
+export async function extractLinuxWrapperFiles(
+    extractedDir: string,
+    version: string,
+    cacheRoot: string,
+): Promise<QqInstallInfo> {
+    const appDir = findLinuxAppDir(extractedDir);
+    const destAppDir = join(cacheRoot, version, "versions", version, "resources", "app");
+    const destWrapper = join(destAppDir, "wrapper.node");
+
+    // 幂等：已提取过则跳过
+    if (existsSync(destWrapper)) {
+        return buildCachedInfo(cacheRoot, version);
+    }
+
+    await mkdir(destAppDir, { recursive: true });
+    for (const entry of await readdir(appDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !isLinuxRuntimeFile(entry.name)) {
+            continue; // 跳过无关子目录（avsdk/resource 等）与非运行时文件
+        }
+        await copyFile(join(appDir, entry.name), join(destAppDir, entry.name));
+    }
+    for (const subDir of LINUX_APP_SUBDIRS) {
+        const src = join(appDir, subDir);
+        if (existsSync(src)) {
+            await cp(src, join(destAppDir, subDir), { recursive: true });
+        }
+    }
+    for (const required of ["wrapper.node", "major.node"] as const) {
+        if (!existsSync(join(destAppDir, required))) {
+            throw new Error(`提取失败：${required} 未复制到 ${destAppDir}`);
+        }
+    }
+
+    return buildCachedInfo(cacheRoot, version);
+}
+
+/** 定位 deb 解包树里的 resources/app（标准 deb 布局 opt/QQ/resources/app）。 */
+function findLinuxAppDir(extractedDir: string): string {
+    for (const segments of LINUX_APP_CANDIDATES) {
+        const appDir = join(extractedDir, ...segments);
+        if (existsSync(join(appDir, "wrapper.node"))) {
+            return appDir;
+        }
+    }
+    throw new Error(`deb 解包产物缺少 resources/app/wrapper.node（根目录: ${extractedDir}）`);
 }
 
 /** 构造 cached 来源的 QqInstallInfo（wrapperPath 指向缓存中 wrapper.node）。 */
