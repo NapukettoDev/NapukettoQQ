@@ -529,6 +529,32 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 未覆盖：他人消息的**实时入站事件**（需要第二个账号发消息；离线历史事件已在 Stage 1
 验证）；富媒体（图片/语音/文件）发送未实测。
 
+### 9.12 Stage 3c：`HOME`/`XDG_*` 收敛（2026-11-09）
+
+**问题**：`desktopGlobalPath` 只覆盖 QQ 自己的数据；`libbugly` 的崩溃处理器另走
+`$HOME`，会向用户目录写 `.config/QQ/crash_files/`（Stage 0b 发现）。
+
+**做法**：Linux 原生分支在 spawn 子进程前把 `HOME` 指向 `<数据根>/home`
+（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），并把
+`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 派到该目录下。
+实现是 `linux-native.ts` 的 `resolveLinuxHome` + `linuxHomeEnv`，wine / win32 分支不动。
+
+**实测（WSL2 Ubuntu 24.04，真 CLI + 真 Linux `wrapper.node`，数据根 `/tmp/ntqq2`）**：
+
+| 项 | 结果 |
+|---|---|
+| strace 观察 | Bugly 只读 `$HOME`（`access`/`mkdir $HOME/.config/QQ/crash_files`），**不读 `XDG_CONFIG_HOME`** |
+| Bugly 日志 | `InitBuglyManager path: /tmp/ntqq2/home/.config/QQ/crash_files/` |
+| 受管目录 | `/tmp/ntqq2/home/.config/QQ/crash_files` 由原生层自行创建（umask 后 `750`） |
+| 用户 `$HOME`（`/root`） | 该目录零写入（`find -newer` 标记为空） |
+| 快速登录 | 成功（票据在 `<数据根>/nt_qq`，与 `HOME` 无关） |
+| 进程退出 | SIGTERM → 优雅退出 `code=0` |
+
+**结论**：收敛 `HOME` 即可，`XDG_*` 是给 `libvips` / fontconfig 等 C 库的缓存兜底；
+`XDG_RUNTIME_DIR` 刻意不接管（会话级 dbus 目录，语义与数据根不同）。副作用是
+崩溃记录不再出现在用户熟悉的位置——需要时去 `<数据根>/home/.config/QQ/crash_files/`
+取（文档已注明）。
+
 ### 9.11 Stage 3b：arm64 符号 / 解包 / stub 静态核验（2026-11-09）
 
 arm64 deb（`QQ_3.2.35_261103_arm64_01.deb`，208,717,176 字节，sha256
@@ -573,32 +599,6 @@ arm64 node）。
    产物尚未进私有 `native/`（`build/linux-arm64/` 只是本机交叉编译产物），清单里
    也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
    （避免给用户一个未验证的下载入口）。
-
-### 9.12 Stage 3c：`HOME`/`XDG_*` 收敛（2026-11-09）
-
-**问题**：`desktopGlobalPath` 只覆盖 QQ 自己的数据；`libbugly` 的崩溃处理器另走
-`$HOME`，会向用户目录写 `.config/QQ/crash_files/`（Stage 0b 发现）。
-
-**做法**：Linux 原生分支在 spawn 子进程前把 `HOME` 指向 `<数据根>/home`
-（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），并把
-`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 派到该目录下。
-实现是 `linux-native.ts` 的 `resolveLinuxHome` + `linuxHomeEnv`，wine / win32 分支不动。
-
-**实测（WSL2 Ubuntu 24.04，真 CLI + 真 Linux `wrapper.node`，数据根 `/tmp/ntqq2`）**：
-
-| 项 | 结果 |
-|---|---|
-| strace 观察 | Bugly 只读 `$HOME`（`access`/`mkdir $HOME/.config/QQ/crash_files`），**不读 `XDG_CONFIG_HOME`** |
-| Bugly 日志 | `InitBuglyManager path: /tmp/ntqq2/home/.config/QQ/crash_files/` |
-| 受管目录 | `/tmp/ntqq2/home/.config/QQ/crash_files` 由原生层自行创建（umask 后 `750`） |
-| 用户 `$HOME`（`/root`） | 该目录零写入（`find -newer` 标记为空） |
-| 快速登录 | 成功（票据在 `<数据根>/nt_qq`，与 `HOME` 无关） |
-| 进程退出 | SIGTERM → 优雅退出 `code=0` |
-
-**结论**：收敛 `HOME` 即可，`XDG_*` 是给 `libvips` / fontconfig 等 C 库的缓存兜底；
-`XDG_RUNTIME_DIR` 刻意不接管（会话级 dbus 目录，语义与数据根不同）。副作用是
-崩溃记录不再出现在用户熟悉的位置——需要时去 `<数据根>/home/.config/QQ/crash_files/`
-取（文档已注明）。
 
 ## 10. 决策建议与待决事项
 
