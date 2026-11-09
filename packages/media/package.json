@@ -38,7 +38,7 @@
     "dependencies": {
         "execa": "^10.2.1",
         "file-type": "^22.3.0",
-        "image-size": "^2.0.4",
+        "image-size": "^2.1.0",
         "silk-wasm": "^3.7.1"
     }
 }
