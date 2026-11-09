@@ -24,7 +24,6 @@ import {
     createWriteStream,
     existsSync,
     mkdirSync,
-    readdirSync,
     readFileSync,
     rmSync,
     statSync,
@@ -92,22 +91,6 @@ function lastLine(text) {
     );
 }
 
-/** 递归找文件（解包后 data.tar / data.tar.xz 名字可能带变体）。 */
-function findFile(dir, name) {
-    for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry);
-        if (statSync(full).isDirectory()) {
-            const hit = findFile(full, name);
-            if (hit !== null) {
-                return hit;
-            }
-        } else if (entry === name) {
-            return full;
-        }
-    }
-    return null;
-}
-
 /** 下载 URL 归一化：`/QQNTV2/` 段必须小写，否则腾讯 CDN 返回 403。 */
 function normalizeDownloadUrl(url) {
     return url.replace(/\/QQNTV2\//gi, "/qqntv2/");
@@ -131,25 +114,9 @@ async function download(url, dest) {
     return hash.digest("hex");
 }
 
-/** 解析系统 libgnutls（候选 + ldconfig 兜底）。 */
+/** 解析系统 libgnutls（Ubuntu/Debian/Fedora 常见多架构路径）。 */
 function resolveGnutls() {
-    for (const candidate of GNUTLS_CANDIDATES) {
-        if (existsSync(candidate)) {
-            return candidate;
-        }
-    }
-    const probe = spawnSync("ldconfig", ["-p"], { encoding: "utf8" });
-    if (probe.status === 0 && typeof probe.stdout === "string") {
-        for (const line of probe.stdout.split(LINE_SPLIT)) {
-            if (line.includes("libgnutls.so.30")) {
-                const path = line.split("=>")[1]?.trim();
-                if (path !== undefined && path !== "" && existsSync(path)) {
-                    return path;
-                }
-            }
-        }
-    }
-    return null;
+    return GNUTLS_CANDIDATES.find((candidate) => existsSync(candidate)) ?? null;
 }
 
 // ── 0. 工作目录 ───────────────────────────────────────────────────────────
@@ -240,18 +207,14 @@ if (keepWork && existsSync(wrapper)) {
     log("复用已解包的 wrapper.node（跳过三层解包）");
 } else {
     run(sevenZip, ["x", deb, `-o${d0}`, "-y"]);
-    const dataXz = findFile(d0, "data.tar.xz");
-    if (dataXz !== null) {
-        run(sevenZip, ["x", dataXz, `-o${d1}`, "-y"]);
-    } else {
-        const plain = findFile(d0, "data.tar");
-        if (plain === null) {
-            fail(`deb 里找不到 data.tar(.xz)（${d0}）`);
-        }
-        run(sevenZip, ["x", plain, `-o${d1}`, "-y"]);
+    // deb 的载荷名可能是 data.tar.xz（基线）或 data.tar（老格式），按存在性二选一
+    const dataInside = [join(d0, "data.tar.xz"), join(d0, "data.tar")].find((p) => existsSync(p));
+    if (dataInside === undefined) {
+        fail(`deb 里找不到 data.tar(.xz)（${d0}）`);
     }
-    const dataTar = findFile(d1, "data.tar");
-    if (dataTar === null) {
+    run(sevenZip, ["x", dataInside, `-o${d1}`, "-y"]);
+    const dataTar = join(d1, "data.tar");
+    if (!existsSync(dataTar)) {
         fail(`data.tar.xz 解包后找不到 data.tar（${d1}）`);
     }
     run(sevenZip, ["x", dataTar, `-o${d2}`, "-y"]);
