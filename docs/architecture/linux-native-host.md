@@ -643,8 +643,7 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
   私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
 - arm64 需要额外预加载系统 `libuuid.so.1`（`uuid_generate` / `uuid_unparse` 是
   lazy UND 且无 `DT_NEEDED`），x64 靠 `DT_NEEDED` 自动解析。
-- Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局；Stage 3d 已实现，
-  见 §9.13）。
+- Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。
