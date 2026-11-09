@@ -16,6 +16,14 @@
 > 10. **DPAPI/票据持久化**：wine 的 DPAPI 用随机本地密钥模拟——**wine 容器/`WINEPREFIX` 被销毁则登录状态丢失**，需提示用户持久化哪些路径（见 §6）。
 > 11. **反风控为核心风险**：P2 阶段立刻推进快速登录/扫码登录冒烟测试，尽早试探腾讯风控对 wine 环境的容忍度。
 >
+> **2026-11-08 研判注记（非拍板）**：Linux 原生 ELF 自建宿主（标准 Linux `node` + 2 必需
+> 符号 + `PerfTrace` 的 `.so` stub，`dlopen` 官方 Linux `wrapper.node`）的可行性研判见
+> [`docs/architecture/linux-native-host.md`](../../../docs/architecture/linux-native-host.md)。
+> 在完整 Stage 0 通过并按规则新增 ADR 之前，本文档的 wine 方案（含 ARM 后置结论）仍是
+> 现行实现，本文不据此改动。2026-11-08 已完成 dlopen / exports / O3 / engine init /
+> getLoginList 的核心链路实测；2026-11-09 完成扫码 + 快速登录 + session READY
+> （wrapper 层，`getMsgService` 与七个核心 service 非空）。
+>
 > **发布形态（2026-08-13 补充：对外 API 双格式）**：
 > - 对外 API（`dist/index.mjs` + `dist/index.cjs`）与 kernel 同步输出 **ESM + CJS 双格式**，
 >   `exports.require` 指向 `.cjs`——koishi 适配器（发布形态为 `lib/index.cjs`，koishi loader
