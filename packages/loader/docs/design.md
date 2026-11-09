@@ -307,6 +307,12 @@ Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原�
   `node::IsEnvironmentStopping` / `PerfTrace`）。
 - **预加载**：`LD_PRELOAD=<stub>:<libgnutls.so.30>`。gnutls 是 `libbugly` 的无
   `DT_NEEDED` 隐藏依赖；Ubuntu 24.04 包名 `libgnutls30t64`，Debian 12 为 `libgnutls30`。
+- **打包（2026-11-10 补）**：`files` 必须同时含 `native/build/stub-test-env`（Windows）
+  与 `native/build/linux-x64`（Linux）——只列前者时 tarball 里没有
+  `libnapuketto_stub.so`，用户设 `NAPUTO_LINUX_NATIVE=1` 会直接报「Linux stub 未找到」
+  （0.6.0 发布包实测如此）。双重守卫：`release.yml` 发布前 `npm pack --dry-run` grep
+  `native/build/linux-x64/libnapuketto_stub.so`；`tooling/package-exports.test.ts`
+  断言 `files` 含该目录。
 - **不做**：PATH 前置、stub 目录、QQNT.dll 校验——这些只属于 wine 分支。
 - **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
 - **与 kernel 的衔接**：kernel 已按 `process.platform` 生成 KLINUX engine/session 配置并从
