@@ -6,6 +6,8 @@ NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器�
 
 - **自建宿主**：标准 Node 进程通过 stub `QQNT.dll` 直接 `dlopen` `wrapper.node`，
   不拉起 QQ 客户端、不注入 QQ 进程、无 UI。Linux 下用 wine 运行 Windows 版 `node.exe`。
+  Linux 原生 ELF 方案已完成 Stage 0 核心与登录/session READY 实测
+  （[linux-native-host.md](linux-native-host.md)），在新增 ADR 前现行实现仍为 wine。
 - **多协议对外**：OneBot 11（主协议）、Satori，另含 KuroBot 群服互通客户端。
 - **全自研**：pnpm monorepo + TypeScript + tsdown + biome + vitest；MIT 许可。
 - **单一配置**：项目根一份 `napuketto.toml`，账号内嵌协议段；账号必填。
