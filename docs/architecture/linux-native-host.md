@@ -4,8 +4,9 @@
 > wine + Windows `node.exe`（见 [decisions.md](decisions.md) 的 ADR-019 与
 > [runtime.md](runtime.md) §1）。2026-11-08 完成 Stage 0 核心链路实测
 > （dlopen / exports / O3 / engine init / getLoginList）；2026-11-09 完成 Stage 0b
-> （真实扫码 + 快速登录 + session READY，wrapper 层）。X11 运行期、消息收发与 arm64
-> 未验证，完整 Stage 0 通过后再按 ADR 规则追加决策。
+> （真实扫码 + 快速登录 + session READY，wrapper 层）与 Stage 1 端到端（CLI +
+> kernel 平台参数 + loader 原生分支）。X11 运行期、消息发送与 arm64 未验证，完整
+> Stage 0 通过后再按 ADR 规则追加决策。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
@@ -441,8 +442,31 @@ login `appid=537403759`、`platVer=Linux 6.18.33.2-2`、`clientVer=3.2.35-54395`
   `desktopGlobalPath` 控制；自建宿主需要收敛 `HOME`/`XDG_*`，否则污染用户目录。
 - `startupSession.start()` 后 `onMSFStatusChange [1,0]`、`onNTSessionCreate 0` 先到，
   READY 判定仍以 `getMsgService` 非空为准（与现有 kernel 一致）。
-- 本次只是 wrapper 层 spike，未跑现有 kernel（kernel 仍硬编码 `KWINDOWS`）；kernel
-  实际启动要在 Stage 3 平台参数化后再验。
+- 本次只是 wrapper 层 spike；真 kernel 端到端见 §9.8（Stage 1 已跑通）。
+
+### 9.8 Stage 1 端到端（2026-11-09，CLI + kernel）
+
+kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用真 CLI 跑通：
+
+| 项 | 结果 |
+|---|---|
+| 启动方式 | 系统 node 直接跑 `apps/cli/dist/index.mjs`；无 wine、无 Windows node、无 `Z:\` |
+| QQ 文件 | `NAPUTO_QQ_FILES` 指向 `<数据根>/qq-files/3.2.35-54395`（`versions/.../resources/app` 软链到解包目录） |
+| 预加载 | `LD_PRELOAD=<stub>.so:<libgnutls>.so.30`（loader 自动装配） |
+| 快速登录 | `bootstrap: 登录成功 uin=… nick=PaperKoi` |
+| session | `激活 session init + start 完成` → `QQ session 就绪（getMsgService 可用）` |
+| 适配器 / 事件 | `onebot11 adapter started`、`satori adapter started`；启动即收到离线消息历史 |
+| 优雅退出 | SIGTERM → `收到退出信号` → 子进程 code=0 |
+
+新发现（Stage 2/3 要处理）：
+
+- **commonPath 仍落在 `$HOME`**：kernel 的 `resolveQqUserDataRoot` 走
+  `getNTUserDataInfoConfig()`，Linux 上返回 `$HOME/Documents/Tencent Files`，不是数据根；
+  本次用软链把该目录指到 `<数据根>/nt_qq` 才复用已有登录。Linux 原生宿主应改为优先
+  数据根（或显式注入），否则换机器/换用户会读不到历史账号，并污染 `$HOME`。
+- Bugly 依旧写 `$HOME/.config/QQ/crash_files/`（§7 已记）。
+- `setStatus` 报 `cs return ok, but response empty!`，Login 桥未注册；不影响登录与
+  消息接收，属于既有兼容性问题。
 
 ## 10. 决策建议与待决事项
 
@@ -466,7 +490,8 @@ login `appid=537403759`、`platVer=Linux 6.18.33.2-2`、`clientVer=3.2.35-54395`
 KLINUX engine init、`getLoginList`、gnutls 隐藏依赖、`PerfTrace` 运行期 dlsym；Stage 0b
 另验证扫码登录、快速登录（`isQuickLogin` + `errMsg` 空）、session 创建顺序、
 `onOpentelemetryInit` / `onSessionInitComplete`、`getMsgService` READY、七个核心
-service 与 self 资料读取。
+service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → session READY → 适配器启动
+→ 收到离线消息 → SIGTERM 优雅退出（code=0），全程无 wine。
 
 **待决/待验证**：
 
