@@ -80,8 +80,8 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
   linux-x64；装 `libx11-6` / `libx11-xcb1` / `libxext6` / `libuuid1` /
   `libgssapi-krb5-2` / `libgcrypt20` / `libgnutls30t64`；`DISPLAY` 未设置；
   `LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`。
-- **未做**：X11 运行期功能（截图、剪贴板等）；他人消息的实时入站；富媒体发送；
-  arm64 运行期（arm64 静态核验见 §9.11）。完整 Stage 0 仍需补这些。
+- **未做**：X11 运行期功能（本仓当前无截图 / 剪贴板消费方，见附录 C）；他人消息的
+  实时入站；富媒体发送；arm64 运行期（arm64 静态核验见 §9.11）。完整 Stage 0 仍需补这些。
 
 > 版本相关数字只用于这次研判；QQ 升级后重跑附录 A 的命令即可重新确认。
 
@@ -607,7 +607,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 
 **待决/待验证**：
 
-- X11 运行期功能（截图 / 剪贴板等）；init 阶段已通过，但这些功能未测。
+- X11 运行期功能：**当前不是缺口**——本仓没有截图 / 剪贴板消费方（附录 C 有 grep 证据），
+  启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
+  再按附录 C 的清单补验证。
 - 消息**发送 + 撤回已实测通过**（§9.10）；未覆盖他人消息的实时入站事件（需第二个账号）
   与富媒体发送。
 - arm64 符号与解包**已静态核验**（§9.11）：缺口集与 x64 一致、stub 可交叉编译、
@@ -695,3 +697,37 @@ readelf --dyn-syms --wide build/linux-arm64/libnapuketto_stub.so | grep -v UND
 - [Node.js `src/node_binding.cc`（DLOpen / 自注册）](https://github.com/nodejs/node/blob/v24.16.0/src/node_binding.cc)
 - 仓内相关：[decisions.md](decisions.md)（ADR-019）、[runtime.md](runtime.md)、
   [overview.md](overview.md)、[loader design](../../packages/loader/docs/design.md)
+
+## 附录 C：X11 消费方盘点与有 DISPLAY 的冒烟（Stage 3e，2026-11-09）
+
+**结论 1：本仓当前没有 X11 消费方。** 在 `packages/**/*.ts` 里搜
+`ScreenCapture|screenCapture|clipboard|Clipboard|getScreen|screenshot|Screenshot`
+命中 **0**——kernel 未注册截图 / 剪贴板一类 QQ 原生 API，OneBot 11 / Satori 侧也没有对应
+动作。也就是说“X11 运行期功能”在现有 API 面上**无从触发**，不是漏测。
+
+**结论 2：有 DISPLAY 时也不建立 X 连接。** 在 WSL2（WSLg 已起，`/tmp/.X11-unix/X0` 存在）
+里用真 CLI + 真 x64 ELF `wrapper.node`、`DISPLAY=:0` 跑：
+
+```bash
+DISPLAY=:0 strace -f -e trace=connect -o /tmp/x11.log node apps/cli/dist/index.mjs
+grep X11-unix /tmp/x11.log   # 无输出 = 全程没连 X server
+```
+
+| 项 | 结果 |
+|---|---|
+| `wrapper 装配完成` | 通过（`version=3.2.35-54395`） |
+| 快速登录 | 成功 |
+| X11 连接（`connect` 到 `/tmp/.X11-unix/*`） | **0 次** |
+| 崩溃日志 | 无新增（只有 Bugly 读旧 `rqd_record.eup` 的固有告警） |
+| SIGTERM 退出 | `code=0` |
+
+即：启动 / 登录 / 消息链路在有 X 和无 X 的环境下行为一致，不需要 `Xvfb` 也能跑（这一点比
+NapCat 的 launcher 简单——那边要靠 Xvfb 哄 Electron 主进程，我们根本不跑 Electron）。
+
+**结论 3：将来接入截图 / 剪贴板时要补的验证清单**（现在不做，避免无消费方的空转）：
+
+1. 真实 `DISPLAY` 与 `Xvfb` 两种环境下的行为差异；
+2. `libX11` / `libxcb` / `libXext` 是随包（deb 里有 `libEGL.so` 等）还是系统依赖；
+3. 容器场景的 `xauth` / `XAUTHORITY` 与 `/tmp/.X11-unix` 挂载；
+4. 无 X 环境下这些 API 的可读降级错误（不能崩宿主）。
+
