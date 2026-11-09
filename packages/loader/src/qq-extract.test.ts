@@ -13,9 +13,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearCacheVersion,
+    extractDebInstaller,
     extractInstaller,
+    extractLinuxWrapperFiles,
     extractWrapperFiles,
     findSevenZip,
+    isLinuxRuntimeFile,
 } from "./qq-extract.js";
 
 /** execFile mock 记录（vi.hoisted：mock 工厂内可见）。 */
@@ -24,6 +27,8 @@ const h = vi.hoisted(() => {
         calls: [] as Array<{ exe: string; args: string[] }>,
         /** 下一次 execFile 的行为（null = 成功）。 */
         nextError: null as null | { code?: string | number; stderr?: string },
+        /** 每次成功调用前的文件系统副作用模拟（deb 多层解包用）。 */
+        onCall: null as null | ((args: string[]) => void),
     };
 });
 
@@ -46,6 +51,7 @@ vi.mock("node:child_process", () => ({
                 });
                 return;
             }
+            h.onCall?.(args);
             process.nextTick(() => {
                 cb(null, "", "");
             });
@@ -68,6 +74,7 @@ beforeEach(() => {
     tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-extract-test-"));
     h.calls.length = 0;
     h.nextError = null;
+    h.onCall = null;
     delete process.env["NAPUTO_7Z_PATH"];
 });
 
@@ -204,6 +211,161 @@ describe("extractWrapperFiles", () => {
         await expect(
             extractWrapperFiles(join(tmpRoot, "ghost"), Version, join(tmpRoot, "cache2")),
         ).rejects.toThrow("提取失败：wrapper.node 未复制到");
+    });
+});
+
+describe("extractDebInstaller", () => {
+    it("三层解包：deb → data.tar.xz → data.tar → 文件树，并清理中间产物", async () => {
+        const dest = join(tmpRoot, "deb-out");
+        // 模拟 7z 每一步的产物：deb 内层 data.tar.xz → data.tar → opt/QQ/resources/app
+        h.onCall = (args) => {
+            const target = args[1] ?? "";
+            const outDir = (args[2] ?? "").replace(/^-o/, "");
+            mkdirSync(outDir, { recursive: true });
+            if (target.endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "xz");
+                writeFileSync(join(outDir, "control.tar.gz"), "ctl");
+                writeFileSync(join(outDir, "debian-binary"), "2.0\n");
+            } else if (target.endsWith("data.tar.xz")) {
+                writeFileSync(join(outDir, "data.tar"), "tar");
+            } else if (target.endsWith("data.tar")) {
+                const appDir = join(outDir, "opt", "QQ", "resources", "app");
+                mkdirSync(appDir, { recursive: true });
+                writeFileSync(join(appDir, "wrapper.node"), "wrapper");
+            }
+        };
+        await extractDebInstaller("/pkg/linuxqq.deb", dest, "/tools/7zz");
+        expect(h.calls.map((call) => call.args[1])).toEqual([
+            "/pkg/linuxqq.deb",
+            join(dest, "data.tar.xz"),
+            join(dest, "data.tar"),
+        ]);
+        expect(existsSync(join(dest, "data.tar"))).toBe(false);
+        expect(existsSync(join(dest, "data.tar.xz"))).toBe(false);
+        expect(existsSync(join(dest, "control.tar.gz"))).toBe(false);
+        expect(existsSync(join(dest, "debian-binary"))).toBe(false);
+        expect(existsSync(join(dest, "opt", "QQ", "resources", "app", "wrapper.node"))).toBe(true);
+    });
+
+    it("deb 解包产物缺 data.tar* → 报错（结构异常）", async () => {
+        const dest = join(tmpRoot, "bad-deb");
+        h.onCall = (args) => {
+            mkdirSync((args[2] ?? "").replace(/^-o/, ""), { recursive: true });
+        };
+        await expect(extractDebInstaller("/pkg/bad.deb", dest, "/tools/7zz")).rejects.toThrow(
+            /缺少 data\.tar/,
+        );
+    });
+
+    it("data.tar.xz 内没有 data.tar → 报错", async () => {
+        const dest = join(tmpRoot, "bad-xz");
+        h.onCall = (args) => {
+            const outDir = (args[2] ?? "").replace(/^-o/, "");
+            mkdirSync(outDir, { recursive: true });
+            if ((args[1] ?? "").endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "xz");
+            }
+        };
+        await expect(extractDebInstaller("/pkg/bad.deb", dest, "/tools/7zz")).rejects.toThrow(
+            /缺少 data\.tar/,
+        );
+    });
+});
+
+describe("isLinuxRuntimeFile", () => {
+    it("收 *.node / *.so / *.so.N 与运行时小文件", () => {
+        for (const name of [
+            "wrapper.node",
+            "major.node",
+            "libbugly.so",
+            "libvips-cpp.so.42",
+            "libunwind.so.8",
+            "pub.key",
+            "cacert.pem",
+            "package.json",
+            "application.json",
+        ]) {
+            expect(isLinuxRuntimeFile(name)).toBe(true);
+        }
+    });
+
+    it("拒收无关文件与 Windows DLL", () => {
+        for (const name of ["application.asar", "rsds.log", "QQNT.dll", "README.txt"]) {
+            expect(isLinuxRuntimeFile(name)).toBe(false);
+        }
+    });
+});
+
+describe("extractLinuxWrapperFiles", () => {
+    const Version = "3.2.35-54395";
+
+    /** 构造 deb 解包树：<extracted>/opt/QQ/resources/app/。 */
+    function makeDebExtracted(): string {
+        const appDir = join(tmpRoot, "deb", "opt", "QQ", "resources", "app");
+        mkdirSync(join(appDir, "sharp-lib"), { recursive: true });
+        mkdirSync(join(appDir, "avsdk"), { recursive: true });
+        writeFileSync(join(appDir, "wrapper.node"), "wrapper");
+        writeFileSync(join(appDir, "major.node"), "major");
+        writeFileSync(join(appDir, "libbugly.so"), "bugly");
+        writeFileSync(join(appDir, "libunwind.so.8"), "unwind");
+        writeFileSync(join(appDir, "pub.key"), "key");
+        writeFileSync(join(appDir, "application.asar"), "skip");
+        writeFileSync(join(appDir, "avsdk", "libavsdk.so"), "skip-dir");
+        writeFileSync(join(appDir, "sharp-lib", "libvips-cpp.so.42"), "vips");
+        return join(tmpRoot, "deb");
+    }
+
+    it("按白名单提取到 Windows 同构缓存布局（含 sharp-lib 递归）", async () => {
+        const cacheRoot = join(tmpRoot, "cache");
+        const info = await extractLinuxWrapperFiles(makeDebExtracted(), Version, cacheRoot);
+        expect(info.source).toBe("cached");
+        expect(info.version).toBe(Version);
+        const destApp = join(cacheRoot, Version, "versions", Version, "resources", "app");
+        expect(readdirSync(destApp).sort()).toEqual([
+            "libbugly.so",
+            "libunwind.so.8",
+            "major.node",
+            "pub.key",
+            "sharp-lib",
+            "wrapper.node",
+        ]);
+        expect(readdirSync(join(destApp, "sharp-lib"))).toEqual(["libvips-cpp.so.42"]);
+        expect(info.wrapperPath).toBe(join(destApp, "wrapper.node"));
+    });
+
+    it("幂等：目标 wrapper.node 已存在 → 跳过复制", async () => {
+        const cacheRoot = join(tmpRoot, "cache-idem");
+        const extracted = makeDebExtracted();
+        const first = await extractLinuxWrapperFiles(extracted, Version, cacheRoot);
+        const destWrapper = join(
+            cacheRoot,
+            Version,
+            "versions",
+            Version,
+            "resources",
+            "app",
+            "wrapper.node",
+        );
+        writeFileSync(destWrapper, "cached-content");
+        const second = await extractLinuxWrapperFiles(extracted, Version, cacheRoot);
+        expect(second.wrapperPath).toBe(first.wrapperPath);
+        expect(readFileSync(destWrapper, "utf8")).toBe("cached-content");
+    });
+
+    it("缺 major.node → 报错（Linux engine/session 必需）", async () => {
+        const appDir = join(tmpRoot, "bad-linux", "opt", "QQ", "resources", "app");
+        mkdirSync(appDir, { recursive: true });
+        writeFileSync(join(appDir, "wrapper.node"), "wrapper");
+        await expect(
+            extractLinuxWrapperFiles(join(tmpRoot, "bad-linux"), Version, join(tmpRoot, "c")),
+        ).rejects.toThrow("major.node");
+    });
+
+    it("找不到 resources/app → 报错（不是 QQ deb 结构）", async () => {
+        mkdirSync(join(tmpRoot, "empty"), { recursive: true });
+        await expect(
+            extractLinuxWrapperFiles(join(tmpRoot, "empty"), Version, join(tmpRoot, "c2")),
+        ).rejects.toThrow(/缺少 resources\/app/);
     });
 });
 

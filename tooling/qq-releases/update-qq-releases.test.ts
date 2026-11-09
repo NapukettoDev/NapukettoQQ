@@ -99,7 +99,7 @@ const OFFICIAL_URL = "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.99.91/QQ_x64.exe";
 /** 既有清单夹具（单条旧版本；url 覆写为官方 URL 以便 no-op 判定）。 */
 function fixtureManifest(latestUrl: string): string {
     return JSON.stringify({
-        schema: 1,
+        schema: 2,
         known: [
             {
                 version: "9.99.90-100000",
@@ -329,7 +329,7 @@ describe("官方配置获取与解析", () => {
 
     it("版本回退（官方营销版本低于清单）→ 跳过防降级，exitCode 0", async () => {
         manifestContent = JSON.stringify({
-            schema: 1,
+            schema: 2,
             known: [
                 {
                     version: "9.99.98-999999",
@@ -378,8 +378,8 @@ describe("清单比对与 dry-run", () => {
         expect(logs).toContain("9.99.91");
     });
 
-    it("清单结构不合法（schema 非 1）→ 抛错退出 1，不写清单", async () => {
-        manifestContent = JSON.stringify({ schema: 2, known: [] });
+    it("清单结构不合法（schema 非 2）→ 抛错退出 1，不写清单", async () => {
+        manifestContent = JSON.stringify({ schema: 3, known: [] });
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
         await import("./update-qq-releases.ts");
         await untilExit();
@@ -416,7 +416,7 @@ describe("下载与版本解析、清单落盘", () => {
                 buildDate?: string;
             }>;
         };
-        expect(saved.schema).toBe(1);
+        expect(saved.schema).toBe(2);
         expect(saved.known.map((entry) => entry.version)).toEqual([
             "9.99.90-100000",
             "9.99.91-777777",
@@ -770,7 +770,7 @@ describe("版本解析与清单合并边角", () => {
 
     it("同版本替换保留已有非零 appid；下载 URL 无 QQNTV2 段时不打印归一化日志", async () => {
         manifestContent = JSON.stringify({
-            schema: 1,
+            schema: 2,
             known: [
                 {
                     version: "9.99.91-777777",

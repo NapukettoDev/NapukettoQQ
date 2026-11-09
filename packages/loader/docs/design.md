@@ -184,6 +184,41 @@ https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/a0ce07ad/QQ_9.9.33_260730_x64_0
   - `ensureQqFiles()`（下载 + 解包 + 校验 + 缓存，幂等：缓存命中直接返回）。
 - `QqInstallInfo` 扩展：`source: "local" | "cached"`，`wrapperPath` 定位逻辑复用。
 
+### 2.5 Linux deb 管线（Stage 2，2026-11-09）
+
+Linux 原生宿主不下载 Windows exe，改下载官方 **deb**，并在缓存里合成 Windows 同构布局
+（kernel `resolveWrapperPath` / ADR-018 路径不变）：
+
+```
+<数据根>/qq-files/3.2.35-54395/versions/3.2.35-54395/resources/app/
+├── wrapper.node / major.node
+├── *.so / *.so.N（libbugly / libcrbase / libunwind / libssh2 …）
+├── sharp-lib/**            # wrapper.node RUNPATH: $ORIGIN:$ORIGIN/sharp-lib
+└── pub.key / cacert.pem / package.json / application.json
+```
+
+- **清单 schema 2**（`qq-releases.json`）：条目新增 `platform: "win32" | "linux"`（缺省
+  win32，旧条目兼容）、`arch: "x64" | "arm64"`（缺省 x64）、`coreVersion`（Linux
+  `3.2.35-54395` 对应 `9.9.37`；Windows 缺省 = `version`）。`version` 始终是缓存目录名 /
+  `app_version`：Windows 为 `9.9.33-51802`，Linux 为客户端版本 `3.2.35-54395`。
+- **版本选择**：`latestRelease(releases, { platform, arch })` 先按平台/架构过滤再取末项
+  ——清单混装 exe 与 deb 后不能再直接取数组末项。
+- **deb 解包（3 层，7-Zip 25.01 实测支持 Ar）**：`7zz x deb` → `data.tar.xz` →
+  `7zz x data.tar.xz` → `data.tar` → `7zz x data.tar` → `opt/QQ/resources/app`。
+  中间产物（`data.tar` ~600MB / `data.tar.xz` 188MB / control）解完即删。
+  不再依赖 `dpkg-deb`，只用内置 `assets/7zip/7zz`。
+- **提取白名单**：顶层 `*.node` / `*.so` / `*.so.N` + `pub.key` / `cacert.pem` /
+  `package.json` / `application.json`；`sharp-lib/` 整体保留。跳过 `avsdk/`（50MB）、
+  `resource/`、`application.asar` 等与无头 wrapper 无关的目录。
+- **ELF 守卫**：`NAPUTO_LINUX_NATIVE=1` 时 `resolveFromRoot` 校验 `wrapper.node` 魔数，
+  误指向 `/mnt/c` 的 Windows 安装（PE）立即报可读错误，而不是等 `dlopen` 报
+  invalid ELF header。
+- **下载 URL**：官方 `linuxConfig.js`（`x64DownloadUrl.deb` / `armDownloadUrl.deb`），
+  同样经 `normalizeDownloadUrl` 处理 `/QQNTV2/` 大小写；基线 x64 deb
+  `QQ_3.2.35_261103_amd64_01.deb`（188,287,504 字节，sha256 `7de0386…f9ac`）。
+- **暂未覆盖**：manifest 的 Linux 自动更新（cron 目前只维护 Windows，Linux 条目手工
+  PR）；arm64 条目待符号核验后补；本地 `/opt/QQ` 扁平安装探测。
+
 ---
 
 ## 3. G2：Linux 支持（方案 a：wine + Windows node.exe）

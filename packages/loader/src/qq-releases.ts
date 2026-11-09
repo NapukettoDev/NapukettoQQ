@@ -20,11 +20,17 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+/** 清单条目平台（Linux 原生走 deb；旧条目缺省 win32，兼容 schema 1 遗留写法）。 */
+export type QqReleasePlatform = "win32" | "linux";
+
+/** 清单条目架构（当前 Windows 只有 x64，Linux 有 amd64/arm64）。 */
+export type QqReleaseArch = "x64" | "arm64";
+
 /** 清单中单个版本条目。 */
 export interface QqReleaseEntry {
-    /** 版本目录名（如 9.9.33-51802）。 */
+    /** 版本目录名 / 客户端版本（Windows 9.9.33-51802；Linux 3.2.35-54395）。 */
     version: string;
-    /** 官方安装包下载 URL。 */
+    /** 官方安装包下载 URL（Windows NSIS exe / Linux deb）。 */
     url: string;
     /** sha256（十六进制小写）；空串 = 尚未校验（首次录入时 CI 计算后填入）。 */
     sha256: string;
@@ -32,9 +38,18 @@ export interface QqReleaseEntry {
     appid: number;
     /** 来源标记（official = 官方）。 */
     source: string;
+    /** 平台；缺省 win32（旧条目无此字段）。 */
+    platform?: QqReleasePlatform;
+    /** 架构；缺省 x64。 */
+    arch?: QqReleaseArch;
+    /** QQNT 核心版本（Linux 3.2.35 对应 9.9.37）；缺省 = version。 */
+    coreVersion?: string;
     /** 构建日期（YYYY-MM-DD，可选）。 */
     buildDate?: string;
 }
+
+/** 当前清单 schema 版本（2 = 增加 platform/arch/coreVersion）。 */
+export const QQ_RELEASES_SCHEMA = 2;
 
 /** 清单文件结构。 */
 export interface QqReleasesFile {
@@ -66,7 +81,11 @@ export function loadQqReleases(): QqReleasesFile {
     }
     try {
         const parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
-        if (parsed.schema !== 1 || !Array.isArray(parsed.known) || parsed.known.length === 0) {
+        if (
+            parsed.schema !== QQ_RELEASES_SCHEMA ||
+            !Array.isArray(parsed.known) ||
+            parsed.known.length === 0
+        ) {
             throw new Error("结构不合法");
         }
         return parsed as QqReleasesFile;
@@ -75,11 +94,44 @@ export function loadQqReleases(): QqReleasesFile {
     }
 }
 
-/** 取最新已知可用版本（known 数组按录入顺序，取最后一项 = 最新）。 */
-export function latestRelease(releases: QqReleasesFile): QqReleaseEntry {
-    const [latest] = [...releases.known].reverse();
+/** 条目平台（缺省 win32，兼容旧清单条目）。 */
+export function releasePlatform(entry: QqReleaseEntry): QqReleasePlatform {
+    return entry.platform ?? "win32";
+}
+
+/** 条目架构（缺省 x64）。 */
+export function releaseArch(entry: QqReleaseEntry): QqReleaseArch {
+    return entry.arch ?? "x64";
+}
+
+/** latestRelease 选项（缺省当前进程平台/架构）。 */
+export interface LatestReleaseOptions {
+    /** 平台（win32 / linux）；缺省 process.platform。 */
+    platform?: string;
+    /** 架构（x64 / arm64）；缺省 process.arch。 */
+    arch?: string;
+}
+
+/**
+ * 取该平台/架构最新已知可用版本（known 数组按录入顺序，取最后一项 = 最新）。
+ *
+ * 清单混装 Windows 与 Linux 条目后，不能简单取数组末项——否则 Windows 会选中
+ * Linux deb、Linux 会选中 exe。按 platform/arch 过滤后再取末项。
+ */
+export function latestRelease(
+    releases: QqReleasesFile,
+    opts: LatestReleaseOptions = {},
+): QqReleaseEntry {
+    const platform = opts.platform ?? process.platform;
+    const arch = opts.arch ?? process.arch;
+    const matching = releases.known.filter(
+        (entry) => releasePlatform(entry) === platform && releaseArch(entry) === arch,
+    );
+    const [latest] = matching.slice(-1);
     if (latest === undefined) {
-        throw new QqReleasesError("版本清单为空");
+        throw new QqReleasesError(
+            `版本清单无 ${platform}/${arch} 条目（共 ${releases.known.length} 条）`,
+        );
     }
     return latest;
 }

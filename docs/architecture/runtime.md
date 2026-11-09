@@ -98,12 +98,17 @@ boot 进程；boot 退出且 `autoRestart=true` 时延迟重启。
 |---|---|---|
 | L0 | `NAPUTO_QQ_FILES` / `qqFilesDir` | 显式文件根，目录结构须为 `<root>/versions/<版本>/resources/app/wrapper.node` |
 | L1 | 本机 QQ 安装 | `--qq-path` / `NAPUTO_QQ_PATH` > 注册表 > 常见安装路径 |
-| L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物） |
-| 兜底 | 自动下载 | 读 `packages/loader/qq-releases.json` 的最新条目，下载官方安装包 → sha256 校验 → 7z 解包 → 提取 `wrapper.node` 及依赖 DLL 到 L2 |
+| L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物；Windows 解 exe、Linux 解 deb，统一合成 `versions/<版本>/resources/app/` 布局） |
+| 兜底 | 自动下载 | 读 `packages/loader/qq-releases.json` 中**当前平台/架构**的最新条目，下载官方安装包 → sha256 校验 → 7z 解包 → 提取 `wrapper.node` 及依赖到 L2 |
 
 约束与细节：
 
 - **不在仓库或 npm 包内置腾讯二进制**。安装包只在用户机器运行时下载到数据根。
+- 清单条目带 `platform` / `arch`（缺省 win32/x64）与 `coreVersion`；版本选择先按平台过滤，
+  避免 Windows 选中 Linux deb（反之亦然）。
+- Linux 条目下载官方 deb，`7zz` 三层解包（deb → data.tar[.xz] → 文件树），提取
+  `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到同一缓存布局；不依赖
+  `dpkg-deb`。`NAPUTO_LINUX_NATIVE=1` 时校验 wrapper 为 ELF，拒绝误用 Windows 文件。
 - 下载 URL 统一经 `normalizeDownloadUrl` 处理：腾讯 CDN 边缘 WAF 对字面量 `/QQNTV2/`
   路径段区分大小写拦截，请求前归一化为小写 `/qqntv2/`；源站本身大小写不敏感。
 - 版本清单由 `.github/workflows/update-qq-releases.yml` 每日维护，也可本地跑

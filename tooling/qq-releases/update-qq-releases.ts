@@ -36,7 +36,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { QqReleaseEntry, QqReleasesFile } from "../../packages/loader/src/qq-releases.ts";
-import { normalizeDownloadUrl } from "../../packages/loader/src/qq-releases.ts";
+import { normalizeDownloadUrl, releasePlatform } from "../../packages/loader/src/qq-releases.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -370,8 +370,8 @@ function scanEncoding(
 function loadManifest(): QqReleasesFile {
     const raw = readFileSync(MANIFEST_PATH, "utf8");
     const parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
-    if (parsed.schema !== 1 || !Array.isArray(parsed.known) || parsed.known.length === 0) {
-        throw new Error("qq-releases.json 结构不合法（需 schema=1 且 known 非空数组）");
+    if (parsed.schema !== 2 || !Array.isArray(parsed.known) || parsed.known.length === 0) {
+        throw new Error("qq-releases.json 结构不合法（需 schema=2 且 known 非空数组）");
     }
     return parsed as QqReleasesFile;
 }
@@ -400,7 +400,10 @@ async function main(argv: readonly string[]): Promise<number> {
     }
 
     // 2. 与清单比对：URL 未变 → no-op；营销版本回退 → 跳过（防降级，可能是备用源滞后）
-    const sorted = sortEntries(manifest.known);
+    //    只比 Windows 条目：清单同时存在 Linux deb 条目，直接取末项会拿 Linux 版本比对。
+    const sorted = sortEntries(
+        manifest.known.filter((entry) => releasePlatform(entry) === "win32"),
+    );
     const latest = sorted[sorted.length - 1];
     if (latest !== undefined && latest.url === release.x64Url) {
         info(`清单已是最新（${latest.version}），URL 未变，无需更新`);

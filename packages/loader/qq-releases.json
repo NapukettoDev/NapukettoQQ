@@ -1,5 +1,5 @@
 {
-    "schema": 1,
+    "schema": 2,
     "known": [
         {
             "version": "9.9.33-51802",
@@ -30,6 +30,17 @@
             "url": "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/a2ca1b61/QQ_9.9.37_261103_x64_01.exe",
             "sha256": "5cd7c13e36b391f88b2ad272fa870d74f476135b64244844ec0ad7ac7b411b48",
             "appid": 0,
+            "source": "official",
+            "buildDate": "2026-11-03"
+        },
+        {
+            "version": "3.2.35-54395",
+            "platform": "linux",
+            "arch": "x64",
+            "coreVersion": "9.9.37",
+            "url": "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_amd64_01.deb",
+            "sha256": "7de03862327abbd16da27130413698c9517782b27194afc593bc3abf9b55f9ac",
+            "appid": 537403759,
             "source": "official",
             "buildDate": "2026-11-03"
         }
