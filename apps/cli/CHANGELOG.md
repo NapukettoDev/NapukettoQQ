@@ -1,5 +1,16 @@
 # @napuketto/cli
 
+## 0.5.5
+
+### Patch Changes
+
+- Updated dependencies [dd2e4ad]
+- Updated dependencies [fa5ee20]
+- Updated dependencies [94d6d3c]
+  - @napuketto/kernel@0.10.0
+  - @napuketto/loader@0.6.0
+  - @napuketto/adapter@0.12.2
+
 ## 0.5.4
 
 ### Patch Changes

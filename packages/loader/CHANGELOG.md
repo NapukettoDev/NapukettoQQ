@@ -1,5 +1,22 @@
 # @napuketto/loader
 
+## 0.6.0
+
+### Minor Changes
+
+- fa5ee20: feat(loader): Linux QQ 原生文件 deb 管线（Stage 2）——清单 schema 2 增加平台/架构/核心版本，Linux 自动下载官方 deb 并用内置 7zz 三层解包，提取 `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到与 Windows 同构的缓存布局；Linux 原生模式定位阶段校验 ELF，拒绝误用 Windows 安装文件。
+- 94d6d3c: feat: Linux 原生宿主 Stage 1（平台参数 + `NAPUTO_LINUX_NATIVE` 开关分支）
+  
+  - kernel：按 `process.platform` 生成 KLINUX/KMAC/KWINDOWS 平台参数；qua 优先从
+    `major.node` 扫描，`buildEngineConfig` / `buildSessionConfig` 支持显式平台覆盖。
+  - loader：新增 Linux 原生分支（标准 node + 最小 stub `.so` + `libgnutls` 预加载），
+    缺省关闭，Wine 仍是现行实现。
+  - native：新增 Linux stub 源码、构建脚本与 x64 预编译产物。
+
+### Patch Changes
+
+- dd2e4ad: fix(kernel): Linux 原生宿主的 QQ 数据根改用 Napuketto 数据根（`<数据根>/nt_qq`），不再读写 `$HOME/Documents/Tencent Files`；`resolveQqUserDataRoot` 新增平台分流与 `dataRoot` 选项，loader 经 `NAPUTO_DATA_ROOT` 注入。
+
 ## 0.5.1
 
 ### Patch Changes

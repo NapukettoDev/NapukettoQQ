@@ -1,5 +1,21 @@
 # @napuketto/kernel
 
+## 0.10.0
+
+### Minor Changes
+
+- 94d6d3c: feat: Linux 原生宿主 Stage 1（平台参数 + `NAPUTO_LINUX_NATIVE` 开关分支）
+  
+  - kernel：按 `process.platform` 生成 KLINUX/KMAC/KWINDOWS 平台参数；qua 优先从
+    `major.node` 扫描，`buildEngineConfig` / `buildSessionConfig` 支持显式平台覆盖。
+  - loader：新增 Linux 原生分支（标准 node + 最小 stub `.so` + `libgnutls` 预加载），
+    缺省关闭，Wine 仍是现行实现。
+  - native：新增 Linux stub 源码、构建脚本与 x64 预编译产物。
+
+### Patch Changes
+
+- dd2e4ad: fix(kernel): Linux 原生宿主的 QQ 数据根改用 Napuketto 数据根（`<数据根>/nt_qq`），不再读写 `$HOME/Documents/Tencent Files`；`resolveQqUserDataRoot` 新增平台分流与 `dataRoot` 选项，loader 经 `NAPUTO_DATA_ROOT` 注入。
+
 ## 0.9.1
 
 ### Patch Changes
