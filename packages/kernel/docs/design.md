@@ -423,3 +423,15 @@ listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Li
 
 桥仍是「每 Service 每进程一份、构造期一次性取服务」模式（ADR-003/015）；登录
 后 getter 重挂 null 的雷区不影响——服务实例在装配期已持有。
+
+## 11. 平台参数（Linux 原生宿主，2026-11-09 Stage 1）
+
+- `detectPlatformType()`：`process.platform` → `KLINUX` / `KMAC` / `KWINDOWS`（默认）。
+- `parseQuaFromMajor()`：从 `major.node` 扫描 `V1_(WIN|LNX|MAC)_NQ_..._GW_B`；`resolveAppidQua()`
+  优先内置 qua，解析不到才按平台拼（Linux 用 `_` 连接版本与构建号）。
+- `buildEngineConfig()` / `buildSessionConfig()` 接受显式 `platform` 覆盖；缺省按平台探测，
+  `rdeliveryConfig.platform` 同步。
+- `defaultEngineConfig()`（真启动路径）：平台探测 + `NAPUTO_WRAPPER_PATH` 同目录
+  `major.node` 扫 qua + `os.version()`；Linux 打开 `use_xlog`。Windows 旧行为（qua 空）
+  只在拿不到版本/major 时保底。
+- 只改平台字段与 qua 来源，不动登录/会话流程；Windows 仍走 PE stub。

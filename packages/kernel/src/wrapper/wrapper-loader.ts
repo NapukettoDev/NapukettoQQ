@@ -9,8 +9,8 @@
  * 业务层拿到的都是真实 JS 对象：engine.initWithDeskTopConfig(config, adapter) 等。
  */
 
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, version as osVersion } from "node:os";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import { kernelError } from "../infra/index.js";
 import type {
@@ -31,21 +31,35 @@ import {
     DispatcherAdapter,
     GlobalAdapter,
 } from "./wrapper-adapters.js";
+import { buildQua, detectPlatformType, parseQuaFromMajor } from "./wrapper-config.js";
 
 // ---------------------------------------------------------------
 // startNapuketto 内部辅助（非 export，boot 装配用）
 // ---------------------------------------------------------------
 
-/** 默认 engine 配置（KWINDOWS + 版本号，字段待首个真实联调确认）。 */
+/**
+ * 默认 engine 配置（按平台探测）。
+ *
+ * 平台：`process.platform` → KLINUX/KMAC/KWINDOWS；qua 优先从 wrapper.node 同目录
+ * major.node 扫描（`NAPUTO_WRAPPER_PATH` 由 loader 注入），找不到再按版本拼。
+ * Linux 实测需要 `V1_LNX_NQ_3.2.35_54395_GW_B`；Windows 旧行为（qua 空）仅在
+ * 拿不到版本/major.node 时保底。
+ */
 function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginInitDesktopConfig {
+    const platform = detectPlatformType();
+    const fullVersion = env.qqVersion ?? "";
+    const wrapperPath = process.env["NAPUTO_WRAPPER_PATH"] ?? "";
+    const majorPath = wrapperPath !== "" ? join(dirname(wrapperPath), "major.node") : "";
+    const scanned = majorPath !== "" ? parseQuaFromMajor(majorPath) : null;
+    const qua = scanned ?? (fullVersion !== "" ? buildQua(fullVersion, platform) : "");
     return {
         base_path_prefix: env.dataDir ?? "",
-        platform_type: PlatformType.KWINDOWS,
+        platform_type: platform,
         app_type: 4,
-        app_version: env.qqVersion ?? "",
-        os_version: process.platform,
-        use_xlog: false,
-        qua: "",
+        app_version: fullVersion,
+        os_version: osVersion() || process.platform,
+        use_xlog: platform !== PlatformType.KWINDOWS,
+        qua,
         global_path_config: {
             desktopGlobalPath: qqDataPath ?? env.dataDir ?? "",
         },

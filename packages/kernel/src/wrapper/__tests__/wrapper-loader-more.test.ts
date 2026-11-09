@@ -73,7 +73,7 @@ describe("startNapuketto 自建宿主（无 process.type）", () => {
         });
     });
 
-    it("默认 engine 配置：QQ 版本 / KWINDOWS / desktopGlobalPath 解析（getNTUserDataInfoConfig null → 用户目录兜底）", () => {
+    it("默认 engine 配置：QQ 版本 / 按平台探测 / desktopGlobalPath 解析（getNTUserDataInfoConfig null → 用户目录兜底）", () => {
         withProcessType(undefined, () => {
             const engine = { initWithDeskTopConfig: vi.fn() };
             const exports = mockExports({
@@ -87,9 +87,16 @@ describe("startNapuketto 自建宿主（无 process.type）", () => {
                 string,
                 unknown
             >;
+            const expectedPlatform =
+                process.platform === "linux"
+                    ? PlatformType.KLINUX
+                    : process.platform === "darwin"
+                      ? PlatformType.KMAC
+                      : PlatformType.KWINDOWS;
             expect(config["app_version"]).toBe("9.9.33-52230");
             expect(config["app_type"]).toBe(4);
-            expect(config["use_xlog"]).toBe(false);
+            expect(config["platform_type"]).toBe(expectedPlatform);
+            expect(config["use_xlog"]).toBe(expectedPlatform !== PlatformType.KWINDOWS);
             const globalPath = (config["global_path_config"] as Record<string, unknown>)[
                 "desktopGlobalPath"
             ] as string;
