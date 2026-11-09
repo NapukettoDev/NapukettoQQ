@@ -57,7 +57,9 @@ describe("resolveAppidQua", () => {
         writeFileSync(majorPath, Buffer.from("QQAppId/537376818\x00"));
         const result = resolveAppidQua("9.9.33-51802", majorPath);
         expect(result.appid).toBe("537376818");
-        expect(result.qua).toContain("9.9.33-51802");
+        // Linux/macOS 的 qua 用 `_` 连接版本与构建号（Windows 保留 `-`）
+        const sep = process.platform === "win32" ? "-" : "_";
+        expect(result.qua).toContain(`9.9.33${sep}51802`);
     });
 
     it("major 路径缺省 → 抛 KernelError（不再静默回退）", () => {
