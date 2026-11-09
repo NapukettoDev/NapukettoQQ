@@ -259,6 +259,24 @@ function toWinePath(linuxPath: string): string {
 > 若冒烟发现某个环节 wine 不支持（理论风险低），回退手段：该环节改用 wine 的
 > `winedbg`/调试工具定位；不切换方案 b（用户拍板）。
 
+### 3.4 Linux 原生 ELF 分支（Stage 1，开关 `NAPUTO_LINUX_NATIVE=1`）
+
+Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原生分支。
+
+- **宿主**：系统 `node`（`process.execPath` 是 node 直接用，否则 `which node`），不再下载
+  Windows `node.exe`、不再 wine、路径不转 `Z:\`。
+- **stub**：`native/build/linux-<arch>/libnapuketto_stub.so`（私有 native 产物），缺省用
+  `NAPUTO_LINUX_STUB` 覆盖；只 3 个导出符号（`qq_magic_napi_register` /
+  `node::IsEnvironmentStopping` / `PerfTrace`）。
+- **预加载**：`LD_PRELOAD=<stub>:<libgnutls.so.30>`。gnutls 是 `libbugly` 的无
+  `DT_NEEDED` 隐藏依赖；Ubuntu 24.04 包名 `libgnutls30t64`，Debian 12 为 `libgnutls30`。
+- **不做**：PATH 前置、stub 目录、QQNT.dll 校验——这些只属于 wine 分支。
+- **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
+- **与 kernel 的衔接**：kernel 已按 `process.platform` 生成 KLINUX engine/session 配置并从
+  `major.node` 扫 qua；本分支只负责进程与预加载。
+- 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
+  Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
+
 ---
 
 ## 4. G3：Docker 镜像

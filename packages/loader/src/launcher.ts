@@ -15,6 +15,13 @@ import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+    defaultLinuxStubPath,
+    isLinuxNativeEnabled,
+    linuxPreload,
+    resolveGnutls,
+    resolveLinuxNode,
+} from "./linux-native.js";
 import type { QqInstallInfo } from "./locate-qq.js";
 import { ensureWinNode } from "./win-node.js";
 import {
@@ -46,6 +53,8 @@ export interface LaunchOptions {
     selfHost?: boolean;
     /** stub QQNT.dll 目录（PATH 前置，转发 napi_*、uv_* 符号到 node.exe）。 */
     stubDir?: string;
+    /** Linux 原生 stub `.so` 路径（缺省 native/build/linux-<arch>/libnapuketto_stub.so）。 */
+    linuxStubPath?: string;
     /** 强制指定快速登录账号（注入 NAPUTO_QUICK_UIN；cli `-q <uin>` 透传，2026-08-07）。 */
     quickUin?: string;
     /** 强制扫码登录（注入 NAPUTO_QR_ONLY；跳过快速登录直接 QR，koishi 面板「扫码登录」用）。 */
@@ -110,6 +119,12 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
         );
     }
 
+    // Linux 原生 ELF 分支（Stage 1，默认关闭）：标准 node + stub .so + gnutls preload。
+    if (isLinuxNativeEnabled()) {
+        const child = launchLinuxNative(options, selfHostPath);
+        return { child, bootJsPath: selfHostPath };
+    }
+
     // stub QQNT.dll 校验（自建宿主必需：PATH 前置 stub 转发 napi_* 到 node.exe，
     // 否则 wrapper.node dlopen 失败）。默认 loader 包内闭源 submodule native/stub-test-env，
     // 缺失时提示 --stub-dir / NAPUTO_STUB_DIR 指定。
@@ -167,6 +182,51 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     });
 
     return { child, bootJsPath: selfHostPath };
+}
+
+/**
+ * Linux 原生 ELF 分支：标准 node + 最小 stub `.so` + 系统 libgnutls 预加载。
+ * 不转 wine 路径、不下载 Windows node.exe、不动 PATH（ELF 全局符号表直接解析）。
+ */
+function launchLinuxNative(options: LaunchOptions, selfHostPath: string): ReturnType<typeof spawn> {
+    const stub =
+        options.linuxStubPath ?? process.env["NAPUTO_LINUX_STUB"] ?? defaultLinuxStubPath();
+    if (!existsSync(stub)) {
+        throw new Error(
+            `Linux stub 未找到: ${stub}（应随 @napuketto/loader 的 native/build/linux-<arch>/ 发布；` +
+                "可用 --stub-dir 之外的 NAPUTO_LINUX_STUB 指定）",
+        );
+    }
+    const gnutls = resolveGnutls();
+    if (gnutls === null) {
+        throw new Error(
+            "未找到系统 libgnutls.so.30（libbugly 的隐藏依赖，缺失会报 undefined symbol: gnutls_free）；" +
+                "Ubuntu 24.04 请安装 libgnutls30t64，Debian 12 安装 libgnutls30",
+        );
+    }
+    const node = resolveLinuxNode();
+    if (node === null) {
+        throw new Error(
+            "Linux 原生宿主需要可执行的 node（当前宿主不是 node，且 PATH 中找不到 node）",
+        );
+    }
+    const env = buildLaunchEnv(options, false);
+    env["LD_PRELOAD"] = linuxPreload(stub, gnutls);
+    env[ENV.STUB_DIR] = stub;
+    if (options.cwd !== undefined) {
+        mkdirSync(options.cwd, { recursive: true });
+    }
+    options.onStage?.(`Linux 原生宿主：${node} self-host.cjs（stub=${stub}，gnutls=${gnutls}）`);
+    const child = spawn(node, [selfHostPath], {
+        ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+        env,
+        stdio: options.stdio ?? "inherit",
+        windowsHide: false,
+    });
+    child.once("error", (err) => {
+        process.stderr.write(`[napuketto-loader] Linux 原生宿主启动失败: ${err.message}\n`);
+    });
+    return child;
 }
 
 /**

@@ -83,6 +83,71 @@ function systemInfo(): { platVer: string; osVersion: string; devType: string } {
 /** 纯数字串（major.node 提取的 appid 判定）。 */
 const DIGITS_ONLY_RE = /^\d+$/;
 
+/** major.node 内嵌 qua（如 `V1_LNX_NQ_3.2.35_54395_GW_B`）扫描正则。 */
+const QUA_RE = /V1_(?:WIN|LNX|MAC)_NQ_[A-Za-z0-9._-]+_GW_B/;
+
+/** 当前平台 → wrapper PlatformType（未知平台按 Windows 处理，保持旧行为）。 */
+export function detectPlatformType(): PlatformTypeValue {
+    switch (platform()) {
+        case "linux":
+            return PlatformTypeValue.KLINUX;
+        case "darwin":
+            return PlatformTypeValue.KMAC;
+        default:
+            return PlatformTypeValue.KWINDOWS;
+    }
+}
+
+/** 平台对应的 qua 前缀（Linux 用 LNX，macOS 用 MAC）。 */
+function quaPrefix(platform: PlatformTypeValue): string {
+    if (platform === PlatformTypeValue.KLINUX) {
+        return "V1_LNX";
+    }
+    if (platform === PlatformTypeValue.KMAC) {
+        return "V1_MAC";
+    }
+    return "V1_WIN";
+}
+
+/**
+ * 由客户端版本拼 qua。Windows 保持历史行为（连字符原样）；
+ * Linux/macOS 用 `_` 连接（实测 `V1_LNX_NQ_3.2.35_54395_GW_B`）。
+ */
+export function buildQua(fullVersion: string, platform: PlatformTypeValue): string {
+    const version =
+        platform === PlatformTypeValue.KWINDOWS ? fullVersion : fullVersion.replace("-", "_");
+    return `${quaPrefix(platform)}_NQ_${version}_GW_B`;
+}
+
+/** 从 major.node 扫描 qua（找不到返回 null；读文件失败同样返回 null）。 */
+export function parseQuaFromMajor(majorPath: string): string | null {
+    if (!existsSync(majorPath)) {
+        return null;
+    }
+    let buf: Buffer;
+    try {
+        buf = readFileSync(majorPath);
+    } catch {
+        return null;
+    }
+    // 大文件（~110MB）逐段扫描，避免整体转字符串的内存峰值。
+    const marker = Buffer.from("V1_", "latin1");
+    let pos = 0;
+    while (pos < buf.length) {
+        const idx = buf.indexOf(marker, pos);
+        if (idx === -1) {
+            return null;
+        }
+        const slice = buf.subarray(idx, Math.min(idx + 80, buf.length)).toString("latin1");
+        const matched = QUA_RE.exec(slice)?.[0];
+        if (matched !== undefined) {
+            return matched;
+        }
+        pos = idx + marker.length;
+    }
+    return null;
+}
+
 /**
  * 从 major.node 提取 appid（NapCat parseAppidFromMajorV2 的自研等价实现）。
  * major.node 含 `QQAppId/` 标记后跟数字（腾讯工具链产物，实测确认）。
@@ -137,6 +202,7 @@ function readMarkerValue(buf: Buffer, start: number): string {
 export function resolveAppidQua(
     fullVersion: string,
     majorPath?: string,
+    platform: PlatformTypeValue = detectPlatformType(),
 ): { appid: string; qua: string } {
     const appid = majorPath !== undefined ? parseAppidFromMajor(majorPath) : null;
     if (appid === null) {
@@ -145,9 +211,11 @@ export function resolveAppidQua(
             "INVALID_STATE",
         );
     }
+    // qua 优先取 major.node 内嵌值（版本绑定最准）；解析不到再按平台拼接。
+    const scanned = majorPath !== undefined ? parseQuaFromMajor(majorPath) : null;
     return {
         appid,
-        qua: `V1_WIN_NQ_${fullVersion}_${fullVersion.split("-")[1] ?? ""}_GW_B`,
+        qua: scanned ?? buildQua(fullVersion, platform),
     };
 }
 
@@ -156,12 +224,13 @@ export function buildEngineConfig(
     fullVersion: string,
     dataPathGlobal: string,
     majorPath?: string,
+    platform: PlatformTypeValue = detectPlatformType(),
 ): EnginInitDesktopConfig {
     const { osVersion } = systemInfo();
-    const { qua } = resolveAppidQua(fullVersion, majorPath);
+    const { qua } = resolveAppidQua(fullVersion, majorPath, platform);
     return {
         base_path_prefix: "",
-        platform_type: PlatformTypeValue.KWINDOWS,
+        platform_type: platform,
         app_type: APP_TYPE_DESKTOP,
         app_version: fullVersion,
         os_version: osVersion,
@@ -202,12 +271,15 @@ export interface SessionConfigOptions {
     downloadPath: string;
     /** 设备指纹 guid（来自 loginService.getMachineGuid()；缺省空串）。 */
     machineGuid?: string;
+    /** 平台（缺省按 process.platform 探测；测试/联调可显式覆盖）。 */
+    platform?: PlatformTypeValue;
 }
 
 /** 生成 session 初始化配置（登录成功后调用）。 */
 export function buildSessionConfig(options: SessionConfigOptions): WrapperSessionInitConfig {
     const { appid, fullVersion, selfUin, selfUid, accountPath, downloadPath, machineGuid } =
         options;
+    const platform = options.platform ?? detectPlatformType();
     const { platVer, osVersion, devType } = systemInfo();
     const deviceInfo: DeviceInfo = {
         // 设备指纹 guid：loginService.getMachineGuid()（wrapper 探测确认，无 getMachineId 方法）。
@@ -233,7 +305,7 @@ export function buildSessionConfig(options: SessionConfigOptions): WrapperSessio
         d2: "",
         d2Key: "",
         machineId: "",
-        platform: PlatformTypeValue.KWINDOWS,
+        platform,
         platVer,
         appid,
         rdeliveryConfig: {
@@ -241,7 +313,7 @@ export function buildSessionConfig(options: SessionConfigOptions): WrapperSessio
             systemId: 0,
             appId: "",
             logicEnvironment: "",
-            platform: PlatformTypeValue.KWINDOWS,
+            platform,
             language: "",
             sdkVersion: "",
             userId: "",

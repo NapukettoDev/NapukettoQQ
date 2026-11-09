@@ -32,8 +32,8 @@ afterAll(() => {
     }
 });
 
-/** 造一个含 QQAppId/ 标记的假 major.node。 */
-function fakeMajor(): string {
+/** 造一个含 QQAppId/ 标记的假 major.node（extra 可附 qua 等字符串）。 */
+function fakeMajor(extra: string[] = []): string {
     const dir = mkdtempSync(join(tmpdir(), "nk-test-major-"));
     tmpDirs.push(dir);
     const p = join(dir, "major.node");
@@ -43,16 +43,18 @@ function fakeMajor(): string {
         marker,
         Buffer.from("537376818\0junk"),
         Buffer.alloc(32, 0),
+        ...extra.map((s) => Buffer.from(`${s}\0`, "utf-8")),
+        Buffer.alloc(32, 0),
     ]);
     writeFileSync(p, payload);
     return p;
 }
 
 describe("buildEngineConfig", () => {
-    it("字段契约：appid 来自 major.node / qua 带版本 / thumb_config 固定值", () => {
-        const cfg = buildEngineConfig("9.9.33-51802", "C:/gp", fakeMajor());
+    it("字段契约：appid 来自 major.node / qua 按平台拼接 / thumb_config 固定值", () => {
+        const cfg = buildEngineConfig("9.9.33-51802", "C:/gp", fakeMajor(), PlatformType.KWINDOWS);
         expect(cfg["app_version"]).toBe("9.9.33-51802");
-        expect(cfg["qua"]).toBe("V1_WIN_NQ_9.9.33-51802_51802_GW_B");
+        expect(cfg["qua"]).toBe("V1_WIN_NQ_9.9.33-51802_GW_B");
         expect(cfg["app_type"]).toBe(4);
         expect(cfg["platform_type"]).toBe(PlatformType.KWINDOWS);
         expect(cfg["use_xlog"]).toBe(true);
@@ -66,6 +68,18 @@ describe("buildEngineConfig", () => {
         // os_version 来自运行时探测（非写死构建号）
         expect(typeof cfg["os_version"]).toBe("string");
         expect(cfg["os_version"]).not.toContain("10.0.22631");
+    });
+
+    it("Linux：platform=KLINUX / qua 取 major.node 内嵌 V1_LNX 值", () => {
+        const cfg = buildEngineConfig(
+            "3.2.35-54395",
+            "/data/global",
+            fakeMajor(["V1_LNX_NQ_3.2.35_54395_GW_B"]),
+            PlatformType.KLINUX,
+        );
+        expect(cfg["platform_type"]).toBe(PlatformType.KLINUX);
+        expect(cfg["qua"]).toBe("V1_LNX_NQ_3.2.35_54395_GW_B");
+        expect(cfg["use_xlog"]).toBe(true);
     });
 
     it("majorPath 解析失败 → KernelError（不再静默回退过期 appid）", () => {
@@ -97,6 +111,7 @@ describe("buildSessionConfig", () => {
             selfUid: "u-1",
             accountPath: "C:/acc",
             downloadPath: "C:/dl",
+            platform: PlatformType.KWINDOWS,
         });
         expect(cfg["selfUin"]).toBe("10001");
         expect(cfg["selfUid"]).toBe("u-1");
@@ -160,8 +175,8 @@ describe("parseAppidFromMajor 边界", () => {
 });
 
 describe("resolveAppidQua 补充", () => {
-    it("fullVersion 无构建号后缀 → qua 中段为空串（split ?? 兜底）", () => {
-        const { qua } = resolveAppidQua("9.9.33", fakeMajor());
-        expect(qua).toBe("V1_WIN_NQ_9.9.33__GW_B");
+    it("fullVersion 无构建号后缀 → qua 只带版本段", () => {
+        const { qua } = resolveAppidQua("9.9.33", fakeMajor(), PlatformType.KWINDOWS);
+        expect(qua).toBe("V1_WIN_NQ_9.9.33_GW_B");
     });
 });
