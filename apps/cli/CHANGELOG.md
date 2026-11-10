@@ -1,5 +1,12 @@
 # @napuketto/cli
 
+## 0.5.10
+
+### Patch Changes
+
+- Updated dependencies [e1957db]
+  - @napuketto/loader@0.7.2
+
 ## 0.5.9
 
 ### Patch Changes
