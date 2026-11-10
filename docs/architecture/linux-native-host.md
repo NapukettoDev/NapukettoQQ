@@ -12,7 +12,8 @@
 > 安装）；2026-11-10 完成 Stage 3e（X11 消费方盘点）、Stage 4（图片/语音富媒体）、arm64
 > qemu 运行期（引擎初始化 + 登录握手）与交付工程化（发布包带 stub、nightly smoke、清单
 > 自动维护、解包工具按架构分流）。
-> 仍未验证：他人消息的实时入站（需第二账号）、视频 / 文件发送、arm64 真机登录与收发。
+> 仍未验证：他人消息的实时入站（需第二账号）、文件上传（协议侧无 `upload_group_file`，
+> `file` 段到 xml 元素未实现）、arm64 真机登录与收发。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
@@ -672,7 +673,8 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 `/opt/QQ` 布局：`/proc/<pid>/maps` 确认加载本机 wrapper、数据根未生成 `qq-files/`、登录与
 退出正常（§9.13）。Stage 3e 盘点 X11 消费方（`packages/**/*.ts` 0 命中）并在有 `DISPLAY`
 时用 strace 确认不建 X 连接（附录 C）；Stage 4 图片（64×64 PNG）与语音（WAV → silk）发送、
-`get_image` / `get_record` 回取与撤回全部通过（附录 D）；arm64 qemu 下
+`get_image` / `get_record` 回取与撤回全部通过，Stage 4f 视频（1s H.264 mp4）在 adapter
+补首帧缩略图后发送成功、缩略图按视频 md5 落盘、撤回通过（附录 D）；arm64 qemu 下
 `initWithDeskTopConfig` 返回 `true`、MMKV 建库在数据根、`login.connect()` 触发
 `onLoginConnected`、`getLoginList` 正常返回（附录 E.1）；工程化补齐发布包 stub 与双重
 守卫、nightly smoke、清单 Linux 条目自动维护、非 x64 解包工具回退（§8）。
@@ -682,9 +684,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - X11 运行期功能：**当前不是缺口**——本仓没有截图 / 剪贴板消费方（附录 C 有 grep 证据），
   启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
   再按附录 C 的清单补验证。
-- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音也已实测通过**（附录 D）；
-  未覆盖他人消息的实时入站事件（需第二个账号）、视频发送（需真实 mp4 + 缩略图）与
-  文件上传（协议侧无 `upload_group_file` 动作）。
+- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音 + 视频也已实测通过**（附录 D）；
+  未覆盖他人消息的实时入站事件（需第二个账号）与文件上传（协议侧无 `upload_group_file`
+  动作，`file` 段翻译到 xml 元素也尚未实现）。
 - arm64：符号与解包**已静态核验**（§9.11），加载链路、引擎初始化与登录握手**已运行期
   验证**（qemu，附录 E.1）；**真机登录 / 收发未验证**。stub 的 arm64 产物尚未进私有
   `native/`、清单也还没有 arm64 条目、loader 还没 preload `libuuid`——三件事按既定策略
@@ -824,24 +826,32 @@ NapCat 的 launcher 简单——那边要靠 Xvfb 哄 Electron 主进程，我�
 | 文本（对照） | `retcode 0` | — | ✅ |
 | 图片 64×64 PNG（210 字节） | `retcode 0` | `get_image`：`file_size=210`、`file_name=BEE3…C24BE.png`、`file=<数据根>/…/nt_data/Pic/2026-11/Ori/bee354a1c2c8ff1b5d3d056712fc24be.png`（md5 与文件名一致） | ✅ |
 | 语音 WAV（24kHz / mono / 16-bit / 0.6s） | `retcode 0` | `get_record`：`file_size=2461`、`file_name=voice.silk`、`file=…/nt_data/Ptt/2026-11/Ori/e4627f2ee64867430bf01673cffb9372.silk`；历史消息里即是该 `record` 段 | ✅ |
+| 视频 1s 64×64 H.264 mp4（2026-11-10 补，Stage 4f） | `retcode 0` | `get_msg`：`videoElement` 落盘 `…/nt_data/Video/2026-11/Ori/e604326d06d76e473ff817c0ea36495b.mp4`；缩略图 `…/Video/2026-11/Thumb/e604326d06d76e473ff817c0ea36495b_0.png`（文件名用**视频 md5**，符合 kernel 契约） | ✅ |
 
 链路与 Windows 一致：`md5 → getRichMediaFilePathForGuild → util.copyFile → 完整
-picElement / pttElement → sendMsg`；语音的非 silk 输入由 **adapter** 层
-`ensureSilk`（`@napuketto/media`）转码，kernel 只收 silk 路径。宿主退出 `code=0`，
-服务端无异常日志。
+picElement / pttElement / videoElement → sendMsg`；语音的非 silk 输入由 **adapter** 层
+`ensureSilk`（`@napuketto/media`）转码，视频缺缩略图时由 **adapter** 层
+`prepareVideoElements` 抽首帧 + 补时长/尺寸（同样走 `@napuketto/media` 的 ffmpeg），
+kernel 只收「文件齐全」的路径。宿主退出 `code=0`，服务端无异常日志。
 
 **踩坑（重要，别误判成平台缺陷）**：Stage 4 首轮用一段手写 base64 的“1×1 PNG”测试，
 `send_msg` 稳定返回 `sendStatus=0`，一度以为是 Linux 缺能力；换成程序生成、**结构合法**的
 PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序应是「先校验素材是否合法
 （PNG 签名/IHDR/IEND、silk `#!SILK_V3` 头），再怀疑平台」。
 
+**视频的第二个坑（2026-11-10）**：只给 `file` 的 OB11 `video` 段恒回 `sendStatus=0`，
+与「非法图片」同一种沉默失败。根因不在 Linux，而在字段成套性——kernel 只在 canonical 带
+`thumbPath` 时才写 `thumbMd5 / thumbSize / thumbPath(Map) / thumbWidth / thumbHeight`，
+且 `fileTime`（秒）来自 `durationSec`。修复在协议层（adapter `prepareVideoElements`）：
+抽取首帧写入系统临时目录 → 补 `thumbPath / width / height / durationSec`，发送后清理；
+抽帧失败抛可读 `MediaError`。补首帧后视频 `retcode 0`、群里可播放、缩略图按视频 md5 落盘。
+
 **未覆盖**：
 
-- **视频**：需要真实 mp4 + 缩略图（`thumbPath` 必须是 `Map<0, path>`，缩略图目标路径用
-  视频 md5），本轮没造素材，留待后续；
-- **文件**：OneBot 11 侧没有 `upload_group_file` 动作（实测返回 `未知动作`），kernel 的
-  `prepareFileElement` 是预留实现，等协议动作落地再测；
-- 大批量 / 大体积图片（如 4MB+ 照片）未压测。
+- **文件**：OneBot 11 侧没有 `upload_group_file` 动作（实测返回 `未知动作`），`file` 段
+  翻译到 xml 元素时明确报「发送元素 xml 暂不支持（P2-2 探测后补）」；kernel 的
+  `prepareFileElement` 是预留实现，等协议动作落地再测。
+- 大批量 / 大体积图片（如 4MB+ 照片）未压测；视频只测了 1s / 64×64 / H.264。
 
 ## 附录 E：arm64 运行期验证（qemu 模拟，Stage 3b 补充）
 
