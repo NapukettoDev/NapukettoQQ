@@ -1,5 +1,14 @@
 # @napuketto/cli
 
+## 0.5.13
+
+### Patch Changes
+
+- Updated dependencies [7fac4ad]
+- Updated dependencies [7fac4ad]
+  - @napuketto/loader@0.7.4
+  - @napuketto/adapter@0.13.1
+
 ## 0.5.12
 
 ### Patch Changes
