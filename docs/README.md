@@ -23,7 +23,7 @@
 | [architecture/overview.md](architecture/overview.md) | 项目定位、包职责、依赖方向、分层原则、硬性红线 |
 | [architecture/runtime.md](architecture/runtime.md) | 进程拓扑、启动序列、QQ 文件来源、登录/session、数据流、多账号与 IPC |
 | [architecture/decisions.md](architecture/decisions.md) | 现行 ADR 与已废止路线（只保留仍然约束代码的结论） |
-| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主研判（2 必需 + PerfTrace stub、无头依赖、双版本、Stage 0 核心实测；未替代 ADR-019） |
+| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主（**已实现并发布**，开关 `NAPUTO_LINUX_NATIVE=1`；2 必需 + PerfTrace stub、无头依赖、双版本、各阶段实测与 arm64 交付缺口；未替代 ADR-019） |
 | [guides/development.md](guides/development.md) | 本地开发、构建顺序、测试、CI、changeset、代码风格 |
 | [guides/configuration.md](guides/configuration.md) | 全局 TOML、账号内协议段、传输实例默认值、数据目录、环境变量 |
 | [guides/operations.md](guides/operations.md) | 单实例锁、停启与状态、日志、登录/文件/wine/噪音排障 |

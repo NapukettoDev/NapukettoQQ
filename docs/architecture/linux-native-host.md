@@ -1,15 +1,18 @@
 # Linux 原生自建宿主研判（ELF + 最小 stub）
 
-> **状态**：研判稿（2026-11-08）。**未定稿，未替代 ADR-019**——现行实现仍是 Linux
-> wine + Windows `node.exe`（见 [decisions.md](decisions.md) 的 ADR-019 与
-> [runtime.md](runtime.md) §1）。2026-11-08 完成 Stage 0 核心链路实测
-> （dlopen / exports / O3 / engine init / getLoginList）；2026-11-09 完成 Stage 0b
-> （真实扫码 + 快速登录 + session READY，wrapper 层）、Stage 1 端到端（CLI +
-> kernel 平台参数 + loader 原生分支）、Stage 2（deb 下载/解包/缓存管线）、Stage 3
-> （消息发送/撤回）、Stage 3b（arm64 符号 + 解包 + stub 交叉编译的静态核验）与
-> Stage 3c（`HOME`/`XDG_*` 收敛，消掉 Bugly 写用户目录的副作用）。
-> X11 运行期、他人消息的实时入站、富媒体发送、arm64 运行期仍未验证，完整
-> Stage 0 通过后再按 ADR 规则追加决策。
+> **状态**：研判稿（2026-11-08），**实现已发布**（loader 0.6.1–0.7.x，开关
+> `NAPUTO_LINUX_NATIVE=1`）。**未替代 ADR-019**：Linux 默认仍是 wine + Windows
+> `node.exe`（见 [decisions.md](decisions.md) 的 ADR-019 与 [runtime.md](runtime.md) §1），
+> 原生分支只是显式开关；ADR 与 Wine 退役等 arm64 与「他人消息入站 / 视频 / 文件」补齐后
+> 再定。2026-11-08 完成 Stage 0 核心链路实测（dlopen / exports / O3 / engine init /
+> `getLoginList`）；2026-11-09 完成 Stage 0b（真实扫码 + 快速登录 + session READY，wrapper
+> 层）、Stage 1 端到端（CLI + kernel 平台参数 + loader 原生分支）、Stage 2（deb
+> 下载/解包/缓存管线）、Stage 3（消息发送/撤回）、Stage 3b（arm64 符号 + 解包 + stub
+> 交叉编译的静态核验）、Stage 3c（`HOME`/`XDG_*` 收敛）与 Stage 3d（本地 `/opt/QQ` 扁平
+> 安装）；2026-11-10 完成 Stage 3e（X11 消费方盘点）、Stage 4（图片/语音富媒体）、arm64
+> qemu 运行期（引擎初始化 + 登录握手）与交付工程化（发布包带 stub、nightly smoke、清单
+> 自动维护、解包工具按架构分流）。
+> 仍未验证：他人消息的实时入站（需第二账号）、视频 / 文件发送、arm64 真机登录与收发。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
@@ -32,12 +35,13 @@
   amd64 / arm64 / loongarch / mips64el。
 - **“零 GUI 依赖”仍不成立**：加载期必须能找到 `libX11` / `libX11-xcb` / `libXext`，
   并经 `libbugly` 拉 `libgssapi-krb5` / `libgnutls`、经 `libssh2` 拉 `libgcrypt`。
-  无 DISPLAY 的 dlopen / engine init 已实测通过，但 X11 运行期功能（截图等）未测。
+  无 DISPLAY 的 dlopen / engine init 已实测通过；X11 运行期功能不构成缺口——本仓没有
+  截图 / 剪贴板消费方，有 `DISPLAY` 时也不建 X 连接（附录 C）。
 - **工程量不在 3 个点**：真正的成本在 deb 包获取与布局、双版本号、平台参数、无头依赖、
   清单/更新链、arm64、CI/发布与 ADR。
-- **建议**：Stage 0 核心链路、登录/session READY、消息发送/撤回与 arm64 静态核验
-  已通过；下一步补 X11 运行期与 arm64 真机运行，再决定立项。Wine 先保留一个版本
-  作为回退，不要直接删除。
+- **建议**：x64 链路的加载、登录、消息收发、图片/语音与数据根收敛都已实测通过，实现已
+  发布（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口是他人消息入站、视频/文件发送与 arm64 真机。
+  补齐后再写 ADR、再退役 Wine——在此之前 Wine 保持默认，作为回退。
 
 ## 2. 背景：Windows 为什么需要近百条 forwarder
 
@@ -304,16 +308,16 @@ V1_LNX_NQ_3.2.35_54395_GW_B
   `desktopGlobalPath`，直接向 `$HOME/.config/QQ/crash_files/` 写崩溃记录。收敛后该目录
   落在 `<数据根>/home/.config/QQ/crash_files/`，用户 `$HOME` 零写入。
 
-## 8. 工程改造清单
+## 8. 工程改造清单（落地状态，2026-11-10）
 
 | 区域 | 改动 |
 |---|---|
-| `packages/loader` | Linux 平台分支（不再 wine）；`.so` stub 查找与 `LD_PRELOAD`/`RTLD_GLOBAL`；deb 解包与缓存布局；`qq-releases` 平台字段；Linux 本地探测；Bun 宿主的 node 解析 |
-| `packages/kernel` | `platform_type` / `qua` / session `platform` 平台化；双版本号；`major.node` qua 解析；Linux 数据目录回退 |
-| `native/`（私有 submodule） | 新增 `stub-linux.cc`（2 必需 + `PerfTrace`）+ `linux-x64` / `linux-arm64` 预编译 `.so`；`files` 字段与发布打包守卫 |
-| 发布链 | ✅ `files` 已含 `native/build/linux-x64`（2026-11-10 补：此前 0.6.0 的 tarball 只有 Windows `QQNT.dll`，`NAPUTO_LINUX_NATIVE=1` 的用户会直接报「Linux stub 未找到」）；`release.yml` 打包守卫同时检查 Linux `.so`；`tooling/package-exports.test.ts` 钉死白名单 |
-| CI | gate/windows 不检私有 submodule，真 Linux smoke 不能直接跑；改为消费已发布 loader 包（下一版起 tarball 自带 Linux stub），nightly + 手动触发 |
-| 文档 | Stage 0 通过后新增 ADR（替代 ADR-019 的 Linux 分支，Windows 不动），同步 overview/runtime/loader design |
+| `packages/loader` | ✅ Linux 平台分支（不再 wine）；`.so` stub 查找与 `LD_PRELOAD`；deb 解包与缓存布局；`qq-releases` 平台字段；本地 `/opt/QQ` 探测；`HOME`/`XDG_*` 收敛；非 x64 解包工具回退系统 7-Zip；Bun 宿主按平台解析 node |
+| `packages/kernel` | ✅ `platform_type` / `qua` / session `platform` 平台化；双版本号；`major.node` qua 解析；Linux 数据目录回退 |
+| `native/`（私有 submodule） | x64 ✅：`stub-linux.cc`（2 必需 + `PerfTrace`）+ `linux-x64` 预编译 `.so`；arm64 产物待真机（附录 E.2 第 1 项） |
+| 发布链 | ✅ `files` 已含 `native/build/linux-x64`（2026-11-10 补：此前 0.6.0 的 tarball 只有 Windows `QQNT.dll`，`NAPUTO_LINUX_NATIVE=1` 的用户会直接报「Linux stub 未找到」）；`release.yml` 打包守卫同时检查 Linux `.so`；`tooling/package-exports.test.ts` 钉死白名单。已发布版本对应：0.6.1 `HOME` 收敛、0.7.0 本地安装、0.7.1 stub 入包，0.7.2（解包工具按架构分流）在发布队列中 |
+| CI | ✅ nightly smoke（`.github/workflows/linux-native-smoke.yml`，cron `47 4 * * *` + 手动触发）消费**已发布** loader + 官方 deb，真 `dlopen` 验收；不上 PR 门禁（含 190MB 下载）。首跑即抓到发布包 `catalog:` 泄漏（见 [release.md](../guides/release.md) §5） |
+| 文档 | ✅ 运维 §4.8 / 配置 §10 已补；ADR 待 arm64 真机与剩余缺口 |
 
 注意：**`win-node.ts` 不能整体删除**。Windows 上非 node 宿主（Bun / Koishi CE）仍走
 `resolveWinHostNode` → `ensureWinNode` 下载 Windows `node.exe`；能退役的是 `wine.ts`
@@ -505,8 +509,8 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 | CLI（用该缓存作 `NAPUTO_QQ_FILES`） | 快速登录成功 → session READY → 适配器启动 → SIGTERM code=0 |
 | 清单 | schema 2 已含 Linux x64 条目；sha256 与官方文件一致（`7de0386…f9ac`） |
 
-未覆盖：真实网络下载（`downloadFile` 的 https 链路未在 CI 跑，但 URL/sha256 已用官方
-文件核对）；Linux 本地 `/opt/QQ` 安装探测；arm64 条目与符号核验。
+当阶段未覆盖：真实网络下载（`downloadFile` 的 https 链路未在 CI 跑，但 URL/sha256 已用
+官方文件核对）；本地 `/opt/QQ` 安装探测（§9.13 补上）；arm64 条目与符号核验（§9.11 补上）。
 
 ### 9.10 Stage 3：消息发送/撤回实测（2026-11-09）
 
@@ -598,10 +602,11 @@ arm64 node）。
    `extractLinuxWrapperFiles`）提取出 20 个文件，arm64 专有文件名都在白名单覆盖内
    （`libparent-ipc-core-arm64.so`、`libunwind-aarch64.so.8`、
    `sharp-linux-arm64v8.node`），`sharp-lib/libvips-cpp.so.42` 保留。
-5. 运行时仍待验证：登录 / session READY / 收发在 arm64 上未跑过；stub 的 arm64
+5. 运行时仍待验证：登录 / session READY / 收发在 arm64 **真机**上未跑过；stub 的 arm64
    产物尚未进私有 `native/`（`build/linux-arm64/` 只是本机交叉编译产物），清单里
    也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
-   （避免给用户一个未验证的下载入口）。**加载链路的运行期验证见附录 E（qemu 模拟）。**
+   （避免给用户一个未验证的下载入口）。**加载链路、引擎初始化与登录握手的运行期验证
+   见附录 E（qemu 模拟）。**
 
 ### 9.13 Stage 3d：本地 deb 安装（扁平 `/opt/QQ`）探测（2026-11-09）
 
@@ -634,12 +639,14 @@ Wine 分支不启用（要 PE）。
 **建议**：
 
 - 把 Linux 原生 ELF 宿主作为 Linux 的目标路线；Windows 保持现有 PE stub 不动。
-- Stage 0 核心链路与登录/session READY 已通过；完整 Stage 0（X11 运行期 / 消息收发 /
-  arm64）通过前不排期、不改 ADR、不删 Wine；通过后新增 ADR，并保留一个版本的 Wine
-  回退（`NAPUTO_LINUX_NATIVE` 开关）。
-- arm64 在 x64 验证通过后再作为独立交付项，不随首版承诺。
+- x64 的加载 / 登录 / 收发 / 富媒体 / 数据根收敛都已通过，实现已随 loader 0.6.1+ 发布为
+  显式开关（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口（他人消息入站、视频 / 文件、arm64 真机）
+  补齐前不改 ADR、不删 Wine。
+- 补齐后新增 ADR（草案见下），Wine 保留一个版本作为回退，随后删除。
+- arm64 作为独立交付项，不随首版承诺：加载链路、引擎初始化与登录握手已验证（qemu），
+  真机登录 / 收发待做。
 
-**拟新增 ADR 草案（完整 Stage 0 通过后写入）**：
+**拟新增 ADR 草案（剩余缺口补齐后写入）**：
 
 > Linux 默认走原生 ELF 自建宿主：标准 Linux `node` + 2 必需符号 + `PerfTrace` 的
 > stub `.so`，`dlopen` 官方 Linux `wrapper.node`；Windows 保持 PE stub。Wine 仅保留
@@ -647,7 +654,7 @@ Wine 分支不启用（要 PE）。
 > Wine / Windows node.exe / WINEPREFIX；官方 Linux QQ 提供 x64/arm64。本条替代
 > ADR-019 的 Linux 运行方式部分，保留其“不内置腾讯二进制”原则。
 
-**已验证（2026-11-08 / 2026-11-09）**：`dlopen` + exports=104、O3 激活、无 DISPLAY、
+**已验证（2026-11-08 → 2026-11-10）**：`dlopen` + exports=104、O3 激活、无 DISPLAY、
 KLINUX engine init、`getLoginList`、gnutls 隐藏依赖、`PerfTrace` 运行期 dlsym；Stage 0b
 另验证扫码登录、快速登录（`isQuickLogin` + `errMsg` 空）、session 创建顺序、
 `onOpentelemetryInit` / `onSessionInitComplete`、`getMsgService` READY、七个核心
@@ -661,7 +668,14 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 真 loader 管线可提取 arm64 deb（20 文件 / 288MB）、stub 用同一份源码交叉编译出 3 符号
 无依赖的 `.so`；同时发现 arm64 缺 `libuuid` 的 `DT_NEEDED`（需额外预加载）。Stage 3c
 把 `HOME`/`XDG_*` 收敛到 `<数据根>/home`：Bugly 的 `crash_files` 落在受管目录，
-用户 `$HOME` 零写入，快速登录与优雅退出不受影响（§9.12）。
+用户 `$HOME` 零写入，快速登录与优雅退出不受影响（§9.12）。Stage 3d 用合成扁平安装验证
+`/opt/QQ` 布局：`/proc/<pid>/maps` 确认加载本机 wrapper、数据根未生成 `qq-files/`、登录与
+退出正常（§9.13）。Stage 3e 盘点 X11 消费方（`packages/**/*.ts` 0 命中）并在有 `DISPLAY`
+时用 strace 确认不建 X 连接（附录 C）；Stage 4 图片（64×64 PNG）与语音（WAV → silk）发送、
+`get_image` / `get_record` 回取与撤回全部通过（附录 D）；arm64 qemu 下
+`initWithDeskTopConfig` 返回 `true`、MMKV 建库在数据根、`login.connect()` 触发
+`onLoginConnected`、`getLoginList` 正常返回（附录 E.1）；工程化补齐发布包 stub 与双重
+守卫、nightly smoke、清单 Linux 条目自动维护、非 x64 解包工具回退（§8）。
 
 **待决/待验证**：
 
@@ -671,16 +685,21 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音也已实测通过**（附录 D）；
   未覆盖他人消息的实时入站事件（需第二个账号）、视频发送（需真实 mp4 + 缩略图）与
   文件上传（协议侧无 `upload_group_file` 动作）。
-- arm64 符号与解包**已静态核验**（§9.11）：缺口集与 x64 一致、stub 可交叉编译、
-  真 loader 管线可提取；**运行期未验证**（需 arm64 机器）。stub 的 arm64 产物尚未进
-  私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
+- arm64：符号与解包**已静态核验**（§9.11），加载链路、引擎初始化与登录握手**已运行期
+  验证**（qemu，附录 E.1）；**真机登录 / 收发未验证**。stub 的 arm64 产物尚未进私有
+  `native/`、清单也还没有 arm64 条目、loader 还没 preload `libuuid`——三件事按既定策略
+  等真机验证后一起做（附录 E.2）。
 - arm64 需要额外预加载系统 `libuuid.so.1`（`uuid_generate` / `uuid_unparse` 是
   lazy UND 且无 `DT_NEEDED`），x64 靠 `DT_NEEDED` 自动解析。
-- Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
+- ~~Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）~~
+  **已实现（Stage 3d，2026-11-09，loader 0.7.0）**：`NAPUTO_QQ_DIR` > `/opt/QQ`，校验
+  ELF + `resources/app/package.json` 版本，命中即用本机安装（§9.13）。
 - ~~公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）~~
-  **已定（2026-11-10）**：公开 CI 消费**已发布**的 `@napuketto/loader` tarball——自
-  `files` 补上 `native/build/linux-x64` 后，tarball 自带 Linux stub，Gate 门禁不跑真
-  smoke（含 190MB deb 下载，不宜上 PR 门禁），改为 nightly + 手动触发的工作流。
+  **已定并上线（2026-11-10，loader 0.7.1 + #82）**：公开 CI 消费**已发布**的
+  `@napuketto/loader` tarball——`files` 补上 `native/build/linux-x64` 后 tarball 自带
+  Linux stub，Gate 门禁不跑真 smoke（含 190MB deb 下载，不宜上 PR 门禁），改为 nightly
+  + 手动触发的工作流。首跑就抓到已发布包的 `catalog:` 依赖泄漏（用户侧必装不上），
+  已由发布链修复，见 [release.md](../guides/release.md) §5。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。
 - ~~Bugly 固定写 `$HOME/.config/QQ/crash_files/`，需要 `HOME`/`XDG_*` 收敛方案~~
@@ -884,17 +903,19 @@ LD_PRELOAD="/stub/libnapuketto_stub.so:$GNUTLS:$UUID" DATA=/data WRAPPER=/qq/wra
 
 ### E.2 arm64 交付前还缺什么（清单，2026-11-10 复核）
 
-按“真机验证后一起做”的既定策略，把 arm64 从“能跑”推到“能发”还需要下面五项：
+按“真机验证后一起做”的既定策略，把 arm64 从“能跑”推到“能发”还需要下面五项（第 4 项
+已于 2026-11-10 修掉，其余四项待真机）：
 
 | # | 缺什么 | 现状 / 证据 |
 |---|---|---|
 | 1 | arm64 stub 进私有 `native/` + loader 包 `files` | 目前只有 `native/build/linux-x64` 入包；arm64 产物是本机交叉编译的未跟踪文件 |
 | 2 | loader 的 `linuxPreload` 加 `libuuid` | 现在只 preload `stub:gnutls`；arm64 缺 `libuuid.so.1` 的 `DT_NEEDED`，首次 `uuid_generate` 会 symbol lookup error（E.1 里靠手工三件套绕过） |
 | 3 | 清单 arm64 条目 | `qq-releases.json` 只有 x64 linux 条目；清单自动化目前钉死 `LINUX_MAINTAINED_ARCHES = ["x64"]`（等真机后加 `"arm64"`） |
-| 4 | **内置 `7zz` 只有 x86-64** | `assets/7zip/7zz` 的 ELF `e_machine=0x3e`（x64）；在 arm64 容器里 `cannot execute`。arm64 用户解 deb 会失败 → 需要 arm64 版 7zz，或在 `findSevenZip` 里按架构回退到系统 `7z` / `7zz` |
+| 4 | ~~内置 `7zz` 只有 x86-64~~ **已修** | `assets/7zip/7zz` 是 x64 ELF（`e_machine=0x3e`），arm64 上 `cannot execute`。loader 0.7.2 起按架构分流：非 x64 跳过内置/缓存/官网（三者都是 x64 产物），回退系统 `7zz` / `7z`，缺失时抛可读错误（`NAPUTO_7Z_PATH` 可显式指定） |
 | 5 | 真机端到端 | 登录（快速/扫码）、session READY、消息收发、优雅退出，全部未在 arm64 真机跑过 |
 
-> 第 4 项是这次新增的：之前只想到「arm64 缺 libuuid」，没注意解包工具链本身也是 x64
-> 二进制——arm64 首跑前必须先解决，否则连 `ensureQqFiles` 都过不去。
+> 第 4 项是 2026-11-10 复核时新增的：之前只想到「arm64 缺 libuuid」，没注意解包工具链本身
+> 也是 x64 二进制——arm64 首跑前必须先解决，否则连 `ensureQqFiles` 都过不去。现已由
+> loader 0.7.2 的架构分流修掉；剩余四项仍按真机策略一起做。
 
 

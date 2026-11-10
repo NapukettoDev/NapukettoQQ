@@ -149,15 +149,18 @@ Linux 默认仍走 wine；显式设 `NAPUTO_LINUX_NATIVE=1` 才切到「标准 L
 |---|---|---|
 | `libgnutls.so.30`（Ubuntu 24.04 `libgnutls30t64`；Debian 12 `libgnutls30`） | `libbugly` 的隐藏依赖（无 `DT_NEEDED`，必须 preload） | spawn 前报「未找到系统 libgnutls.so.30」；或 dlopen 时 `undefined symbol: gnutls_free` |
 | `libx11-6` / `libx11-xcb1` / `libxext6` / `libxcb1` | `wrapper.node` 的 `DT_NEEDED` | `dlopen` 报 `libX11.so.6: cannot open shared object file` |
-| `libuuid1` | arm64 的 `wrapper.node` 缺 `uuid` 的 `DT_NEEDED`（x64 自带） | 首次 `uuid_generate` 时 symbol lookup error（arm64） |
+| `libuuid1` | arm64 的 `wrapper.node` 缺 `uuid` 的 `DT_NEEDED`（x64 自带） | 首次 `uuid_generate` 时 symbol lookup error（arm64 需手工 preload，loader 尚未接管，见 linux-native-host 附录 E.2） |
 | 内置 `assets/7zip/7zz` | deb 解包；缺失时回退下载（要 `tar` + `xz-utils`） | 解包阶段报 7-Zip 相关错误 |
 
 **与 wine 分支的行为差异**
 
 - 不再下载 Windows `node.exe`、不做 `Z:\` 路径转换、不校验 `QQNT.dll`。
 - QQ 数据固定落在 **`<数据根>/nt_qq`**（不读写 `$HOME/Documents/Tencent Files`）。
-- 原生层残余的 `$HOME` 写入：`libbugly` 的崩溃记录走 `$HOME/.config/QQ/crash_files/`
-  （不受 `desktopGlobalPath` 控制）——查崩溃去**用户目录**，不在数据根里。
+- 原生层残余的 `$HOME` 写入：`libbugly` 的崩溃记录不走 `desktopGlobalPath`，固定写
+  `$HOME/.config/QQ/crash_files/`。原生分支因此把子进程 `HOME`（连同 `XDG_CONFIG_HOME` /
+  `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME`）收敛到 **`<数据根>/home`**
+  （`NAPUTO_LINUX_HOME` 可覆盖；`XDG_RUNTIME_DIR` 不接管，那是会话级目录）：查崩溃去
+  `<数据根>/home/.config/QQ/crash_files/`，用户目录零写入。
 - 只认 **ELF** 的 `wrapper.node`：误指向 `/mnt/c` 下的 Windows 安装（PE）会立刻报
   「wrapper.node 不是 ELF（Linux 原生模式）」，不会走到 `dlopen`。
 - `libbugly` 会打印 `InitBuglyManager path:`、`getCrashDetailBeanFromRecord … open file
@@ -173,8 +176,9 @@ Linux 默认仍走 wine；显式设 `NAPUTO_LINUX_NATIVE=1` 才切到「标准 L
 4. 仍失败 → 用 `ldd <wrapper.node>` 看未解析项，并对照
    [linux-native-host.md](../architecture/linux-native-host.md) §5 的依赖清单。
 
-**当前未覆盖**：arm64 运行期（仅 qemu 模拟验证，二进制承诺仅 x64）；他人消息的实时入站
-（需第二个账号）；视频/文件上传。完整阶段结论与验证数据集中在
+**当前未覆盖**：arm64 只在 qemu 模拟下验到「加载 + 引擎初始化 + 登录握手」，二进制承诺仅
+x64（真机与交付缺口见 linux-native-host 附录 E.2）；他人消息的实时入站（需第二个账号）；
+视频/文件上传。完整阶段结论与验证数据集中在
 [linux-native-host.md](../architecture/linux-native-host.md)。
 
 ## 5. 诊断开关

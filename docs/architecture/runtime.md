@@ -32,9 +32,10 @@ stub QQNT.dll（PATH 前置）
   非 Node 运行时，loader 会另找系统 `node.exe` 或下载 Windows 版 Node，再由它执行自建宿主。
 - Linux 上用 wine 运行 Windows 版 `node.exe`；所有传给 wine 的路径都转成 `Z:\` 形式，
   `PATH` 必须是纯 Windows 风格（分号分隔），否则 stub 目录会丢失。
-- **研判中**：Linux 原生 ELF 宿主（标准 Linux `node` + 最小 `.so` stub）已完成 Stage 0
-  核心与登录/session READY 实测，见 [linux-native-host.md](linux-native-host.md)；在新增
-  ADR 前，wine 链路仍是现行实现。
+- **Linux 原生 ELF 分支（`NAPUTO_LINUX_NATIVE=1`）**：标准 Linux `node` + 最小 `.so` stub
+  + 官方 ELF `wrapper.node`，已实现并随 loader 0.6.1+ 发布；x64 的加载 / 登录 / 收发 /
+  富媒体均实测通过，见 [linux-native-host.md](linux-native-host.md)。ADR 落地前 wine 仍是
+  默认链路（回退开关不设即走 wine）。
 - 账号之间是进程隔离：一个账号一个自建宿主进程，天然满足 kernel“无全局单例”的前提。
 
 ## 2. 启动序列

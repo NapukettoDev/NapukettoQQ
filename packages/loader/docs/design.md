@@ -223,9 +223,11 @@ Linux 原生宿主不下载 Windows exe，改下载官方 **deb**，并在缓存
   **arm64 暂不自动登记**——按既定策略要等真机验证（arm64 stub 入私有 `native/`、
   loader 预加载 libuuid、清单条目三件事一起做），真机通过后把
   `LINUX_MAINTAINED_ARCHES` 加上 `arm64` 即可（deb URL 与解析已就绪）。
-- **暂未覆盖**：arm64 条目（符号与解包已静态核验，见
-  `docs/architecture/linux-native-host.md` §9.11；仍缺私有 `native/` 的 arm64 stub
-  产物与真机运行，登记前需要这两项）；本地 `/opt/QQ` 扁平安装探测。
+- **暂未覆盖**：arm64 条目的自动登记——符号、解包与加载/引擎初始化已验（见
+  `docs/architecture/linux-native-host.md` §9.11 与附录 E.1），但仍缺私有 `native/` 的
+  arm64 stub 产物与真机运行，按既定策略三件事（stub 入包、preload `libuuid`、清单条目）
+  等真机后一起做（附录 E.2）。解包工具链的架构问题已由 §11 修掉；本地 `/opt/QQ` 扁平安装
+  已在 §3.4 实现。
 
 ---
 
@@ -304,7 +306,9 @@ function toWinePath(linuxPath: string): string {
 
 ### 3.4 Linux 原生 ELF 分支（Stage 1，开关 `NAPUTO_LINUX_NATIVE=1`）
 
-Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原生分支。
+Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原生分支。实现已随
+0.6.1–0.7.x 发布：0.6.1 `HOME`/`XDG_*` 收敛、0.7.0 本地 deb 安装识别、0.7.1 发布包补上
+Linux stub、0.7.2 解包工具按架构分流。
 
 - **宿主**：系统 `node`（`process.execPath` 是 node 直接用，否则 `which node`），不再下载
   Windows `node.exe`、不再 wine、路径不转 `Z:\`。
