@@ -782,8 +782,41 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
 - **arm64 加载链路已运行期验证**（stub + gnutls + libuuid 三件套齐了就能 dlopen）；
   `libuuid` 预加载从静态推断变成实测必需——只 preload stub + gnutls 时 dlopen 能过，
   但首次 `uuid_generate` 会报 symbol lookup error。
-- **仍未验证**：arm64 上的登录 / session READY / 收发（qemu 下跑完整 CLI 需 ~10x 时间，
-  且需要账号）；也未在真机（Apple Silicon / 鲲鹏 / 树莓派）上跑过。
+- **引擎初始化与登录握手也已验证**（见 E.1）：`initWithDeskTopConfig` 返回 `true`、
+  MMKV 在数据根下建库、`login.connect()` 触发 `onLoginConnected`、`getLoginList`
+  返回 `{"result":0,"LocalLoginInfoList":[]}`（全新数据目录 + 未登录的预期结果）。
+- **仍未验证**：arm64 上的**实际登录**（快速登录/扫码，需要账号）、session READY、
+  消息收发；也未在真机（Apple Silicon / 鲲鹏 / 树莓派）上跑过。
 - **因此仍未登记**：arm64 stub 没进私有 `native/`、清单没有 arm64 条目、loader 的
   `linuxPreload` 也还没加 `libuuid`——这三件事在真机验证后一起做（否则等于给用户
   一个必然 `symbol lookup error` 的下载入口）。
+
+### E.1 引擎初始化 + 登录握手（2026-11-10）
+
+同一套 qemu 容器里再往前推一步（不涉及账号，只验证原生引擎与登录系统的初始化路径）：
+
+```bash
+# 预加载三件套 + arm64 node，跑探针脚本：
+#   process.dlopen(wrapper) → Engine.initWithDeskTopConfig({...KLINUX 配置...})
+#   → login.initConfig({commonPath: <data>/nt_qq/global, appid: 537403759})
+#   → login.connect() → 15s 后 getLoginList()
+LD_PRELOAD="/stub/libnapuketto_stub.so:$GNUTLS:$UUID" DATA=/data WRAPPER=/qq/wrapper.node \
+    node /login.cjs
+```
+
+| 步骤 | 结果 |
+|---|---|
+| `process.dlopen` | `exports=104` |
+| `Engine.initWithDeskTopConfig`（`platform_type=5` / `qua=V1_LNX_NQ_3.2.35_54395_GW_B`） | 返回 **`true`** |
+| MMKV 初始化 | `root dir: /data/nt_qq/global/nt_data/mmkv`（库文件正常落盘） |
+| `login.initConfig` | 无异常 |
+| `login.connect()` → `onLoginConnected` | **回调触发**（登录系统连接建立） |
+| `getLoginList()` | **`{"result":0,"LocalLoginInfoList":[]}`** |
+| 进程退出 | `RC=0`（探针主动 exit） |
+
+容器里同时装了 `libnss3` / `libnspr4` / `libgbm1`（未单独验证是否必需，属于 Qt/Electron
+体系的常规依赖，先备着）。
+
+**仍未做**：真正的登录（快速登录需要票据、扫码需要人）、session READY、服务面调用与
+消息收发——这些在 qemu 下还会被 ~10x 的模拟开销放大，留给真机。
+
