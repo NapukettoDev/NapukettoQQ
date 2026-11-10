@@ -107,7 +107,7 @@ if (keepWork && existsSync(join(installed, "dist", "index.mjs"))) {
         "--no-save",
         "--no-audit",
         "--no-fund",
-        "--silent",
+        "--loglevel=error",
         spec,
     ]);
 }
