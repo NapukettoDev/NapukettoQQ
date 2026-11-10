@@ -14,6 +14,7 @@
     "files": [
         "dist",
         "native/build/stub-test-env",
+        "native/build/linux-x64",
         "qq-releases.json",
         "assets/7zip"
     ],

@@ -311,8 +311,8 @@ V1_LNX_NQ_3.2.35_54395_GW_B
 | `packages/loader` | Linux 平台分支（不再 wine）；`.so` stub 查找与 `LD_PRELOAD`/`RTLD_GLOBAL`；deb 解包与缓存布局；`qq-releases` 平台字段；Linux 本地探测；Bun 宿主的 node 解析 |
 | `packages/kernel` | `platform_type` / `qua` / session `platform` 平台化；双版本号；`major.node` qua 解析；Linux 数据目录回退 |
 | `native/`（私有 submodule） | 新增 `stub-linux.cc`（2 必需 + `PerfTrace`）+ `linux-x64` / `linux-arm64` 预编译 `.so`；`files` 字段与发布打包守卫 |
-| 发布链 | `release.yml` 的 native 打包守卫要同时检查 Linux `.so`；changeset（loader/kernel minor） |
-| CI | gate/windows 不检私有 submodule，真 Linux smoke 不能直接跑；放到 release / self-hosted，或消费已发布 loader 包 |
+| 发布链 | ✅ `files` 已含 `native/build/linux-x64`（2026-11-10 补：此前 0.6.0 的 tarball 只有 Windows `QQNT.dll`，`NAPUTO_LINUX_NATIVE=1` 的用户会直接报「Linux stub 未找到」）；`release.yml` 打包守卫同时检查 Linux `.so`；`tooling/package-exports.test.ts` 钉死白名单 |
+| CI | gate/windows 不检私有 submodule，真 Linux smoke 不能直接跑；改为消费已发布 loader 包（下一版起 tarball 自带 Linux stub），nightly + 手动触发 |
 | 文档 | Stage 0 通过后新增 ADR（替代 ADR-019 的 Linux 分支，Windows 不动），同步 overview/runtime/loader design |
 
 注意：**`win-node.ts` 不能整体删除**。Windows 上非 node 宿主（Bun / Koishi CE）仍走
@@ -677,7 +677,10 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - arm64 需要额外预加载系统 `libuuid.so.1`（`uuid_generate` / `uuid_unparse` 是
   lazy UND 且无 `DT_NEEDED`），x64 靠 `DT_NEEDED` 自动解析。
 - Linux 本地 `/opt/QQ` 扁平安装探测（当前只认 `versions/` 缓存布局）。
-- 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
+- ~~公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）~~
+  **已定（2026-11-10）**：公开 CI 消费**已发布**的 `@napuketto/loader` tarball——自
+  `files` 补上 `native/build/linux-x64` 后，tarball 自带 Linux stub，Gate 门禁不跑真
+  smoke（含 190MB deb 下载，不宜上 PR 门禁），改为 nightly + 手动触发的工作流。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。
 - ~~Bugly 固定写 `$HOME/.config/QQ/crash_files/`，需要 `HOME`/`XDG_*` 收敛方案~~
