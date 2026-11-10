@@ -313,6 +313,16 @@ Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原�
   `major.node` 扫 qua；本分支只负责进程与预加载。`bootEnv` 额外带 `dataRoot`
   （`NAPUTO_DATA_ROOT`），kernel 据此把 QQ 数据根固定到 `<数据根>/nt_qq`，不再读写
   `$HOME/Documents/Tencent Files`。
+- **HOME/XDG 收敛（Stage 3c，2026-11-09）**：`desktopGlobalPath` 只覆盖 QQ 自己的数据，
+  原生层仍有不经它的落盘——`libbugly` 的 `NativeCrashHandler` 无条件使用
+  `$HOME/.config/QQ/crash_files/`。原生分支因此把子进程 `HOME` 收敛到
+  `<数据根>/home`（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），
+  并把 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 一并指到
+  该目录下（`XDG_RUNTIME_DIR` 不接管：那是 dbus/会话级目录，语义不同）。
+  strace 实测（2026-11-09）：Bugly 只读 `$HOME`、**不读 `XDG_CONFIG_HOME`**，所以关键变量
+  是 `HOME`；改 `HOME` 后 `mkdir .config/QQ/crash_files` 落在受管目录，快速登录仍成功
+  （登录票据在 `<数据根>/nt_qq`，与 `HOME` 无关）。wine / win32 分支不做此收敛（Windows
+  数据目录已由 `desktopGlobalPath` 管住）。
 - 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
   Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
 - **本地 deb 安装（Stage 3d，2026-11-09）**：Linux 原生分支优先识别扁平布局
