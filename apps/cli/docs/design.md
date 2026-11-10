@@ -13,6 +13,7 @@ apps/cli/src/
 ├── logger.ts                    # 进程级日志单例 + [log] 段解析 + 控制台渲染决策
 ├── cli/                         # commander 适配层（对外契约）
 │   ├── program.ts               # 全局选项、banner、子命令注册、默认动作分发
+│   ├── version.ts               # cliVersion()：运行时读自身 package.json 的 version
 │   └── error.ts                 # handleActionError：ConfigError -> 78，其余 -> 1
 ├── commands/                    # 用例实现（不 import commander）
 │   ├── start.ts                 # 默认动作：-q 单账号 / 多 -q / 无 -q 读配置
@@ -52,6 +53,13 @@ logger       -> @napuketto/kernel, config/inline（只读叶子）
 绘制：与主题无关、宽度 = 模块数。`runtime/qr.test.ts` 把渲染结果解析回矩阵做
 roundtrip 断言，替代此前无法测试的第三方渲染路径。
 
+**版本号为什么读文件**（`cli/version.ts`）：`--version` 曾经是 `program.version("0.0.1")`
+硬编码字面量，发到 0.5.x 仍自报 0.0.1（2026-11-10 补发后装机冒烟发现）。改为运行时读
+自身 `package.json` 的 `version`，候选 `../package.json`（生产 tsdown 单文件 `dist/index.mjs`）
+与 `../../package.json`（源码直跑），并要求 `name === "@napuketto/cli"` 防读错文件；
+全失败兜底 `0.0.0-unknown` 且不抛错——版本号缺失不该让 CLI 起不来。发版只改
+`package.json` 一处，`cli/version.test.ts` 断言读到的值等于包版本，防止再退化成字面量。
+
 禁止项：
 
 - `config` -> `cli` / `commands` / `runtime`
@@ -86,6 +94,7 @@ loader 需要严格校验、或内联契约再次变化时，才评估在 kernel
 
 ```text
 cli/error.test.ts
+cli/version.test.ts          # cliVersion() 读到的值 == 包 package.json version
 commands/config.test.ts
 commands/ops.test.ts
 config/schema.test.ts

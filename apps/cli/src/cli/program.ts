@@ -17,6 +17,7 @@ import { cmdRestart, cmdStatus, cmdStop } from "../commands/ops.js";
 import { dispatchMainAction, runSupervisorCommand } from "../commands/start.js";
 import { resolveCliLogConfig } from "../logger.js";
 import { handleActionError } from "./error.js";
+import { cliVersion } from "./version.js";
 
 /** commander collect：累积 -q 多值。 */
 function collectQq(value: string, prev: string[]): string[] {
@@ -169,7 +170,7 @@ export function main(): void {
     const program = new Command();
     program
         .name("napuketto")
-        .version("0.0.1")
+        .version(cliVersion())
         .description("NapukettoQQ 机器人框架（OneBot 11 兼容）");
 
     program
