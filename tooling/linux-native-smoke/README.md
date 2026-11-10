@@ -23,6 +23,11 @@ CI 检不到私有 `packages/loader/native` 子模块，所以这里**安装 npm
 对应 `docs/architecture/linux-native-host.md` §10 的「公开 CI 落点」定案：不上 PR 门禁
 （单次约 190MB 下载 + 依赖 npm 已发布版本），放 nightly + 手动触发。
 
+> 这条路第一次真实跑（2026-11-10 手动 dispatch）就抓到发布包泄漏 `catalog:` 协议
+> （`npm install` 直接 `EUNSUPPORTEDPROTOCOL`）——测发布形态才有这个价值：本地
+> `pnpm pack` 会改写 catalog，源码侧怎么测都发现不了。修复见
+> [release.md](../../docs/guides/release.md) §5。
+
 ## 本地跑
 
 ```bash
