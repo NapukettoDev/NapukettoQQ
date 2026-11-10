@@ -884,9 +884,14 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
    （`1700000000000`）；OB11 统一 `/1000` 会让 Linux 事件时间退化成 1970。已按
    量级归一（`toUnixSeconds`）。
 
-未覆盖的小差异：入站 `sender.nickname` 在 Linux 部分消息为空（显示名在
-`sendMemberName`，`sender.card` 已正确）；图片段的 `file` 字段为空（Linux
-`picElement` 未提供 Windows 同款字段），不影响事件投递。
+**同轮收口的入站字段差异（2026-11-10，详见 adapter design §10.1）**：
+
+- `sender.nickname` 为空 → Linux 把显示名放 `sendMemberName`，`sendNickName` 是
+  空串；OB11 事件与 `get_msg`/历史消息统一回退（昵称非空仍优先，Windows 不变）。
+- 图片段 `file` 为空 → Linux `picElement` 既无 `picPath` 也无 `picUrl`，原图在
+  `sourcePath`（其他字段见 adapter design §10.1 的 dump）；kernel 取值链补
+  `sourcePath`。
+- milky 的同类 `!== undefined` 元素嗅探一并收敛为 `!= null`。
 
 ## 附录 E：arm64 运行期验证（qemu 模拟，Stage 3b 补充）
 

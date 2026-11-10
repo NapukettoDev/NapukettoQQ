@@ -105,4 +105,10 @@ describe("toFriendFileUploadData", () => {
         };
         expect(toFriendFileUploadData(noUuid, "3567141148", new Map())).toBeNull();
     });
+
+    it("Linux 空值形态：fileElement 显式 null → null（不把 null 当文件）", () => {
+        const msg = fileMsg();
+        (msg.elements[0] as unknown as { fileElement: null }).fileElement = null;
+        expect(toFriendFileUploadData(msg, "3567141148", new Map())).toBeNull();
+    });
 });

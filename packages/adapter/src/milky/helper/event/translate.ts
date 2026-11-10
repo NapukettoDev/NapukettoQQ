@@ -129,7 +129,7 @@ export function toMessageRecallEvent(
     msg: RawMessage,
     ctx: { selfUin: string; uidToUin?: Map<string, string> },
 ): MilkyEvent<MessageRecallData> | null {
-    const gray = msg.elements.find((el) => el.grayTipElement !== undefined)?.grayTipElement;
+    const gray = msg.elements.find((el) => el.grayTipElement != null)?.grayTipElement;
     const revoke = gray?.revokeElement;
     if (revoke === undefined) {
         return null;
@@ -159,7 +159,7 @@ export function toGroupFileUploadEvent(
     if (msg.chatType !== ChatType.GROUP) {
         return null;
     }
-    const file = msg.elements.find((el) => el.fileElement !== undefined)?.fileElement;
+    const file = msg.elements.find((el) => el.fileElement != null)?.fileElement;
     if (file === undefined) {
         return null;
     }

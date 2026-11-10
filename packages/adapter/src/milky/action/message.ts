@@ -546,7 +546,7 @@ function receiveSegmentsOf(msg: RawMessage, uidToUin: Map<string, string>): Inco
         ...(uidToUin.size > 0 ? { uidToUin } : {}),
     });
     const fwd = msg.elements.find(
-        (el) => el.multiForwardMsgElement !== undefined,
+        (el) => el.multiForwardMsgElement != null,
     )?.multiForwardMsgElement;
     if (fwd !== undefined) {
         segments.push(incomingForwardSegment(fwd.resId, fwd.fileName));
@@ -630,7 +630,7 @@ export async function sendFileMessage(
 ): Promise<string> {
     const { msgId } = await api.msgApi.sendMessage(peer, [{ type: "file", path, name: fileName }]);
     const [sent] = await api.msgApi.fetchMsgsByMsgId(peer, [msgId]);
-    const el = sent?.elements.find((e) => e.fileElement !== undefined);
+    const el = sent?.elements.find((e) => e.fileElement != null);
     const uuid = el?.fileElement?.fileUuid;
     return uuid !== undefined && uuid !== "" ? uuid : msgId;
 }

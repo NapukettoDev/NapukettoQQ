@@ -121,6 +121,29 @@ describe("toCanonicalElements", () => {
         ]);
     });
 
+    it("PIC Linux 形态：无 picPath/picUrl，原图走 sourcePath（originImageUrl 相对路径不冒充 url）", () => {
+        const picElement = {
+            fileName: "A.png",
+            sourcePath: "/data/Pic/2026-11/Ori/a.png",
+            originImageUrl: "/download?appid=1407&fileid=xx&spec=0",
+            md5HexStr: "a",
+        };
+        expect(
+            toCanonicalElements(makeMsg([{ elementType: ElementType.PIC, picElement }])),
+        ).toEqual([{ type: "image", path: "/data/Pic/2026-11/Ori/a.png" }]);
+        // 空串字段同样视为缺失（Linux 原生对象给 "" 而非省略）
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.PIC,
+                        picElement: { picPath: "", picUrl: "", sourcePath: "/s.png" },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "image", path: "/s.png" }]);
+    });
+
     it("FACE → id 转字符串；子元素缺失 → '0'", () => {
         expect(
             toCanonicalElements(

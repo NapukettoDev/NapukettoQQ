@@ -604,9 +604,29 @@ continue` 跳过缺失，Linux 下 `g = null` 不跳过 → 读 `null.subElement
 
 两个端口各自只出现本协议信封（OB11 无 `op`、Satori 无 `post_type`），crosstalk=0。
 
-**已知差异（未修，不影响事件投递）**：
+**已知差异（2026-11-10 第二轮已收口，见 §10.1）**：`sender.nickname` 为空、图片段
+`file` 为空、milky 同类嗅探——三项均已修。
 
-- `sender.nickname` 部分为空（Linux 把显示名放在 `sendMemberName`，`sender.card`
-  已正确）；
-- 图片段 `file` 为空（Linux `picElement` 未提供 Windows 同款字段）；
-- 其他协议（milky）的同类 `!== undefined` 嗅探仍是潜在隐患，按同一规则逐步收敛。
+### 10.1 第二轮收口：昵称回退、图片 `sourcePath`、milky 嗅探统一（2026-11-10）
+
+真机取证（`get_group_msg_history` 群 `521584745`，Linux 3.2.35 原生 wrapper）：
+
+- **`sendNickName` 是空串**（不是缺失）：Linux 把显示名放在 `sendMemberName`。
+  OB11 事件与 `get_msg`/历史消息两套结构统一经 `core/shared/raw-message.ts` 的
+  `senderNickname()`：昵称非空取昵称，否则回退 `sendMemberName`。Windows 两字段
+  都有值，行为不变（仍是昵称优先）。
+- **图片 `picElement` 没有 `picPath` / `picUrl`**，实际形状（节选）：
+
+  ```json
+  {"fileName":"764F…A3A7.png","fileSize":"438107","picWidth":1637,"picHeight":1125,
+   "md5HexStr":"764f…a3a7","sourcePath":"/tmp/ntqq2/…/nt_data/Pic/2026-11/Ori/764f…a3a7.png",
+   "originImageUrl":"/download?appid=1407&fileid=…&spec=0","fileUuid":"…","thumbPath":{}}
+  ```
+
+  原图**已落盘在 `sourcePath`**（绝对路径），`originImageUrl` 是无 host 的相对
+  路径，不能当 `url` 用。kernel `picToCanonical` 的路径取值改为
+  `picPath → picUrl → sourcePath`，空串同样视为缺失（Linux 给 `""` 而非省略）；
+  `canonical.url` 只在 `picUrl` 非空时提供（不伪造 CDN 域名）。
+- **milky 的同类嗅探已统一**为 `!= null`（`adapter.ts` 的 grayTip / 多转发 /
+  撤回判定、`action/message.ts` 的 fileElement 回查、`event/translate.ts` 与
+  `event/file-upload.ts` 的元素提取、`event/notice.ts` 的 aioOp 判定）。

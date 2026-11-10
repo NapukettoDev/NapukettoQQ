@@ -6,6 +6,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
+import { senderNickname } from "../../core/shared/raw-message.js";
 import { toUnixSeconds } from "../../core/shared/time.js";
 import type {
     OB11GroupMessageEvent,
@@ -55,7 +56,7 @@ export function toOb11MessageEvent(
     if (msg.chatType === ChatType.GROUP) {
         const sender: GroupSender = {
             user_id: userId,
-            nickname: msg.sendNickName,
+            nickname: senderNickname(msg),
             // 发送者角色由调用方经 ctx 注入（GroupCache 查询在协议边界，翻译纯函数）
             role: ctx.senderRole ?? "member",
         };
@@ -80,7 +81,7 @@ export function toOb11MessageEvent(
     }
     const sender: Sender = {
         user_id: userId,
-        nickname: msg.sendNickName,
+        nickname: senderNickname(msg),
     };
     const event: OB11PrivateMessageEvent = {
         ...base,

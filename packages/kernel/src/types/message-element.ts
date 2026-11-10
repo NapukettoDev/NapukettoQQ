@@ -77,13 +77,33 @@ function textToCanonical(textEl: TextElement | undefined): CanonicalElement {
     return { type: "text", text: content };
 }
 
+/** 空串视为缺失（Linux 原生对象常给 "" 而不是省略字段）。 */
+function emptyToUndefined(value: string | undefined): string | undefined {
+    return value === undefined || value === "" ? undefined : value;
+}
+
+/** 取第一个非空字符串（跨平台字段名不一致时的兜底链）。 */
+function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
+    for (const value of values) {
+        const hit = emptyToUndefined(value);
+        if (hit !== undefined) {
+            return hit;
+        }
+    }
+    return undefined;
+}
+
 /** PIC 元素 → canonical image。 */
 function picToCanonical(pic: PicElement | undefined): CanonicalElement {
     if (pic === undefined) {
         return { type: "image", path: "" };
     }
-    const path = pic.picPath ?? pic.picUrl ?? "";
-    const url = pic.picUrl;
+    // 字段随平台不同（2026-11-10 Linux 原生 wrapper 实测）：
+    //  - Windows：picPath（本地路径）/ picUrl（CDN 链接）；
+    //  - Linux：两者都不存在，原图落 sourcePath（绝对本地路径），originImageUrl
+    //    是相对路径（/download?appid=…&fileid=…，无 host，不能当 url 用）。
+    const url = firstNonEmpty(pic.picUrl);
+    const path = firstNonEmpty(pic.picPath, pic.picUrl, pic.sourcePath) ?? "";
     if (url === undefined) {
         return { type: "image", path };
     }

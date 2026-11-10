@@ -465,3 +465,26 @@ listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Li
 `send_msg` → `message_id:1`，`get_msg(1)` 返回原文，`delete_msg(1)` 成功，随后
 `get_group_msg_history` 里同一条消息 `message_id` 仍为 1、内容已清空（撤回墓碑）。
 修复前同流程为 1（发送）/ 2（历史）两个 id。
+
+## 13. PIC 元素的跨平台字段差异（Linux 原生宿主，2026-11-10）
+
+**现象**：Linux 入站图片消息的 canonical `image.path` 为空（OB11 图片段 `file: ""`，
+下游无法渲染/下载），Windows 同一条消息正常。
+
+**根因**：`picToCanonical` 取 `picPath ?? picUrl`，但 Linux 3.2.35 的 `picElement`
+**两个字段都不存在**（不是空串，是根本不给），实际形状（真机 dump，节选）：
+
+```json
+{"fileName":"764F…A3A7.png","fileSize":"438107","picWidth":1637,"picHeight":1125,
+ "md5HexStr":"764f…a3a7",
+ "sourcePath":"<数据根>/nt_qq/<uid>/nt_data/Pic/2026-11/Ori/764f…a3a7.png",
+ "originImageUrl":"/download?appid=1407&fileid=…&spec=0",
+ "fileUuid":"…","thumbPath":{}}
+```
+
+原图**已落盘在 `sourcePath`**（绝对路径）；`originImageUrl` 是无 host 的相对路径，
+不能直接当 URL；`thumbPath` 给的是空对象 `{}`（类型标注为字符串，实际形态更松）。
+
+**修复**：路径按 `picPath → picUrl → sourcePath` 取值，空串视为缺失（Windows 侧
+`picPath`/`picUrl` 均有值，行为不变）；`canonical.url` 只在 `picUrl` 非空时提供，
+不伪造 CDN 域名。发送方向不受影响（`prepareImageElement` 走本地文件 md5 链路）。
