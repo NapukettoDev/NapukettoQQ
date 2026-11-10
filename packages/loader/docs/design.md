@@ -307,14 +307,35 @@ Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原�
   `node::IsEnvironmentStopping` / `PerfTrace`）。
 - **预加载**：`LD_PRELOAD=<stub>:<libgnutls.so.30>`。gnutls 是 `libbugly` 的无
   `DT_NEEDED` 隐藏依赖；Ubuntu 24.04 包名 `libgnutls30t64`，Debian 12 为 `libgnutls30`。
+- **打包（2026-11-10 补）**：`files` 必须同时含 `native/build/stub-test-env`（Windows）
+  与 `native/build/linux-x64`（Linux）——只列前者时 tarball 里没有
+  `libnapuketto_stub.so`，用户设 `NAPUTO_LINUX_NATIVE=1` 会直接报「Linux stub 未找到」
+  （0.6.0 发布包实测如此）。双重守卫：`release.yml` 发布前 `npm pack --dry-run` grep
+  `native/build/linux-x64/libnapuketto_stub.so`；`tooling/package-exports.test.ts`
+  断言 `files` 含该目录。
 - **不做**：PATH 前置、stub 目录、QQNT.dll 校验——这些只属于 wine 分支。
 - **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
 - **与 kernel 的衔接**：kernel 已按 `process.platform` 生成 KLINUX engine/session 配置并从
   `major.node` 扫 qua；本分支只负责进程与预加载。`bootEnv` 额外带 `dataRoot`
   （`NAPUTO_DATA_ROOT`），kernel 据此把 QQ 数据根固定到 `<数据根>/nt_qq`，不再读写
   `$HOME/Documents/Tencent Files`。
+- **HOME/XDG 收敛（Stage 3c，2026-11-09）**：`desktopGlobalPath` 只覆盖 QQ 自己的数据，
+  原生层仍有不经它的落盘——`libbugly` 的 `NativeCrashHandler` 无条件使用
+  `$HOME/.config/QQ/crash_files/`。原生分支因此把子进程 `HOME` 收敛到
+  `<数据根>/home`（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），
+  并把 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 一并指到
+  该目录下（`XDG_RUNTIME_DIR` 不接管：那是 dbus/会话级目录，语义不同）。
+  strace 实测（2026-11-09）：Bugly 只读 `$HOME`、**不读 `XDG_CONFIG_HOME`**，所以关键变量
+  是 `HOME`；改 `HOME` 后 `mkdir .config/QQ/crash_files` 落在受管目录，快速登录仍成功
+  （登录票据在 `<数据根>/nt_qq`，与 `HOME` 无关）。wine / win32 分支不做此收敛（Windows
+  数据目录已由 `desktopGlobalPath` 管住）。
 - 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
   Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
+- **本地 deb 安装（Stage 3d，2026-11-09）**：Linux 原生分支优先识别扁平布局
+  `/opt/QQ`（`NAPUTO_QQ_DIR` 可覆盖）：`<根>/qq` + `<根>/resources/app/wrapper.node`，
+  版本号取自 `resources/app/package.json`。命中即用本机安装，省掉 190MB deb 下载。
+  校验 ELF 魔数（防 WSL 下误指 `/mnt/c` 的 Windows PE 安装）与版本字段（缺失就跳过，
+  不瞎填——版本参与登录）。Wine 分支不认该布局（需要 PE）。
 
 ---
 

@@ -13,6 +13,7 @@ import {
     mkdirSync,
     openSync,
     readdirSync,
+    readFileSync,
     readSync,
     statSync,
 } from "node:fs";
@@ -236,6 +237,71 @@ export function resolveQqInstall(qqPath?: string): QqInstallInfo {
     return resolveFromRoot(installDir, "local");
 }
 
+/** Linux 官方 deb 的默认安装根（扁平布局：`<根>/qq` + `<根>/resources/app/wrapper.node`）。 */
+export const LINUX_QQ_INSTALL_DIR = "/opt/QQ";
+
+/** 读 package.json 的 version（缺失 / 解析失败 / 非字符串 → null）。 */
+function readPackageVersion(packageJsonPath: string): string | null {
+    try {
+        const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+        if (typeof parsed !== "object" || parsed === null) {
+            return null;
+        }
+        const version = (parsed as { version?: unknown }).version;
+        return typeof version === "string" && version !== "" ? version : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 解析 Linux deb 安装的 QQ（扁平布局，与 Windows `versions/<版本>/` 结构不同）。
+ *
+ * 结构：`<installDir>/qq`（Electron 主程序）+ `<installDir>/resources/app/{wrapper.node,
+ * package.json,...}`。校验 ELF 魔数（防止把 WSL 里的 Windows 安装当成 Linux 安装）、
+ * 版本号取自 `resources/app/package.json`。任一不满足返回 null（调用方继续兜底）。
+ */
+export function resolveLinuxQqInstall(installDir: string): QqInstallInfo | null {
+    const appDir = join(installDir, "resources", "app");
+    const wrapperPath = join(appDir, "wrapper.node");
+    if (!existsSync(wrapperPath) || !isElfFile(wrapperPath)) {
+        return null;
+    }
+    const version = readPackageVersion(join(appDir, "package.json"));
+    if (version === null) {
+        return null;
+    }
+    return {
+        qqPath: join(installDir, "qq"),
+        installDir,
+        version,
+        wrapperPath,
+        source: "local",
+    };
+}
+
+/**
+ * L1b：Linux 本地安装探测（`NAPUTO_QQ_DIR` > `/opt/QQ`）。
+ *
+ * 只在 Linux 原生分支启用——Wine 分支需要 PE `wrapper.node`，扁平目录里的 ELF 不可用。
+ * `installDir` / `platform` / `linuxNative` 仅测试注入（缺省读 env 与开关）。
+ */
+export function tryResolveLinuxLocalQq(
+    options: {
+        installDir?: string | undefined;
+        platform?: NodeJS.Platform | undefined;
+        linuxNative?: boolean | undefined;
+    } = {},
+): QqInstallInfo | null {
+    const platform = options.platform ?? process.platform;
+    const linuxNative = options.linuxNative ?? isLinuxNativeEnabled();
+    if (platform !== "linux" || !linuxNative) {
+        return null;
+    }
+    const installDir = options.installDir ?? process.env["NAPUTO_QQ_DIR"] ?? LINUX_QQ_INSTALL_DIR;
+    return resolveLinuxQqInstall(installDir);
+}
+
 /**
  * 多级来源定位 QQ 原生文件：
  *   L0 → L1 → L2 依次尝试，全部失败且 autoDownload 时自动进入下载流程（ensureQqFiles）。
@@ -251,6 +317,11 @@ export async function resolveQqFiles(options: ResolveQqFilesOptions = {}): Promi
     const qqPath = options.qqPath ?? process.env["NAPUTO_QQ_PATH"];
     if (qqPath !== undefined && qqPath !== "") {
         return resolveQqInstall(qqPath);
+    }
+    // L1b：Linux 本地 deb 安装（/opt/QQ 扁平布局；仅原生分支，避免白下 200MB deb）
+    const linuxLocal = tryResolveLinuxLocalQq();
+    if (linuxLocal !== null) {
+        return linuxLocal;
     }
     try {
         return resolveQqInstall();
