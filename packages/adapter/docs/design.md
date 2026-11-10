@@ -128,6 +128,36 @@ Group/onGroupEssenceListChange   →  subscribe()（c3，2026-09-10）→  essen
 adapter 依赖 `@napuketto/media`（encodePcmToSilk / decodeSilkToWav /
 transcodeVideo / downloadUrl / inferExtension）。kernel 不依赖 media。
 
+### 5.1 发送侧视频缩略图（`core/shared/media.ts`，2026-11-10）
+
+QQ 视频消息发送要求一组字段成套出现：`videoElement.thumbMd5 / thumbSize /
+thumbPath(Map<0, path>) / thumbWidth / thumbHeight`，外加**秒级** `fileTime`。
+kernel 的 `prepareVideoElement` 只在 canonical 带 `thumbPath` 时才写这套字段，
+所以「只给 file 的 video 段」在 native 侧必然失败，且只回 `sendStatus=0`（没有
+错误信息，排查成本极高）。
+
+协议层因此在发送前归一化，`prepareVideoElements(elements)`：
+
+- 只处理 `type: "video"` 且 `thumbPath` 为空的元素，其余原样穿过；
+- `@napuketto/media getVideoInfo`（ffprobe）取宽高与时长 → `width / height /
+  durationSec`（kernel 用 `durationSec` 写 `fileTime`，缺省 0）；
+- `@napuketto/media extractVideoFrame`（ffmpeg 抽首帧）写**系统临时目录** →
+  `thumbPath`；kernel 发送时 copyFile 进 QQ 数据目录（缩略图文件名用视频 md5，
+  见 kernel design.md）；
+- 返回 `{ elements, cleanup }`，发送结束必须 `cleanup()` 删临时目录（不污染
+  用户文件目录）；
+- 抽帧 / 探测失败抛 `MediaError`（可读错误），不再让 native 静默回
+  `sendStatus=0`；系统缺 ffmpeg 时同样在这一层报错。
+
+代价：OB11 发视频从此要求系统有 `ffmpeg` / `ffprobe`（与 satori 的
+`transcodeVideo` 同一前提）。satori 的非 mp4 转码是另一条链路，未复用本函数；
+milky / kurobot 的发送路径也尚未接入（它们的媒体落盘各自处理）。
+
+实测（2026-11-10，WSL2 + x64 ELF 宿主 + 真 CLI）：同一段 1s / 64×64 H.264 mp4，
+不带缩略图时 `send_msg` 恒回 `retcode 100 "sendStatus=0"`；接入本函数后 `retcode 0`，
+`get_msg` 可取回 `Video/2026-11/Ori/<videoMd5>.mp4`，缩略图落在
+`Video/2026-11/Thumb/<videoMd5>_0.png`，`delete_msg` 撤回成功。
+
 ## 6. 已知缺口（2026-09-10 c3 轮后）
 
 - poke 翻译字段校准（首次真实事件后；手动触发指引见 §1）。

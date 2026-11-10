@@ -11,7 +11,7 @@
 
 import type { CanonicalElement } from "@napuketto/kernel";
 import { z } from "zod";
-import { BaseAction, ensureSilk } from "../../../core/index.js";
+import { BaseAction, ensureSilk, prepareVideoElements } from "../../../core/index.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
@@ -77,8 +77,15 @@ export async function sendOb11Message(
     }
     // 语音段：非 silk 输入转 silk（QQ 语音协议）；转换在协议层完成，kernel 不背 media（红线）
     canonical = await ensureVoiceSilk(canonical);
-    const { msgId } = await deps.msgApi.sendMessage(peer, canonical);
-    return { message_id: deps.messageUnique.alloc(msgId, peer) };
+    // 视频段：缺首帧缩略图时用 ffmpeg 抽帧并补时长/尺寸（QQ 视频消息发送契约，
+    // 缺失时 native 只回 sendStatus=0）
+    const prepared = await prepareVideoElements(canonical);
+    try {
+        const { msgId } = await deps.msgApi.sendMessage(peer, prepared.elements);
+        return { message_id: deps.messageUnique.alloc(msgId, peer) };
+    } finally {
+        await prepared.cleanup();
+    }
 }
 
 /** 发送消息（P2-3 接 kernel apis/msg，返回真实 message_id）。 */

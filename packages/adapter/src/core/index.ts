@@ -10,7 +10,7 @@ export { BaseAction } from "./framework/base-action.js";
 export type { ProtocolHooks } from "./framework/base-protocol-adapter.js";
 export { BaseProtocolAdapter } from "./framework/base-protocol-adapter.js";
 export { ProtocolConfig } from "./framework/config.js";
-export { ensureSilk } from "./shared/media.js";
+export { ensureSilk, type PreparedVideoElements, prepareVideoElements } from "./shared/media.js";
 export {
     collectStrings,
     decodeProtoTree,
