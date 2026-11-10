@@ -9,12 +9,15 @@
  * 前置（由根 package.json 的 release 链保证）：
  *   1. pnpm -r build —— 各包 dist 已构建
  *
- * workspace:* 改写（2026-08-16 修复，本脚本自保证，不再依赖 changeset）：
- *   发布前把每个包 package.json 中 workspace:* 依赖改写为 caret 真实版本
- *   （按工作区当前版本），发布后恢复原样（git 保持 workspace:* 约定）。
- *   changeset version 正常跑时已改写 → 本步骤幂等空转；
- *   绕过 changeset 手动 bump 直发 → 本步骤兜底，杜绝 published 包泄漏
- *   workspace:*（yarn create / npm install 曾被迫交互选版本或直接失败）。
+ * workspace:* / catalog: 改写（2026-08-16 / 2026-11-10 修复，本脚本自保证，
+ * 不再依赖 changeset）：
+ *   发布前把每个包 package.json 中的协议依赖改写为真实版本范围，发布后恢复原样
+ *   （git 保持协议写法）：
+ *     - workspace:* → caret 真实版本（按工作区当前版本）
+ *     - catalog:    → pnpm-workspace.yaml 默认 catalog 段的同名条目
+ *   changeset version 只改写 workspace:*、从不碰 catalog，故两步都必须在本脚本兜底：
+ *   否则 published 包泄漏 `catalog:`，用户 `npm install` 直接 EUNSUPPORTEDPROTOCOL
+ *   （2026-11-03 引入 catalog 后的 0.6.x–0.7.x 事故，2026-11-10 nightly smoke 抓到）。
  *
  * 两种运行形态：
  *   - 本地（默认）：走本机 npm 登录态 + 2FA（`--otp=` / `NAPKETTO_NPM_OTP`）。
@@ -42,9 +45,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { SkippedPkg, WorkspacePkg } from "./release-npm-core.ts";
 import {
+    assertNoProtocolLeftovers,
     discoverPackages,
+    parseCatalogSpecs,
     planPublish,
-    rewriteWorkspaceProtocol,
+    rewriteDependencyProtocols,
     topoSort,
 } from "./release-npm-core.ts";
 import { fetchGithubIdToken, probeTrustConfigs } from "./release-trust.ts";
@@ -338,30 +343,42 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
     // workspace:* → caret 真实版本映射（按工作区当前版本，改写在 publish 前、恢复在 finally）
     const workspaceVersions = new Map(pkgs.map((pkg) => [pkg.name, pkg.version]));
-    return await publishOrdered(ordered, workspaceVersions, dryRun, otp);
+    // catalog: → pnpm-workspace.yaml 的 catalog 段（changeset 从不改写它）
+    const catalog = parseCatalogSpecs(readFileSync(join(REPO_ROOT, "pnpm-workspace.yaml"), "utf8"));
+    console.log(
+        `[release-npm] 📚 catalog 条目 ${catalog.size} 个（发布前把 catalog: 解析为真实范围）`,
+    );
+    return await publishOrdered(ordered, workspaceVersions, catalog, dryRun, otp);
 }
 
 /**
- * 按拓扑序逐个发布（publish 前改写 workspace:* → 真实版本，finally 恢复原样）。
- * 任一包失败 → 返回非 0（后续包依赖残缺上游，立即中断）。
+ * 按拓扑序逐个发布（publish 前把 `workspace:*` / `catalog:` 改写为真实版本，
+ * finally 恢复原样）。任一包失败 → 返回非 0（后续包依赖残缺上游，立即中断）。
  */
 async function publishOrdered(
     ordered: readonly WorkspacePkg[],
     workspaceVersions: ReadonlyMap<string, string>,
+    catalog: ReadonlyMap<string, string>,
     dryRun: boolean,
     otp: string | undefined,
 ): Promise<number> {
     for (const pkg of ordered) {
         const manifestPath = join(pkg.dir, "package.json");
         const original = readFileSync(manifestPath, "utf8");
-        const { text, changes } = rewriteWorkspaceProtocol(original, workspaceVersions);
-        if (changes.length > 0) {
+        const { text, changes, catalogChanges } = rewriteDependencyProtocols(
+            original,
+            workspaceVersions,
+            catalog,
+        );
+        const rewrites = [
+            ...changes.map((c) => `workspace:* → ${c.dep}@${c.range}`),
+            ...catalogChanges.map((c) => `catalog: → ${c.dep}@${c.range}`),
+        ];
+        if (rewrites.length > 0) {
+            // 最后一道闸：改写后仍残留协议就不发（发布包会 npm install 失败）
+            assertNoProtocolLeftovers(text);
             writeFileSync(manifestPath, text, "utf8");
-            console.log(
-                `[release-npm] ✍️  ${pkg.name}: workspace:* → 真实版本 ${changes
-                    .map((c) => `${c.dep}@${c.range}`)
-                    .join(", ")}`,
-            );
+            console.log(`[release-npm] ✍️  ${pkg.name}: ${rewrites.join(", ")}`);
         }
         try {
             const code = publishPkg(pkg, dryRun, otp);
@@ -373,9 +390,9 @@ async function publishOrdered(
             }
             console.log(`[release-npm] ✅ 已发布: ${pkg.name}@${pkg.version}`);
         } finally {
-            if (changes.length > 0) {
+            if (rewrites.length > 0) {
                 writeFileSync(manifestPath, original, "utf8");
-                console.log(`[release-npm] ↩ 已恢复 ${pkg.name}/package.json（workspace:*）`);
+                console.log(`[release-npm] ↩ 已恢复 ${pkg.name}/package.json（协议原样）`);
             }
         }
     }

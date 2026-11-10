@@ -178,7 +178,7 @@ export function topoSort(pkgs: readonly WorkspacePkg[]): WorkspacePkg[] {
     return ordered.map((name) => byName.get(name) as WorkspacePkg);
 }
 
-/** package.json 中可含 workspace:* 依赖的字段（发布时必须全部改写）。 */
+/** package.json 中可含 `workspace:*` / `catalog:` 依赖的字段（发布时必须全部改写）。 */
 const WORKSPACE_DEP_FIELDS = [
     "dependencies",
     "devDependencies",
@@ -192,44 +192,189 @@ export interface WorkspaceRewrite {
     field: string;
     /** 依赖包名。 */
     dep: string;
-    /** 改写后的版本范围（caret）。 */
+    /** 改写后的版本范围（caret / catalog 原始范围）。 */
     range: string;
 }
 
+/** YAML 行尾空白。 */
+const TRAILING_SPACE_RE = /\s+$/;
+/** CRLF 的 CR（Windows 上编辑过的 yaml 必须能吃）。 */
+const CR_RE = /\r$/;
+/** 顶格行 = YAML 顶层键。 */
+const TOP_LEVEL_KEY_RE = /^\S/;
+/** 发布包里不允许出现的协议前缀。 */
+const PROTOCOL_PREFIX_RE = /^(?:workspace|catalog):/;
+
+/** 去掉 YAML 行尾的 ` #…` 注释（catalog 条目没有引号内的 ` #`，无需完整词法）。 */
+function stripYamlComment(line: string): string {
+    const index = line.indexOf(" #");
+    const stripped = index === -1 ? line : line.slice(0, index);
+    return stripped.replace(TRAILING_SPACE_RE, "");
+}
+
+/** 去掉成对的首尾引号（`"@hono/node-server"` → `@hono/node-server`）。 */
+function unquoteYamlScalar(value: string): string {
+    const quoted =
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"));
+    return quoted ? value.slice(1, -1) : value;
+}
+
 /**
- * 把 package.json 文本中所有 `workspace:*` 依赖改写为 caret 真实版本
- * （npm 不认 workspace 协议，发布前必须改写；`changeset version` 正常跑时
- * 已改写，此处幂等兜底——2026-08-16 修复：曾绕过 changeset 直发，published
- * 包泄漏 workspace:*，yarn create / npm install 被迫交互选版本或直接失败）。
+ * 解析 pnpm-workspace.yaml 默认 `catalog:` 段（包名 → 版本范围）。
  *
- * 返回改写后的 JSON 文本与改写记录；无 workspace:* 时原样返回（不改写不重排）。
- * 工作区内找不到对应包版本 → 抛错（无法生成真实范围，发布链中断）。
+ * 发布链只需要这一段，故不引入 YAML 依赖：逐行扫，顶格的 `catalog:` 进入段内，
+ * 下一个顶格键结束；段内 `包名: 版本`（键值均可带引号）逐行收集，跳过空行与
+ * 整行注释。命名 catalog（`catalog:<名字>` / `catalogs:` 段）不解析——遇到这类
+ * 依赖时由 rewriteDependencyProtocols 报可读错误，而不是静默发错包。
  */
-export function rewriteWorkspaceProtocol(
+export function parseCatalogSpecs(yaml: string): Map<string, string> {
+    const specs = new Map<string, string>();
+    let inCatalog = false;
+    for (const rawLine of yaml.split("\n")) {
+        const line = rawLine.replace(CR_RE, "");
+        if (TOP_LEVEL_KEY_RE.test(line)) {
+            // 顶格行 = 顶层键：`catalog:` 开始段，其它键结束段
+            inCatalog = line.trim() === "catalog:";
+            continue;
+        }
+        if (!inCatalog) {
+            continue;
+        }
+        const body = stripYamlComment(line).trim();
+        if (body === "" || body.startsWith("#")) {
+            continue;
+        }
+        const sep = body.indexOf(":");
+        if (sep <= 0) {
+            continue;
+        }
+        const key = unquoteYamlScalar(body.slice(0, sep).trim());
+        const value = unquoteYamlScalar(body.slice(sep + 1).trim());
+        if (key !== "" && value !== "") {
+            specs.set(key, value);
+        }
+    }
+    return specs;
+}
+
+/** 单个依赖的协议改写结果。 */
+interface DependencyRewrite {
+    /** 改写来源：workspace 协议 / 默认 catalog。 */
+    kind: "workspace" | "catalog";
+    /** 改写后的真实版本范围。 */
+    next: string;
+}
+
+/**
+ * 解析单个依赖声明，返回改写结果（`null` = 不是协议依赖，原样保留）。
+ *
+ * 无法解析或不支持的协议 → 抛可读错误（发布链立即中断，绝不发用户装不上的包）。
+ */
+function resolveDependencyProtocol(
+    dep: string,
+    range: unknown,
+    workspaceVersions: ReadonlyMap<string, string>,
+    catalog: ReadonlyMap<string, string>,
+): DependencyRewrite | null {
+    if (typeof range !== "string") {
+        return null;
+    }
+    if (range === "workspace:*") {
+        const version = workspaceVersions.get(dep);
+        if (version === undefined) {
+            throw new Error(
+                `依赖 ${dep} 声明为 workspace:*，但工作区内找不到该包版本（无法改写为真实版本号）`,
+            );
+        }
+        return { kind: "workspace", next: `^${version}` };
+    }
+    if (range.startsWith("workspace:")) {
+        throw new Error(
+            `依赖 ${dep} 的 workspace 协议 "${range}" 不受支持（发布链只改写 workspace:*）`,
+        );
+    }
+    if (range === "catalog:") {
+        const spec = catalog.get(dep);
+        if (spec === undefined) {
+            throw new Error(
+                `依赖 ${dep} 声明为 catalog:，但 pnpm-workspace.yaml 的 catalog 段没有该条目（无法解析为真实版本范围）`,
+            );
+        }
+        return { kind: "catalog", next: spec };
+    }
+    if (range.startsWith("catalog:")) {
+        throw new Error(
+            `依赖 ${dep} 使用命名 catalog "${range}"，发布链不支持（只用默认 catalog 段）`,
+        );
+    }
+    return null;
+}
+
+/**
+ * 把 package.json 文本中的协议依赖改写为真实版本范围（npm 既不认
+ * `workspace:*` 也不认 `catalog:`，发布前必须改写）：
+ *
+ * - `workspace:*` → `^<工作区当前版本>`（工作区里查不到该包 → 抛错）
+ * - `catalog:` → pnpm-workspace.yaml 默认 `catalog:` 段的同名条目
+ *
+ * `catalog:` 必须在这里兜底：`changeset version` 只负责 `workspace:*`，从不碰
+ * catalog。2026-11-03 引入 catalog 后，发布的 `@napuketto/network` / `adapter` /
+ * `loader` 都把 `catalog:` 原样发上 npm，用户 `npm install` 直接
+ * `EUNSUPPORTEDPROTOCOL`（2026-11-10 nightly smoke 抓到；本函数是那次的修复）。
+ *
+ * 返回改写后的 JSON 文本与两类改写记录；无需改写时原样返回（不改写不重排）。
+ */
+export function rewriteDependencyProtocols(
     raw: string,
     workspaceVersions: ReadonlyMap<string, string>,
-): { text: string; changes: WorkspaceRewrite[] } {
+    catalog: ReadonlyMap<string, string> = new Map(),
+): { text: string; changes: WorkspaceRewrite[]; catalogChanges: WorkspaceRewrite[] } {
     const pkg = JSON.parse(raw) as Record<string, unknown>;
     const changes: WorkspaceRewrite[] = [];
+    const catalogChanges: WorkspaceRewrite[] = [];
+    for (const field of WORKSPACE_DEP_FIELDS) {
+        const deps = pkg[field];
+        if (typeof deps !== "object" || deps === null) {
+            continue;
+        }
+        const table = deps as Record<string, string>;
+        for (const dep of Object.keys(table)) {
+            const rewrite = resolveDependencyProtocol(dep, table[dep], workspaceVersions, catalog);
+            if (rewrite === null) {
+                continue;
+            }
+            table[dep] = rewrite.next;
+            const record = { field, dep, range: rewrite.next };
+            (rewrite.kind === "workspace" ? changes : catalogChanges).push(record);
+        }
+    }
+    const text =
+        changes.length + catalogChanges.length > 0 ? `${JSON.stringify(pkg, null, 4)}\n` : raw;
+    return { text, changes, catalogChanges };
+}
+
+/**
+ * 发布前断言：四个依赖字段里不得残留 `workspace:` / `catalog:` 协议。
+ *
+ * 这是改写之后的最后一道闸——任何协议泄漏都会让用户侧 `npm install` 直接
+ * `EUNSUPPORTEDPROTOCOL`，而发布链此前完全没有察觉（0.6.x–0.7.x 事故）。
+ */
+export function assertNoProtocolLeftovers(raw: string): void {
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const leftovers: string[] = [];
     for (const field of WORKSPACE_DEP_FIELDS) {
         const deps = pkg[field];
         if (typeof deps !== "object" || deps === null) {
             continue;
         }
         for (const [dep, range] of Object.entries(deps as Record<string, unknown>)) {
-            if (range !== "workspace:*") {
-                continue;
+            if (typeof range === "string" && PROTOCOL_PREFIX_RE.test(range)) {
+                leftovers.push(`${field}.${dep}=${range}`);
             }
-            const version = workspaceVersions.get(dep);
-            if (version === undefined) {
-                throw new Error(
-                    `依赖 ${dep} 声明为 workspace:*，但工作区内找不到该包版本（无法改写为真实版本号）`,
-                );
-            }
-            (deps as Record<string, string>)[dep] = `^${version}`;
-            changes.push({ field, dep, range: `^${version}` });
         }
     }
-    const text = changes.length > 0 ? `${JSON.stringify(pkg, null, 4)}\n` : raw;
-    return { text, changes };
+    if (leftovers.length > 0) {
+        throw new Error(`发布前仍有未改写的协议依赖：${leftovers.join(", ")}`);
+    }
 }

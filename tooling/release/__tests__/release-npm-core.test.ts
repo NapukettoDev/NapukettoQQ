@@ -2,16 +2,19 @@
  * release-npm-core.test.ts：发布链核心逻辑单测。
  *
  * 覆盖 discoverPackages（临时目录模拟工作区）、planPublish、topoSort，
- * 以及 workspace:* 依赖改写 rewriteWorkspaceProtocol（发布前修复）。
+ * 以及依赖协议改写 rewriteDependencyProtocols（workspace:* / catalog:，发布前修复）
+ * 与 parseCatalogSpecs / assertNoProtocolLeftovers。
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+    assertNoProtocolLeftovers,
     discoverPackages,
+    parseCatalogSpecs,
     planPublish,
-    rewriteWorkspaceProtocol,
+    rewriteDependencyProtocols,
     topoSort,
     type WorkspacePkg,
 } from "../release-npm-core.ts";
@@ -199,15 +202,19 @@ function pkgJson(deps: Record<string, string>): string {
 `;
 }
 
-describe("rewriteWorkspaceProtocol", () => {
+describe("rewriteDependencyProtocols", () => {
     const versions = new Map([
         ["@napuketto/kernel", "0.0.10"],
         ["@napuketto/cli", "0.0.20"],
     ]);
+    const catalog = new Map([
+        ["zod", "^4.6.7"],
+        ["@hono/node-server", "^2.1.6"],
+    ]);
 
     it("把 dependencies 中的 workspace:* 改写为 caret 真实版本", () => {
         const raw = pkgJson({ "@napuketto/kernel": "workspace:*", commander: "^15.0.0" });
-        const { text, changes } = rewriteWorkspaceProtocol(raw, versions);
+        const { text, changes } = rewriteDependencyProtocols(raw, versions);
         expect(changes).toEqual([
             { field: "dependencies", dep: "@napuketto/kernel", range: "^0.0.10" },
         ]);
@@ -231,7 +238,7 @@ describe("rewriteWorkspaceProtocol", () => {
             4,
         );
         const allVersions = new Map([...versions, ["opt-pkg", "0.1.0"], ["peer-pkg", "0.2.0"]]);
-        const { changes } = rewriteWorkspaceProtocol(raw, allVersions);
+        const { changes } = rewriteDependencyProtocols(raw, allVersions);
         expect(changes.map((c) => c.dep).sort()).toEqual([
             "@napuketto/cli",
             "@napuketto/kernel",
@@ -239,7 +246,7 @@ describe("rewriteWorkspaceProtocol", () => {
             "peer-pkg",
         ]);
         // 各字段均改写为 caret 真实版本
-        const parsed = JSON.parse(rewriteWorkspaceProtocol(raw, allVersions).text) as Record<
+        const parsed = JSON.parse(rewriteDependencyProtocols(raw, allVersions).text) as Record<
             string,
             Record<string, string>
         >;
@@ -249,16 +256,109 @@ describe("rewriteWorkspaceProtocol", () => {
         expect(parsed["peerDependencies"]?.["peer-pkg"]).toBe("^0.2.0");
     });
 
-    it("无 workspace:* 时原样返回（幂等，不重排）", () => {
+    it("无协议依赖时原样返回（幂等，不重排）", () => {
         const raw = pkgJson({ commander: "^15.0.0" });
-        const { text, changes } = rewriteWorkspaceProtocol(raw, versions);
+        const { text, changes, catalogChanges } = rewriteDependencyProtocols(
+            raw,
+            versions,
+            catalog,
+        );
         expect(changes).toEqual([]);
+        expect(catalogChanges).toEqual([]);
         expect(text).toBe(raw);
     });
 
     it("工作区找不到的 workspace:* 依赖抛错（发布链中断）", () => {
         const raw = pkgJson({ "@napuketto/unknown": "workspace:*" });
-        expect(() => rewriteWorkspaceProtocol(raw, versions)).toThrow(/工作区内找不到该包版本/);
+        expect(() => rewriteDependencyProtocols(raw, versions)).toThrow(/工作区内找不到该包版本/);
+    });
+
+    it("把 catalog: 改写为 pnpm-workspace.yaml 的版本范围（2026-11-10 发布包泄漏修复）", () => {
+        const raw = pkgJson({ zod: "catalog:", "@hono/node-server": "catalog:" });
+        const { text, changes, catalogChanges } = rewriteDependencyProtocols(
+            raw,
+            versions,
+            catalog,
+        );
+        expect(changes).toEqual([]);
+        expect(catalogChanges).toEqual([
+            { field: "dependencies", dep: "zod", range: "^4.6.7" },
+            { field: "dependencies", dep: "@hono/node-server", range: "^2.1.6" },
+        ]);
+        const parsed = JSON.parse(text) as { dependencies: Record<string, string> };
+        expect(parsed.dependencies["zod"]).toBe("^4.6.7");
+        expect(parsed.dependencies["@hono/node-server"]).toBe("^2.1.6");
+    });
+
+    it("catalog 段缺条目 → 抛错（不静默发不可安装的包）", () => {
+        const raw = pkgJson({ "unknown-pkg": "catalog:" });
+        expect(() => rewriteDependencyProtocols(raw, versions, catalog)).toThrow(
+            /catalog 段没有该条目/,
+        );
+    });
+
+    it("未传 catalog 表时遇到 catalog: 同样抛错", () => {
+        const raw = pkgJson({ zod: "catalog:" });
+        expect(() => rewriteDependencyProtocols(raw, versions)).toThrow(/catalog 段没有该条目/);
+    });
+
+    it("命名 catalog（catalog:foo）与 workspace:^ 等未支持协议 → 抛错", () => {
+        expect(() =>
+            rewriteDependencyProtocols(pkgJson({ zod: "catalog:legacy" }), versions),
+        ).toThrow(/命名 catalog/);
+        expect(() =>
+            rewriteDependencyProtocols(pkgJson({ "@napuketto/kernel": "workspace:^" }), versions),
+        ).toThrow(/workspace 协议 "workspace:\^" 不受支持/);
+    });
+});
+
+describe("parseCatalogSpecs", () => {
+    it("解析默认 catalog 段：引号键值、行尾注释、CRLF、段外排除", () => {
+        const yaml = [
+            "packages:",
+            '  - "packages/*"',
+            "",
+            "# 依赖审计整改",
+            "catalog:",
+            "  zod: ^4.6.7 # 行尾注释",
+            '  "@hono/node-server": ^2.1.6',
+            "  'ws': ^8.22.1",
+            "",
+            "overrides:",
+            "  launch-editor: ^2.14.2",
+        ].join("\r\n");
+        expect([...parseCatalogSpecs(yaml)]).toEqual([
+            ["zod", "^4.6.7"],
+            ["@hono/node-server", "^2.1.6"],
+            ["ws", "^8.22.1"],
+        ]);
+    });
+
+    it("无 catalog 段 / 命名 catalogs 段 → 空表", () => {
+        expect([...parseCatalogSpecs("packages:\n  - 'packages/*'\n")]).toEqual([]);
+        expect([
+            ...parseCatalogSpecs("catalogs:\n  legacy:\n    zod: ^3.0.0\ncatalog:\n  zod: ^4.6.7"),
+        ]).toEqual([["zod", "^4.6.7"]]);
+    });
+
+    it("段内缺值 / 非键值行 → 跳过", () => {
+        expect([...parseCatalogSpecs("catalog:\n  broken:\n  zod: ^4.6.7\n  : oops\n")]).toEqual([
+            ["zod", "^4.6.7"],
+        ]);
+    });
+});
+
+describe("assertNoProtocolLeftovers", () => {
+    it("残留 workspace:/catalog: → 抛错并列出（发布前最后一道闸）", () => {
+        const raw = pkgJson({ zod: "catalog:", "@napuketto/kernel": "workspace:*" });
+        expect(() => assertNoProtocolLeftovers(raw)).toThrow(
+            /dependencies\.zod=catalog:, dependencies\.@napuketto\/kernel=workspace:\*/,
+        );
+    });
+
+    it("真实版本范围 / 无 dependencies → 通过", () => {
+        expect(() => assertNoProtocolLeftovers(pkgJson({ zod: "^4.6.7" }))).not.toThrow();
+        expect(() => assertNoProtocolLeftovers(JSON.stringify({ name: "bare" }))).not.toThrow();
     });
 });
 
