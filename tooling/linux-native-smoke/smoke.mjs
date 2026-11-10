@@ -79,7 +79,7 @@ function resolveGnutls() {
 // ── 0. 工作目录 ───────────────────────────────────────────────────────────
 const loaderVersion = arg("loader-version") ?? process.env["LOADER_VERSION"] ?? "latest";
 const work = resolve(arg("work-dir") ?? join(tmpdir(), "napuketto-linux-smoke"));
-const keepWork = arg("keep-work") !== undefined;
+const keepWork = process.argv.includes("--keep-work");
 if (!keepWork) {
     rmSync(work, { recursive: true, force: true });
 }
