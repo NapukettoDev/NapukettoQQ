@@ -6,6 +6,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../core/shared/time.js";
 import type {
     OB11GroupMessageEvent,
     OB11MessageEvent,
@@ -21,9 +22,6 @@ import {
 } from "./data.js";
 import type { MessageUnique } from "./message-unique.js";
 
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
-
 /** RawMessage → OB11 消息事件（message_id 经 MessageUnique 映射并记录 peer）。
  * messageFormat 决定 message 字段格式：array = 消息段数组（标准），string = CQ 码字符串。
  * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id，P2-19）。 */
@@ -36,7 +34,7 @@ export function toOb11MessageEvent(
 ): OB11MessageEvent {
     const elements = applyReceiveContext(toCanonicalElements(msg), ctx);
     const segments = canonicalToSegments(elements);
-    const time = Math.floor(Number(msg.msgTime) / MS_TO_SEC);
+    const time = toUnixSeconds(msg.msgTime);
     const selfId = Number(selfUin);
     const userId = Number(msg.senderUin);
     // 记录 peer：delete_msg / get_msg 等只有 message_id 的动作可反查

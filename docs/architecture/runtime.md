@@ -178,12 +178,28 @@ wrapper.node 原生回调
        ├─ 协议适配器订阅：翻译为协议事件（纯函数，只读入参/缓存）
        ├─ 缓存订阅：GroupCache / BuddyCache 主动维护
        └─ 消息日志订阅：控制台/文件输出
-  → network EventBroadcaster
-  → 各 HTTP/WS 传输广播
+  → network EventBroadcaster（**每协议一个**，见 §5.4）
+  → 本协议自己的 HTTP/WS 传输广播
 ```
 
 单个订阅者抛异常不会打断其他订阅者：`NTEventChannel.emit` 与
 `EventBroadcaster.emit` 都逐订阅者 `try/catch`。
+
+### 5.4 协议隔离（一协议一广播器）
+
+`assemble-protocols` 为每个启用的协议各建一个 `EventBroadcaster`（OB11 / Satori /
+Milky；Kurobot 是纯客户端出向协议，无第三方接入门面，不需要广播器），adapter 的
+事件只进自己的广播器，再由自己的传输（HTTP / WS / WebHook）推给客户端。多协议同时
+启用也互不串台：OB11 端口只有 OneBot 11 事件（`post_type` 信封），Satori 端口只有
+`op/body` 信封。
+
+可选协议（Satori / Kurobot / Milky）一律「账号协议段非空才装配」：未配置的协议
+不实例化、不订阅 kernel 事件、不占端口。历史上 Satori 曾无条件装配且四协议共用
+同一个广播器，导致单协议配置下也能在 OB11 端口收到 Satori 事件（2026-11-10 修复，
+见 [loader design §12](../../packages/loader/docs/design.md)）。
+
+IPC 模式的 OB11 事件出口是另一条独立链路（`ipc-ob11.ts` 自己的广播器 →
+`sendEvent("ob11", ...)`），不走这里的协议装配。
 
 ### 5.3 缓存
 

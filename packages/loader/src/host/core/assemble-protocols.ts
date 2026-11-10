@@ -84,17 +84,80 @@ interface KurobotModuleLike {
     };
 }
 
-/** adapter 包 core 子路径最小面（ProtocolConfig 框架）。 */
+/** adapter core 子路径最小面（ProtocolConfig 框架）。 */
 interface AdapterCoreModuleLike {
     ProtocolConfig: new (options: Record<string, unknown>) => unknown;
 }
 
+/** 可选协议 adapter 生命周期最小面（start/stop）。 */
+interface AdapterHandle {
+    start(): Promise<unknown>;
+    stop(): Promise<void>;
+}
+
+/** Satori 装配依赖（单独成函数，避免主装配函数认知复杂度超限）。 */
+interface SatoriAssemblyInput {
+    network: NetworkModuleLike;
+    adapterCore: AdapterCoreModuleLike;
+    satoriAdapter: SatoriModuleLike;
+    cfgFile: string;
+    section: Record<string, unknown>;
+    services: KernelServices;
+}
+
 /**
- * 装配 OB11 + Satori 适配器（登录成功后，非 IPC 模式）。
+ * 装配 Satori（可选协议，2026-11-10）：**段为空返回 null**——与 kurobot/milky
+ * 同一范式（「段存在即启用、不写不启用」）。此前无条件装配，未配置 satori 的
+ * 账号也会订阅 kernel 事件并向空传输广播。
  *
- * 返回停止函数（ob11/satori 适配器 stop：传输关闭 + 订阅清理；装配跳过时
- * no-op）——startProtocols 存入 services.stopAdapters，供未来非 IPC 软重登
- * 清理（当前软重登仅 IPC 模式有触发通道，见 relogin.ts）。
+ * 与 OB11 共享 kernel apis / 消息通道 / 缓存，但**广播器独立**（协议隔离）：
+ * 事件只推给 satori 自己的传输客户端，不会串到 OB11 / Milky 端口。
+ */
+async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle | null> {
+    const { section, services } = input;
+    if (Object.keys(section).length === 0) {
+        return null;
+    }
+    const broadcaster = new input.network.EventBroadcaster();
+    // cacheDir 缺省：落账号目录 cache（与 OB11 download_file 同目录）
+    let cacheDir = join(env.NAPUTO_CFG_DIR || ".", "cache");
+    const configuredCacheDir = section["cacheDir"];
+    if (typeof configuredCacheDir === "string" && configuredCacheDir !== "") {
+        cacheDir = configuredCacheDir;
+    }
+    const config = new input.adapterCore.ProtocolConfig({
+        path: input.cfgFile,
+        schema: input.satoriAdapter.satoriConfigSchema,
+        defaults: input.satoriAdapter.satoriConfigSchema.parse({}),
+        seed: parseSeed("satori", input.satoriAdapter.satoriConfigSchema, section),
+    });
+    const satori = new input.satoriAdapter.NapukettoSatoriAdapter({
+        config,
+        broadcaster,
+        msgChannel: services.channel,
+        msgApi: services.msgApi,
+        groupApi: services.groupApi,
+        groupNotifyApi: services.groupNotifyApi,
+        friendApi: services.friendApi,
+        profileApi: services.profileApi,
+        self: services.self,
+        cacheDir,
+        groupCache: services.groupCache,
+    });
+    await satori.start();
+    log("bootstrap: satori adapter started");
+    return satori;
+}
+
+/**
+ * 装配 OB11 + Satori（+ Kurobot / Milky）适配器（登录成功后，非 IPC 模式）。
+ *
+ * 协议隔离（2026-11-10）：每个协议一个 EventBroadcaster，事件只推给本协议的
+ * 传输客户端；可选协议（satori/kurobot/milky）一律「账号段非空才装配」。
+ *
+ * 返回停止函数（各适配器 stop：传输关闭 + 订阅清理；装配跳过时 no-op）——
+ * startProtocols 存入 services.stopAdapters，供未来非 IPC 软重登清理（当前软重登
+ * 仅 IPC 模式有触发通道，见 relogin.ts）。
  *
  * ⚠️ 装配失败**抛出**（2026-09-08 修复）：cli 模式跑宿主就是为了 OB11/Satori
  * 服务，此处吞错会让 startProtocols 误判成功、以假 ready 留驻（内部 catch
@@ -142,7 +205,11 @@ export async function assembleOb11AndSatori(
         )) as unknown as AdapterCoreModuleLike;
 
         const { channel, groupCache } = services;
-        const broadcaster = new network.EventBroadcaster();
+        // 协议隔离（2026-11-10）：一协议一广播器。broadcaster 是「adapter 事件 →
+        // 传输客户端」的唯一出口；此前四协议共用时任一协议 emit 都会推给所有协议的
+        // 客户端（OB11 的 WS 收到 Satori 的 op/body 信封，事件流不可判型）。
+        // kurobot 是纯客户端出向协议（无第三方接入门面、不发协议事件），无广播器。
+        const ob11Broadcaster = new network.EventBroadcaster();
         // 全局 TOML 配置段：按登录账号 uin 从 accounts 取 [onebot11] / [satori] 段作 seed
         // （2026-08-08 结构拍板：协议配置嵌在账号内；未配置协议的账号不装配对应协议）。
         const { cfgFile, ob11Section, satoriSection, kurobotSection, milkySection } =
@@ -162,7 +229,7 @@ export async function assembleOb11AndSatori(
         const mediaBaseDir = qqRoot !== null ? kernel.resolveQqGlobalPath?.(qqRoot) : undefined;
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: ob11Config,
-            broadcaster,
+            broadcaster: ob11Broadcaster,
             msgChannel: channel,
             // OB11 request 事件源（2026-09-08）：群通知 + 好友申请推送
             groupChannel: services.groupChannel,
@@ -220,33 +287,17 @@ export async function assembleOb11AndSatori(
         await ob11.start();
         log("bootstrap: onebot11 adapter started");
 
-        // Satori 协议（可选）：读 [satori] 段，装配 NapukettoSatoriAdapter。
-        // 与 OB11 共用 kernel apis / 消息通道 / 广播器（多协议共存，各协议独立传输）。
-        const satoriCacheDir =
-            typeof satoriSection["cacheDir"] === "string" && satoriSection["cacheDir"] !== ""
-                ? satoriSection["cacheDir"]
-                : join(env.NAPUTO_CFG_DIR || ".", "cache");
-        const satoriConfig = new adapterCore.ProtocolConfig({
-            path: cfgFile,
-            schema: satoriAdapter.satoriConfigSchema,
-            defaults: satoriAdapter.satoriConfigSchema.parse({}),
-            seed: parseSeed("satori", satoriAdapter.satoriConfigSchema, satoriSection),
+        // Satori 协议（可选，2026-11-10 收敛）：仅当账号段非空才装配（见
+        // assembleSatori）。与 OB11 共享 kernel apis / 消息通道 / 缓存，但广播器
+        // 各自独立（协议隔离）。
+        const satori = await assembleSatori({
+            network,
+            adapterCore,
+            satoriAdapter,
+            cfgFile,
+            section: satoriSection,
+            services,
         });
-        const satori = new satoriAdapter.NapukettoSatoriAdapter({
-            config: satoriConfig,
-            broadcaster,
-            msgChannel: channel,
-            msgApi: services.msgApi,
-            groupApi: services.groupApi,
-            groupNotifyApi: services.groupNotifyApi,
-            friendApi: services.friendApi,
-            profileApi: services.profileApi,
-            self: services.self,
-            cacheDir: satoriCacheDir,
-            groupCache,
-        });
-        await satori.start();
-        log("bootstrap: satori adapter started");
 
         // Kurobot 协议（可选，2026-09-13）：**仅当账号段非空才装配**（url 必填，
         // 空段 parse 会炸；「段存在即启用、不写不启用」）。作为 WS 客户端连入
@@ -287,6 +338,7 @@ export async function assembleOb11AndSatori(
         // Milky 协议（P0，2026-10-28）：段 enabled=true 才生效（enabled 缺省 false
         // = 空转不占端口）。单端口 HTTP（/api + /event SSE/WS）+ WebHook。
         if (Object.keys(milkySection).length > 0) {
+            const milkyBroadcaster = new network.EventBroadcaster();
             const milkyConfig = new adapterCore.ProtocolConfig({
                 path: cfgFile,
                 schema: milkyAdapter.milkyConfigSchema,
@@ -295,7 +347,7 @@ export async function assembleOb11AndSatori(
             });
             const milky = new milkyAdapter.NapukettoMilkyAdapter({
                 config: milkyConfig,
-                broadcaster,
+                broadcaster: milkyBroadcaster,
                 msgChannel: channel,
                 // P1 事件通道：群请求/邀请（Group/onGroupNotifiesUpdated）+ 好友申请
                 groupChannel: services.groupChannel,
@@ -334,7 +386,9 @@ export async function assembleOb11AndSatori(
         return async () => {
             // 适配器 stop 幂等（started 标志守卫）：传输关闭 + kernel 事件退订
             await ob11.stop();
-            await satori.stop();
+            if (satori !== null) {
+                await satori.stop();
+            }
             if (kurobot !== null) {
                 await kurobot.stop();
             }

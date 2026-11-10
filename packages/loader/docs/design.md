@@ -607,3 +607,31 @@ startProtocols 判引导失败退出（回归 2026-09-06 的设计意图）。
 即：x64 Linux 行为不变（继续用内置 7zz，零网络依赖）；arm64 等非 x64 需要系统 7-Zip。
 arm64 交付前的其余缺口（stub 入包、libuuid 预加载、清单条目、真机验证）见
 [`docs/architecture/linux-native-host.md`](../../../docs/architecture/linux-native-host.md) 附录 E.2。
+
+## 12. 协议隔离：一协议一广播器（2026-11-10）
+
+**缺陷（真机复现）**：`assemble-protocols.ts` 曾用**单个** `EventBroadcaster` 传给
+OB11 / Satori / Milky 三个适配器，各协议把传输注册到同一实例 → 任一协议 `emit` 的
+事件会推给**所有**协议的 HTTP/WS 客户端。表现：只配 `[accounts.onebot11]` 的账号，
+OB11 的 WS（39002）在合法心跳（`post_type: meta_event`）之间收到
+`{"op":0,"body":{"sn":2,"type":"message-created",...}}` 的 Satori 形态事件；反向同理。
+多协议同时启用时事件流不可判型（客户端按 `post_type` / `op` 判型必踩错分支），属
+**协议隔离缺陷**，不是日志噪音。
+
+**修法**：
+
+1. **一协议一广播器**：`ob11Broadcaster` / `satoriBroadcaster` / `milkyBroadcaster`
+   各自 `new EventBroadcaster()`，只传给对应 adapter 的 `broadcaster` 选项——传输
+   注册与事件发布都收在本协议内。
+2. **Kurobot 无广播器**：纯客户端出向协议（连出 kurobridge-ws，无第三方接入门面、
+   不发协议事件），不参与广播隔离面。
+3. **Satori 段存在才装配**：`assembleSatori()`（段空返回 `null`；分支内建独立广播器
+   并 start），与 kurobot / milky 同一范式（「段存在即启用、不写不启用」）；`cacheDir`
+   缺省逻辑留在函数内。此前无条件装配：未配置 satori 的账号也会订阅 kernel 事件并向
+   空传输广播。`satori` 变量改 `| null`，teardown 判空后 `stop()`。
+4. **IPC 桥不动**：`ipc-ob11.ts` 的广播器是独立进程边界上的 OB11 事件出口
+   （§9.1），与 CLI 协议装配互不相干。
+
+**单测**（`assemble-protocols.test.ts`）：只有 `[accounts.onebot11]` 时 satori
+构造器零调用、不 start；OB11 + Satori 同时启用时两者收到的 broadcaster 不是同一
+实例（隔离语义）。

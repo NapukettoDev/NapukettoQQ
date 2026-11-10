@@ -27,6 +27,7 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../core/shared/time.js";
 
 export { collectGrayTipUids } from "../../core/shared/gray-tip.js";
 
@@ -51,9 +52,17 @@ const MS_TO_SEC = 1000;
 /** 群文件业务类型（group_upload 的 file.busid,与 kernel 群文件系列同源语义）。 */
 const GROUP_FILE_BUS_ID = 102;
 
-/** 检查消息是否含文件元素（group_upload 开关分支判定）。 */
+/**
+ * 检查消息是否含文件元素（group_upload 开关分支判定）。
+ *
+ * ⚠️ 用空值判定（`!= null`）而非 `!== undefined`（2026-11-10，Linux 原生宿主）：
+ * Windows 原生对象省略未命中的元素变体字段，Linux 3.2.x 原生对象则把**全部**
+ * 变体字段显式置 `null`（`"grayTipElement":null` 等）。用 `!== undefined`
+ * 会把每条普通消息都判成「含该元素」——OB11 入站消息因此全部被误路由到
+ * grayTip notice 分支并静默丢弃（真机复现）。
+ */
 export function hasFileElement(msg: RawMessage): boolean {
-    return msg.elements.some((el) => el.fileElement !== undefined);
+    return msg.elements.some((el) => el.fileElement != null);
 }
 
 /** grayTip 翻译上下文（uid→uin 映射，调用方批量转换）。 */
@@ -64,9 +73,9 @@ export interface NoticeTranslateContext {
     logger?: { warn(obj: unknown, msg?: string): void };
 }
 
-/** 检查消息是否含可翻译的 grayTip 元素。 */
+/** 检查消息是否含可翻译的 grayTip 元素（空值判定同 hasFileElement）。 */
 export function hasGrayTip(msg: RawMessage): boolean {
-    return msg.elements.some((el) => el.grayTipElement !== undefined);
+    return msg.elements.some((el) => el.grayTipElement != null);
 }
 
 /** uid → uin（上下文映射缺省退化为 uid）。 */
@@ -86,7 +95,7 @@ function base(
     group_id: number;
 } {
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(ctx.selfUin),
         post_type: "notice",
         group_id: Number(msg.peerUid),
@@ -106,7 +115,7 @@ function toRecall(
     if (msg.chatType === ChatType.C2C) {
         // 好友撤回：user_id = 撤回者，message_id = msgSeq
         return {
-            time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+            time: toUnixSeconds(msg.msgTime),
             self_id: Number(ctx.selfUin),
             post_type: "notice",
             notice_type: "friend_recall",
@@ -143,7 +152,7 @@ function toPoke(
     );
     const isGroup = msg.chatType === ChatType.GROUP;
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(ctx.selfUin),
         post_type: "notice",
         notice_type: "notify",
@@ -204,7 +213,7 @@ function toGroupChange(
     }
     return builder(
         {
-            time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+            time: toUnixSeconds(msg.msgTime),
             selfId: Number(ctx.selfUin),
             groupId: Number(msg.peerUid),
             memberUid: grp.memberUid ?? "",
@@ -315,13 +324,13 @@ export function toFriendAdd(entry: BuddyListEntry, selfUin: string): OB11FriendA
  * busid 固定 102（群文件业务类型，与 kernel GROUP_FILE_BIZ_TYPE 同源语义）。
  */
 export function toGroupUpload(msg: RawMessage, selfUin: string): OB11GroupUploadNoticeEvent | null {
-    const el = msg.elements.find((e) => e.fileElement !== undefined);
+    const el = msg.elements.find((e) => e.fileElement != null);
     const file = el?.fileElement;
     if (file === undefined) {
         return null;
     }
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(selfUin),
         post_type: "notice",
         notice_type: "group_upload",
@@ -349,7 +358,7 @@ function translateGrayTip(
     if (subType === GrayTipSubType.GROUP) {
         return toGroupChange(msg, g, ctx);
     }
-    if (g.aioOpGrayTipElement !== undefined) {
+    if (g.aioOpGrayTipElement != null) {
         // poke（aioOp）：subElementType 归属未实证（BUDDY_NOTIFY/GROUP_NOTIFY 载荷），
         // 以元素存在性识别；始终打 raw 日志（toPoke 内）
         return toPoke(msg, g, ctx);
