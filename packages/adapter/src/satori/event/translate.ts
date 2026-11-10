@@ -60,7 +60,7 @@ export async function toSatoriMessageEvent(
 export function hasSatoriGrayTip(raw: RawMessage): boolean {
     for (const el of raw.elements) {
         const g = el.grayTipElement;
-        if (g === undefined) {
+        if (g == null) {
             continue;
         }
         if (
@@ -88,7 +88,7 @@ export async function toSatoriGrayTipEvent(
 ): Promise<SatoriEventContent | null> {
     for (const el of raw.elements) {
         const g = el.grayTipElement;
-        if (g === undefined) {
+        if (g == null) {
             continue;
         }
         if (g.subElementType === GrayTipSubType.REVOKE) {

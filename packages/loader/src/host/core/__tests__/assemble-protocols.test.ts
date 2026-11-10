@@ -265,11 +265,51 @@ describe("assembleOb11AndSatori", () => {
         }
     });
 
-    it("kurobot/milky 段为空 → 不装配对应协议", async () => {
+    it("kurobot/milky/没有 satori 段 → 只装配 OB11（可选协议段非空才装配）", async () => {
         stubInlineConfig({});
         const assemble = await freshAssemble();
         await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
-        expect(fakeAdapters().map((r) => r.kind)).toEqual(["ob11", "satori"]);
+        // 构造器计数：satori 完全没被 new（不是 start 了再停）——2026-11-10 修复前
+        // 未配置 satori 也会装配并订阅 kernel 事件。
+        expect(fakeAdapters().map((r) => r.kind)).toEqual(["ob11"]);
+        expect(adapterOf("satori")).toBeUndefined();
+        expect(adapterOf("kurobot")).toBeUndefined();
+        expect(adapterOf("milky")).toBeUndefined();
+    });
+
+    it("satori 段存在但未配 cacheDir → 缺省 <账号目录>/cache", async () => {
+        stubInlineConfig({ satori: { token: "" } });
+        const assemble = await freshAssemble();
+        await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
+        const satori = adapterOf("satori");
+        expect(satori).toBeDefined();
+        expect(satori?.options["cacheDir"]).toBe(join(tmpRoot, "account", "cache"));
+    });
+
+    it("OB11 + Satori 同时启用 → 两个 adapter 收到不同 broadcaster 实例（协议隔离）", async () => {
+        stubInlineConfig({ satori: { cacheDir: join(tmpRoot, "satori-cache") } });
+        const assemble = await freshAssemble();
+        await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
+        const ob11 = adapterOf("ob11");
+        const satori = adapterOf("satori");
+        const ob11Broadcaster = ob11?.options["broadcaster"] as { adapters?: unknown[] };
+        const satoriBroadcaster = satori?.options["broadcaster"] as { adapters?: unknown[] };
+        // 两个广播器都真实注入（非 undefined 降级），且不是同一实例
+        expect(ob11Broadcaster).toBeDefined();
+        expect(satoriBroadcaster).toBeDefined();
+        expect(ob11Broadcaster).not.toBe(satoriBroadcaster);
+        // 反向确认隔离语义：给 satori 广播器挂传输，不会出现在 ob11 广播器上
+        ob11Broadcaster.adapters?.push("ob11-transport");
+        satoriBroadcaster.adapters?.push("satori-transport");
+        expect(ob11Broadcaster.adapters).toEqual(["ob11-transport"]);
+        expect(satoriBroadcaster.adapters).toEqual(["satori-transport"]);
+    });
+
+    it("satori 段空对象 → 不装配（与 kurobot/milky 同范式）", async () => {
+        stubInlineConfig({ satori: {} });
+        const assemble = await freshAssemble();
+        await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
+        expect(adapterOf("satori")).toBeUndefined();
     });
 
     it("kurobot 段 seed 校验失败 → ConfigError（消息含段名与 zod 明细）", async () => {

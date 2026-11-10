@@ -30,3 +30,4 @@ export {
     varintOf,
     varintToNumber,
 } from "./shared/sysmsg.js";
+export { toUnixSeconds } from "./shared/time.js";

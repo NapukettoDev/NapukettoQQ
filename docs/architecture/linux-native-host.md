@@ -12,8 +12,9 @@
 > 安装）；2026-11-10 完成 Stage 3e（X11 消费方盘点）、Stage 4（图片/语音富媒体）、arm64
 > qemu 运行期（引擎初始化 + 登录握手）与交付工程化（发布包带 stub、nightly smoke、清单
 > 自动维护、解包工具按架构分流）。
-> 仍未验证：他人消息的实时入站（需第二账号）、文件上传（协议侧无 `upload_group_file`，
-> `file` 段到 xml 元素未实现）、arm64 真机登录与收发。
+> 仍未验证：文件上传（协议侧无 `upload_group_file`，`file` 段到 xml 元素未实现）与
+> arm64 真机登录与收发。他人消息的实时入站已于 2026-11-10 实测通过
+> （真 CLI + OB11 WS + 第二账号，见附录 D.1）。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
@@ -40,9 +41,9 @@
   截图 / 剪贴板消费方，有 `DISPLAY` 时也不建 X 连接（附录 C）。
 - **工程量不在 3 个点**：真正的成本在 deb 包获取与布局、双版本号、平台参数、无头依赖、
   清单/更新链、arm64、CI/发布与 ADR。
-- **建议**：x64 链路的加载、登录、消息收发、图片/语音与数据根收敛都已实测通过，实现已
-  发布（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口是他人消息入站、视频/文件发送与 arm64 真机。
-  补齐后再写 ADR、再退役 Wine——在此之前 Wine 保持默认，作为回退。
+- **建议**：x64 链路的加载、登录、消息收发（含他人消息实时入站）、图片/语音/视频与数据根
+  收敛都已实测通过，实现已发布（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口是文件发送与 arm64
+  真机。补齐后再写 ADR、再退役 Wine——在此之前 Wine 保持默认，作为回退。
 
 ## 2. 背景：Windows 为什么需要近百条 forwarder
 
@@ -86,9 +87,9 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
   linux-x64；装 `libx11-6` / `libx11-xcb1` / `libxext6` / `libuuid1` /
   `libgssapi-krb5-2` / `libgcrypt20` / `libgnutls30t64`；`DISPLAY` 未设置；
   `LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`。
-- **未做**：X11 运行期功能（本仓当前无截图 / 剪贴板消费方，见附录 C）；他人消息的
-  实时入站；视频 / 文件上传（图片 + 语音已实测，见附录 D）；arm64 运行期（arm64 静态核验
-  见 §9.11）。完整 Stage 0 仍需补这些。
+- **未做**：X11 运行期功能（本仓当前无截图 / 剪贴板消费方，见附录 C）；文件上传
+  （`file` 段 / `upload_group_file` 未实现）；arm64 运行期（arm64 静态核验见 §9.11）。
+  他人消息实时入站已于 2026-11-10 实测通过（附录 D.1），视频发送见附录 D。
 
 > 版本相关数字只用于这次研判；QQ 升级后重跑附录 A 的命令即可重新确认。
 
@@ -534,8 +535,10 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 修复：`confirmSend` 把命中的 `RawMessage` 交回，`sendMessage` 优先返回它的 `msgId`，
 缺失才回退生成值；Windows 侧两者本就相同，行为不变。
 
-未覆盖：他人消息的**实时入站事件**（需要第二个账号发消息；离线历史事件已在 Stage 1
-验证）；富媒体（图片/语音/文件）发送未实测。
+**已补测（2026-11-10）**：他人消息的**实时入站事件**实测通过——真 CLI + OB11 WS，
+第二账号在群内发文本，WS 收到 `post_type=message` / `message_type=group` / 正确
+`user_id` / 文本段（附录 D.1）。当时发现的 Linux 原生对象空值形状缺陷（元素变体
+显式 `null` 导致入站消息被误判为 grayTip 丢弃）已随本次修复。
 
 ### 9.12 Stage 3c：`HOME`/`XDG_*` 收敛（2026-11-09）
 
@@ -640,9 +643,9 @@ Wine 分支不启用（要 PE）。
 **建议**：
 
 - 把 Linux 原生 ELF 宿主作为 Linux 的目标路线；Windows 保持现有 PE stub 不动。
-- x64 的加载 / 登录 / 收发 / 富媒体 / 数据根收敛都已通过，实现已随 loader 0.6.1+ 发布为
-  显式开关（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口（他人消息入站、视频 / 文件、arm64 真机）
-  补齐前不改 ADR、不删 Wine。
+- x64 的加载 / 登录 / 收发（含他人消息实时入站）/ 富媒体 / 数据根收敛都已通过，实现已随
+  loader 0.6.1+ 发布为显式开关（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口（文件发送、arm64
+  真机）补齐前不改 ADR、不删 Wine。
 - 补齐后新增 ADR（草案见下），Wine 保留一个版本作为回退，随后删除。
 - arm64 作为独立交付项，不随首版承诺：加载链路、引擎初始化与登录握手已验证（qemu），
   真机登录 / 收发待做。
@@ -674,7 +677,8 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 退出正常（§9.13）。Stage 3e 盘点 X11 消费方（`packages/**/*.ts` 0 命中）并在有 `DISPLAY`
 时用 strace 确认不建 X 连接（附录 C）；Stage 4 图片（64×64 PNG）与语音（WAV → silk）发送、
 `get_image` / `get_record` 回取与撤回全部通过，Stage 4f 视频（1s H.264 mp4）在 adapter
-补首帧缩略图后发送成功、缩略图按视频 md5 落盘、撤回通过（附录 D）；arm64 qemu 下
+补首帧缩略图后发送成功、缩略图按视频 md5 落盘、撤回通过（附录 D）；2026-11-10 补测
+他人消息实时入站通过（真 CLI + OB11 WS + 第二账号，附录 D.1）；arm64 qemu 下
 `initWithDeskTopConfig` 返回 `true`、MMKV 建库在数据根、`login.connect()` 触发
 `onLoginConnected`、`getLoginList` 正常返回（附录 E.1）；工程化补齐发布包 stub 与双重
 守卫、nightly smoke、清单 Linux 条目自动维护、非 x64 解包工具回退（§8）。
@@ -684,9 +688,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - X11 运行期功能：**当前不是缺口**——本仓没有截图 / 剪贴板消费方（附录 C 有 grep 证据），
   启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
   再按附录 C 的清单补验证。
-- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音 + 视频也已实测通过**（附录 D）；
-  未覆盖他人消息的实时入站事件（需第二个账号）与文件上传（协议侧无 `upload_group_file`
-  动作，`file` 段翻译到 xml 元素也尚未实现）。
+- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音 + 视频也已实测通过**（附录 D），
+  **他人消息实时入站也已实测通过**（附录 D.1）；未覆盖文件上传（协议侧无
+  `upload_group_file` 动作，`file` 段翻译到 xml 元素也尚未实现）。
 - arm64：符号与解包**已静态核验**（§9.11），加载链路、引擎初始化与登录握手**已运行期
   验证**（qemu，附录 E.1）；**真机登录 / 收发未验证**。stub 的 arm64 产物尚未进私有
   `native/`、清单也还没有 arm64 条目、loader 还没 preload `libuuid`——三件事按既定策略
@@ -852,6 +856,37 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
   翻译到 xml 元素时明确报「发送元素 xml 暂不支持（P2-2 探测后补）」；kernel 的
   `prepareFileElement` 是预留实现，等协议动作落地再测。
 - 大批量 / 大体积图片（如 4MB+ 照片）未压测；视频只测了 1s / 64×64 / H.264。
+
+### D.1 他人消息实时入站（2026-11-10 补测）
+
+环境同上（WSL2 + 真 x64 ELF `wrapper.node` + 真 CLI，`NAPUTO_LINUX_NATIVE=1`，
+数据根 `/tmp/ntqq2`）。单协议配置只有 `[accounts.onebot11]`：HTTP 39001 / WS 39002，
+`heartbeatInterval=5000`；双协议对照另追加 `[accounts.satori]` + WS 39003。
+
+| 步骤 | 结果 |
+|---|---|
+| 第二账号 `3054108135`（Oppenheymu）在群 `1101729931` 发「测试」 | kernel `Msg/onRecvMsg` 收到（loader「接收 <- 群聊」日志） |
+| OB11 WS（39002）事件 | ✅ `{"time":<当前 Unix 秒>,"self_id":1569227406,"post_type":"message","message_id":N,"message":[{"type":"text","data":{"text":"测试"}}],"raw_message":"测试","message_type":"group","group_id":1101729931,"user_id":3054108135,...}` |
+| 自然群流量（群 `521584745`，2659 人） | 文本 / 图片 / `reply` 段均正常广播：`user_id` 为真实 QQ 号、`time` 为当前时间 |
+| 协议隔离 | 只配 OB11 时 WS 全程只有 `post_type:"meta_event"` 心跳，无 `{"op":0,...}` 串台 |
+| 双协议同时启用（OB11 39002 + Satori 39003） | ✅ 同一条「隔离测试 2」：OB11 端口收到 `post_type:"message"` 信封、Satori 端口收到 `{"op":0,"body":{"type":"message-created",...}}` 信封；两端口 crosstalk=0 |
+
+**发现并修复（adapter，详见 `packages/adapter/docs/design.md` §10）**：
+
+1. **元素变体 `null` 形状**：Linux 3.2.x 原生对象把未命中的元素变体**显式置
+   `null`**（`"grayTipElement":null`、`"fileElement":null` …，Windows 省略这些
+   字段）。OB11 的 `hasGrayTip` / `hasFileElement` 用 `!== undefined` 判定，于是
+   每条普通消息都被误判成 grayTip、转入 notice 分支后静默丢弃——这才是「实时入站
+   收不到」的真因（插桩实测 `groupMemberRole` 566ms 正常返回，不是原生调用挂起）。
+   Satori 的 `hasSatoriGrayTip`（`g === undefined`）同源，`null.subElementType`
+   抛错被事件通道吞掉，`message-created` 同样不广播。修复：空值判定改 `!= null`。
+2. **`msgTime` 单位**：Linux 是**秒**字符串（`1794307394`），Windows 是毫秒
+   （`1700000000000`）；OB11 统一 `/1000` 会让 Linux 事件时间退化成 1970。已按
+   量级归一（`toUnixSeconds`）。
+
+未覆盖的小差异：入站 `sender.nickname` 在 Linux 部分消息为空（显示名在
+`sendMemberName`，`sender.card` 已正确）；图片段的 `file` 字段为空（Linux
+`picElement` 未提供 Windows 同款字段），不影响事件投递。
 
 ## 附录 E：arm64 运行期验证（qemu 模拟，Stage 3b 补充）
 

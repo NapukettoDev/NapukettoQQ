@@ -7,7 +7,13 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { hasFileElement, toFriendAdd, toGroupUpload, toOb11NoticeEvent } from "../notice.js";
+import {
+    hasFileElement,
+    hasGrayTip,
+    toFriendAdd,
+    toGroupUpload,
+    toOb11NoticeEvent,
+} from "../notice.js";
 
 const CTX = { selfUin: "10001", uidToUin: new Map([["u9", "90009"]]) };
 
@@ -313,6 +319,28 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
         expect(hasFileElement(fileMsg())).toBe(true);
         const plain = { ...fileMsg(), elements: [{ elementType: 1 }] } as unknown as RawMessage;
         expect(hasFileElement(plain)).toBe(false);
+    });
+
+    it("Linux 原生空值形状：元素变体为 null 时不得误判存在", () => {
+        // Linux 3.2.x wrapper 把未命中的元素变体显式置 null（Windows 省略字段）。
+        // 回归 2026-11-10：`!== undefined` 会把每条普通消息判成 grayTip/file，
+        // 导致 OB11 入站消息全部被静默丢弃。
+        const linuxText = {
+            ...fileMsg(),
+            elements: [
+                {
+                    elementType: 1,
+                    textElement: { content: "hi" },
+                    grayTipElement: null,
+                    fileElement: null,
+                },
+            ],
+        } as unknown as RawMessage;
+        expect(hasGrayTip(linuxText)).toBe(false);
+        expect(hasFileElement(linuxText)).toBe(false);
+        // 真实 grayTip / file 元素（对象）仍正常命中
+        expect(hasGrayTip(groupMsg({ subElementType: 1 }))).toBe(true);
+        expect(hasFileElement(fileMsg())).toBe(true);
     });
 
     it("toGroupUpload → file{id=fileUuid, name, size, busid=102}", () => {

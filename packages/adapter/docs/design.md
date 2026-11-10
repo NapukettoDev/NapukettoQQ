@@ -547,3 +547,66 @@ get_private_file_download_url 延后批次三（rkey/TriSHA1）。
 **批次三（未动）**：5 无源事件（reaction / peer_pin / essence_change / bot_offline /
 friend_file_upload）+ get_private_file_download_url 校准——需 sysmsg 识别表与
 listener 回调探测。
+
+## 10. Linux 原生对象的空值形状与 msgTime 单位（2026-11-10，入站实测）
+
+真机复现：Linux 原生宿主（`NAPUTO_LINUX_NATIVE=1`，官方 Linux `wrapper.node`
+3.2.35）下，他人消息的 `Msg/onRecvMsg` 事件确实到达 kernel，但 OB11 WS 客户端
+**收不到任何 `message` 事件**。插桩确认：`broadcastMessageEvent` 根本没被调用，
+`groupMemberRole` 等原生查询正常返回（566ms），不是此前怀疑的「原生调用挂起」。
+
+**根因一：元素变体 `null` 形状**。Windows 原生对象省略未命中的元素变体字段，
+Linux 3.2.x 则把**全部**变体字段显式置 `null`：
+
+```json
+{ "elementType": 1, "textElement": {...}, "grayTipElement": null,
+  "fileElement": null, "picElement": null, ... }
+```
+
+`helper/notice.ts` 的 `hasGrayTip` / `hasFileElement` 用 `!== undefined` 判定，
+于是**每条普通消息都命中 grayTip 分支** → 转入 `broadcastNotice` → 非 grayTip
+翻译返回 null → 静默丢弃。`toGroupUpload` 的 `find` 与 poke 的
+`aioOpGrayTipElement` 判定同病。
+
+Satori 侧同源：`event/translate.ts` 的 `hasSatoriGrayTip` 用 `if (g === undefined)
+continue` 跳过缺失，Linux 下 `g = null` 不跳过 → 读 `null.subElementType` 抛
+`TypeError`，异常被事件通道逐订阅者 `try/catch` 吞掉 → 整条 `message-created`
+不广播（OB11 同时刻正常，双协议对照实测）。
+
+修复：元素存在性一律用空值判定（`!= null`），覆盖 `hasGrayTip` /
+`hasFileElement` / `toGroupUpload` / `translateGrayTip` 与 Satori 的
+`hasSatoriGrayTip`。**新增代码同样适用**：任何 `el.xxxElement !== undefined`
+的形状嗅探在 Linux 上都会失真。
+
+**根因二：`msgTime` 单位不一致**。Linux 为秒字符串（`1794307394`），Windows 为
+毫秒（`1700000000000`）。OB11 翻译统一 `/1000`，Linux 下事件时间退化成 1970。
+新增 `core/shared/time.ts` 的 `toUnixSeconds()`（`>= 1e12` 视为毫秒），OB11 的
+消息事件 / notice / 历史消息翻译统一走它；单测覆盖两种单位与非法值。
+
+**证据**（群 `1101729931`，第二账号 `3054108135`；自然群流量群 `521584745`）：
+
+```json
+{"time":1794307580,"self_id":1569227406,"post_type":"message","message_id":1,
+ "message":[{"type":"text","data":{"text":"有一些软件会向系统文件资源管理器注册预览组件"}}],
+ "raw_message":"…","message_type":"group","group_id":521584745,"user_id":1454273424,
+ "sender":{"user_id":1454273424,"role":"member","card":"…"}}
+```
+
+**双协议隔离对照**（同一条「隔离测试 2」，OB11 WS 39002 + Satori WS 39003 同时订阅）：
+
+```json
+{"time":1794308396,"self_id":1569227406,"post_type":"message","message_id":1,
+ "message":[{"type":"text","data":{"text":"隔离测试 2"}}],"message_type":"group",
+ "group_id":1101729931,"user_id":3054108135,...}                       // OB11 端口
+{"op":0,"body":{"sn":2,"type":"message-created","timestamp":1794308396,
+ "channel":{"id":"1101729931","type":0,"name":"…"},...}}                // Satori 端口
+```
+
+两个端口各自只出现本协议信封（OB11 无 `op`、Satori 无 `post_type`），crosstalk=0。
+
+**已知差异（未修，不影响事件投递）**：
+
+- `sender.nickname` 部分为空（Linux 把显示名放在 `sendMemberName`，`sender.card`
+  已正确）；
+- 图片段 `file` 为空（Linux `picElement` 未提供 Windows 同款字段）；
+- 其他协议（milky）的同类 `!== undefined` 嗅探仍是潜在隐患，按同一规则逐步收敛。

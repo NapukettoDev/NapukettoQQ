@@ -9,7 +9,7 @@
  *    非 GROUP 会话的成员变动忽略、未知类型返回 null
  *  - collectSatoriGrayTipUids：core 共享实现的 re-export 契约
  */
-import { ChatType, GrayTipSubType, TipGroupElementType } from "@napuketto/kernel";
+import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { makeMemberChangeMsg, makeRawMsg, makeRevokeMsg } from "../../__tests__/test-support.js";
 import {
@@ -83,6 +83,39 @@ describe("hasSatoriGrayTip", () => {
 
     it("无 grayTipElement 的元素列表 → false", () => {
         expect(hasSatoriGrayTip(makeRawMsg({ elements: [] }))).toBe(false);
+    });
+
+    it("Linux 原生空值形状：grayTipElement 为 null 不命中也不抛错", () => {
+        // 回归 2026-11-10：`g === undefined` 判断在 Linux（变体显式 null）下不生效，
+        // 直接读 null.subElementType 抛错 → 订阅回调被事件通道吞掉 → 整条消息
+        // 事件不广播。
+        const msg = {
+            ...makeRawMsg(),
+            elements: [
+                {
+                    elementType: 1,
+                    textElement: { content: "hi" },
+                    grayTipElement: null,
+                    fileElement: null,
+                },
+            ],
+        } as unknown as RawMessage;
+        expect(() => hasSatoriGrayTip(msg)).not.toThrow();
+        expect(hasSatoriGrayTip(msg)).toBe(false);
+    });
+
+    it("toSatoriGrayTipEvent：grayTipElement 全为 null → null（不抛错）", async () => {
+        const msg = {
+            ...makeRawMsg(),
+            elements: [
+                {
+                    elementType: 1,
+                    textElement: { content: "hi" },
+                    grayTipElement: null,
+                },
+            ],
+        } as unknown as RawMessage;
+        await expect(toSatoriGrayTipEvent(msg, UIN_MAP)).resolves.toBeNull();
     });
 });
 

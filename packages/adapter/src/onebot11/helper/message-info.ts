@@ -7,6 +7,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../core/shared/time.js";
 import type { OB11MessageInfo } from "../types/index.js";
 import {
     applyReceiveContext,
@@ -15,9 +16,6 @@ import {
     type ReceiveTranslateContext,
 } from "./data.js";
 import type { MessageUnique } from "./message-unique.js";
-
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
 
 /** RawMessage → OB11 消息信息（message_id 经 MessageUnique 映射）。
  * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id，P2-19）。 */
@@ -41,7 +39,7 @@ export function toOb11MessageInfo(
             user_id: Number(msg.senderUin),
             nickname: msg.sendNickName,
         },
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         message: canonicalToSegments(elements),
         raw_message: canonicalToCqMessage(elements),
     };
