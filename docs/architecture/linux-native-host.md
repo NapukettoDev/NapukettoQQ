@@ -6,7 +6,8 @@
 > （dlopen / exports / O3 / engine init / getLoginList）；2026-11-09 完成 Stage 0b
 > （真实扫码 + 快速登录 + session READY，wrapper 层）、Stage 1 端到端（CLI +
 > kernel 平台参数 + loader 原生分支）、Stage 2（deb 下载/解包/缓存管线）、Stage 3
-> （消息发送/撤回）与 Stage 3b（arm64 符号 + 解包 + stub 交叉编译的静态核验）。
+> （消息发送/撤回）、Stage 3b（arm64 符号 + 解包 + stub 交叉编译的静态核验）与
+> Stage 3c（`HOME`/`XDG_*` 收敛，消掉 Bugly 写用户目录的副作用）。
 > X11 运行期、他人消息的实时入站、富媒体发送、arm64 运行期仍未验证，完整
 > Stage 0 通过后再按 ADR 规则追加决策。
 >
@@ -295,10 +296,10 @@ V1_LNX_NQ_3.2.35_54395_GW_B
   `dlopen` 会报 invalid ELF header）。本地探测需校验 ELF 魔数或按平台过滤。
 - **宿主是 Bun 时**：与 Windows 同理，wrapper 需要真 node 的 `napi_*`；Linux 分支要有
   `which node` 之类解析，现有 `findSystemNode` 用的是 Windows `where`。
-- **数据目录**：建议把 `HOME` / `XDG_CONFIG_HOME` / `XDG_DATA_HOME` 收敛到数据根，
-  避免原生层向用户目录写日志/缓存；`~/.config/QQ` 一类路径要显式覆盖。Stage 0b 实测
-  Bugly 会无条件写 `$HOME/.config/QQ/crash_files/`（`desktopGlobalPath` 不影响它），
-  自建宿主必须处理这个副作用。
+- **数据目录**：`HOME` / `XDG_CONFIG_HOME` / `XDG_DATA_HOME` 已**收敛到数据根**（Stage 3c
+  已实现并实测，见 §9.12）：`libbugly` 的 `NativeCrashHandler` 会无视
+  `desktopGlobalPath`，直接向 `$HOME/.config/QQ/crash_files/` 写崩溃记录。收敛后该目录
+  落在 `<数据根>/home/.config/QQ/crash_files/`，用户 `$HOME` 零写入。
 
 ## 8. 工程改造清单
 
@@ -528,6 +529,32 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 未覆盖：他人消息的**实时入站事件**（需要第二个账号发消息；离线历史事件已在 Stage 1
 验证）；富媒体（图片/语音/文件）发送未实测。
 
+### 9.12 Stage 3c：`HOME`/`XDG_*` 收敛（2026-11-09）
+
+**问题**：`desktopGlobalPath` 只覆盖 QQ 自己的数据；`libbugly` 的崩溃处理器另走
+`$HOME`，会向用户目录写 `.config/QQ/crash_files/`（Stage 0b 发现）。
+
+**做法**：Linux 原生分支在 spawn 子进程前把 `HOME` 指向 `<数据根>/home`
+（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），并把
+`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 派到该目录下。
+实现是 `linux-native.ts` 的 `resolveLinuxHome` + `linuxHomeEnv`，wine / win32 分支不动。
+
+**实测（WSL2 Ubuntu 24.04，真 CLI + 真 Linux `wrapper.node`，数据根 `/tmp/ntqq2`）**：
+
+| 项 | 结果 |
+|---|---|
+| strace 观察 | Bugly 只读 `$HOME`（`access`/`mkdir $HOME/.config/QQ/crash_files`），**不读 `XDG_CONFIG_HOME`** |
+| Bugly 日志 | `InitBuglyManager path: /tmp/ntqq2/home/.config/QQ/crash_files/` |
+| 受管目录 | `/tmp/ntqq2/home/.config/QQ/crash_files` 由原生层自行创建（umask 后 `750`） |
+| 用户 `$HOME`（`/root`） | 该目录零写入（`find -newer` 标记为空） |
+| 快速登录 | 成功（票据在 `<数据根>/nt_qq`，与 `HOME` 无关） |
+| 进程退出 | SIGTERM → 优雅退出 `code=0` |
+
+**结论**：收敛 `HOME` 即可，`XDG_*` 是给 `libvips` / fontconfig 等 C 库的缓存兜底；
+`XDG_RUNTIME_DIR` 刻意不接管（会话级 dbus 目录，语义与数据根不同）。副作用是
+崩溃记录不再出现在用户熟悉的位置——需要时去 `<数据根>/home/.config/QQ/crash_files/`
+取（文档已注明）。
+
 ### 9.11 Stage 3b：arm64 符号 / 解包 / stub 静态核验（2026-11-09）
 
 arm64 deb（`QQ_3.2.35_261103_arm64_01.deb`，208,717,176 字节，sha256
@@ -603,7 +630,9 @@ service 与 self 资料读取；Stage 1 用真 CLI 跑通快速登录 → sessio
 Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*` / 53 `uv_*` / 1 v8 /
 1 node / 2 必需 + `PerfTrace`）、`libbugly` 同样有 71 个 gnutls UND 且无 `DT_NEEDED`、
 真 loader 管线可提取 arm64 deb（20 文件 / 288MB）、stub 用同一份源码交叉编译出 3 符号
-无依赖的 `.so`；同时发现 arm64 缺 `libuuid` 的 `DT_NEEDED`（需额外预加载）。
+无依赖的 `.so`；同时发现 arm64 缺 `libuuid` 的 `DT_NEEDED`（需额外预加载）。Stage 3c
+把 `HOME`/`XDG_*` 收敛到 `<数据根>/home`：Bugly 的 `crash_files` 落在受管目录，
+用户 `$HOME` 零写入，快速登录与优雅退出不受影响（§9.12）。
 
 **待决/待验证**：
 
@@ -619,7 +648,9 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 - 公开 CI 无法检私有 submodule，真 smoke 放哪里（release / self-hosted / 已发布包）。
 - 是否用 dummy `libbugly.so` 去掉 krb5 / gnutls / gcrypt 依赖（可减依赖，但有行为风险，
   暂不建议）。
-- Bugly 固定写 `$HOME/.config/QQ/crash_files/`，需要 `HOME`/`XDG_*` 收敛方案。
+- ~~Bugly 固定写 `$HOME/.config/QQ/crash_files/`，需要 `HOME`/`XDG_*` 收敛方案~~
+  **已修（Stage 3c，2026-11-09）**：受管 `HOME` = `<数据根>/home`，实测用户目录零写入
+  （§9.12）。
 
 ## 附录 A：核验数据与重跑命令
 
@@ -638,7 +669,7 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 | Stage 0b 扫码登录（2026-11-09） | QR 成功；`onQRCodeSessionUserScaned` → `onQRCodeLoginSucceed` |
 | Stage 0b 快速登录 | `getLoginList` 1 条 `isQuickLogin:true`；`quickLoginWithUin` `result:"0"`、`errMsg:""` |
 | Stage 0b session READY | `onOpentelemetryInit is_init:true` / `onSessionInitComplete 0`；`getMsgService` 立即非空；7 个核心 service 非空 |
-| Bugly 副作用 | 写 `$HOME/.config/QQ/crash_files/`，不受 `desktopGlobalPath` 控制 |
+| Bugly 副作用 | 写 `$HOME/.config/QQ/crash_files/`，不受 `desktopGlobalPath` 控制；Stage 3c 起收敛到 `<数据根>/home/.config/QQ/crash_files/` |
 | 隐藏依赖 | `libbugly` 有约 70 个 gnutls UND，但无 `DT_NEEDED`；需 `LD_PRELOAD` `libgnutls.so.30` |
 | wrapper 最高 GLIBC | 2.17 |
 | Node v24.16.0 最高 GLIBC | 2.28 |

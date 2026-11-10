@@ -18,8 +18,10 @@ import { fileURLToPath } from "node:url";
 import {
     defaultLinuxStubPath,
     isLinuxNativeEnabled,
+    linuxHomeEnv,
     linuxPreload,
     resolveGnutls,
+    resolveLinuxHome,
     resolveLinuxNode,
 } from "./linux-native.js";
 import type { QqInstallInfo } from "./locate-qq.js";
@@ -213,10 +215,21 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
     const env = buildLaunchEnv(options, false);
     env["LD_PRELOAD"] = linuxPreload(stub, gnutls);
     env[ENV.STUB_DIR] = stub;
+    // HOME/XDG 收敛（Stage 3c）：Bugly 的崩溃处理器只认 $HOME，改它才能把
+    // `.config/QQ/crash_files/` 收进数据根（strace 实测，2026-11-09）。
+    const home = resolveLinuxHome({
+        dataRoot: options.cwd,
+        cfgDir: options.cfgDir,
+        explicit: process.env["NAPUTO_LINUX_HOME"],
+    });
+    mkdirSync(home, { recursive: true });
+    Object.assign(env, linuxHomeEnv(home));
     if (options.cwd !== undefined) {
         mkdirSync(options.cwd, { recursive: true });
     }
-    options.onStage?.(`Linux 原生宿主：${node} self-host.cjs（stub=${stub}，gnutls=${gnutls}）`);
+    options.onStage?.(
+        `Linux 原生宿主：${node} self-host.cjs（stub=${stub}，gnutls=${gnutls}，HOME=${home}）`,
+    );
     const child = spawn(node, [selfHostPath], {
         ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
         env,
