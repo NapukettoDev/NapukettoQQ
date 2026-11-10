@@ -75,7 +75,7 @@ function translateGrayTip(
 ): MilkyEvent | null {
     // aioOp 优先于子类型判定：群戳一戳载荷挂 GROUP 子类型（归属未实证，
     // 与 OB11 poke 同口径——按元素存在性识别）
-    if (g.aioOpGrayTipElement !== undefined) {
+    if (g.aioOpGrayTipElement != null) {
         return aioOpToEvent(msg, g, ctx);
     }
     if (g.subElementType === GrayTipSubType.GROUP) {

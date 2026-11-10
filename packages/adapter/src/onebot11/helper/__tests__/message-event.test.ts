@@ -108,6 +108,21 @@ describe("toOb11MessageInfo sender.role", () => {
         const info = toOb11MessageInfo(msg, new MessageUnique());
         expect(info.sender.card).toBe("群名片");
     });
+
+    it("Linux 形态：sendNickName 空串 → nickname 回退 sendMemberName（不是空串）", () => {
+        const msg = makeMsg({ sendNickName: "", sendMemberName: "鸦鸦" });
+        const event = toOb11MessageEvent(msg, "10000", new MessageUnique());
+        expect(
+            event.post_type === "message" && event.message_type === "group"
+                ? event.sender.nickname
+                : undefined,
+        ).toBe("鸦鸦");
+        const info = toOb11MessageInfo(msg, new MessageUnique());
+        expect(info.sender.nickname).toBe("鸦鸦");
+        // 两者都在时昵称优先（Windows 口径不变）
+        const both = makeMsg({ sendNickName: "昵称", sendMemberName: "群名片" });
+        expect(toOb11MessageInfo(both, new MessageUnique()).sender.nickname).toBe("昵称");
+    });
 });
 
 describe("toOb11MessageEvent 私聊 sub_type", () => {

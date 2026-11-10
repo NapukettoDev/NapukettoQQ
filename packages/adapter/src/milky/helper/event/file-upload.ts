@@ -21,7 +21,7 @@ export function toFriendFileUploadData(
     if (msg.chatType !== ChatType.C2C) {
         return null;
     }
-    const file = msg.elements.find((el) => el.fileElement !== undefined)?.fileElement;
+    const file = msg.elements.find((el) => el.fileElement != null)?.fileElement;
     if (file === undefined || typeof file.fileUuid !== "string" || file.fileUuid === "") {
         return null;
     }

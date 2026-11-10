@@ -239,6 +239,21 @@ describe("toMessageRecallEvent", () => {
         );
         expect(event).toBeNull();
     });
+
+    it("Linux 空值形态：元素变体显式 null 不误判（普通消息仍是消息，不是撤回/转发）", () => {
+        const msg = makeMsg({
+            elements: [
+                {
+                    elementType: 1,
+                    textElement: { content: "你好" },
+                    grayTipElement: null,
+                    multiForwardMsgElement: null,
+                } as never,
+            ],
+        });
+        expect(toMessageReceiveEvent(msg, { selfUin: "10000" }).event_type).toBe("message_receive");
+        expect(toMessageRecallEvent(msg, { selfUin: "10000" })).toBeNull();
+    });
 });
 
 describe("chatTypeToScene", () => {

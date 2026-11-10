@@ -7,6 +7,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
+import { senderNickname } from "../../core/shared/raw-message.js";
 import { toUnixSeconds } from "../../core/shared/time.js";
 import type { OB11MessageInfo } from "../types/index.js";
 import {
@@ -37,7 +38,7 @@ export function toOb11MessageInfo(
         message_type: messageType,
         sender: {
             user_id: Number(msg.senderUin),
-            nickname: msg.sendNickName,
+            nickname: senderNickname(msg),
         },
         time: toUnixSeconds(msg.msgTime),
         message: canonicalToSegments(elements),

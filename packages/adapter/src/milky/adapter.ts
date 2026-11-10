@@ -366,7 +366,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         this.fillReplyMeta(elements, ctx);
         await this.fillGroupEntities(msg, ctx);
         const forward = msg.elements.find(
-            (el) => el.multiForwardMsgElement !== undefined,
+            (el) => el.multiForwardMsgElement != null,
         )?.multiForwardMsgElement;
         if (forward !== undefined) {
             ctx.forwardSegments = [incomingForwardSegment(forward.resId, forward.fileName)];
@@ -419,7 +419,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     /** 转发 resId → 定位登记（get_forwarded_messages 反查用）。 */
     private recordForward(msg: RawMessage): void {
         const forward = msg.elements.find(
-            (el) => el.multiForwardMsgElement !== undefined,
+            (el) => el.multiForwardMsgElement != null,
         )?.multiForwardMsgElement;
         if (forward !== undefined && forward.resId !== "") {
             this.seqIndex.recordForward(forward.resId, {
@@ -709,12 +709,12 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
 
 /** 是否含 grayTip 元素（与 OB11 收链路同判据）。 */
 function hasGrayTip(msg: RawMessage): boolean {
-    return msg.elements.some((el) => el.grayTipElement !== undefined);
+    return msg.elements.some((el) => el.grayTipElement != null);
 }
 
 /** 撤回 grayTip 元素（非撤回消息返回 undefined）。 */
 function findRevokeElement(msg: RawMessage) {
-    return msg.elements.find((el) => el.grayTipElement?.revokeElement !== undefined)?.grayTipElement
+    return msg.elements.find((el) => el.grayTipElement?.revokeElement != null)?.grayTipElement
         ?.revokeElement;
 }
 
