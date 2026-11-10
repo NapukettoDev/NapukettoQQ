@@ -35,6 +35,7 @@ import {
     isOidcTrustedPublishing,
     main,
     parseArgs,
+    publishedDespiteFailure,
     publishPkg,
 } from "../release-npm.ts";
 
@@ -96,6 +97,8 @@ beforeEach(() => {
     delete process.env["ACTIONS_ID_TOKEN_REQUEST_URL"];
     delete process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"];
     delete process.env["NAPKETTO_NPM_OTP"];
+    // 失败复核的重试间隔归零（否则失败用例每个包要等 2s×2）
+    vi.stubEnv("RELEASE_PUBLISH_CONFIRM_DELAY_MS", "0");
     for (const fn of [mocks.spawnSync, mocks.discoverPackages]) {
         fn.mockReset();
     }
@@ -306,6 +309,35 @@ describe("main 全流程", () => {
         expect(untouched.dependencies["@napuketto/kernel"]).toBe("workspace:*");
     });
 
+    it("发布 409 但版本已在 registry → 按成功继续，后续包照发（2026-11-10 事故回归）", async () => {
+        const kernel = makePkg("@napuketto/kernel", "0.0.9");
+        const cli = makePkg("@napuketto/cli", "0.1.0", { "@napuketto/kernel": "workspace:*" });
+        mocks.discoverPackages.mockResolvedValue([cli, kernel]);
+        // registry：首次查询（planPublish）读不到 kernel@0.0.9（缓存滞后）；
+        // 发布失败后的复核就能看到——真实事故形态（旧批刚发完，新批读旧 packument）
+        const counts = new Map<string, number>();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((input: unknown) => {
+                const name = decodeURIComponent(
+                    String(input).replace("https://registry.npmjs.org/", ""),
+                );
+                const seen = (counts.get(name) ?? 0) + 1;
+                counts.set(name, seen);
+                const versions = name === "@napuketto/kernel" && seen >= 2 ? { "0.0.9": {} } : {};
+                return Promise.resolve(new Response(JSON.stringify({ versions }), { status: 200 }));
+            }),
+        );
+        mocks.spawnSync
+            .mockReturnValueOnce({ status: 1, error: undefined })
+            .mockReturnValue({ status: 0, error: undefined });
+        const code = await main([]);
+        expect(code).toBe(0);
+        expect(mocks.spawnSync).toHaveBeenCalledTimes(2);
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("按成功继续"));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("已发布: @napuketto/cli"));
+    });
+
     it("OIDC 模式 + 已有包缺信任配置 → 预检拦截，一个包都不发", async () => {
         vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://token.actions.example/");
         vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token");
@@ -373,6 +405,38 @@ describe("main 全流程", () => {
         expect(mocks.spawnSync).toHaveBeenCalledTimes(1);
         const cmdArgs = mocks.spawnSync.mock.calls[0]?.[1] as string[];
         expect(cmdArgs).toContain("--dry-run");
+    });
+});
+
+describe("publishedDespiteFailure（并发发布 / 缓存滞后幂等）", () => {
+    it("registry 已有该版本 → true（立即命中，不重试）", async () => {
+        const pkg = makePkg("@napuketto/loader", "0.7.4");
+        const fetchVersions = vi.fn(async () => new Set(["0.7.4"]));
+        await expect(publishedDespiteFailure(pkg, { fetchVersions, delayMs: 0 })).resolves.toBe(
+            true,
+        );
+        expect(fetchVersions).toHaveBeenCalledTimes(1);
+    });
+
+    it("registry 一直没有 → false（用满 attempts 次）", async () => {
+        const pkg = makePkg("@napuketto/loader", "0.7.4");
+        const fetchVersions = vi.fn(async () => new Set<string>());
+        await expect(
+            publishedDespiteFailure(pkg, { fetchVersions, attempts: 2, delayMs: 0 }),
+        ).resolves.toBe(false);
+        expect(fetchVersions).toHaveBeenCalledTimes(2);
+    });
+
+    it("传播延迟：首次没有、重试命中 → true", async () => {
+        const pkg = makePkg("@napuketto/loader", "0.7.4");
+        const fetchVersions = vi
+            .fn()
+            .mockResolvedValueOnce(new Set<string>())
+            .mockResolvedValueOnce(new Set(["0.7.4"]));
+        await expect(
+            publishedDespiteFailure(pkg, { fetchVersions, attempts: 3, delayMs: 0 }),
+        ).resolves.toBe(true);
+        expect(fetchVersions).toHaveBeenCalledTimes(2);
     });
 });
 

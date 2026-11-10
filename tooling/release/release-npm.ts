@@ -97,9 +97,58 @@ export async function fetchPublishedVersions(pkgName: string): Promise<Set<strin
     return new Set(Object.keys(json["versions"] ?? {}));
 }
 
+/** 发布失败后复核 registry 的重试次数与间隔（覆盖 npm CDN 传播延迟）。 */
+const PUBLISH_CONFIRM_ATTEMPTS = 3;
+const DEFAULT_PUBLISH_CONFIRM_DELAY_MS = 2000;
+
+/** 复核间隔：默认 2s；`RELEASE_PUBLISH_CONFIRM_DELAY_MS` 可覆盖（单测设为 0）。 */
+function confirmDelayMs(): number {
+    const raw = process.env["RELEASE_PUBLISH_CONFIRM_DELAY_MS"];
+    const parsed = Number(raw);
+    return raw !== undefined && raw !== "" && Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_PUBLISH_CONFIRM_DELAY_MS;
+}
+
+/** 发布失败后复核的可注入项（单测用）。 */
+export interface ConfirmPublishedOptions {
+    /** 版本查询实现（缺省真查 registry）。 */
+    fetchVersions?: (pkgName: string) => Promise<Set<string>>;
+    /** 最大尝试次数（缺省 3）。 */
+    attempts?: number;
+    /** 每次重试间隔毫秒（缺省 2000）。 */
+    delayMs?: number;
+}
+
+/**
+ * 发布失败后复核：registry 里已有该版本 → 视为已发布（并发发布 / CDN 缓存滞后）。
+ *
+ * 2026-11-10 事故：两个 release 运行的 publish 前后脚（旧批 12:11 发完
+ * `loader@0.7.4`，新批 12:13 查 registry 读到的还是旧 packument）→ 新批重复发
+ * `0.7.4` → npm `409 Cannot publish over previously staged version` → 中断，
+ * `adapter@0.13.2` / `cli@0.5.14` 没发出去。版本已在 registry 时重复发布对用户
+ * 无副作用，故此处按成功继续；重试覆盖传播延迟。
+ */
+export async function publishedDespiteFailure(
+    pkg: WorkspacePkg,
+    options: ConfirmPublishedOptions = {},
+): Promise<boolean> {
+    const fetchVersions = options.fetchVersions ?? fetchPublishedVersions;
+    const attempts = options.attempts ?? PUBLISH_CONFIRM_ATTEMPTS;
+    const delayMs = options.delayMs ?? confirmDelayMs();
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if ((await fetchVersions(pkg.name)).has(pkg.version)) {
+            return true;
+        }
+        if (attempt < attempts - 1) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+    }
+    return false;
+}
+
 /**
  * 是否处于 GitHub Actions 的 OIDC 可信发布模式。
- *
  * 判据与 npm CLI 一致：job 声明 `id-token: write` 后 Actions 才注入这两个
  * 变量。本地发布永远走登录态 + 2FA，不会命中此分支。
  */
@@ -383,10 +432,17 @@ async function publishOrdered(
         try {
             const code = publishPkg(pkg, dryRun, otp);
             if (code !== 0) {
-                console.log(
-                    `[release-npm] ❌ 发布失败: ${pkg.name}@${pkg.version}（退出码 ${code}），已中断`,
-                );
-                return code;
+                // 并发发布 / registry 缓存滞后：版本其实已在 registry → 按成功继续
+                if (!dryRun && (await publishedDespiteFailure(pkg))) {
+                    console.log(
+                        `[release-npm] ℹ️ ${pkg.name}@${pkg.version} 已在 registry（并发发布或缓存滞后），按成功继续`,
+                    );
+                } else {
+                    console.log(
+                        `[release-npm] ❌ 发布失败: ${pkg.name}@${pkg.version}（退出码 ${code}），已中断`,
+                    );
+                    return code;
+                }
             }
             console.log(`[release-npm] ✅ 已发布: ${pkg.name}@${pkg.version}`);
         } finally {
