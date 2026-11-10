@@ -144,6 +144,22 @@ describe("bundledSevenZipSupported / findSystemSevenZip", () => {
         expect(findSystemSevenZip("", "linux")).toBeNull();
     });
 
+    it.skipIf(process.platform === "win32")(
+        "findSevenZip：非 x64 Linux 跳过内置，命中系统 7z / 退化为字面量 7z",
+        () => {
+            const dir = join(tmpRoot, "sys-bin");
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, "7z"), "");
+            vi.stubEnv("PATH", dir);
+            expect(findSevenZip("linux", "arm64").exe).toBe(join(dir, "7z"));
+            expect(findSevenZip("linux", "arm64").source).toContain("系统 PATH");
+            expect(findSevenZip("linux", "arm64").exe).not.toBe(BUNDLED_7Z);
+            // 系统里也没有 → 返回字面量（执行时才会 ENOENT，错误由解包层提示）
+            vi.stubEnv("PATH", join(tmpRoot, "empty"));
+            expect(findSevenZip("linux", "arm64").exe).toBe("7z");
+        },
+    );
+
     it("Windows 只找 7z.exe（分号分隔）", () => {
         const dir = join(tmpRoot, "win-bin");
         mkdirSync(dir, { recursive: true });

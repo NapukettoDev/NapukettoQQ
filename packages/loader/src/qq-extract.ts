@@ -113,18 +113,23 @@ export function findSystemSevenZip(
  *   NAPUTO_7Z_PATH 环境变量 > 内置资产（Windows assets/7zip/7z.exe、Linux
  *   assets/7zip/7zz——2026-08-14 治本，静态二进制已打进发布包；**仅 x64 Linux 可用**）
  *   > 系统 PATH 7z。
+ *
+ * `platform` / `arch` 参数仅测试注入（缺省取 process）。
  */
-export function findSevenZip(): SevenZipResult {
+export function findSevenZip(
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): SevenZipResult {
     const envPath = process.env["NAPUTO_7Z_PATH"];
     if (envPath !== undefined && envPath !== "" && existsSync(envPath)) {
         return { exe: envPath, source: "环境变量 NAPUTO_7Z_PATH" };
     }
     // 内置资产：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
     if (
-        (process.platform === "win32" || process.platform === "linux") &&
-        bundledSevenZipSupported()
+        (platform === "win32" || platform === "linux") &&
+        bundledSevenZipSupported(platform, arch)
     ) {
-        const exeName = process.platform === "win32" ? "7z.exe" : "7zz";
+        const exeName = platform === "win32" ? "7z.exe" : "7zz";
         const bundled = join(
             dirname(fileURLToPath(import.meta.url)),
             "..",
@@ -137,7 +142,7 @@ export function findSevenZip(): SevenZipResult {
         }
     }
     // 系统 PATH（Windows 装了 7-Zip 有 7z.exe；Linux p7zip-full / 7zip 提供 7z）
-    const system = findSystemSevenZip();
+    const system = findSystemSevenZip(process.env["PATH"] ?? "", platform);
     if (system !== null) {
         return { exe: system, source: "系统 PATH" };
     }
