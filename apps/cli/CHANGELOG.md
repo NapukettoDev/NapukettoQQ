@@ -1,5 +1,14 @@
 # @napuketto/cli
 
+## 0.5.11
+
+### Patch Changes
+
+- Updated dependencies [06bf7a9]
+  - @napuketto/network@0.3.1
+  - @napuketto/adapter@0.12.4
+  - @napuketto/loader@0.7.3
+
 ## 0.5.10
 
 ### Patch Changes
