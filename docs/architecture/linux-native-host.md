@@ -81,8 +81,9 @@ Linux 的 ELF 没有这个“按模块名绑定”的限制：`dlopen(wrapper.no
   linux-x64；装 `libx11-6` / `libx11-xcb1` / `libxext6` / `libuuid1` /
   `libgssapi-krb5-2` / `libgcrypt20` / `libgnutls30t64`；`DISPLAY` 未设置；
   `LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`。
-- **未做**：X11 运行期功能（截图、剪贴板等）；他人消息的实时入站；富媒体发送；
-  arm64 运行期（arm64 静态核验见 §9.11）。完整 Stage 0 仍需补这些。
+- **未做**：X11 运行期功能（本仓当前无截图 / 剪贴板消费方，见附录 C）；他人消息的
+  实时入站；视频 / 文件上传（图片 + 语音已实测，见附录 D）；arm64 运行期（arm64 静态核验
+  见 §9.11）。完整 Stage 0 仍需补这些。
 
 > 版本相关数字只用于这次研判；QQ 升级后重跑附录 A 的命令即可重新确认。
 
@@ -598,7 +599,7 @@ arm64 node）。
 5. 运行时仍待验证：登录 / session READY / 收发在 arm64 上未跑过；stub 的 arm64
    产物尚未进私有 `native/`（`build/linux-arm64/` 只是本机交叉编译产物），清单里
    也还没有 arm64 条目——按既定策略，arm64 作为独立交付项，等真机验证后再登记
-   （避免给用户一个未验证的下载入口）。
+   （避免给用户一个未验证的下载入口）。**加载链路的运行期验证见附录 E（qemu 模拟）。**
 
 ## 10. 决策建议与待决事项
 
@@ -636,9 +637,12 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
 
 **待决/待验证**：
 
-- X11 运行期功能（截图 / 剪贴板等）；init 阶段已通过，但这些功能未测。
-- 消息**发送 + 撤回已实测通过**（§9.10）；未覆盖他人消息的实时入站事件（需第二个账号）
-  与富媒体发送。
+- X11 运行期功能：**当前不是缺口**——本仓没有截图 / 剪贴板消费方（附录 C 有 grep 证据），
+  启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
+  再按附录 C 的清单补验证。
+- 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音也已实测通过**（附录 D）；
+  未覆盖他人消息的实时入站事件（需第二个账号）、视频发送（需真实 mp4 + 缩略图）与
+  文件上传（协议侧无 `upload_group_file` 动作）。
 - arm64 符号与解包**已静态核验**（§9.11）：缺口集与 x64 一致、stub 可交叉编译、
   真 loader 管线可提取；**运行期未验证**（需 arm64 机器）。stub 的 arm64 产物尚未进
   私有 `native/`，清单也尚无 arm64 条目——等真机验证后再登记。
@@ -726,3 +730,140 @@ readelf --dyn-syms --wide build/linux-arm64/libnapuketto_stub.so | grep -v UND
 - [Node.js `src/node_binding.cc`（DLOpen / 自注册）](https://github.com/nodejs/node/blob/v24.16.0/src/node_binding.cc)
 - 仓内相关：[decisions.md](decisions.md)（ADR-019）、[runtime.md](runtime.md)、
   [overview.md](overview.md)、[loader design](../../packages/loader/docs/design.md)
+
+## 附录 C：X11 消费方盘点与有 DISPLAY 的冒烟（Stage 3e，2026-11-09）
+
+**结论 1：本仓当前没有 X11 消费方。** 在 `packages/**/*.ts` 里搜
+`ScreenCapture|screenCapture|clipboard|Clipboard|getScreen|screenshot|Screenshot`
+命中 **0**——kernel 未注册截图 / 剪贴板一类 QQ 原生 API，OneBot 11 / Satori 侧也没有对应
+动作。也就是说“X11 运行期功能”在现有 API 面上**无从触发**，不是漏测。
+
+**结论 2：有 DISPLAY 时也不建立 X 连接。** 在 WSL2（WSLg 已起，`/tmp/.X11-unix/X0` 存在）
+里用真 CLI + 真 x64 ELF `wrapper.node`、`DISPLAY=:0` 跑：
+
+```bash
+DISPLAY=:0 strace -f -e trace=connect -o /tmp/x11.log node apps/cli/dist/index.mjs
+grep X11-unix /tmp/x11.log   # 无输出 = 全程没连 X server
+```
+
+| 项 | 结果 |
+|---|---|
+| `wrapper 装配完成` | 通过（`version=3.2.35-54395`） |
+| 快速登录 | 成功 |
+| X11 连接（`connect` 到 `/tmp/.X11-unix/*`） | **0 次** |
+| 崩溃日志 | 无新增（只有 Bugly 读旧 `rqd_record.eup` 的固有告警） |
+| SIGTERM 退出 | `code=0` |
+
+即：启动 / 登录 / 消息链路在有 X 和无 X 的环境下行为一致，不需要 `Xvfb` 也能跑（这一点比
+NapCat 的 launcher 简单——那边要靠 Xvfb 哄 Electron 主进程，我们根本不跑 Electron）。
+
+**结论 3：将来接入截图 / 剪贴板时要补的验证清单**（现在不做，避免无消费方的空转）：
+
+1. 真实 `DISPLAY` 与 `Xvfb` 两种环境下的行为差异；
+2. `libX11` / `libxcb` / `libXext` 是随包（deb 里有 `libEGL.so` 等）还是系统依赖；
+3. 容器场景的 `xauth` / `XAUTHORITY` 与 `/tmp/.X11-unix` 挂载；
+4. 无 X 环境下这些 API 的可读降级错误（不能崩宿主）。
+
+## 附录 D：富媒体发送实测（Stage 4，2026-11-09）
+
+环境同 Stage 3/3d：WSL2 + 真 x64 ELF `wrapper.node`（`/tmp/opt-qq` 扁平布局）+ 真 CLI
+（OneBot 11 HTTP），群 `1101729931`，发送后 `get_*` 取回、再 `delete_msg` 撤回。
+
+| 媒体 | 发送 | 取回（媒体落盘） | 撤回 |
+|---|---|---|---|
+| 文本（对照） | `retcode 0` | — | ✅ |
+| 图片 64×64 PNG（210 字节） | `retcode 0` | `get_image`：`file_size=210`、`file_name=BEE3…C24BE.png`、`file=<数据根>/…/nt_data/Pic/2026-11/Ori/bee354a1c2c8ff1b5d3d056712fc24be.png`（md5 与文件名一致） | ✅ |
+| 语音 WAV（24kHz / mono / 16-bit / 0.6s） | `retcode 0` | `get_record`：`file_size=2461`、`file_name=voice.silk`、`file=…/nt_data/Ptt/2026-11/Ori/e4627f2ee64867430bf01673cffb9372.silk`；历史消息里即是该 `record` 段 | ✅ |
+
+链路与 Windows 一致：`md5 → getRichMediaFilePathForGuild → util.copyFile → 完整
+picElement / pttElement → sendMsg`；语音的非 silk 输入由 **adapter** 层
+`ensureSilk`（`@napuketto/media`）转码，kernel 只收 silk 路径。宿主退出 `code=0`，
+服务端无异常日志。
+
+**踩坑（重要，别误判成平台缺陷）**：Stage 4 首轮用一段手写 base64 的“1×1 PNG”测试，
+`send_msg` 稳定返回 `sendStatus=0`，一度以为是 Linux 缺能力；换成程序生成、**结构合法**的
+PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序应是「先校验素材是否合法
+（PNG 签名/IHDR/IEND、silk `#!SILK_V3` 头），再怀疑平台」。
+
+**未覆盖**：
+
+- **视频**：需要真实 mp4 + 缩略图（`thumbPath` 必须是 `Map<0, path>`，缩略图目标路径用
+  视频 md5），本轮没造素材，留待后续；
+- **文件**：OneBot 11 侧没有 `upload_group_file` 动作（实测返回 `未知动作`），kernel 的
+  `prepareFileElement` 是预留实现，等协议动作落地再测；
+- 大批量 / 大体积图片（如 4MB+ 照片）未压测。
+
+## 附录 E：arm64 运行期验证（qemu 模拟，Stage 3b 补充）
+
+在 Docker Desktop 的 `linux/arm64` 容器（qemu 用户态模拟，`uname -m` = `aarch64`）里跑
+通了真 `dlopen`，静态核验的结论在运行期成立：
+
+| 步骤 | 结果 |
+|---|---|
+| 容器架构 | `aarch64`（qemu 模拟，非真机） |
+| arm64 node | `v24.16.0`（官方 `node-v24.16.0-linux-arm64`，qemu 下正常） |
+| 官方 arm64 `wrapper.node` | 147,183,032 字节，ELF |
+| arm64 stub | 本机交叉编译产物 69,424 字节（同 `stub-linux.cc` 源码） |
+| 预加载 | `stub:libgnutls.so.30:libuuid.so.1`（**三个都要**：gnutls 是 libbugly 隐藏依赖，libuuid 是 arm64 缺 `DT_NEEDED` 的那条） |
+| 系统依赖 | `libx11-6`（arm64 wrapper 的 `DT_NEEDED` 里有 X11；缺了直接 `libX11.so.6: cannot open shared object file`）、`libx11-xcb1` / `libxext6` / `libxcb1` / `libgnutls30t64` / `libuuid1` |
+| dlopen 结果 | **`exports=104 engine=true`**，进程正常退出 |
+
+结论与边界：
+
+- **arm64 加载链路已运行期验证**（stub + gnutls + libuuid 三件套齐了就能 dlopen）；
+  `libuuid` 预加载从静态推断变成实测必需——只 preload stub + gnutls 时 dlopen 能过，
+  但首次 `uuid_generate` 会报 symbol lookup error。
+- **引擎初始化与登录握手也已验证**（见 E.1）：`initWithDeskTopConfig` 返回 `true`、
+  MMKV 在数据根下建库、`login.connect()` 触发 `onLoginConnected`、`getLoginList`
+  返回 `{"result":0,"LocalLoginInfoList":[]}`（全新数据目录 + 未登录的预期结果）。
+- **仍未验证**：arm64 上的**实际登录**（快速登录/扫码，需要账号）、session READY、
+  消息收发；也未在真机（Apple Silicon / 鲲鹏 / 树莓派）上跑过。
+- **因此仍未登记**：arm64 stub 没进私有 `native/`、清单没有 arm64 条目、loader 的
+  `linuxPreload` 也还没加 `libuuid`——这三件事在真机验证后一起做（否则等于给用户
+  一个必然 `symbol lookup error` 的下载入口）。
+
+### E.1 引擎初始化 + 登录握手（2026-11-10）
+
+同一套 qemu 容器里再往前推一步（不涉及账号，只验证原生引擎与登录系统的初始化路径）：
+
+```bash
+# 预加载三件套 + arm64 node，跑探针脚本：
+#   process.dlopen(wrapper) → Engine.initWithDeskTopConfig({...KLINUX 配置...})
+#   → login.initConfig({commonPath: <data>/nt_qq/global, appid: 537403759})
+#   → login.connect() → 15s 后 getLoginList()
+LD_PRELOAD="/stub/libnapuketto_stub.so:$GNUTLS:$UUID" DATA=/data WRAPPER=/qq/wrapper.node \
+    node /login.cjs
+```
+
+| 步骤 | 结果 |
+|---|---|
+| `process.dlopen` | `exports=104` |
+| `Engine.initWithDeskTopConfig`（`platform_type=5` / `qua=V1_LNX_NQ_3.2.35_54395_GW_B`） | 返回 **`true`** |
+| MMKV 初始化 | `root dir: /data/nt_qq/global/nt_data/mmkv`（库文件正常落盘） |
+| `login.initConfig` | 无异常 |
+| `login.connect()` → `onLoginConnected` | **回调触发**（登录系统连接建立） |
+| `getLoginList()` | **`{"result":0,"LocalLoginInfoList":[]}`** |
+| 进程退出 | `RC=0`（探针主动 exit） |
+
+容器里同时装了 `libnss3` / `libnspr4` / `libgbm1`（未单独验证是否必需，属于 Qt/Electron
+体系的常规依赖，先备着）。
+
+**仍未做**：真正的登录（快速登录需要票据、扫码需要人）、session READY、服务面调用与
+消息收发——这些在 qemu 下还会被 ~10x 的模拟开销放大，留给真机。
+
+### E.2 arm64 交付前还缺什么（清单，2026-11-10 复核）
+
+按“真机验证后一起做”的既定策略，把 arm64 从“能跑”推到“能发”还需要下面五项：
+
+| # | 缺什么 | 现状 / 证据 |
+|---|---|---|
+| 1 | arm64 stub 进私有 `native/` + loader 包 `files` | 目前只有 `native/build/linux-x64` 入包；arm64 产物是本机交叉编译的未跟踪文件 |
+| 2 | loader 的 `linuxPreload` 加 `libuuid` | 现在只 preload `stub:gnutls`；arm64 缺 `libuuid.so.1` 的 `DT_NEEDED`，首次 `uuid_generate` 会 symbol lookup error（E.1 里靠手工三件套绕过） |
+| 3 | 清单 arm64 条目 | `qq-releases.json` 只有 x64 linux 条目；清单自动化目前钉死 `LINUX_MAINTAINED_ARCHES = ["x64"]`（等真机后加 `"arm64"`） |
+| 4 | **内置 `7zz` 只有 x86-64** | `assets/7zip/7zz` 的 ELF `e_machine=0x3e`（x64）；在 arm64 容器里 `cannot execute`。arm64 用户解 deb 会失败 → 需要 arm64 版 7zz，或在 `findSevenZip` 里按架构回退到系统 `7z` / `7zz` |
+| 5 | 真机端到端 | 登录（快速/扫码）、session READY、消息收发、优雅退出，全部未在 arm64 真机跑过 |
+
+> 第 4 项是这次新增的：之前只想到「arm64 缺 libuuid」，没注意解包工具链本身也是 x64
+> 二进制——arm64 首跑前必须先解决，否则连 `ensureQqFiles` 都过不去。
+
+
