@@ -295,6 +295,8 @@ port = 5501
 | `NAPUTO_QQ_FILES` | 显式 QQ 文件根（含 `versions/` 结构） |
 | `NAPUTO_QQ_URL` | 覆盖 QQ 安装包下载地址 |
 | `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录 |
+| `NAPUTO_LINUX_NATIVE` | `1` = Linux 走原生 ELF 自建宿主（不再 wine；默认仍 wine，见 [运维 §4.8](operations.md)） |
+| `NAPUTO_LINUX_STUB` | Linux 原生分支的 `.so` stub 路径（缺省用 loader 包内 `native/build/linux-<arch>/`） |
 | `NAPUTO_7Z_PATH` / `NAPUTO_7Z_URL` | 7-Zip 可执行文件 / Linux 7zz 下载地址 |
 | `NAPUTO_WINE` | Linux wine 可执行文件（默认 `wine`） |
 | `NAPUTO_WIN_NODE_PATH` | wine/非 Node 宿主使用的 Windows 版 `node.exe` |
