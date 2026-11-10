@@ -3,11 +3,11 @@
  *
  * 进程执行（spawnSync）与 registry fetch 全部 mock 到边界（绝不真发 npm）；
  * discoverPackages 换桩为临时目录夹具，core 的 planPublish/topoSort/
- * rewriteWorkspaceProtocol 保留真实实现（纯函数 + 临时目录文件）。覆盖：
+ * rewriteDependencyProtocols 保留真实实现（纯函数 + 临时目录文件）。覆盖：
  * parseArgs、fetchPublishedVersions（404 空集 / 版本集 / 非 200 抛错）、
  * publishPkg 参数装配（otp / dry-run / no-provenance / Windows ComSpec）、
- * main 全流程（全部已发布跳过、拓扑序发布、workspace:* 改写后恢复、失败中断、
- * OIDC 预检拦截与放行）。
+ * main 全流程（全部已发布跳过、拓扑序发布、workspace:* / catalog: 改写后恢复、
+ * 失败中断、OIDC 预检拦截与放行）。
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -257,6 +257,34 @@ describe("main 全流程", () => {
         // 发布日志
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("已发布: @napuketto/kernel"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("已恢复"));
+    });
+
+    it("catalog: 依赖发布前改写为真实范围、发布后恢复（2026-11-10 事故回归）", async () => {
+        const network = makePkg("@napuketto/network", "0.3.1", {
+            hono: "catalog:",
+            ws: "catalog:",
+        });
+        mocks.discoverPackages.mockResolvedValue([network]);
+        vi.stubGlobal("fetch", makeFetch({ registryVersions: {}, exchangeStatus: 200 }));
+        // 捕获 publish 时刻磁盘上的 manifest（改写后、恢复前）
+        let publishedManifest: { dependencies: Record<string, string> } | undefined;
+        mocks.spawnSync.mockImplementation(() => {
+            publishedManifest = JSON.parse(
+                readFileSync(join(network.dir, "package.json"), "utf8"),
+            ) as { dependencies: Record<string, string> };
+            return { status: 0, error: undefined };
+        });
+        const code = await main([]);
+        expect(code).toBe(0);
+        // 发给 npm 的 manifest 不能有 catalog:（否则用户 npm install 直接失败）
+        expect(publishedManifest?.dependencies["hono"]).toMatch(/^\^?\d+\.\d+\.\d+/);
+        expect(publishedManifest?.dependencies["ws"]).toMatch(/^\^?\d+\.\d+\.\d+/);
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("catalog: → hono@"));
+        // 发布后恢复原样（git 里保持 catalog: 约定）
+        const restored = JSON.parse(readFileSync(join(network.dir, "package.json"), "utf8")) as {
+            dependencies: Record<string, string>;
+        };
+        expect(restored.dependencies["hono"]).toBe("catalog:");
     });
 
     it("发布中途失败 → 立即中断返回非 0，后续包不再发布，恢复已在 finally 完成", async () => {

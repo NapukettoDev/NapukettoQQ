@@ -218,6 +218,15 @@ gh release create milestone-0.4 --verify-tag --latest \
   `https://registry.npmjs.org/<包名>/<版本>`（版本端点比 packument 缓存新）。
 - **artifact 过期**：审批拖过 30 天导致 publish 取不到产物时，用 `skip-version=true` 重跑
   （版本已在 main，只需重新构建与发布）。
+- **用户装不上刚发的包（`EUNSUPPORTEDPROTOCOL "catalog:"`）**：published manifest 里残
+  留了 `catalog:`。2026-11-03 引入 pnpm catalog 后发生过一次（0.6.x–0.7.x 的
+  `@napuketto/network` / `adapter` / `loader`）：`changeset version` 只改写 `workspace:*`，
+  `catalog:` 只能由发布链（`release-npm.ts` → `rewriteDependencyProtocols`，按
+  `pnpm-workspace.yaml` 的 catalog 段解析）改写。现在改写后会断言四个依赖字段无
+  `workspace:` / `catalog:` 残留，有残留直接中断发布。自查顺序：① `npm view <包>@<版本>
+  dependencies` 是否还有 `catalog:`；② 发布链是否跑的最新 `tooling/release`；③ 新写的
+  `catalog:` 条目是否真的在 `pnpm-workspace.yaml` 里（缺条目发布链会报错，不会静默发）。
+  已发出的坏版本只能靠下一个补丁版本覆盖，npm 不允许重发同一版本。
 - **没有待发布包**：先检查 `.changeset/` 是否有 pending 条目；没有则 `changed=false`，
   不会升版本。
 
