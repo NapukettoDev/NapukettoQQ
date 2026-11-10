@@ -102,8 +102,8 @@ interface LinuxRelease {
     updateDate: string;
     /** x64 deb 下载 URL。 */
     x64Deb: string;
-    /** arm64 deb 下载 URL（当前不自动维护，可能为 null）。 */
-    arm64Deb: string | null;
+    /** arm64 deb 下载 URL（当前不自动登记条目，但解析仍要求存在）。 */
+    arm64Deb: string;
 }
 
 /** 官方下载配置解析出的 Windows 最新版本。 */
@@ -421,15 +421,12 @@ function parseLinuxConfig(text: string): LinuxRelease | null {
         marketingVersion: readMarketingVersion(obj),
         updateDate: readString(obj, "updateDate"),
         x64Deb: readDebUrl(obj["x64DownloadUrl"]),
+        arm64Deb: readDebUrl(obj["armDownloadUrl"]),
     };
     if (Object.values(fields).includes(null)) {
         return null;
     }
-    // arm64 当前不自动维护（见 LINUX_MAINTAINED_ARCHES），URL 缺失不算结构错误
-    return {
-        ...(fields as Omit<LinuxRelease, "arm64Deb">),
-        arm64Deb: readDebUrl(obj["armDownloadUrl"]),
-    };
+    return fields as LinuxRelease;
 }
 
 /** 取 `x64DownloadUrl.deb` 一类的 URL 字段（非 https 或缺失返回 null）。 */
@@ -533,7 +530,15 @@ async function buildLinuxEntry(
         // 与 Windows 同理：请求走小写路径段，清单仍存官方原样 URL
         const sha256 = await downloadFileWithRetry(normalizeDownloadUrl(url), debPath);
         info(`Linux ${arch} sha256: ${sha256}`);
-        const version = await debClientVersion(debPath, tmp);
+        // 解包失败（7z 缺失/归档损坏）只影响 Linux 这一侧：warn 后跳过该架构，
+        // 不能让异常冒到 main（那会把 Windows 侧已算好的更新一起丢掉）
+        let version: string | null;
+        try {
+            version = await debClientVersion(debPath, tmp);
+        } catch (err) {
+            warn(`Linux ${arch} deb 解包失败（${errorMessage(err)}），跳过该架构`);
+            return null;
+        }
         if (version === null) {
             warn(`Linux ${arch} 无法从 deb 解析客户端版本，跳过该架构`);
             return null;
@@ -564,16 +569,14 @@ async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promis
     info(`Linux 官方最新: 版本=${release.marketingVersion} 日期=${release.updateDate}`);
     let entries = known;
     let changed = false;
-    const targets: readonly { arch: QqReleaseArch; url: string | null }[] =
-        LINUX_MAINTAINED_ARCHES.map((arch) => ({
+    const targets: readonly { arch: QqReleaseArch; url: string }[] = LINUX_MAINTAINED_ARCHES.map(
+        (arch) => ({
             arch,
             url: arch === "arm64" ? release.arm64Deb : release.x64Deb,
-        }));
+        }),
+    );
     for (const target of targets) {
         const { url } = target;
-        if (url === null) {
-            continue;
-        }
         const existing = entries.find(
             (entry) => releasePlatform(entry) === "linux" && (entry.arch ?? "x64") === target.arch,
         );
