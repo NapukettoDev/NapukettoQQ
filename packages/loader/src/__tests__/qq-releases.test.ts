@@ -148,18 +148,19 @@ describe("loadQqReleases", () => {
         const file = loadQqReleases();
         expect(file.schema).toBe(2);
         expect(file.known.length).toBeGreaterThan(0);
-        const win = file.known.find((entry) => releasePlatform(entry) === "win32");
-        expect(win).toBeDefined();
-        expect(win?.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
-        expect(win?.url).toMatch(/^https:\/\//);
-        expect(typeof win?.appid).toBe("number");
-        expect(win?.source).toBe("official");
-        const linux = file.known.find((entry) => releasePlatform(entry) === "linux");
-        expect(linux).toBeDefined();
-        expect(linux?.version).toBe("3.2.35-54395");
-        expect(linux?.coreVersion).toBe("9.9.37");
-        expect(linux?.url.endsWith(".deb")).toBe(true);
-        expect(linux?.sha256).toMatch(/^[0-9a-f]{64}$/);
+        // 用 latestRelease（真实安装链的选版口径）而非 find：known 会被
+        // update-qq-releases 自动追加条目，断言具体版本号/首条匹配会让发布链
+        // 在每次清单更新后红灯（2026-11-10 事故：追加了较旧的 3.2.34 条目）。
+        const win = latestRelease(file, { platform: "win32", arch: "x64" });
+        expect(win.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
+        expect(win.url).toMatch(/^https:\/\//);
+        expect(typeof win.appid).toBe("number");
+        expect(win.source).toBe("official");
+        const linux = latestRelease(file, { platform: "linux", arch: "x64" });
+        expect(linux.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);
+        expect(linux.coreVersion).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(linux.url.endsWith(".deb")).toBe(true);
+        expect(linux.sha256).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it("清单文件缺失 → QqReleasesError（安装不完整提示）", () => {
