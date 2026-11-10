@@ -24,11 +24,13 @@ import { resolveDataRoot } from "./data-root.js";
 import { isLinuxNativeEnabled } from "./linux-native.js";
 import { downloadFile } from "./qq-download.js";
 import {
+    bundledSevenZipSupported,
     clearCacheVersion,
     extractDebInstaller,
     extractInstaller,
     extractLinuxWrapperFiles,
     extractWrapperFiles,
+    findSystemSevenZip,
 } from "./qq-extract.js";
 import {
     latestRelease,
@@ -321,8 +323,22 @@ export function linuxSevenZipUrl(): string {
  * 运行时下载既脆弱又依赖外网。内置资产彻底消灭该依赖。
  */
 export async function ensureLinuxSevenZip(
-    options: { dataRoot?: string } = {},
+    options: { dataRoot?: string; arch?: string } = {},
 ): Promise<{ exe: string; source: string }> {
+    // 0. 非 x64（arm64 等）：内置 7zz 是 x86-64 ELF，执行会直接 cannot execute
+    //    → 只能用系统 7-Zip（数据根缓存与官网下载兜底同样都是 x64 产物，跳过）
+    if (!bundledSevenZipSupported("linux", options.arch ?? process.arch)) {
+        const system = findSystemSevenZip();
+        if (system !== null) {
+            return { exe: system, source: "系统 PATH（当前架构无内置 7zz）" };
+        }
+        throw new Error(
+            `当前架构（${options.arch ?? process.arch}）没有可用的 7-Zip：内置 7zz 是 x86-64 二进制，` +
+                "无法在本机执行。请安装系统 7-Zip（Debian/Ubuntu: apt install 7zip 或 p7zip-full；" +
+                "Fedora: dnf install p7zip），或用 NAPUTO_7Z_PATH 指定可执行文件",
+        );
+    }
+
     // 1. 内置资产（治本）：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
     const bundled = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "7zip", "7zz");
     if (existsSync(bundled)) {
