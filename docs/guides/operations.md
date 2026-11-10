@@ -99,6 +99,7 @@ node packages/loader/scripts/verify-lock.mjs
   找系统 `node.exe` 或下载 Windows 版 Node。
 - Linux/WSL：确认 wine 已安装（`wine --version`）；所有路径会被转成 `Z:\`，`PATH` 必须是
   纯 Windows 风格（分号分隔）。wine 缺失时 loader 会在 spawn 前给出安装提示。
+  Linux 还有一条**原生 ELF 分支**（`NAPUTO_LINUX_NATIVE=1`，不跑 wine），它的排障见 §4.8。
 
 ### 4.4 QQ 文件定位/下载失败
 
@@ -135,6 +136,46 @@ node packages/loader/scripts/verify-lock.mjs
 - 同一账号的 OB11 与 Satori 默认端口不同（3000/3001 vs 5500/5501），多账号部署时自行错开。
 - 鉴权失败：OB11 的 WS 以 4401 关闭；Satori HTTP 用 Bearer，WS 在 IDENTIFY 中带 token。
   token 为空表示不鉴权。
+
+### 4.8 Linux 原生宿主（`NAPUTO_LINUX_NATIVE=1`）
+
+Linux 默认仍走 wine；显式设 `NAPUTO_LINUX_NATIVE=1` 才切到「标准 Linux node + 最小
+`.so` stub + 官方 ELF `wrapper.node`」的原生分支。设计/实测依据见
+[linux-native-host.md](../architecture/linux-native-host.md)。
+
+**系统依赖（缺了会以不同方式失败）**
+
+| 依赖 | 作用 | 缺失症状 |
+|---|---|---|
+| `libgnutls.so.30`（Ubuntu 24.04 `libgnutls30t64`；Debian 12 `libgnutls30`） | `libbugly` 的隐藏依赖（无 `DT_NEEDED`，必须 preload） | spawn 前报「未找到系统 libgnutls.so.30」；或 dlopen 时 `undefined symbol: gnutls_free` |
+| `libx11-6` / `libx11-xcb1` / `libxext6` / `libxcb1` | `wrapper.node` 的 `DT_NEEDED` | `dlopen` 报 `libX11.so.6: cannot open shared object file` |
+| `libuuid1` | arm64 的 `wrapper.node` 缺 `uuid` 的 `DT_NEEDED`（x64 自带） | 首次 `uuid_generate` 时 symbol lookup error（arm64） |
+| 内置 `assets/7zip/7zz` | deb 解包；缺失时回退下载（要 `tar` + `xz-utils`） | 解包阶段报 7-Zip 相关错误 |
+
+**与 wine 分支的行为差异**
+
+- 不再下载 Windows `node.exe`、不做 `Z:\` 路径转换、不校验 `QQNT.dll`。
+- QQ 数据固定落在 **`<数据根>/nt_qq`**（不读写 `$HOME/Documents/Tencent Files`）。
+- 原生层残余的 `$HOME` 写入：`libbugly` 的崩溃记录走 `$HOME/.config/QQ/crash_files/`
+  （不受 `desktopGlobalPath` 控制）——查崩溃去**用户目录**，不在数据根里。
+- 只认 **ELF** 的 `wrapper.node`：误指向 `/mnt/c` 下的 Windows 安装（PE）会立刻报
+  「wrapper.node 不是 ELF（Linux 原生模式）」，不会走到 `dlopen`。
+- `libbugly` 会打印 `InitBuglyManager path:`、`getCrashDetailBeanFromRecord … open file
+  error` 一类原生行，属固有噪音（同 §4.6），不影响功能。
+
+**排障顺序**（从外到内）
+
+1. `NAPUTO_LINUX_NATIVE=1` 下若报「Linux stub 未找到」→ loader 包内
+   `native/build/linux-<arch>/libnapuketto_stub.so` 缺失（安装包不全），用
+   `NAPUTO_LINUX_STUB` 指到可用的 `.so`，或改用 wine 分支。
+2. 报 gnutls 相关 → 装系统 `libgnutls30t64` 后重试（loader 会自动 preload）。
+3. `dlopen` 报缺 `.so` → 按上表补 `libx11` / `libxext` / `libxcb` 等。
+4. 仍失败 → 用 `ldd <wrapper.node>` 看未解析项，并对照
+   [linux-native-host.md](../architecture/linux-native-host.md) §5 的依赖清单。
+
+**当前未覆盖**：arm64 运行期（仅 qemu 模拟验证，二进制承诺仅 x64）；他人消息的实时入站
+（需第二个账号）；视频/文件上传。完整阶段结论与验证数据集中在
+[linux-native-host.md](../architecture/linux-native-host.md)。
 
 ## 5. 诊断开关
 
