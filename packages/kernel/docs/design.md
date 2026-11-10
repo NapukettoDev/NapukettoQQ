@@ -185,6 +185,8 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
   getMsgEmojiLikesList（7 参），待观测。
 - downloadRichMedia 对 transferStatus≠2 消息的真实下载行为（本机所有样本已下载，
   无法自然构造未下载样本——签名已实证，行为按轮询策略防御）。
+- **文件发送**：通道已探明（BDH / BatchUpload / FlashTransfer，见 §14），但业务参数未校准，
+  `prepareFileElement` 仍是预留实现（`sendMsg` 恒 `sendStatus=0`）。
 
 ## 7. 登录域：快速登录超时兜底（T3，2026-09-10）
 
@@ -488,3 +490,150 @@ listener 没挂上、Msg 回调面零捕获）→ 精确名 `addKernel<简称>Li
 **修复**：路径按 `picPath → picUrl → sourcePath` 取值，空串视为缺失（Windows 侧
 `picPath`/`picUrl` 均有值，行为不变）；`canonical.url` 只在 `picUrl` 非空时提供，
 不伪造 CDN 域名。发送方向不受影响（`prepareImageElement` 走本地文件 md5 链路）。
+
+## 14. 文件发送通道探测（2026-11-10，通道已探明、上传未落地）
+
+`prepareFileElement` 目前是预留实现（`fileUuid: ""` + `sendMsg` → 恒 `sendStatus=0`）。
+本轮用运行时探测把「文件怎么发出去」的候选通道全部摸清，结论与卡点记录如下，供下一轮
+直接接续（探针脚本全部临时，不入库）。
+
+### 14.1 结论先行
+
+- **群文件列表无 NAPI 入口**：`getGroupService` 全方法实测 dump（约 200 个）里没有任何
+  文件上传/管理方法；`createFileGroupUpload` 只存在于 `NodeIKernelGuildFileTransferService`
+  （**频道**，不是群）。所以 OB11 `upload_group_file` 无法做到「进群文件列表」，
+  只能实现为**发一条文件消息**（或闪传卡片）。
+- **三条候选通道**：① `getBdhUploadService().uploadFile`（底层 BDH）；②
+  `getBatchUploadService()`（客户端「发送文件/媒体」的正式管线，**已经真实打到服务端**）；
+  ③ `getFlashTransferService()`（闪传，上传文件集 + 发卡片消息）。
+- **当前卡点**：②把任务真正跑起来了（回调链、进度、哈希全部正常），但服务端回
+  `170019002 Service Failure`（`stepErr=4`，约 50ms 快速失败）；①单独传 `filePath` 只得到
+  `status=199` + `url=""`。**业务参数（`sceneType`/`businessType`/`msgInfo`/`fileType.klass`）
+  仍未校准**，通道本身没被证伪。
+
+### 14.2 ① BDH：`getBdhUploadService()`
+
+session READY 之前返回 `undefined`（service 未挂载），READY 之后可用。方法面：
+
+```text
+addKernelBdhUploadListener, removeKernelBdhUploadListener, setBdhTestEnv,
+uploadFile, cancelUpload, processForTask, uploadSmartPttSlice
+```
+
+`uploadFile(req)` **只读 8 个属性**（Proxy 实测读取顺序）：
+
+```text
+commandId, filePath, bizInfo, priority, uploadTimeout, uuid, extInfo, upKey
+```
+
+返回 `uint64` 命令 id（`0` = 直接拒绝）；只给 `{ filePath }` 也能拿到非 0 id
+（`fileName`/`fileSize`/`fileMd5` 传了也不读，原生自己算 md5/sha1/sha256）。
+回调名是 **`onBdhComplete`**（不是 `onFileUpload*`），签名实测：
+
+```text
+onBdhComplete(commandId: string, status: number, <string>, info: {svrResult, url, fileVersion})
+```
+
+仅传 `filePath` 时实测 `status=199`、`svrResult=0`、`url=""`（无可用下载地址）。
+
+### 14.3 ② BatchUpload：正式管线（已跑到服务端）
+
+`getBatchUploadService()` 19 个方法（service 层，arity 为 0 参调用时断言实测）：
+
+```text
+createBatchUploadConfig(0) -> 返回带默认值的普通对象
+getBatchUploadManager(2) / getBatchUploadManagerId(2)
+startUploadSession(2) / addTaskToSession(3) / cancelUploadSession(2)
+suspendUploadSession(2) / resumeUploadSession(2)
+suspendUploadTask(2) / resumeUploadTask(2) / cancelUploadTask(2) / updateTaskInfo(2)
+updateTaskReadyStatus(4) / updateSessionBizInfo(3) / updateMaxConcurrentCount(2)
+getCachedSessions(1) / deleteCachedSession(2)
+removeBatchUploadManagerDelegate(2) / disableUploadThrottling(1)
+```
+
+`getBatchUploadManager(config, delegate)` 返回**管理器对象**，其方法面是 service 的子集且
+**arity 不同**：`addTaskToSession(2)`、`startUploadSession(1)`、`updateTaskInfo(1)`、
+`updateSessionBizInfo(2)`、`cancelUploadSession(1)`、`getCachedSessions(0)`。
+
+**config（`createBatchUploadConfig()` 直接给默认值，可直接改）**：
+
+```json
+{"maxConcurrentCount":4,"isStopOnNotWifi":false,"isDisableQuicUpload":false,
+ "isDisableBdhUpload":false,"strategy":3,
+ "bizConfig":{"appType":0,"agentType":0,"sceneType":0,
+   "c2cUserInfo":{"accountType":0,"uid":"","tempSessionKey":{}},
+   "groupUserInfo":{"groupCode":"0"}}}
+```
+
+**task / session 完整 schema**（原生按此逐字段读取，全字段都要给，缺一个嵌套对象就抛
+`Cannot convert undefined or null to object`）：
+
+```text
+task:    timeInfo{initUploadTimestamp, beginUploadTimestamp, finishUploadTimestamp,
+                  totalUploadTime},
+         taskId, seq, isReadyUpload, sessionId, status, isCompleted, bizTransInfo,
+         isUploadByBdh,
+         errorInfo{stepErr, detailErrCode, srvErrCode, errMsg,
+                   bizErrorInfo{errCode, errMsg, errTransInfo}},
+         businessType,
+         fileInfo{size, md5, sha1, cumulateSha1s, fileName,
+                  fileType{klass, pictureFormat, videoCodecFormat, audioCodecFormat},
+                  filePath, width, height, time, isOriginal},
+         extBizInfo{picExtBizInfo{…9 字段}, videoExtBizInfo{…3 字段}, busiType, bizTransInfo},
+         storageExtType, storageExtInfo, rspExtType, rspExtInfo,
+         ukey, ukeyTtlSec, ipv4, ipv6,
+         msgInfo{msg_info_body, ext_biz_info{…}}
+session: timeInfo{…}, sessionId, tasks[], status, successCount, failedCount,
+         bizInfo, enableCache
+```
+
+**delegate 回调**（注册时不读，事件到达时才取；实测名）：
+
+```text
+taskStatusDidUpdate(<native obj>, taskInfo, ?)     status: 1 → 4
+taskDidError(<native obj>, taskInfo)
+sessionStatusDidUpdate(<native obj>, sessionInfo, ?)
+sessionProgressDidUpdate(<native obj>, sessionId, uploaded, total, speed)
+sessionDidFinishUpload(<native obj>, sessionInfo)
+```
+
+实测轨迹：`status 1`（开始上传，时间戳写入）→ `status 4` + `errorInfo.stepErr=4`、
+`srvErrCode=170019002`、`errMsg="Service Failure"`；`sessionProgressDidUpdate` 报
+`0 / 52 / 2978909`；原生同时回填 `cumulateSha1s`（说明哈希与分片计算确实跑了）。
+
+**⚠️ 并发会崩**：同一个 manager 上连续启动多个 session（不同 `sessionId`）实测让原生
+进程 abort（Bugly 记录 signal + 栈），**一次只跑一个 session**。
+
+### 14.4 ③ FlashTransfer（闪传，语义是分享卡片）
+
+```text
+createFlashTransferUploadTask(2)：第 2 参读取
+  scene, name, uploaders, permission{code}, coverPath, coverOriginalInfos,
+  paths, albumFilePathList, excludePaths, expireLeftTime, validitySeconds,
+  uploadSceneType, isNeedDelDeviceInfo, isNeedDelLocation, pathsWithPrivacyInfo,
+  detectPrivacyInfoResult{exists, allDetectResults},
+  hybridFileInfos, announcement{announcementSegments, modifyTime, avatarUrl}
+sendFlashTransferMsg(1)：读取 targets, fileSetId
+shouldUseFlashTransfer(1) / getFileMetas(1)
+```
+
+即「先把本地 `paths` 传成一个文件集，拿到 `fileSetId`，再用 `sendFlashTransferMsg` 发卡片」。
+发出去的是闪传卡片而不是文件消息，与 OB11 `upload_group_file` 语义有偏差。
+
+### 14.5 探针方法（下一轮可直接复用）
+
+- **字段枚举**：wrapper 的 NAPI 绑定用**属性名**读取 JS 对象，传 `Proxy`（`get` 陷阱
+  记录 `String(k)`）即可拿到原生读取的字段名与顺序；未知嵌套字段返回「万能递归代理」
+  （任意属性再返回代理、可调用）就能让调用穿过去继续走。
+- **arity 枚举**：用 0 参调用读断言文本 `assertion (argc == N) failed: ... needs N arguments`，
+  argc 不符时原生只断言、无副作用，是零成本签名探测。
+- **不要**凭猜测并发跑多个上传 session（见 14.3 的崩溃）。
+
+### 14.6 下一轮的待校准项
+
+1. `bizConfig.{appType,agentType,sceneType}` 与 task `businessType`、`fileType.klass`
+   的真实取值（`businessType` 扫 0/1/2 都是同一个 `170019002`，说明不是单靠它决定）。
+2. `msgInfo.msg_info_body` 是否必须携带「待发送消息」的 PB body（batch upload 可能被设计成
+   绑定一条正在编辑的消息）。
+3. 若 batch upload 长期过不去，评估闪传兜底，或维持 `upload_group_file` 未实现并在
+   OB11 侧返回明确错误（不静默 `sendStatus=0`）。
