@@ -820,3 +820,19 @@ LD_PRELOAD="/stub/libnapuketto_stub.so:$GNUTLS:$UUID" DATA=/data WRAPPER=/qq/wra
 **仍未做**：真正的登录（快速登录需要票据、扫码需要人）、session READY、服务面调用与
 消息收发——这些在 qemu 下还会被 ~10x 的模拟开销放大，留给真机。
 
+### E.2 arm64 交付前还缺什么（清单，2026-11-10 复核）
+
+按“真机验证后一起做”的既定策略，把 arm64 从“能跑”推到“能发”还需要下面五项：
+
+| # | 缺什么 | 现状 / 证据 |
+|---|---|---|
+| 1 | arm64 stub 进私有 `native/` + loader 包 `files` | 目前只有 `native/build/linux-x64` 入包；arm64 产物是本机交叉编译的未跟踪文件 |
+| 2 | loader 的 `linuxPreload` 加 `libuuid` | 现在只 preload `stub:gnutls`；arm64 缺 `libuuid.so.1` 的 `DT_NEEDED`，首次 `uuid_generate` 会 symbol lookup error（E.1 里靠手工三件套绕过） |
+| 3 | 清单 arm64 条目 | `qq-releases.json` 只有 x64 linux 条目；清单自动化目前钉死 `LINUX_MAINTAINED_ARCHES = ["x64"]`（等真机后加 `"arm64"`） |
+| 4 | **内置 `7zz` 只有 x86-64** | `assets/7zip/7zz` 的 ELF `e_machine=0x3e`（x64）；在 arm64 容器里 `cannot execute`。arm64 用户解 deb 会失败 → 需要 arm64 版 7zz，或在 `findSevenZip` 里按架构回退到系统 `7z` / `7zz` |
+| 5 | 真机端到端 | 登录（快速/扫码）、session READY、消息收发、优雅退出，全部未在 arm64 真机跑过 |
+
+> 第 4 项是这次新增的：之前只想到「arm64 缺 libuuid」，没注意解包工具链本身也是 x64
+> 二进制——arm64 首跑前必须先解决，否则连 `ensureQqFiles` 都过不去。
+
+
