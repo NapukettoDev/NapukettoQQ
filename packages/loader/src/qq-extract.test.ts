@@ -12,12 +12,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    bundledSevenZipSupported,
     clearCacheVersion,
     extractDebInstaller,
     extractInstaller,
     extractLinuxWrapperFiles,
     extractWrapperFiles,
     findSevenZip,
+    findSystemSevenZip,
     isLinuxRuntimeFile,
 } from "./qq-extract.js";
 
@@ -110,6 +112,61 @@ describe("findSevenZip", () => {
             expect(result.source).toContain("内置资产");
         },
     );
+});
+
+describe("bundledSevenZipSupported / findSystemSevenZip", () => {
+    it("Linux 只有 x64 能用内置 7zz（arm64 上是 x86-64 二进制）", () => {
+        expect(bundledSevenZipSupported("linux", "arm64")).toBe(false);
+        expect(bundledSevenZipSupported("linux", "x64")).toBe(true);
+        // 非 Linux（Windows 资产是 x64 PE）不在此处限制
+        expect(bundledSevenZipSupported("win32", "arm64")).toBe(true);
+    });
+
+    it.skipIf(process.platform === "win32")(
+        "PATH 扫描（POSIX 冒号分隔）：7zz 优先于 7z，空项跳过",
+        () => {
+            const dirA = join(tmpRoot, "bin-a");
+            const dirB = join(tmpRoot, "bin-b");
+            mkdirSync(dirA, { recursive: true });
+            mkdirSync(dirB, { recursive: true });
+            writeFileSync(join(dirB, "7z"), "");
+
+            // 只有 7z → 命中 dirB
+            expect(findSystemSevenZip(`${dirA}:${dirB}`, "linux")).toBe(join(dirB, "7z"));
+            // 出现 7zz → 优先 7zz
+            writeFileSync(join(dirA, "7zz"), "");
+            expect(findSystemSevenZip(`:${dirA}:${dirB}`, "linux")).toBe(join(dirA, "7zz"));
+        },
+    );
+
+    it("找不到任何 7-Zip → null（跨平台）", () => {
+        expect(findSystemSevenZip(join(tmpRoot, "nope"), "linux")).toBeNull();
+        expect(findSystemSevenZip("", "linux")).toBeNull();
+    });
+
+    it.skipIf(process.platform === "win32")(
+        "findSevenZip：非 x64 Linux 跳过内置，命中系统 7z / 退化为字面量 7z",
+        () => {
+            const dir = join(tmpRoot, "sys-bin");
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(join(dir, "7z"), "");
+            vi.stubEnv("PATH", dir);
+            expect(findSevenZip("linux", "arm64").exe).toBe(join(dir, "7z"));
+            expect(findSevenZip("linux", "arm64").source).toContain("系统 PATH");
+            expect(findSevenZip("linux", "arm64").exe).not.toBe(BUNDLED_7Z);
+            // 系统里也没有 → 返回字面量（执行时才会 ENOENT，错误由解包层提示）
+            vi.stubEnv("PATH", join(tmpRoot, "empty"));
+            expect(findSevenZip("linux", "arm64").exe).toBe("7z");
+        },
+    );
+
+    it("Windows 只找 7z.exe（分号分隔）", () => {
+        const dir = join(tmpRoot, "win-bin");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "7z.exe"), "");
+        expect(findSystemSevenZip(dir, "win32")).toBe(join(dir, "7z.exe"));
+        expect(findSystemSevenZip(dir, "linux")).toBeNull();
+    });
 });
 
 describe("extractInstaller", () => {

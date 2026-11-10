@@ -74,18 +74,62 @@ export interface ExtractOptions {
 }
 
 /**
+ * 内置 7z 资产是否适用于当前平台/架构。
+ *
+ * 内置 `assets/7zip/7zz` 是 **x86-64 ELF**（`e_machine=0x3e`），`7z.exe` 是 x64 PE。
+ * 在 Linux arm64 上 exec 会直接 `cannot execute`（2026-11-10 在 arm64 容器实测）——
+ * 因此 Linux 非 x64 一律回退到系统 7-Zip（`7zz` / `7z`），不碰内置资产。
+ */
+export function bundledSevenZipSupported(
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): boolean {
+    return platform !== "linux" || arch === "x64";
+}
+
+/** 在 PATH 里找系统 7-Zip（`7zz` 优先、其次 `7z`）；找不到返回 null。 */
+export function findSystemSevenZip(
+    pathValue: string = process.env["PATH"] ?? "",
+    platform: NodeJS.Platform = process.platform,
+): string | null {
+    const delimiter = platform === "win32" ? ";" : ":";
+    const names = platform === "win32" ? ["7z.exe"] : ["7zz", "7z"];
+    for (const dir of pathValue.split(delimiter)) {
+        if (dir === "") {
+            continue;
+        }
+        for (const name of names) {
+            const candidate = join(dir, name);
+            if (existsSync(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    return null;
+}
+
+/**
  * 探测 7z 可执行文件：
  *   NAPUTO_7Z_PATH 环境变量 > 内置资产（Windows assets/7zip/7z.exe、Linux
- *   assets/7zip/7zz——2026-08-14 治本，静态二进制已打进发布包）> 系统 PATH 7z。
+ *   assets/7zip/7zz——2026-08-14 治本，静态二进制已打进发布包；**仅 x64 Linux 可用**）
+ *   > 系统 PATH 7z。
+ *
+ * `platform` / `arch` 参数仅测试注入（缺省取 process）。
  */
-export function findSevenZip(): SevenZipResult {
+export function findSevenZip(
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): SevenZipResult {
     const envPath = process.env["NAPUTO_7Z_PATH"];
     if (envPath !== undefined && envPath !== "" && existsSync(envPath)) {
         return { exe: envPath, source: "环境变量 NAPUTO_7Z_PATH" };
     }
     // 内置资产：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
-    if (process.platform === "win32" || process.platform === "linux") {
-        const exeName = process.platform === "win32" ? "7z.exe" : "7zz";
+    if (
+        (platform === "win32" || platform === "linux") &&
+        bundledSevenZipSupported(platform, arch)
+    ) {
+        const exeName = platform === "win32" ? "7z.exe" : "7zz";
         const bundled = join(
             dirname(fileURLToPath(import.meta.url)),
             "..",
@@ -97,7 +141,11 @@ export function findSevenZip(): SevenZipResult {
             return { exe: bundled, source: "内置资产 assets/7zip" };
         }
     }
-    // 系统 PATH（Windows 装了 7-Zip 有 7z.exe；Linux p7zip-full 提供 7z 命令）
+    // 系统 PATH（Windows 装了 7-Zip 有 7z.exe；Linux p7zip-full / 7zip 提供 7z）
+    const system = findSystemSevenZip(process.env["PATH"] ?? "", platform);
+    if (system !== null) {
+        return { exe: system, source: "系统 PATH" };
+    }
     return { exe: "7z", source: "系统 PATH" };
 }
 

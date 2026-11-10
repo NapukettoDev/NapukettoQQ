@@ -584,3 +584,22 @@ startProtocols 判引导失败退出（回归 2026-09-06 的设计意图）。
   checkIdentity 改由登录消息面补位——logged_in 携带 selfInfo 时（driver-events
   `onLoggedIn` → bot.handleLoggedIn）复核账号一致性，不一致拒绝上线（同
   2026-08-20 生产事故防线）；同账号通过并同步昵称刷新。
+
+## 11. 解包工具与架构（2026-11-10）
+
+内置 `assets/7zip/7zz` 是 **x86-64 ELF**（`e_machine=0x3e`），`7z.exe` 是 x64 PE。
+在 Linux arm64 上 exec 内置 7zz 会直接 `cannot execute`（arm64 容器实测），所以解包
+工具的选择按架构分流：
+
+- `bundledSevenZipSupported(platform, arch)`：Linux 仅 `x64` 用内置资产；Windows 不受
+  此处限制（资产是 x64 PE，arm64 Windows 不在支持面）。
+- `findSystemSevenZip(path)`：按 PATH 扫 `7zz` → `7z`（Windows 只找 `7z.exe`），
+  找到即用。
+- `findSevenZip()`：`NAPUTO_7Z_PATH` > 内置（适用架构）> `findSystemSevenZip()`。
+- `ensureLinuxSevenZip({ arch })`：非 x64 **跳过**内置、数据根缓存与官网下载（三者都是
+  x64 产物），直接用系统 7-Zip；一个都没有时抛可读错误（提示 `apt install 7zip` /
+  `p7zip-full`，或用 `NAPUTO_7Z_PATH` 指定）。
+
+即：x64 Linux 行为不变（继续用内置 7zz，零网络依赖）；arm64 等非 x64 需要系统 7-Zip。
+arm64 交付前的其余缺口（stub 入包、libuuid 预加载、清单条目、真机验证）见
+[`docs/architecture/linux-native-host.md`](../../../docs/architecture/linux-native-host.md) 附录 E.2。

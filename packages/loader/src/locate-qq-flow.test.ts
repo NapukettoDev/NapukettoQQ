@@ -653,6 +653,26 @@ describe("ensureLinuxSevenZip", () => {
             expect(existsSync(join(tmpRoot, "runtime", "7zip"))).toBe(false);
         },
     );
+
+    it.skipIf(process.platform === "win32")(
+        "arm64：跳过内置 7zz（x86-64 二进制），用系统 7z",
+        async () => {
+            const binDir = join(tmpRoot, "arm-bin");
+            mkdirSync(binDir, { recursive: true });
+            writeFileSync(join(binDir, "7z"), "");
+            vi.stubEnv("PATH", binDir);
+            const info = await ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "arm64" });
+            expect(info.exe).toBe(join(binDir, "7z"));
+            expect(info.source).toContain("系统 PATH");
+        },
+    );
+
+    it("arm64：没有系统 7-Zip → 抛可读错误（提示装 7zip/p7zip-full）", async () => {
+        vi.stubEnv("PATH", join(tmpRoot, "empty-bin"));
+        await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "arm64" })).rejects.toThrow(
+            /没有可用的 7-Zip[\s\S]*apt install 7zip/,
+        );
+    });
 });
 
 describe("resolveFromRoot 结构校验（经 resolveQqFiles 显式根触发）", () => {
