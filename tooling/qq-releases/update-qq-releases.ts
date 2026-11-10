@@ -560,6 +560,28 @@ async function buildLinuxEntry(
     }
 }
 
+/**
+ * 取某架构下**版本最高**的 Linux 条目。
+ *
+ * 清单按设计保留历史版本（Windows 那边也是多条），所以同一 arch 可能有多条记录；
+ * 「URL 未变 → 跳过」必须拿最新那条比对。用 `find` 取首条会命中最早的历史条目 ——
+ * 于是每次 cron 都判定「URL 变了」、重复下载 190MB deb（2026-11-10 真实跑才发现）。
+ */
+function latestLinuxEntry(
+    entries: QqReleaseEntry[],
+    arch: QqReleaseArch,
+): QqReleaseEntry | undefined {
+    return entries
+        .filter((entry) => releasePlatform(entry) === "linux" && (entry.arch ?? "x64") === arch)
+        .reduce<QqReleaseEntry | undefined>(
+            (best, entry) =>
+                best === undefined || compareVersions(entry.version, best.version) > 0
+                    ? entry
+                    : best,
+            undefined,
+        );
+}
+
 /** Linux 更新单步：每架构比对 URL → 变更时下载/解版本 → 合并（失败只 warn）。 */
 async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promise<UpdateStep> {
     const release = await fetchLinuxRelease();
@@ -577,9 +599,7 @@ async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promis
     );
     for (const target of targets) {
         const { url } = target;
-        const existing = entries.find(
-            (entry) => releasePlatform(entry) === "linux" && (entry.arch ?? "x64") === target.arch,
-        );
+        const existing = latestLinuxEntry(entries, target.arch);
         if (existing !== undefined && existing.url === url) {
             info(`Linux ${target.arch} 已是最新（${existing.version}），URL 未变，跳过`);
             continue;

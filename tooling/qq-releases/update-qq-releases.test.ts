@@ -1132,6 +1132,59 @@ describe("Linux（deb）条目自动维护", () => {
         expect(mocks.httpsGet).not.toHaveBeenCalled();
     });
 
+    it("清单保留历史版本时，跳过判定看最新那条（否则每次 cron 都重下 190MB）", async () => {
+        // 两条 x64 记录：旧版（3.2.34，过期 URL）+ 最新版（3.2.35，等于官方 URL）
+        manifestContent = JSON.stringify({
+            schema: 2,
+            known: [
+                {
+                    version: "9.99.91-777777",
+                    url: OFFICIAL_URL,
+                    sha256: "bb".repeat(32),
+                    appid: 42,
+                    source: "official",
+                    buildDate: "2026-02-02",
+                },
+                {
+                    version: "3.2.34-54000",
+                    platform: "linux",
+                    arch: "x64",
+                    coreVersion: "9.9.36",
+                    url: "https://old.example/qq-amd64.deb",
+                    sha256: "cc".repeat(32),
+                    appid: 537403759,
+                    source: "official",
+                    buildDate: "2026-10-01",
+                },
+                {
+                    version: "3.2.35-54395",
+                    platform: "linux",
+                    arch: "x64",
+                    coreVersion: "9.9.37",
+                    url: LINUX_X64_DEB,
+                    sha256: "dd".repeat(32),
+                    appid: 537403759,
+                    source: "official",
+                    buildDate: "2026-11-03",
+                },
+            ],
+        });
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("Linux x64 已是最新（3.2.35-54395）"),
+            ),
+        ).toBe(true);
+    });
+
     it("--dry-run 且 Linux 有新版 → 只打印计划，不下载、不写清单", async () => {
         manifestContent = fixtureManifestWithLinux("https://old.example/qq-x64.deb", LINUX_ARM_DEB);
         process.argv = ["node", MODULE_PATH, "--dry-run"];
