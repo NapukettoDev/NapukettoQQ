@@ -20,6 +20,13 @@
  *
  * 容错：下载瞬态失败按 5s/15s 重试共 3 次；最终失败非零退出且不写清单（绝不写坏）。
  *
+ * Linux（2026-11-10 起）：额外抓官方 `linuxConfig.js`（`.../rainbow/linuxConfig.js`），
+ * 按 x64 / arm64 各自的 deb URL 维护 `platform: "linux"` + `arch` + `coreVersion` 条目。
+ * Linux 的客户端版本（`3.2.35-54395`）与该架构 appid 只能从 deb 内部取——这里只解出
+ * `resources/app/package.json`（KB 级），appid 沿用清单里同架构已有值（跨版本基本不变，
+ * 未知则记 0，运行时从 `major.node` 重解析）。Linux 侧失败只 warn 不抛：Windows 更新
+ * 成功仍要落盘（反之亦然），两侧互不拖累。
+ *
  * ⚠️ 下载 URL 归一化（2026-10-07，issue #6 根因）：官方 rainbow 给出的
  * `ntDownloadX64Url` 形如 `.../qqfile/QQNTV2/...`，腾讯 CDN 边缘 WAF 对字面量
  * `/QQNTV2/` 路径段 **区分大小写** 地拦截（403 + Content-Length: 0 + Return
@@ -35,7 +42,11 @@ import { get } from "node:https";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { QqReleaseEntry, QqReleasesFile } from "../../packages/loader/src/qq-releases.ts";
+import type {
+    QqReleaseArch,
+    QqReleaseEntry,
+    QqReleasesFile,
+} from "../../packages/loader/src/qq-releases.ts";
 import { normalizeDownloadUrl, releasePlatform } from "../../packages/loader/src/qq-releases.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,6 +67,44 @@ const MARKETING_VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 /** 7z 归档列表里的版本目录名（如 Files\versions\9.9.33-51802\...）。 */
 const VERSION_DIR_RE = /versions[\\/]([0-9]+\.[0-9]+\.[0-9]+-[0-9]+)[\\/]/g;
+
+/** Linux 官方下载配置（与 Windows 的 rainbow pcConfig 不同源）。 */
+const LINUX_CONFIG_URL = "https://cdn-go.cn/qq-web/im.qq.com_new/latest/rainbow/linuxConfig.js";
+
+/** linuxConfig.js 里的 `var params = {...};` 载荷。 */
+const LINUX_CONFIG_PARAMS_RE = /var\s+params\s*=\s*(\{[\s\S]*?\})\s*;/;
+
+/** deb URL 里的 QQNT 核心版本段（…/QQNTV2/9.9.37/release/…）。 */
+const CORE_VERSION_RE = /\/(\d+\.\d+\.\d+)\/release\//;
+
+/**
+ * deb 内客户端版本文件（解包后取它读 `version`）。
+ * ⚠️ 前缀 `./` 必须带：deb 的 `data.tar` 里路径是 `./opt/QQ/...`，不带前缀的过滤器
+ * 一条也匹配不到（2026-11-10 实测，7zz 静默输出 Files: 0）。
+ */
+const LINUX_APP_PACKAGE_JSON = "./opt/QQ/resources/app/package.json";
+
+/**
+ * 目前**自动维护**的 Linux 架构。
+ *
+ * 只开 x64：arm64 的 stub 产物、清单条目与 loader 预加载（libuuid）按既定策略要等
+ * **真机**验证后一起上（见 `docs/architecture/linux-native-host.md` §9.11 / 附录 E）。
+ * 自动更新若抢先写入 arm64 条目，等于给用户一个未验证的下载入口——因此这里先钉死
+ * x64，真机通过后把 "arm64" 加进数组即可（`arm64Deb` 已解析好，无需改别处）。
+ */
+const LINUX_MAINTAINED_ARCHES: readonly QqReleaseArch[] = ["x64"];
+
+/** Linux 官方配置解析结果（只取 deb 相关字段）。 */
+interface LinuxRelease {
+    /** 客户端营销版本（3.2.35）。 */
+    marketingVersion: string;
+    /** 构建日期（2026-11-03）。 */
+    updateDate: string;
+    /** x64 deb 下载 URL。 */
+    x64Deb: string;
+    /** arm64 deb 下载 URL（当前不自动登记条目，但解析仍要求存在）。 */
+    arm64Deb: string;
+}
 
 /** 官方下载配置解析出的 Windows 最新版本。 */
 interface WindowsRelease {
@@ -287,9 +336,26 @@ function compareVersions(a: string, b: string): number {
     return pa.build - pb.build;
 }
 
-/** 按 version 字段递增排序清单条目（返回新数组）。 */
+/** 平台排序权重（Windows 段在前，Linux 段在后，保持清单可读）。 */
+function platformRank(entry: QqReleaseEntry): number {
+    return releasePlatform(entry) === "linux" ? 1 : 0;
+}
+
+/** 架构排序权重（x64 在 arm64 前）。 */
+function archRank(entry: QqReleaseEntry): number {
+    return (entry.arch ?? "x64") === "arm64" ? 1 : 0;
+}
+
+/** 清单条目排序：平台段 → 版本 → 架构（返回新数组）。 */
 function sortEntries(entries: QqReleaseEntry[]): QqReleaseEntry[] {
-    return [...entries].sort((a, b) => compareVersions(a.version, b.version));
+    return [...entries].sort((a, b) => {
+        const byPlatform = platformRank(a) - platformRank(b);
+        if (byPlatform !== 0) {
+            return byPlatform;
+        }
+        const byVersion = compareVersions(a.version, b.version);
+        return byVersion !== 0 ? byVersion : archRank(a) - archRank(b);
+    });
 }
 
 /** 合并新条目：同版本替换（保留已有非零 appid），否则追加；按版本递增排序。 */
@@ -300,6 +366,261 @@ function mergeEntry(known: QqReleaseEntry[], entry: QqReleaseEntry): QqReleaseEn
         ...known.filter((item) => item.version !== entry.version),
         { ...entry, appid },
     ]);
+}
+
+/**
+ * 合并 Linux 条目：同 (version, platform=linux, arch) 替换并保留已有非零 appid，
+ * 否则追加。**不能**复用 mergeEntry——x64 与 arm64 的 version 字符串相同
+ * （都是 `3.2.35-54395`），只按 version 合并会把另一个架构覆盖掉。
+ */
+function mergeLinuxEntry(known: QqReleaseEntry[], entry: QqReleaseEntry): QqReleaseEntry[] {
+    const sameSlot = (item: QqReleaseEntry): boolean =>
+        item.version === entry.version &&
+        releasePlatform(item) === "linux" &&
+        (item.arch ?? "x64") === (entry.arch ?? "x64");
+    const existing = known.find(sameSlot);
+    const appid = existing !== undefined && existing.appid > 0 ? existing.appid : entry.appid;
+    return sortEntries([...known.filter((item) => !sameSlot(item)), { ...entry, appid }]);
+}
+
+/** 取 `linuxConfig.js` 里的 params 对象（正则不中/JSON 非法/非对象 → null）。 */
+function linuxConfigPayload(text: string): Record<string, unknown> | null {
+    const match = LINUX_CONFIG_PARAMS_RE.exec(text);
+    if (match?.[1] === undefined) {
+        return null;
+    }
+    try {
+        const parsed: unknown = JSON.parse(match[1]);
+        return typeof parsed === "object" && parsed !== null
+            ? (parsed as Record<string, unknown>)
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+/** 取三段数字的营销版本字段（缺失/格式不符 → null）。 */
+function readMarketingVersion(obj: Record<string, unknown>): string | null {
+    const version = obj["version"];
+    return typeof version === "string" && MARKETING_VERSION_RE.test(version) ? version : null;
+}
+
+/** 取字符串字段（缺失/空串 → null）。 */
+function readString(obj: Record<string, unknown>, key: string): string | null {
+    const value = obj[key];
+    return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** 从 `linuxConfig.js` 文本解析 Linux 最新版本与 deb URL（结构不符返回 null）。 */
+function parseLinuxConfig(text: string): LinuxRelease | null {
+    const obj = linuxConfigPayload(text);
+    if (obj === null) {
+        return null;
+    }
+    const fields = {
+        marketingVersion: readMarketingVersion(obj),
+        updateDate: readString(obj, "updateDate"),
+        x64Deb: readDebUrl(obj["x64DownloadUrl"]),
+        arm64Deb: readDebUrl(obj["armDownloadUrl"]),
+    };
+    if (Object.values(fields).includes(null)) {
+        return null;
+    }
+    return fields as LinuxRelease;
+}
+
+/** 取 `x64DownloadUrl.deb` 一类的 URL 字段（非 https 或缺失返回 null）。 */
+function readDebUrl(value: unknown): string | null {
+    if (typeof value !== "object" || value === null) {
+        return null;
+    }
+    const deb = (value as Record<string, unknown>)["deb"];
+    return typeof deb === "string" && deb.startsWith("https://") ? deb : null;
+}
+
+/** 从 deb URL 提取 QQNT 核心版本（…/QQNTV2/9.9.37/release/… → 9.9.37）。 */
+function coreVersionOf(url: string): string | null {
+    return CORE_VERSION_RE.exec(url)?.[1] ?? null;
+}
+
+/** 抓 Linux 官方配置；失败只 warn（Linux 侧不拖累 Windows 更新）。 */
+async function fetchLinuxRelease(): Promise<LinuxRelease | null> {
+    try {
+        const release = parseLinuxConfig(await fetchText(LINUX_CONFIG_URL));
+        if (release === null) {
+            warn(`Linux 官方配置结构不符，跳过 Linux 条目：${LINUX_CONFIG_URL}`);
+        }
+        return release;
+    } catch (err) {
+        warn(`Linux 官方配置获取失败（${errorMessage(err)}），跳过 Linux 条目`);
+        return null;
+    }
+}
+
+/** 执行 7z（解包/提取），返回 stdout；失败抛可读错误。 */
+async function runSevenZip(sevenZip: string, args: string[]): Promise<string> {
+    return new Promise((resolvePromise, reject) => {
+        execFile(sevenZip, args, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+            if (err !== null) {
+                const code = (err as NodeJS.ErrnoException).code;
+                const hint =
+                    code === "ENOENT"
+                        ? `未找到 7-Zip: ${sevenZip}`
+                        : `7z 执行失败（${args[0] ?? ""}）：${stderr.trim() || err.message}`;
+                reject(new Error(hint));
+                return;
+            }
+            resolvePromise(stdout);
+        });
+    });
+}
+
+/**
+ * 三层解包 deb 并只取 `resources/app/package.json`，读客户端版本（3.2.35-54395）。
+ * 只提取 KB 级文件（不落 600MB 解包树）：`7z e` 按路径过滤直接展平输出。
+ */
+async function debClientVersion(debPath: string, workDir: string): Promise<string | null> {
+    const sevenZip = findSevenZip();
+    const d0 = join(workDir, "d0");
+    const d1 = join(workDir, "d1");
+    const d2 = join(workDir, "d2");
+    await runSevenZip(sevenZip, ["x", debPath, `-o${d0}`, "-y"]);
+    const payload = [join(d0, "data.tar.xz"), join(d0, "data.tar")].find((p) => existsSync(p));
+    if (payload === undefined) {
+        warn("deb 内未找到 data.tar(.xz)");
+        return null;
+    }
+    await runSevenZip(sevenZip, ["x", payload, `-o${d1}`, "-y"]);
+    const dataTar = join(d1, "data.tar");
+    if (!existsSync(dataTar)) {
+        warn("deb 载荷内未找到 data.tar");
+        return null;
+    }
+    await runSevenZip(sevenZip, ["e", dataTar, LINUX_APP_PACKAGE_JSON, `-o${d2}`, "-y"]);
+    const pkgPath = join(d2, "package.json");
+    if (!existsSync(pkgPath)) {
+        warn(`deb 内未找到 ${LINUX_APP_PACKAGE_JSON}`);
+        return null;
+    }
+    try {
+        const parsed: unknown = JSON.parse(readFileSync(pkgPath, "utf8"));
+        const version =
+            typeof parsed === "object" && parsed !== null
+                ? (parsed as Record<string, unknown>)["version"]
+                : undefined;
+        return typeof version === "string" && version !== "" ? version : null;
+    } catch {
+        warn("deb 内 package.json 解析失败");
+        return null;
+    }
+}
+
+/** 下载 deb 并组装 Linux 条目（版本从 deb 内取；appid 沿用已有值，未知记 0）。 */
+async function buildLinuxEntry(
+    arch: QqReleaseArch,
+    url: string,
+    release: LinuxRelease,
+    coreVersion: string,
+    existing: QqReleaseEntry | undefined,
+): Promise<QqReleaseEntry | null> {
+    const tmp = mkdtempSync(join(tmpdir(), `napuketto-qq-linux-${arch}-`));
+    try {
+        const debPath = join(tmp, "qq.deb");
+        info(`Linux ${arch}：下载 deb 并计算 sha256…`);
+        // 与 Windows 同理：请求走小写路径段，清单仍存官方原样 URL
+        const sha256 = await downloadFileWithRetry(normalizeDownloadUrl(url), debPath);
+        info(`Linux ${arch} sha256: ${sha256}`);
+        // 解包失败（7z 缺失/归档损坏）只影响 Linux 这一侧：warn 后跳过该架构，
+        // 不能让异常冒到 main（那会把 Windows 侧已算好的更新一起丢掉）
+        let version: string | null;
+        try {
+            version = await debClientVersion(debPath, tmp);
+        } catch (err) {
+            warn(`Linux ${arch} deb 解包失败（${errorMessage(err)}），跳过该架构`);
+            return null;
+        }
+        if (version === null) {
+            warn(`Linux ${arch} 无法从 deb 解析客户端版本，跳过该架构`);
+            return null;
+        }
+        info(`Linux ${arch} 版本: ${version}（core ${coreVersion}）`);
+        return {
+            version,
+            platform: "linux",
+            arch,
+            coreVersion,
+            url,
+            sha256,
+            appid: existing?.appid ?? 0,
+            source: "official",
+            buildDate: release.updateDate,
+        };
+    } finally {
+        await rm(tmp, { recursive: true, force: true });
+    }
+}
+
+/**
+ * 取某架构下**版本最高**的 Linux 条目。
+ *
+ * 清单按设计保留历史版本（Windows 那边也是多条），所以同一 arch 可能有多条记录；
+ * 「URL 未变 → 跳过」必须拿最新那条比对。用 `find` 取首条会命中最早的历史条目 ——
+ * 于是每次 cron 都判定「URL 变了」、重复下载 190MB deb（2026-11-10 真实跑才发现）。
+ */
+function latestLinuxEntry(
+    entries: QqReleaseEntry[],
+    arch: QqReleaseArch,
+): QqReleaseEntry | undefined {
+    return entries
+        .filter((entry) => releasePlatform(entry) === "linux" && (entry.arch ?? "x64") === arch)
+        .reduce<QqReleaseEntry | undefined>(
+            (best, entry) =>
+                best === undefined || compareVersions(entry.version, best.version) > 0
+                    ? entry
+                    : best,
+            undefined,
+        );
+}
+
+/** Linux 更新单步：每架构比对 URL → 变更时下载/解版本 → 合并（失败只 warn）。 */
+async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promise<UpdateStep> {
+    const release = await fetchLinuxRelease();
+    if (release === null) {
+        return { entries: known, changed: false };
+    }
+    info(`Linux 官方最新: 版本=${release.marketingVersion} 日期=${release.updateDate}`);
+    let entries = known;
+    let changed = false;
+    const targets: readonly { arch: QqReleaseArch; url: string }[] = LINUX_MAINTAINED_ARCHES.map(
+        (arch) => ({
+            arch,
+            url: arch === "arm64" ? release.arm64Deb : release.x64Deb,
+        }),
+    );
+    for (const target of targets) {
+        const { url } = target;
+        const existing = latestLinuxEntry(entries, target.arch);
+        if (existing !== undefined && existing.url === url) {
+            info(`Linux ${target.arch} 已是最新（${existing.version}），URL 未变，跳过`);
+            continue;
+        }
+        const coreVersion = coreVersionOf(url);
+        if (coreVersion === null) {
+            warn(`Linux ${target.arch} URL 无法解析 QQNT 核心版本，跳过：${url}`);
+            continue;
+        }
+        if (dryRun) {
+            info(`[dry-run] 将更新 Linux ${target.arch} 条目（core=${coreVersion}，URL=${url}）`);
+            continue;
+        }
+        const entry = await buildLinuxEntry(target.arch, url, release, coreVersion, existing);
+        if (entry === null) {
+            continue;
+        }
+        entries = mergeLinuxEntry(entries, entry);
+        changed = true;
+    }
+    return { entries, changed };
 }
 
 /** 解析安装包内部版本目录名：7z 列归档优先，失败/不可用回退字节扫描。 */
@@ -381,11 +702,14 @@ function saveManifest(manifest: QqReleasesFile): void {
     writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 4)}\n`, "utf8");
 }
 
-/** 主流程（可被 CLI 直接调用；返回退出码）。 */
-async function main(argv: readonly string[]): Promise<number> {
-    const { dryRun } = parseArgs(argv);
-    const manifest = loadManifest();
+/** 单步（Windows / Linux）更新结果：changed=false 时不落盘，entries 供下一步合并。 */
+interface UpdateStep {
+    entries: QqReleaseEntry[];
+    changed: boolean;
+}
 
+/** Windows 更新单步：抓 rainbow → 比对 → 下载 → 解版本号 → 合并（原 main 行为不变）。 */
+async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Promise<UpdateStep> {
     // 1. 抓官方下载配置，解析最新 Windows 版本 + 下载 URL
     const release = await fetchLatestRelease();
     if (release === null) {
@@ -407,7 +731,7 @@ async function main(argv: readonly string[]): Promise<number> {
     const latest = sorted[sorted.length - 1];
     if (latest !== undefined && latest.url === release.x64Url) {
         info(`清单已是最新（${latest.version}），URL 未变，无需更新`);
-        return 0;
+        return { entries: manifest.known, changed: false };
     }
     if (
         latest !== undefined &&
@@ -416,7 +740,7 @@ async function main(argv: readonly string[]): Promise<number> {
         info(
             `官方返回营销版本 ${release.marketingVersion} 低于清单 ${latest.version}，跳过（防降级）`,
         );
-        return 0;
+        return { entries: manifest.known, changed: false };
     }
 
     if (dryRun) {
@@ -424,7 +748,7 @@ async function main(argv: readonly string[]): Promise<number> {
             `[dry-run] 将新增/更新条目: ${release.marketingVersion}-<构建号>（URL=${release.x64Url}）`,
         );
         info("[dry-run] 未下载、未写清单（--dry-run）");
-        return 0;
+        return { entries: manifest.known, changed: false };
     }
 
     // 3. 下载安装包 + 流式 sha256
@@ -453,10 +777,27 @@ async function main(argv: readonly string[]): Promise<number> {
             source: "official",
             buildDate: release.updateDate,
         });
-        saveManifest({ schema: manifest.schema, known: merged });
-        info(`✅ 已更新清单: ${version}（共 ${merged.length} 条，按版本递增）`);
+        info(`✅ Windows 条目: ${version}`);
+        return { entries: merged, changed: true };
     } finally {
         await rm(tmp, { recursive: true, force: true });
+    }
+}
+
+/** 主流程（可被 CLI 直接调用；返回退出码）：Windows 与 Linux 两侧各跑一次，合并后落盘。 */
+async function main(argv: readonly string[]): Promise<number> {
+    const { dryRun } = parseArgs(argv);
+    const manifest = loadManifest();
+
+    const windows = await updateWindowsStep(manifest, dryRun);
+    const linux = await updateLinuxStep(windows.entries, dryRun);
+    const known = linux.entries;
+
+    if (windows.changed || linux.changed) {
+        saveManifest({ schema: manifest.schema, known });
+        info(`✅ 已更新清单（共 ${known.length} 条，Windows 在前、Linux 在后）`);
+    } else {
+        info("清单无需更新");
     }
     return 0;
 }

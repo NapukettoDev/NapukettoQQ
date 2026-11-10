@@ -51,9 +51,10 @@
     // release-npm）共用同一段「被直接执行时跑 main」的入口 guard（15 行命令行样板）。
     // 它是 node: CLI 的惯用样板，不是可抽取的业务逻辑。键格式 <fingerprint>:<实例数>，
     // 内容或实例数一变就会重新上报，逼人重新复核。
+    // 2026-11-10：update-qq-releases 增加 Linux 段后指纹变化（b7712e81），复核后仍豁免。
     "duplicates": {
         "ignoredClones": [
-            "dup:6f87acd9:2"
+            "dup:b7712e81:2"
         ]
     },
     // 预留导出豁免（勿删）：sendLog 是日志转发到 koishi 控制台（koishi 侧

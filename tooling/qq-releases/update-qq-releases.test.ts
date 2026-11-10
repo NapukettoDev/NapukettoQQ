@@ -9,7 +9,7 @@
  * 回退、清单合并落盘（按版本递增、官方 URL 原样入库）。
  */
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -926,5 +926,467 @@ describe("官方配置结构变体", () => {
                 String(call[0]).includes("fetch-network-string"),
             ),
         ).toBe(true);
+    });
+});
+
+// —— Linux（deb）条目自动维护（2026-11-10）——
+
+/** 官方 linuxConfig.js 的 deb URL（含大写 QQNTV2 段，验证下载归一化）。 */
+const LINUX_X64_DEB =
+    "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_amd64_01.deb";
+const LINUX_ARM_DEB =
+    "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_arm64_01.deb";
+
+/** linuxConfig.js 夹具（脚本只解析 `var params = {...};` 载荷）。 */
+function linuxConfig(x64Deb = LINUX_X64_DEB, armDeb = LINUX_ARM_DEB): string {
+    const params = JSON.stringify({
+        version: "3.2.35",
+        x64DownloadUrl: { deb: x64Deb, rpm: "https://x/x.rpm" },
+        armDownloadUrl: { deb: armDeb },
+        updateDate: "2026-11-03",
+    });
+    // 夹具刻意只保留 `var params = {…};` 这一行、不包 IIFE 函数体：
+    // CodeQL 的 code-construction 规则会把「从参数拼出函数体字符串」当可疑的代码生成
+    // （这里只是测试夹具文本，脚本只做正则 + JSON.parse）。
+    return `var params = ${params};`;
+}
+
+/** 清单夹具：Windows 一条（url 可设成官方 URL 触发 no-op）+ Linux x64/arm64 两条旧条目。 */
+function fixtureManifestWithLinux(x64Url: string, armUrl: string): string {
+    return JSON.stringify({
+        schema: 2,
+        known: [
+            {
+                version: "9.99.91-777777",
+                url: OFFICIAL_URL,
+                sha256: "bb".repeat(32),
+                appid: 42,
+                source: "official",
+                buildDate: "2026-02-02",
+            },
+            {
+                version: "3.2.35-54395",
+                platform: "linux",
+                arch: "x64",
+                coreVersion: "9.9.37",
+                url: x64Url,
+                sha256: "cc".repeat(32),
+                appid: 537403759,
+                source: "official",
+                buildDate: "2026-11-03",
+            },
+            {
+                version: "3.2.35-54395",
+                platform: "linux",
+                arch: "arm64",
+                coreVersion: "9.9.36",
+                url: armUrl,
+                sha256: "dd".repeat(32),
+                appid: 0,
+                source: "official",
+                buildDate: "2026-10-01",
+            },
+        ],
+    });
+}
+
+/** 7z 桩：Linux 三层解包后只留 data.tar(.xz) 与 resources/app/package.json。 */
+function stubLinuxSevenZip(version = "3.2.35-54395"): void {
+    mocks.execFile.mockImplementation(((
+        _cmd: string,
+        args: string[],
+        _opts: unknown,
+        cb: (err: null, stdout: string) => void,
+    ) => {
+        const [op = "", source = ""] = args;
+        const outDir = String(args[args.length - 2] ?? "").replace(/^-o/, "");
+        mkdirSync(outDir, { recursive: true });
+        if (op === "x" && source.endsWith(".deb")) {
+            writeFileSync(join(outDir, "data.tar.xz"), "");
+            cb(null, "");
+            return;
+        }
+        if (op === "x") {
+            writeFileSync(join(outDir, "data.tar"), "");
+            cb(null, "");
+            return;
+        }
+        writeFileSync(join(outDir, "package.json"), JSON.stringify({ name: "QQ", version }));
+        cb(null, "");
+    }) as never);
+}
+
+describe("Linux（deb）条目自动维护", () => {
+    /** 跑一次「Windows no-op + Linux 有新版」的更新，返回落盘清单（Linux 侧断言共用）。 */
+    async function runLinuxUpdate(): Promise<{
+        known: Array<{
+            version: string;
+            platform?: string;
+            arch?: string;
+            coreVersion?: string;
+            url: string;
+            sha256: string;
+            appid: number;
+        }>;
+    }> {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        // fetch 路由：Windows rainbow 配置 + Linux linuxConfig（按 URL 分流）
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string) =>
+                Promise.resolve(
+                    new Response(
+                        String(url).includes("linuxConfig")
+                            ? linuxConfig()
+                            : rainbowConfig(OFFICIAL_URL),
+                        { status: 200 },
+                    ),
+                ),
+            ),
+        );
+        stubLinuxSevenZip();
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+        return JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{
+                version: string;
+                platform?: string;
+                arch?: string;
+                coreVersion?: string;
+                url: string;
+                sha256: string;
+                appid: number;
+            }>;
+        };
+    }
+
+    it("x64 deb URL 变化 → 下载 + 从 deb 取版本 → 写入 platform/arch/coreVersion（appid 沿用）", async () => {
+        const saved = await runLinuxUpdate();
+        const x64Entry = saved.known.find(
+            (entry) => entry.platform === "linux" && entry.arch === "x64",
+        );
+        expect(x64Entry).toBeDefined();
+        expect(x64Entry?.version).toBe("3.2.35-54395"); // 版本取自 deb 内 package.json
+        expect(x64Entry?.coreVersion).toBe("9.9.37"); // 核心版本取自 URL 段
+        expect(x64Entry?.url).toBe(LINUX_X64_DEB); // 清单存官方原样 URL（大写 QQNTV2）
+        expect(x64Entry?.sha256).toBe(expectedSha256(installerBuf));
+        expect(x64Entry?.appid).toBe(537403759); // 沿用已有非零 appid
+    });
+
+    it("arm64 不自动维护（真机验证前）：原条目不动、只下一个 deb、Windows 仍在最前", async () => {
+        const saved = await runLinuxUpdate();
+        const armEntry = saved.known.find(
+            (entry) => entry.platform === "linux" && entry.arch === "arm64",
+        );
+        expect(armEntry?.url).toBe("https://old.example/qq-arm64.deb");
+        expect(armEntry?.coreVersion).toBe("9.9.36");
+        expect(armEntry?.sha256).toBe("dd".repeat(32));
+        // 平台分段排序：Windows 段在前，Linux 段在后且 x64 在 arm64 前
+        expect(saved.known[0]?.version).toBe("9.99.91-777777");
+        expect(
+            saved.known.filter((entry) => entry.platform === "linux").map((entry) => entry.arch),
+        ).toEqual(["x64", "arm64"]);
+        // 只下载了 x64 一个 deb，且请求走小写路径段
+        const requestedUrls = mocks.httpsGet.mock.calls.map((call) => String(call[0]));
+        expect(requestedUrls).toHaveLength(1);
+        expect(requestedUrls[0]).toContain("/qqntv2/");
+    });
+
+    it("Linux 配置不可用（HTTP 404）→ 只更新 Windows、不抛错、不写 Linux 条目", async () => {
+        manifestContent = fixtureManifest("https://old.example/qq.exe");
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }, { status: 404 }]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ platform?: string }>;
+        };
+        expect(saved.known.some((entry) => entry.platform === "linux")).toBe(false);
+    });
+
+    it("Linux 两个架构 URL 都未变 → 完全不下载、不写清单", async () => {
+        manifestContent = fixtureManifestWithLinux(LINUX_X64_DEB, LINUX_ARM_DEB);
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+    });
+
+    it("清单保留历史版本时，跳过判定看最新那条（否则每次 cron 都重下 190MB）", async () => {
+        // 两条 x64 记录：旧版（3.2.34，过期 URL）+ 最新版（3.2.35，等于官方 URL）
+        manifestContent = JSON.stringify({
+            schema: 2,
+            known: [
+                {
+                    version: "9.99.91-777777",
+                    url: OFFICIAL_URL,
+                    sha256: "bb".repeat(32),
+                    appid: 42,
+                    source: "official",
+                    buildDate: "2026-02-02",
+                },
+                {
+                    version: "3.2.34-54000",
+                    platform: "linux",
+                    arch: "x64",
+                    coreVersion: "9.9.36",
+                    url: "https://old.example/qq-amd64.deb",
+                    sha256: "cc".repeat(32),
+                    appid: 537403759,
+                    source: "official",
+                    buildDate: "2026-10-01",
+                },
+                {
+                    version: "3.2.35-54395",
+                    platform: "linux",
+                    arch: "x64",
+                    coreVersion: "9.9.37",
+                    url: LINUX_X64_DEB,
+                    sha256: "dd".repeat(32),
+                    appid: 537403759,
+                    source: "official",
+                    buildDate: "2026-11-03",
+                },
+            ],
+        });
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("Linux x64 已是最新（3.2.35-54395）"),
+            ),
+        ).toBe(true);
+    });
+
+    it("--dry-run 且 Linux 有新版 → 只打印计划，不下载、不写清单", async () => {
+        manifestContent = fixtureManifestWithLinux("https://old.example/qq-x64.deb", LINUX_ARM_DEB);
+        process.argv = ["node", MODULE_PATH, "--dry-run"];
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) =>
+                String(call[0]).includes("将更新 Linux x64 条目"),
+            ),
+        ).toBe(true);
+    });
+
+    // —— Linux 失败路径（只 warn、不写清单、退出码仍 0）——
+
+    /** 7z 行为签名（测试按需造出解包产物或注入错误）。 */
+    type SevenZipBehavior = (ctx: {
+        op: string;
+        source: string;
+        outDir: string;
+    }) => Error | undefined;
+
+    /** 跑一次「x64 有新版」的更新，7z 行为可定制（Windows 侧 no-op 不落盘）。 */
+    async function runLinuxUpdateWithSevenZip(behavior: SevenZipBehavior): Promise<void> {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((url: string) =>
+                Promise.resolve(
+                    new Response(
+                        String(url).includes("linuxConfig")
+                            ? linuxConfig()
+                            : rainbowConfig(OFFICIAL_URL),
+                        { status: 200 },
+                    ),
+                ),
+            ),
+        );
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            args: string[],
+            _opts: unknown,
+            cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+        ) => {
+            const [op = "", source = ""] = args;
+            const outDir = String(args[args.length - 2] ?? "").replace(/^-o/, "");
+            const err = behavior({ op, source, outDir });
+            cb(err ?? null, "", "");
+        }) as never);
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+    }
+
+    /** stderr 里是否出现某段提示。 */
+    function warned(fragment: string): boolean {
+        return stderrSpy.mock.calls.some((call: unknown[]) => String(call[0]).includes(fragment));
+    }
+
+    it("7z 不存在（ENOENT）→ warn「未找到 7-Zip」，不写清单、退出码 0", async () => {
+        await runLinuxUpdateWithSevenZip(() => {
+            const err = new Error("spawn ENOENT") as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            return err;
+        });
+        expect(process.exitCode).toBe(0);
+        expect(warned("未找到 7-Zip")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("7z 其他失败 → warn「7z 执行失败」，不写清单", async () => {
+        await runLinuxUpdateWithSevenZip(() => new Error("corrupt archive"));
+        expect(process.exitCode).toBe(0);
+        expect(warned("7z 执行失败")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("deb 内没有 data.tar(.xz) → warn 并跳过该架构", async () => {
+        await runLinuxUpdateWithSevenZip(() => undefined);
+        expect(warned("deb 内未找到 data.tar(.xz)")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("data.tar.xz 解包后没有 data.tar → warn 并跳过", async () => {
+        await runLinuxUpdateWithSevenZip(({ op, source, outDir }) => {
+            mkdirSync(outDir, { recursive: true });
+            if (op === "x" && source.endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "");
+            }
+            return undefined;
+        });
+        expect(warned("deb 载荷内未找到 data.tar")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("deb 内找不到 resources/app/package.json → warn 并跳过", async () => {
+        await runLinuxUpdateWithSevenZip(({ op, source, outDir }) => {
+            mkdirSync(outDir, { recursive: true });
+            if (op === "x" && source.endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "");
+            } else if (op === "x") {
+                writeFileSync(join(outDir, "data.tar"), "");
+            }
+            return undefined;
+        });
+        expect(warned("deb 内未找到")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("package.json 非法 JSON → warn 解析失败并跳过", async () => {
+        await runLinuxUpdateWithSevenZip(({ op, source, outDir }) => {
+            mkdirSync(outDir, { recursive: true });
+            if (op === "x" && source.endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "");
+            } else if (op === "x") {
+                writeFileSync(join(outDir, "data.tar"), "");
+            } else {
+                writeFileSync(join(outDir, "package.json"), "not-json");
+            }
+            return undefined;
+        });
+        expect(warned("package.json 解析失败")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("package.json 不是对象（JSON null）→ warn 无法解析版本并跳过", async () => {
+        await runLinuxUpdateWithSevenZip(({ op, source, outDir }) => {
+            mkdirSync(outDir, { recursive: true });
+            if (op === "x" && source.endsWith(".deb")) {
+                writeFileSync(join(outDir, "data.tar.xz"), "");
+            } else if (op === "x") {
+                writeFileSync(join(outDir, "data.tar"), "");
+            } else {
+                writeFileSync(join(outDir, "package.json"), "null");
+            }
+            return undefined;
+        });
+        expect(warned("无法从 deb 解析客户端版本")).toBe(true);
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it("deb URL 缺核心版本段 → warn 并跳过（不下载）", async () => {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        const noCoreUrl = "https://qqdl.gtimg.cn/qqfile/QQNTV2/release/QQ_amd64.deb";
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig(noCoreUrl) },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(warned("无法解析 QQNT 核心版本")).toBe(true);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(writtenManifests).toHaveLength(0);
+    });
+
+    it.each([
+        ["JSON 载荷非法", `var params = {oops};`],
+        [
+            "营销版本不是三段数字",
+            `var params = ${JSON.stringify({
+                version: "3.2",
+                x64DownloadUrl: { deb: LINUX_X64_DEB },
+                armDownloadUrl: { deb: LINUX_ARM_DEB },
+                updateDate: "2026-11-03",
+            })};`,
+        ],
+        [
+            "deb 字段不是对象",
+            `var params = ${JSON.stringify({
+                version: "3.2.35",
+                x64DownloadUrl: "https://x/x.deb",
+                armDownloadUrl: { deb: LINUX_ARM_DEB },
+                updateDate: "2026-11-03",
+            })};`,
+        ],
+    ])("linuxConfig 结构不符（%s）→ warn 并跳过 Linux，不下载不写清单", async (_label, body) => {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: body as string },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(warned("Linux 官方配置结构不符")).toBe(true);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(writtenManifests).toHaveLength(0);
     });
 });

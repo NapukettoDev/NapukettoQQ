@@ -5,6 +5,10 @@ name: update-qq-releases
 #   抓取 QQ 官方下载配置（rainbow pcConfig.json，im.qq.com 新版 SPA 的数据源）
 #   → 解析最新版号与下载链接 → 下载安装包计算 sha256 → 用内置 7-Zip 解析安装包
 #   内部版本目录名（含构建号）→ 更新 qq-releases.json（保留历史、按版本递增）。
+# Linux（2026-11-10 起）：同一脚本还会抓官方 linuxConfig.js，按 x64 deb 的 URL 变化
+#   更新 platform=linux / arch / coreVersion / sha256（版本取自 deb 内
+#   resources/app/package.json）。arm64 暂不自动登记（等真机验证，见
+#   packages/loader/docs/design.md §2.5），Linux 侧失败只 warn、不拖累 Windows 更新。
 #
 # 失败策略（2026-09-20 起）：更新步骤 continue-on-error，失败不刷红 CI——
 # 腾讯 CDN 的路径拦截（QQNTV2 路径段 2026-08-25 起被 WAF 按字面量大小写拦截）
