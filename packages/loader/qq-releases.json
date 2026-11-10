@@ -34,6 +34,17 @@
             "buildDate": "2026-11-03"
         },
         {
+            "version": "3.2.34-53644",
+            "platform": "linux",
+            "arch": "x64",
+            "coreVersion": "9.9.36",
+            "url": "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.36/release/9ee04bef/QQ_3.2.34_260924_amd64_01.deb",
+            "sha256": "436c65e1dd28422e128a21cbddb5fe4e2e6c079d7f27fec2541e014d38cc336e",
+            "appid": 537403759,
+            "source": "official",
+            "buildDate": "2026-09-24"
+        },
+        {
             "version": "3.2.35-54395",
             "platform": "linux",
             "arch": "x64",
