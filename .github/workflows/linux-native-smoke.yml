@@ -1,0 +1,80 @@
+# Linux 原生宿主 smoke（nightly + 手动）
+#
+# 目的：在公开仓（检不到私有 packages/loader/native 子模块）验证「用户装到的发布形态」
+# 能加载官方 Linux QQ 的 ELF wrapper.node。消费 npm 上已发布的 @napuketto/loader
+# tarball（files 自 0.6.x 起含 native/build/linux-x64，包里自带 stub 与 assets/7zip/7zz），
+# 不依赖源码构建。
+#
+# 覆盖：安装已发布 loader（真实安装形态）→ 打包回归（Linux stub 必须在包里）→
+# 调它的 ensureQqFiles（清单 → 官方 deb 下载 + sha256 → 包内 7zz 三层解包 →
+# extractLinuxWrapperFiles 缓存布局）→ LD_PRELOAD(stub + libgnutls) 真 dlopen →
+# 导出面断言（≥100 + NodeIQQNTWrapperEngine）。细节见 tooling/linux-native-smoke/README.md。
+#
+# 为什么不放进 CI 门禁（ci.yml）：
+#   - 单次要下 ~190MB deb，不适合每个 PR 都跑；
+#   - 依赖 npm 上已发布的版本，发布滞后于 PR，PR 上必然先红。
+# 触发面：每夜 04:47 UTC + workflow_dispatch（可指定 loader 版本复核历史版本）。
+# 刻意避开 update-qq-releases 的 03:17 UTC：两者都要连腾讯 CDN（那边先更新清单，这边
+# 再消费清单里的 deb URL/sha256），错开既避免并发拉同一个 190MB 包，也保证 smoke 读到
+# 的是当天已刷新的清单。
+#
+# 失败排查顺序：① tarball 里有没有 stub（打包）② deb sha256（清单）③ dlopen
+# （stub/gnutls/GLIBC）。全部有 [smoke] 前缀的可读提示。
+
+name: Linux native smoke
+
+on:
+    schedule:
+        - cron: "47 4 * * *"
+    workflow_dispatch:
+        inputs:
+            loader_version:
+                description: "@napuketto/loader 版本（缺省 latest）"
+                required: false
+                default: latest
+                type: string
+
+permissions:
+    contents: read
+
+concurrency:
+    group: linux-native-smoke
+    cancel-in-progress: false
+
+jobs:
+    smoke:
+        name: linux-native smoke (published loader + official deb)
+        runs-on: ubuntu-24.04
+        timeout-minutes: 40
+        steps:
+            - name: Checkout（不检 native 子模块）
+              uses: actions/checkout@v7
+
+            - name: Setup Node
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+
+            # libgnutls30t64 是 libbugly 的隐藏依赖（无 DT_NEEDED，必须 preload）；
+            # libx11-* / libxext6 / libxcb1 是 arm64 与 x64 wrapper.node 的 DT_NEEDED
+            # （干净 runner 上没有，dlopen 会报 `libX11.so.6: cannot open shared object
+            #  file`——2026-11-10 在干净 ubuntu:24.04 里实测踩到）；libuuid1 供 arm64。
+            # 7zz 用 loader 包内资产，不额外装 p7zip。
+            - name: 系统依赖
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                      libgnutls30t64 libuuid1 libx11-6 libx11-xcb1 libxext6 libxcb1
+
+            - name: 跑 smoke（发布包 stub + 官方 deb + dlopen）
+              env:
+                  LOADER_VERSION: ${{ inputs.loader_version || 'latest' }}
+              run: node tooling/linux-native-smoke/smoke.mjs
+
+            - name: 失败时打印环境信息
+              if: failure()
+              run: |
+                  node --version
+                  npm --version
+                  ldconfig -p | grep -E 'gnutls|libuuid' || true
+                  uname -a

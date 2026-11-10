@@ -10,7 +10,10 @@
     "entry": [
         "packages/loader/src/host/core/self-host.ts",
         "tooling/wine/wine-smoke.ts",
-        "tooling/wine/wine-login-smoke.ts"
+        "tooling/wine/wine-login-smoke.ts",
+        // Linux 原生宿主 smoke 的子进程脚本：由 smoke.mjs 用 spawnSync 拉起（真 dlopen），
+        // 静态分析看不到这层 spawn → 不声明就会被误报 unused-file（2026-11-10）。
+        "tooling/linux-native-smoke/dlopen-check.cjs"
     ],
     // 完全排除：packages/loader/native/ 是私有 Git Submodule（Native Bypass 载具），
     // 仅分发编译后二进制，源脚本（verify/tools）不进主仓库分析范围。
