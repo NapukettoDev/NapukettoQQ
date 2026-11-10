@@ -26,7 +26,10 @@ CI 检不到私有 `packages/loader/native` 子模块，所以这里**安装 npm
 ## 本地跑
 
 ```bash
-# 默认 loader=latest；Linux 主机（Ubuntu 24.04 需 libgnutls30t64）
+# 默认 loader=latest；Linux 主机需要：libgnutls30t64（libbugly 隐藏依赖，必须 preload）
+#   + libx11-6 / libx11-xcb1 / libxext6 / libxcb1（wrapper.node 的 DT_NEEDED）
+#   + libuuid1（arm64 缺 DT_NEEDED）；Ubuntu 24.04 一条命令：
+sudo apt-get install -y libgnutls30t64 libuuid1 libx11-6 libx11-xcb1 libxext6 libxcb1
 node tooling/linux-native-smoke/smoke.mjs
 node tooling/linux-native-smoke/smoke.mjs --loader-version 0.6.1 --work-dir /tmp/smoke-v2
 

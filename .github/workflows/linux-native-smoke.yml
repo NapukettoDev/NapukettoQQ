@@ -56,11 +56,15 @@ jobs:
                   node-version: 24
 
             # libgnutls30t64 是 libbugly 的隐藏依赖（无 DT_NEEDED，必须 preload）；
+            # libx11-* / libxext6 / libxcb1 是 arm64 与 x64 wrapper.node 的 DT_NEEDED
+            # （干净 runner 上没有，dlopen 会报 `libX11.so.6: cannot open shared object
+            #  file`——2026-11-10 在干净 ubuntu:24.04 里实测踩到）；libuuid1 供 arm64。
             # 7zz 用 loader 包内资产，不额外装 p7zip。
             - name: 系统依赖
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y --no-install-recommends libgnutls30t64
+                  sudo apt-get install -y --no-install-recommends \
+                      libgnutls30t64 libuuid1 libx11-6 libx11-xcb1 libxext6 libxcb1
 
             - name: 跑 smoke（发布包 stub + 官方 deb + dlopen）
               env:
