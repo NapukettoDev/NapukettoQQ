@@ -5,9 +5,10 @@
 # tarball（files 自 0.6.x 起含 native/build/linux-x64，包里自带 stub 与 assets/7zip/7zz），
 # 不依赖源码构建。
 #
-# 覆盖：打包回归（Linux stub 必须在 tarball 里）→ 官方 deb 下载 + sha256 →
-# 7zz 三层解包 → LD_PRELOAD(stub + libgnutls) 真 dlopen → 导出面断言（≥100 +
-# NodeIQQNTWrapperEngine）。细节见 tooling/linux-native-smoke/README.md。
+# 覆盖：安装已发布 loader（真实安装形态）→ 打包回归（Linux stub 必须在包里）→
+# 调它的 ensureQqFiles（清单 → 官方 deb 下载 + sha256 → 包内 7zz 三层解包 →
+# extractLinuxWrapperFiles 缓存布局）→ LD_PRELOAD(stub + libgnutls) 真 dlopen →
+# 导出面断言（≥100 + NodeIQQNTWrapperEngine）。细节见 tooling/linux-native-smoke/README.md。
 #
 # 为什么不放进 CI 门禁（ci.yml）：
 #   - 单次要下 ~190MB deb，不适合每个 PR 都跑；

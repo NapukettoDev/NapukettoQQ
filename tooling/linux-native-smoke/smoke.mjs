@@ -129,18 +129,20 @@ log(`Linux stub ${String(statSync(stub).size)} 字节`);
 
 // ── 3. 走真 loader 管线拿 wrapper.node（下载 + sha256 + 7zz 解包 + 缓存布局）──
 const loader = await import(pathToFileURL(entry).href);
-if (typeof loader.resolveQqFiles !== "function") {
-    fail("loader 没有导出 resolveQqFiles（版本过旧？）");
+if (typeof loader.ensureQqFiles !== "function") {
+    fail("loader 没有导出 ensureQqFiles（版本过旧？）");
 }
 const dataRoot = join(work, "data");
-const info = await loader.resolveQqFiles({
+// 用 ensureQqFiles 而不是 resolveQqFiles：后者会先探本机安装（开发机上可能命中
+// /mnt/c 的 Windows QQ，拿到 PE wrapper）；smoke 要的是确定性的「下载 → 解包 → 缓存」
+// 这条发布链路，clean CI 与本地都走同一条路。
+const info = await loader.ensureQqFiles({
     dataRoot,
-    autoDownload: true,
     onStage: (message) => log(`loader: ${message}`),
 });
 const wrapper = info.wrapperPath;
 if (!existsSync(wrapper)) {
-    fail(`resolveQqFiles 返回的 wrapperPath 不存在: ${wrapper}`);
+    fail(`ensureQqFiles 返回的 wrapperPath 不存在: ${wrapper}`);
 }
 const head = readFileSync(wrapper).subarray(0, 4);
 if (!head.equals(ELF_MAGIC)) {
