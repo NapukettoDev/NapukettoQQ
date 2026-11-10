@@ -17,6 +17,14 @@
     "ignorePatterns": [
         "packages/loader/native/**"
     ],
+    // 系统自带可执行文件（不是 npm 包提供，fallow 无法从依赖图推出）：
+    //  - ldconfig：loader 的 Linux 原生分支用它兜底解析系统 libgnutls（gnutlsCandidates
+    //    没命中时），属系统工具（glibc/ldconfig 包），不需要 npm 安装。
+    //    2026-11-10：Stage 3c 在 linux-native.ts 上方加代码后该行位移，增量门禁按新行号
+    //    重新上报，复核后按「系统提供」豁免。
+    "ignoreBinaries": [
+        "ldconfig"
+    ],
     // 未使用依赖豁免（用户拍板保留，勿删）：
     //  - @napuketto/network / @napuketto/adapter：cli 经 import.meta.resolve 动态解析（boot.ts），
     //    fallow 静态分析看不到

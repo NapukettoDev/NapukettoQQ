@@ -1,13 +1,17 @@
 /**
  * linux-native.ts：Linux 原生分支纯函数测试（不依赖真实 node/wrapper）。
  */
+import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
     defaultLinuxStubPath,
     gnutlsCandidates,
     isLinuxNativeEnabled,
+    LINUX_HOME_DIRNAME,
+    linuxHomeEnv,
     linuxPreload,
     linuxStubArchDir,
+    resolveLinuxHome,
 } from "../linux-native.js";
 
 describe("linuxStubArchDir / defaultLinuxStubPath", () => {
@@ -46,5 +50,55 @@ describe("isLinuxNativeEnabled", () => {
         if (process.platform !== "linux") {
             expect(isLinuxNativeEnabled()).toBe(false);
         }
+    });
+});
+
+describe("resolveLinuxHome", () => {
+    it("显式覆盖优先，且绝对化", () => {
+        expect(
+            resolveLinuxHome({
+                dataRoot: "/data",
+                cfgDir: "/data/10001",
+                explicit: "/custom/home",
+            }),
+        ).toBe(resolve("/custom/home"));
+    });
+
+    it("显式空串视为未设置（回退数据根）", () => {
+        expect(resolveLinuxHome({ dataRoot: "/data", cfgDir: "/data/10001", explicit: "" })).toBe(
+            join(resolve("/data"), LINUX_HOME_DIRNAME),
+        );
+    });
+
+    it("有数据根 → <数据根>/home", () => {
+        expect(resolveLinuxHome({ dataRoot: "/data", cfgDir: "/data/10001" })).toBe(
+            join(resolve("/data"), "home"),
+        );
+    });
+
+    it("无数据根 → <账号目录>/home，绝不继承用户 $HOME", () => {
+        expect(resolveLinuxHome({ cfgDir: "/data/10001" })).toBe(
+            join(resolve("/data/10001"), "home"),
+        );
+        expect(resolveLinuxHome({ dataRoot: "", cfgDir: "/data/10001" })).toBe(
+            join(resolve("/data/10001"), "home"),
+        );
+    });
+});
+
+describe("linuxHomeEnv", () => {
+    it("HOME 与四个 XDG 变量全部收敛到受管目录（不含 XDG_RUNTIME_DIR）", () => {
+        const home = resolve("/data/home");
+        expect(linuxHomeEnv(home)).toEqual({
+            HOME: home,
+            XDG_CONFIG_HOME: join(home, ".config"),
+            XDG_DATA_HOME: join(home, ".local", "share"),
+            XDG_CACHE_HOME: join(home, ".cache"),
+            XDG_STATE_HOME: join(home, ".local", "state"),
+        });
+    });
+
+    it("不再携带宿主的 XDG_RUNTIME_DIR（会话级目录语义不同）", () => {
+        expect(linuxHomeEnv("/data/home")).not.toHaveProperty("XDG_RUNTIME_DIR");
     });
 });

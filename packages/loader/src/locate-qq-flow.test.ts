@@ -19,9 +19,12 @@ import type { QqInstallInfo } from "./locate-qq.js";
 import {
     ensureLinuxSevenZip,
     ensureQqFiles,
+    LINUX_QQ_INSTALL_DIR,
     locateQqPath,
     QQ_FILES_DIR_NAME,
+    resolveLinuxQqInstall,
     resolveQqFiles,
+    tryResolveLinuxLocalQq,
 } from "./locate-qq.js";
 import { latestRelease, loadQqReleases } from "./qq-releases.js";
 
@@ -203,6 +206,7 @@ beforeEach(() => {
         "NAPUTO_QQ_PATH",
         "NAPUTO_QQ_FILES",
         "NAPUTO_QQ_URL",
+        "NAPUTO_QQ_DIR",
         "LOCALAPPDATA",
         "NAPUTO_7Z_PATH",
         "NAPUTO_7Z_URL",
@@ -243,6 +247,34 @@ function makeCache(dataRoot: string, version: string): string {
     mkdirSync(appDir, { recursive: true });
     writeFileSync(join(appDir, "wrapper.node"), "");
     return appDir;
+}
+
+/** ELF 魔数开头的假 wrapper（Linux 原生守卫用）。 */
+function elfBytes(): Buffer {
+    return Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from("rest")]);
+}
+
+/**
+ * 构造 Linux deb 扁平安装：<root>/qq + <root>/resources/app/{wrapper.node,package.json}。
+ * `variant` 注入异常形态：非 ELF wrapper / 缺 package.json / 缺 version 字段。
+ */
+function makeLinuxInstall(
+    version = "3.2.35-54395",
+    variant: "ok" | "pe" | "no-package" | "no-version" | "null-json" = "ok",
+): string {
+    const root = mkdtempSync(join(tmpdir(), "napuketto-linux-qq-"));
+    const appDir = join(root, "resources", "app");
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(join(appDir, "wrapper.node"), variant === "pe" ? "MZ" : elfBytes());
+    if (variant === "null-json") {
+        // JSON.parse("null") → null：合法 JSON 但不是对象（非对象分支）
+        writeFileSync(join(appDir, "package.json"), "null");
+    } else if (variant !== "no-package") {
+        const pkg = variant === "no-version" ? { name: "QQ" } : { name: "QQ", version };
+        writeFileSync(join(appDir, "package.json"), JSON.stringify(pkg));
+    }
+    writeFileSync(join(root, "qq"), "");
+    return root;
 }
 
 describe("locateQqPath", () => {
@@ -423,6 +455,127 @@ describe("Linux 原生模式（平台注入）", () => {
             expect(h.extracts).toHaveLength(1);
             expect(h.debExtracts).toHaveLength(0);
         });
+    });
+
+    it("L1b：扁平安装（NAPUTO_QQ_DIR）→ local，且不触发 deb 下载", async () => {
+        const root = makeLinuxInstall();
+        vi.stubEnv("NAPUTO_QQ_DIR", root);
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            const info = await resolveQqFiles({ dataRoot: tmpRoot });
+            expect(info.source).toBe("local");
+            expect(info.version).toBe("3.2.35-54395");
+            expect(info.installDir).toBe(root);
+            expect(info.qqPath).toBe(join(root, "qq"));
+            expect(info.wrapperPath).toBe(join(root, "resources", "app", "wrapper.node"));
+            expect(h.downloads).toHaveLength(0);
+            expect(h.debExtracts).toHaveLength(0);
+        });
+    });
+
+    it("L1b：Wine 分支（未开原生开关）不认扁平安装 → 继续兜底", async () => {
+        const root = makeLinuxInstall();
+        vi.stubEnv("NAPUTO_QQ_DIR", root);
+        await withLinuxPlatform(async () => {
+            await expect(
+                resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false }),
+            ).rejects.toThrow("未找到 QQ 原生文件");
+        });
+    });
+
+    it("L1b：扁平安装 wrapper 非 ELF → 视为未命中", async () => {
+        const root = makeLinuxInstall("3.2.35-54395", "pe");
+        vi.stubEnv("NAPUTO_QQ_DIR", root);
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            await expect(
+                resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false }),
+            ).rejects.toThrow("未找到 QQ 原生文件");
+        });
+    });
+
+    it("L1 优先于 L1b：显式 NAPUTO_QQ_PATH（versions 结构）胜过 /opt/QQ", async () => {
+        const canonical = makeInstall("9.9.33-51802");
+        writeFileSync(
+            join(canonical, "versions", "9.9.33-51802", "resources", "app", "wrapper.node"),
+            elfBytes(),
+        );
+        const flat = makeLinuxInstall();
+        vi.stubEnv("NAPUTO_QQ_PATH", join(canonical, "QQ.exe"));
+        vi.stubEnv("NAPUTO_QQ_DIR", flat);
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        await withLinuxPlatform(async () => {
+            const info = await resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false });
+            // 平台切成 linux 后路径归一化为正斜杠（Windows 上跑用例时需同样归一化）
+            expect(info.installDir).toBe(canonical.replaceAll("\\", "/"));
+            expect(info.version).toBe("9.9.33-51802");
+        });
+    });
+});
+
+describe("resolveLinuxQqInstall（扁平布局纯定位）", () => {
+    it("完整扁平布局 → local + 版本取自 resources/app/package.json", () => {
+        const root = makeLinuxInstall();
+        const info = resolveLinuxQqInstall(root);
+        expect(info).not.toBeNull();
+        expect(info?.source).toBe("local");
+        expect(info?.installDir).toBe(root);
+        expect(info?.version).toBe("3.2.35-54395");
+        expect(info?.qqPath).toBe(join(root, "qq"));
+    });
+
+    it("wrapper 非 ELF（PE/WSL 误指）→ null", () => {
+        expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "pe"))).toBeNull();
+    });
+
+    it("缺 package.json / 缺 version 字段 / 非对象 JSON → null（版本号参与登录，不能瞎填）", () => {
+        expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "no-package"))).toBeNull();
+        expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "no-version"))).toBeNull();
+        expect(resolveLinuxQqInstall(makeLinuxInstall("3.2.35-54395", "null-json"))).toBeNull();
+    });
+
+    it("目录不存在 → null（不抛错）", () => {
+        expect(resolveLinuxQqInstall(join(tmpRoot, "nope"))).toBeNull();
+    });
+});
+
+describe("tryResolveLinuxLocalQq（平台/开关注入）", () => {
+    it("linux + 原生开关开启 → 解析扁平安装", () => {
+        const root = makeLinuxInstall();
+        const info = tryResolveLinuxLocalQq({
+            installDir: root,
+            platform: "linux",
+            linuxNative: true,
+        });
+        expect(info?.version).toBe("3.2.35-54395");
+    });
+
+    it("非 linux 平台 → null（Windows 走注册表/常见路径）", () => {
+        const root = makeLinuxInstall();
+        expect(
+            tryResolveLinuxLocalQq({ installDir: root, platform: "win32", linuxNative: true }),
+        ).toBeNull();
+    });
+
+    it("未开原生开关（Wine 分支）→ null", () => {
+        const root = makeLinuxInstall();
+        expect(
+            tryResolveLinuxLocalQq({ installDir: root, platform: "linux", linuxNative: false }),
+        ).toBeNull();
+    });
+
+    it("缺省安装根是 /opt/QQ", () => {
+        const saved = process.env["NAPUTO_QQ_DIR"];
+        delete process.env["NAPUTO_QQ_DIR"];
+        try {
+            // 开发机通常没有 /opt/QQ → null；关键是走默认路径而非 env
+            expect(tryResolveLinuxLocalQq({ platform: "linux", linuxNative: true })).toBeNull();
+            expect(LINUX_QQ_INSTALL_DIR).toBe("/opt/QQ");
+        } finally {
+            if (saved !== undefined) {
+                process.env["NAPUTO_QQ_DIR"] = saved;
+            }
+        }
     });
 });
 

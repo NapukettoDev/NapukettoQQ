@@ -1,5 +1,32 @@
 # @napuketto/loader
 
+## 0.7.0
+
+### Minor Changes
+
+- 3574077: feat(loader): Linux 原生分支识别本地 deb 安装（`/opt/QQ` 扁平布局）
+  
+  deb 装出来的 QQ 是扁平结构（`/opt/QQ/qq` + `/opt/QQ/resources/app/wrapper.node`），
+  没有 Windows 的 `versions/<版本>/resources/app/`，此前 loader 只认 `versions/`，
+  Linux 用户本机装了 QQ 也会被当成未安装、白下 190MB deb。新增 L1b 探测（仅 Linux
+  原生分支，`NAPUTO_QQ_DIR` 可覆盖）：校验 wrapper 为 ELF、版本取自
+  `resources/app/package.json`（缺失即跳过，不猜版本），命中即用本机安装，优先于
+  数据根缓存。实测 `/proc/<pid>/maps` 确认加载本机 wrapper、数据根未生成 `qq-files/`、
+  快速登录成功、优雅退出 `code=0`。Wine 分支行为不变。
+
+## 0.6.1
+
+### Patch Changes
+
+- 61d9aa6: fix(loader): Linux 原生宿主收敛 `HOME`/`XDG_*`，Bugly 崩溃目录不再写入用户目录
+  
+  `libbugly` 的 `NativeCrashHandler` 无视 `desktopGlobalPath`，固定向
+  `$HOME/.config/QQ/crash_files/` 写崩溃记录（Stage 0b 发现）。原生分支现在把子进程
+  `HOME` 收敛到 `<数据根>/home`（`NAPUTO_LINUX_HOME` 可显式覆盖，无数据根时退到
+  `<账号目录>/home`），并把 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` /
+  `XDG_STATE_HOME` 派到该目录下；实测崩溃目录落在受管目录、用户 `$HOME` 零写入，
+  快速登录与优雅退出不受影响。wine / win32 分支行为不变。
+
 ## 0.6.0
 
 ### Minor Changes
