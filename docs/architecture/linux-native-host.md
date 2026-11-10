@@ -854,7 +854,11 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
 
 - **文件**：OneBot 11 侧没有 `upload_group_file` 动作（实测返回 `未知动作`），`file` 段
   翻译到 xml 元素时明确报「发送元素 xml 暂不支持（P2-2 探测后补）」；kernel 的
-  `prepareFileElement` 是预留实现，等协议动作落地再测。
+  `prepareFileElement` 是预留实现，等协议动作落地再测。**2026-11-10 已把三条候选通道
+  摸清**（BDH `uploadFile` / `BatchUpload` / `FlashTransfer`）——`getGroupService` 无群文件
+  NAPI 入口，BatchUpload 已真实打到服务端但回 `170019002`，详见
+  [kernel design §14](../../packages/kernel/docs/design.md)。这与平台无关（Windows 同样未实现），
+  不属于 Linux 原生链路独有的缺口。
 - 大批量 / 大体积图片（如 4MB+ 照片）未压测；视频只测了 1s / 64×64 / H.264。
 
 ### D.1 他人消息实时入站（2026-11-10 补测）
