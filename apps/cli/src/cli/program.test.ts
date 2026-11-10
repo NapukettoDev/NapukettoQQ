@@ -6,7 +6,7 @@
  * 动作分发、banner preAction 决策、错误出口（ConfigError → 78，其余 → 1）、
  * --version 输出。
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -268,9 +268,15 @@ describe("错误出口（handleActionError）", () => {
 });
 
 describe("--version", () => {
-    it("输出版本号 0.0.1 并请求退出（commander _exit 0）", () => {
+    it("输出版本号为自身 package.json 的 version（不再硬编码 0.0.1）", () => {
+        const pkgVersion = (
+            JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+                version: string;
+            }
+        ).version;
         runArgv(["--version"]);
-        expect(stdoutText()).toContain("0.0.1");
+        expect(stdoutText()).toContain(pkgVersion);
+        expect(pkgVersion).toMatch(/^\d+\.\d+\.\d+/);
         expect(exitSpy).toHaveBeenCalledWith(0);
     });
 });
