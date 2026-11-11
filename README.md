@@ -27,13 +27,13 @@
 
 ---
 
-## 协议
+## 支持的协议
 
 | 协议 | 传输形态 | 能力概览 |
 | :--- | :--- | :--- |
-| **Milky** | 单端口 HTTP + SSE / WS 事件流 + WebHook 推送 | **64 个动作 / 20 个事件** — 对齐 Milky 1.3.0 规范；覆盖消息、群管、好友、群通知、群文件与表情表态；仅剩 `get_private_file_download_url` 等长尾待校准 |
-| **Satori** | HTTP RPC / WS 事件 | **22 个动作** — 涵盖消息、频道、群组、成员、好友与表态；未实现项标准返回 `501` |
-| **OneBot 11** | HTTP / WS / 反向 WS / Webhook | **79 个动作** — 涵盖消息、群管、好友、通知、系统与媒体；支持消息段与 CQ 码两种格式 |
+| **Milky** | 单端口 HTTP + SSE / WS 事件流 + WebHook 推送 | **64 个动作 / 20 个事件** — 对齐 Milky 1.3.0 规范；覆盖消息、群管、好友、群通知、群文件与表情表态 |
+| **Satori** | HTTP RPC / WS 事件 | **22 个动作** — 涵盖消息、频道、群组、成员、好友与表态 |
+| **OneBot11** | HTTP / WS / 反向 WS / Webhook | **79 个动作** — 涵盖消息、群管、好友、通知、系统与媒体 |
 | **KuroBot** | 出站 WS 客户端 | **`kurobridge-ws` 0.4.0** — 开箱即用的 QQ 群聊与 Minecraft 服务器互通 |
 
 > 传输实例、鉴权、事件字段与已知限制详见协议文档：[Milky](./docs/protocols/milky.md) · [Satori](./docs/protocols/satori.md) · [OneBot 11](./docs/protocols/onebot11.md) · [KuroBot](./docs/protocols/kurobot.md)。
@@ -53,7 +53,9 @@ cd <项目名>
 pnpm start
 ```
 
-首次启动，会在项目根目录生成 `napuketto.toml`；
+* 首次启动，会在项目根目录生成 `napuketto.toml`；
+
+<br>
 
 <details>
 <summary><b>点击查看部署演示</b></summary>
@@ -63,7 +65,7 @@ pnpm start
 
 </details>
 
-<!-- -->
+<br>
 
 <details>
 <summary><b>使用 Docker 部署（仅支持 <code>linux/amd64</code>）</b></summary>
@@ -84,6 +86,8 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 
 </details>
 
+<br>
+
 ### 2. 配置
 
 用编辑器打开生成的 `napuketto.toml`：
@@ -96,19 +100,12 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 
 ## 结构
 
-```mermaid
-flowchart LR
-    CLI["CLI / supervisor"] --> BOOT["boot"]
-    BOOT --> HOST["自建宿主<br/>标准 Node"]
-    HOST --> STUB["stub QQNT.dll"]
-    HOST --> WRAP["wrapper.node"]
-    WRAP --> KERNEL["kernel<br/>登录 / API / 事件 / 缓存"]
-    KERNEL --> ADAPTER["adapter"]
-    ADAPTER --> MILKY["Milky"]
-    ADAPTER --> OB11["OneBot 11"]
-    ADAPTER --> SATORI["Satori"]
-    ADAPTER --> KURO["KuroBot"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/architecture-dark.svg">
+    <img src=".github/assets/architecture-light.svg" alt="NapukettoQQ 结构：CLI / supervisor → boot → 自建宿主（标准 Node，加载 stub QQNT.dll 与 wrapper.node）→ kernel → adapter → Milky / OneBot 11 / Satori / KuroBot">
+  </picture>
+</p>
 
 详细启动顺序、QQ 文件来源与数据流向详见 [运行链路文档](./docs/architecture/runtime.md)。
 
