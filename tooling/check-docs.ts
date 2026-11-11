@@ -21,8 +21,6 @@ const LINE_LIMITS: Readonly<Record<string, number>> = {
     "docs/architecture/overview.md": 150,
     "docs/architecture/runtime.md": 180,
     "docs/architecture/decisions.md": 300,
-    "docs/architecture/linux-native-host.md": 220,
-    "docs/architecture/linux-native-host-evidence.md": 400,
     "docs/guides/configuration.md": 150,
     "docs/guides/docker.md": 140,
     "docs/guides/operations.md": 150,

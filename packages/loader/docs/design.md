@@ -189,4 +189,5 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 8. **逆向产物只在私有 `native/` 子模块**：公共包与公共文档不得出现地址类数据。
 
 探针命令与原始样本（dlopen、解包、实例锁、IPC）见 [evidence.md](./evidence.md)；
-Linux 选型与历史取舍见 [decisions.md](../../../docs/architecture/decisions.md)。
+Linux 选型与历史取舍见 [decisions.md](../../../docs/architecture/decisions.md)。stub 符号面、
+arm64 缺口与 Linux 探针细节在私有 `native/docs/`，公共侧只保留机制摘要。

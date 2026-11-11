@@ -16,7 +16,6 @@
 | B | 本地开发、提交、changeset | [开发指南](guides/development.md) |
 | B | 改某个包 | 该包 `docs/design.md`（实测细节在同级 `docs/evidence.md`） |
 | B/C | 架构、启动链、历史取舍 | [架构总览](architecture/overview.md) · [运行链路](architecture/runtime.md) · [ADR](architecture/decisions.md) |
-| B | Linux ELF 宿主与依赖 | [Linux 原生宿主](architecture/linux-native-host.md)（探针见 [evidence](architecture/linux-native-host-evidence.md)） |
 | C | 固定入口链 | [AGENTS.md](../AGENTS.md) → 本页 → [overview](architecture/overview.md) → [runtime](architecture/runtime.md) → 包 design |
 
 ## 文档地图
@@ -26,7 +25,6 @@
 | [architecture/overview.md](architecture/overview.md) | 包拓扑、依赖方向、进程模型、分层红线 | 新增包或改变包间依赖 |
 | [architecture/runtime.md](architecture/runtime.md) | 启停生命周期、登录/session、数据流、IPC、多账号 | 改 supervisor 或生命周期 |
 | [architecture/decisions.md](architecture/decisions.md) | 仍约束代码的 ADR 与已废止路线结论 | 发生重大技术选型变更 |
-| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux ELF 宿主机制、stub、最低依赖、arm64 现状 | 改 ELF 加载器或 stub 符号 |
 | [guides/configuration.md](guides/configuration.md) | `napuketto.toml` 结构、路径解析、环境变量 | 顶层配置 schema 变更 |
 | [guides/operations.md](guides/operations.md) | 停启、状态、日志、退出码、常见故障 | 新增高频运维故障模式 |
 | [guides/docker.md](guides/docker.md) | 官方镜像双变体、compose、卷、端口、备份 | Dockerfile 或镜像变体变更 |

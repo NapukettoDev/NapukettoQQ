@@ -120,7 +120,7 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 Linux 只有一条路线：标准 `node` + 最小 `.so` stub + 官方 ELF `wrapper.node`（`LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`）。
 Wine 路径已删除，`NAPUTO_LINUX_NATIVE` 与 `NAPUTO_WINE` 均失效；机制见
-[linux-native-host.md](../architecture/linux-native-host.md)。
+[loader 平台分支](../../packages/loader/docs/design.md#平台分支)。
 
 | 依赖 | 作用 | 缺失症状 |
 |---|---|---|
@@ -135,11 +135,11 @@ Ubuntu 24.04 的 gnutls 包名是 `libgnutls30t64`，Debian 12 是 `libgnutls30`
 - 报「Linux stub 未找到」→ 用 `NAPUTO_LINUX_STUB` 指向包内可用的 `.so`。
 - 报 gnutls 相关 → 安装系统包后重试（loader 会自动 preload）。
 - `dlopen` 报缺 `.so` → 按上表补齐系统库。
-- 仍失败 → `ldd <wrapper.node>` 对照 [linux-native-host.md](../architecture/linux-native-host.md) 依赖清单。
+- 仍失败 → `ldd <wrapper.node>` 对照上表的系统库补齐。
 
 `HOME` 与 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 收敛到
 `<数据根>/home`（`NAPUTO_LINUX_HOME` 可覆盖，`XDG_RUNTIME_DIR` 不接管），崩溃记录在
-`<数据根>/home/.config/QQ/crash_files/`；arm64 仅 qemu 验到加载与登录握手，交付只承诺 x64，`libuuid` 需手工 preload。
+`<数据根>/home/.config/QQ/crash_files/`。当前只承诺 `linux/amd64`；arm64 未做交付验证。
 
 ### 上线前检查
 

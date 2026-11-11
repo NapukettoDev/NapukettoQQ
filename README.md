@@ -29,8 +29,8 @@
 ## 快速开始
 
 - **运行环境**：Node.js 24+（Windows 10/11 x64 或 Linux x64）。
-- **依赖**：无需安装 QQ 客户端；Linux 需装 `libgnutls30`，见
-  [Linux 原生宿主](./docs/architecture/linux-native-host.md)。
+- **依赖**：无需安装 QQ 客户端；Linux 另需 `libgnutls30` 与 X11 客户端库，见
+  [运维手册的 Linux 部分](./docs/guides/operations.md#linux-原生宿主)。
 
 ### 创建并启动
 

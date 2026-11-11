@@ -76,8 +76,8 @@
   - `ensureLinuxSevenZip({ arch })`：非 x64 跳过内置/缓存/官网下载（三者都是 x64 产物），
     直接用系统 7-Zip；没有时抛可读错误（提示装 `7zip` / `p7zip-full` 或设 `NAPUTO_7Z_PATH`）
   
-  x64 Linux 行为不变（继续用内置 7zz，零网络依赖）。arm64 交付前其余缺口见
-  `docs/architecture/linux-native-host.md` 附录 E.2。
+  x64 Linux 行为不变（继续用内置 7zz，零网络依赖）。arm64 交付前的其余缺口记录在私有
+  native 子模块的 Linux 宿主文档。
 
 ## 0.7.1
 

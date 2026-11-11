@@ -62,7 +62,7 @@ ARG WITH_FFMPEG=true
 RUN groupadd --gid 1000 node \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin node
 
-# wrapper.node 的运行期依赖（详见 docs/architecture/linux-native-host.md §5）：
+# wrapper.node 的运行期依赖（详见 docs/guides/operations.md「Linux 原生宿主」）：
 #   libx11-6 / libx11-xcb1 / libxext6 / libxcb1 —— 加载期 DT_NEEDED，不需要 X server
 #   libgnutls30 —— libbugly 的隐藏依赖（loader 会 LD_PRELOAD）
 #   libgssapi-krb5-2 / libgcrypt20 / libuuid1 / libstdc++6 / zlib1g —— 传递依赖
