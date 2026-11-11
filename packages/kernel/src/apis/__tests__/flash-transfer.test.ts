@@ -152,6 +152,49 @@ describe("uploadFileSet", () => {
             /createFlashTransferUploadTask 失败: boom/,
         );
     });
+
+    it("进度事件里的 fileSet 快照会被采纳（分享链接来自进度回调）", async () => {
+        const progressSet: FlashTransferFileSet = {
+            fileSetId: "fs-progress",
+            shareInfo: { shareLink: "https://qfile.qq.com/q/PROGRESS" },
+        };
+        const { api } = makeService([
+            (l: FlashTransferUploadListener) =>
+                l.onFileSetUploadProgressChanged?.({
+                    fileSet: progressSet,
+                    uploaded: "52",
+                    total: "52",
+                }),
+            (l: FlashTransferUploadListener) =>
+                l.onFileDidFinishUpload?.({ fileSetId: "fs-progress", cliFileId: "c1", name: "a" }),
+        ]);
+        const result = await api.uploadFileSet(["/tmp/a.txt"]);
+        expect(result).toEqual({
+            fileSetId: "fs-progress",
+            shareLink: "https://qfile.qq.com/q/PROGRESS",
+            fileCount: 1,
+        });
+    });
+
+    it("完成事件缺 cliFileId → 退化为计数（仍能判定完成）", async () => {
+        const { api } = makeService([
+            (l: FlashTransferUploadListener) => l.onFileSetUploadStatusChanged?.(FILE_SET),
+            (l: FlashTransferUploadListener) =>
+                l.onFileDidFinishUpload?.({ fileSetId: "fs-1", cliFileId: "", name: "a" }),
+        ]);
+        const result = await api.uploadFileSet(["/tmp/a.txt"]);
+        expect(result.fileSetId).toBe("fs-1");
+    });
+
+    it("注销监听器抛错不影响结果", async () => {
+        const { api } = makeService(finishScript(["c1"]), {
+            removeFileSetUploadListener: vi.fn(() => {
+                throw new Error("detach boom");
+            }),
+        });
+        const result = await api.uploadFileSet(["/tmp/a.txt"]);
+        expect(result.fileSetId).toBe("fs-1");
+    });
 });
 
 describe("sendCard", () => {
