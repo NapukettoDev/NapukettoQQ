@@ -40,20 +40,45 @@ cd <项目名>
 pnpm start
 ```
 
+* 首次启动，会在项目根目录生成 `napuketto.toml`；
+
+<br>
+
+<details>
+<summary><b>点击查看部署演示</b></summary>
+<br>
+
+<img src=".github/assets/Deploy.webp" alt="NapukettoQQ 部署演示" width="600">
 首次启动会在项目根目录生成 `napuketto.toml`。部署演示：
 ![NapukettoQQ 部署演示](.github/assets/Deploy.webp)
 
+</details>
+
+<br>
+
+<details>
+<summary><b>使用 Docker 部署（仅支持 <code>linux/amd64</code>）</b></summary>
+<br>
+
+官方容器镜像，无需安装 Node.js 环境
 **Docker 部署（仅 `linux/amd64`）**：无需 Node.js 环境，使用官方镜像。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
+
+# 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址请保持 0.0.0.0）
 # 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址保持 0.0.0.0）
 docker compose up -d
 docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲染二维码
 ```
 
+完整说明详见 [Docker 部署指南](./docs/guides/docker.md)。
+
+</details>
 完整说明见 [Docker 部署指南](./docs/guides/docker.md)。
+
+<br>
 
 ### 配置
 
