@@ -857,7 +857,12 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
   `prepareFileElement` 是预留实现，等协议动作落地再测。**2026-11-10 已把三条候选通道
   摸清**（BDH `uploadFile` / `BatchUpload` / `FlashTransfer`）——`getGroupService` 无群文件
   NAPI 入口，BatchUpload 已真实打到服务端但回 `170019002`，详见
-  [kernel design §14](../../packages/kernel/docs/design.md)。这与平台无关（Windows 同样未实现），
+  [kernel design §14](../../packages/kernel/docs/design.md)。
+  **2026-11-11 第二轮**：全服务盘点（69 个 service）确认没有任何「进群文件列表」的上传
+  NAPI；`BatchTransfer` 与 `sendMsg` 文件元素走的是同一条被服务端拒的传输命令
+  （扫参无效，且拒绝发生在目标校验之前）；**闪传通道实测可用**（上传文件集 +
+  `sendFlashTransferMsg` 发卡片，已在测试群真实投递）。详见
+  [kernel design §15](../../packages/kernel/docs/design.md)。这与平台无关（Windows 同样未实现），
   不属于 Linux 原生链路独有的缺口。
 - 大批量 / 大体积图片（如 4MB+ 照片）未压测；视频只测了 1s / 64×64 / H.264。
 
