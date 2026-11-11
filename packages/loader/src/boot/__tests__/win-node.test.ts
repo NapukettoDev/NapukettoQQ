@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "./win-node.js";
+import { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "../win-node.js";
 
 /** mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -32,7 +32,7 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("./qq-download.js", () => ({
+vi.mock("../../qq/qq-download.js", () => ({
     downloadFile: vi.fn(async (options: { dest: string; url: string }) => {
         h.downloads.push({ dest: options.dest, url: options.url });
         if (h.downloadError !== null) {
@@ -44,7 +44,7 @@ vi.mock("./qq-download.js", () => ({
     }),
 }));
 
-vi.mock("./qq-extract.js", () => ({
+vi.mock("../../qq/qq-extract.js", () => ({
     extractInstaller: vi.fn(async (zipPath: string, tmpDir: string) => {
         h.extracts.push({ zipPath, tmpDir });
         mkdirSync(tmpDir, { recursive: true });

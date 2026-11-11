@@ -16,7 +16,8 @@ import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { packageRoot } from "../internal/package-root.js";
+import type { QqInstallInfo } from "../qq/locate-qq.js";
 import {
     defaultLinuxStubPath,
     linuxHomeEnv,
@@ -25,10 +26,7 @@ import {
     resolveLinuxHome,
     resolveLinuxNode,
 } from "./linux-native.js";
-import type { QqInstallInfo } from "./locate-qq.js";
 import { ensureWinNode } from "./win-node.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface LaunchOptions {
     /** QQ 安装信息（qqPath/version/wrapperPath）。 */
@@ -104,7 +102,7 @@ export interface LaunchResult {
  */
 export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResult> {
     const selfHostPath =
-        options.selfHostEntry ?? join(__dirname, "..", "dist", "host", "self-host.cjs");
+        options.selfHostEntry ?? join(packageRoot(), "dist", "host", "self-host.cjs");
     if (!existsSync(selfHostPath)) {
         throw new Error(
             `self-host.cjs 缺失: ${selfHostPath}（先运行 pnpm --filter @napuketto/loader build）`,
@@ -357,7 +355,7 @@ function applyPathEnv(
  * src 与 native 同层，构建后 dist 与 native 同层——`../native` 恒正确。
  */
 export function defaultStubDir(): string {
-    return join(__dirname, "..", "native", "build", "stub-test-env");
+    return join(packageRoot(), "native", "build", "stub-test-env");
 }
 
 /** 装配自建宿主环境变量。 */

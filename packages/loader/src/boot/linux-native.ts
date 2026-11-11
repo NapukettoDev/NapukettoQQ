@@ -14,11 +14,9 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { packageRoot } from "../internal/package-root.js";
 
 /** 行拆分（ldconfig -p / which 输出兼容）。 */
 const LINE_SPLIT = /\r?\n/;
@@ -33,7 +31,7 @@ export function linuxStubArchDir(arch: string = process.arch): string {
 
 /** loader 包内 Linux stub 路径（native/build/linux-<arch>/libnapuketto_stub.so）。 */
 export function defaultLinuxStubPath(): string {
-    return join(__dirname, "..", "native", "build", linuxStubArchDir(), "libnapuketto_stub.so");
+    return join(packageRoot(), "native", "build", linuxStubArchDir(), "libnapuketto_stub.so");
 }
 
 /** 按架构给 gnutls 候选路径（Ubuntu/Debian 多架构目录）。 */

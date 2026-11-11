@@ -228,7 +228,7 @@ loader 的 `resolveFromRoot` 都按 Windows 结构解析。两个选择：
    kernel 的 `resolveWrapperPath` 不用改。
 2. 让 kernel 同时支持扁平布局。改动面更大，且会碰 ADR-018。
 
-提取器不能只加 `.so` 扩展名：现有 [`qq-extract.ts`](../../packages/loader/src/qq-extract.ts)
+提取器不能只加 `.so` 扩展名：现有 [`qq-extract.ts`](../../packages/loader/src/qq/qq-extract.ts)
 只收顶层 `.node` / `.dll`，`lastIndexOf(".")` 还会把 `libfoo.so.1` 当成扩展名 `.1`；
 `sharp-lib/` 子目录也会被跳过。Linux 分支需要：
 

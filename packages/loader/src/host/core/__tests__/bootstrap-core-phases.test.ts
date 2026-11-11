@@ -461,7 +461,7 @@ describe("bootstrapWithCore：引导失败分支", () => {
         const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
         const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
         try {
-            const shutdown = await import("../../../shutdown.js");
+            const shutdown = await import("../../../lifecycle/shutdown.js");
             // bootstrap-core 注册的钩子在新模块实例里——同一实例（resetModules 后
             // bootstrap-core 与 shutdown 同批加载）
             await shutdown.requestShutdown("单测关停");

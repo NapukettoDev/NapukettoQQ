@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import * as loader from "./index.js";
+import * as loader from "../index.js";
 
 describe("index 出口面", () => {
     it("定位/下载/解包/关停/锁/IPC 关键值导出存在（函数型）", () => {

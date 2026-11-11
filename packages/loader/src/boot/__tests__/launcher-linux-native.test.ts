@@ -9,8 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { QqInstallInfo } from "../../qq/locate-qq.js";
 import { ENV, type LaunchOptions, launchSelfHost } from "../launcher.js";
-import type { QqInstallInfo } from "../locate-qq.js";
 
 /** spawn 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => ({
