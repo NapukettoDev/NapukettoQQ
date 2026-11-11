@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="510" viewBox="0 0 1360 510" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="500" viewBox="0 0 860 500" role="img" aria-labelledby="title desc">
 <title id="title">NapukettoQQ 架构总览</title>
-<desc id="desc">CLI / supervisor 启动 boot，boot 拉起自建宿主（标准 Node，加载 stub QQNT.dll 与 wrapper.node），wrapper.node 之上是 kernel，kernel 之上是 adapter，adapter 对外提供 Milky、OneBot 11、Satori、KuroBot 四套协议。</desc>
+<desc id="desc">CLI / supervisor 启动 boot，boot 拉起自建宿主（标准 Node，加载 stub QQNT.dll 与 wrapper.node）；wrapper.node 向下接 kernel，kernel 下方是 adapter，adapter 对外提供 Milky、OneBot 11、Satori、KuroBot 四套协议。</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
 <path d="M0 0 L10 5 L0 10 Z" fill="#8b949e"/>
@@ -8,43 +8,42 @@
 </defs>
 
 <g fill="none" stroke="#8b949e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-<path d="M160 255 H198" marker-end="url(#arrow)"/>
-<path d="M298 255 H336" marker-end="url(#arrow)"/>
-<path d="M506 255 H524 V190 H542" marker-end="url(#arrow)"/>
-<path d="M506 255 H524 V320 H542" marker-end="url(#arrow)"/>
-<path d="M722 320 H740 V255 H756" marker-end="url(#arrow)"/>
-<path d="M996 255 H1030" marker-end="url(#arrow)"/>
-<path d="M1150 255 H1170"/>
-<path d="M1170 90 V420"/>
-<path d="M1170 90 H1190" marker-end="url(#arrow)"/>
-<path d="M1170 200 H1190" marker-end="url(#arrow)"/>
-<path d="M1170 310 H1190" marker-end="url(#arrow)"/>
-<path d="M1170 420 H1190" marker-end="url(#arrow)"/>
+<path d="M235 126 H265" marker-end="url(#arrow)"/>
+<path d="M355 126 H385" marker-end="url(#arrow)"/>
+<path d="M545 126 H575" marker-end="url(#arrow)"/>
+<path d="M465 92 V68" marker-end="url(#arrow)"/>
+<path d="M660 156 V247 H550" marker-end="url(#arrow)"/>
+<path d="M430 287 V327" marker-end="url(#arrow)"/>
+<path d="M430 377 V405"/><path d="M166 405 H694"/>
+<path d="M166 405 V427" marker-end="url(#arrow)"/>
+<path d="M342 405 V427" marker-end="url(#arrow)"/>
+<path d="M518 405 V427" marker-end="url(#arrow)"/>
+<path d="M694 405 V427" marker-end="url(#arrow)"/>
 </g>
 
-<rect x="30" y="223" width="130" height="64" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="198" y="223" width="100" height="64" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="336" y="219" width="170" height="72" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="542" y="158" width="180" height="64" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="542" y="288" width="180" height="64" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="756" y="205" width="240" height="100" rx="10" fill="#0b2531" stroke="#2aa8d8" stroke-width="1.4"/>
-<rect x="1030" y="223" width="120" height="64" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
-<rect x="1190" y="61" width="140" height="58" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
-<rect x="1190" y="171" width="140" height="58" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
-<rect x="1190" y="281" width="140" height="58" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
-<rect x="1190" y="391" width="140" height="58" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
+<rect x="115" y="96" width="120" height="60" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="265" y="96" width="90" height="60" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="385" y="92" width="160" height="68" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="385" y="18" width="160" height="50" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="575" y="96" width="170" height="60" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="310" y="207" width="240" height="80" rx="10" fill="#0b2531" stroke="#2aa8d8" stroke-width="1.4"/>
+<rect x="170" y="327" width="520" height="50" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.4"/>
+<rect x="91" y="427" width="150" height="56" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
+<rect x="267" y="427" width="150" height="56" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
+<rect x="443" y="427" width="150" height="56" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
+<rect x="619" y="427" width="150" height="56" rx="10" fill="#0d2633" stroke="#1f7fa8" stroke-width="1.4"/>
 
-<text x="95" y="260" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="400" fill="#f4f4f5">CLI / supervisor</text>
-<text x="248" y="260" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#f4f4f5">boot</text>
-<text x="421" y="250" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#f4f4f5">自建宿主</text>
-<text x="421" y="271" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">标准 Node</text>
-<text x="632" y="195" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="400" fill="#f4f4f5">stub QQNT.dll</text>
-<text x="632" y="325" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14" font-weight="400" fill="#f4f4f5">wrapper.node</text>
-<text x="876" y="246" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="600" fill="#f4f4f5">kernel</text>
-<text x="876" y="274" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">登录 / API / 事件 / 缓存</text>
-<text x="1090" y="260" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#f4f4f5">adapter</text>
-<text x="1260" y="95" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14.5" font-weight="400" fill="#f4f4f5">Milky</text>
-<text x="1260" y="205" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14.5" font-weight="400" fill="#f4f4f5">OneBot 11</text>
-<text x="1260" y="315" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14.5" font-weight="400" fill="#f4f4f5">Satori</text>
-<text x="1260" y="425" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="14.5" font-weight="400" fill="#f4f4f5">KuroBot</text>
+<text x="175" y="131" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#f4f4f5">CLI / supervisor</text>
+<text x="310" y="131" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="400" fill="#f4f4f5">boot</text>
+<text x="465" y="122" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#f4f4f5">自建宿主</text>
+<text x="465" y="144" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="400" fill="#9198a1">标准 Node</text>
+<text x="465" y="49" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#f4f4f5">stub QQNT.dll</text>
+<text x="660" y="131" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15" font-weight="400" fill="#f4f4f5">wrapper.node</text>
+<text x="430" y="240" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="17" font-weight="600" fill="#f4f4f5">kernel</text>
+<text x="430" y="267" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="13" font-weight="400" fill="#9198a1">登录 / API / 事件 / 缓存</text>
+<text x="430" y="357" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="16" font-weight="400" fill="#f4f4f5">adapter</text>
+<text x="166" y="460" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="400" fill="#f4f4f5">Milky</text>
+<text x="342" y="460" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="400" fill="#f4f4f5">OneBot 11</text>
+<text x="518" y="460" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="400" fill="#f4f4f5">Satori</text>
+<text x="694" y="460" text-anchor="middle" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif" font-size="15.5" font-weight="400" fill="#f4f4f5">KuroBot</text>
 </svg>
