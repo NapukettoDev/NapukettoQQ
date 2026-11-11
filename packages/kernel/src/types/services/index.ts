@@ -12,6 +12,15 @@ export type {
     NodeIKernelBuddyService,
 } from "./buddy-service.js";
 export type {
+    FlashTransferFileSet,
+    FlashTransferFileStatus,
+    FlashTransferPermission,
+    FlashTransferTarget,
+    FlashTransferTaskInfo,
+    FlashTransferUploadListener,
+    NodeIKernelFlashTransferService,
+} from "./flash-transfer-service.js";
+export type {
     Group,
     GroupBulletin,
     GroupDetailInfo,
