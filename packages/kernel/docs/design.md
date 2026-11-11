@@ -115,6 +115,25 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 接收方向 `videoToCanonical` 用 `readVideoThumbPath` 容忍 `thumbPath` 的 Map / 平面对象 /
 字符串三形态，并补 `width` / `height`（thumbWidth/Height）与 `durationSec`（fileTime 秒）。
 
+### 图片接收与主动下载
+
+自建宿主没有 UI，QQ NT 收到图片时只给出「目标路径」而不落盘：`picElement.sourcePath`
+指向 `<数据根>/nt_qq/<uid>/nt_data/Pic/<月>/Ori/<md5>.<ext>`，文件要等显式下载才存在。
+其余可用字段也都不构成直链——`picUrl` 在部分平台/消息形态下缺失；`originImageUrl` 是
+无 host 的相对路径，补上 CDN 域名后仍缺 rkey（实测回 `{"retcode":-5503010,"retmsg":
+"invalid rkey"}`），不能当 URL 用。
+
+- `MsgApi.downloadImage(msgId, peer, {elementId?, timeoutMs?})`：按 msgId 反查 PIC 元素
+  （`elementId` 可指定同一消息内的某张图），`downloadType=1`（原文件）调
+  `downloadRichMedia`，再轮询重拉元素直到 `picPath`/`sourcePath` 在磁盘上真实存在；
+  已存在则不重复下载，超时抛 `TIMEOUT`。返回 `{filePath, element}`，`filePath` 保证
+  `existsSync` 为真（下游可直接按路径读）。
+- OB11 事件边界在翻译前补齐：消息含 PIC 且本地文件不在磁盘时，按元素并发调用
+  `downloadImage`（限时 fail-soft），把真实路径回填到 `picElement.sourcePath` 后再交给
+  纯函数翻译——翻译层仍不做 I/O（ADR-008）。
+- `get_image` 本地未命中且无 `picUrl` 时复用该 API 兜底，避免 Windows/Linux 入站形态下
+  返回空 `file`。
+
 ### ARK 卡片接收
 
 `elementType 10` 的 `arkElement.bytesData` 是卡片 JSON 字符串：接收方向原样透传为
@@ -170,7 +189,10 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
 ## 已知边界
 
 - `downloadRichMedia` 对 `transferStatus != 2`（尚未下载）样本的下载行为未实测；签名已实证，
-  实现按轮询策略防御。
+  实现按轮询策略防御。PIC 的下载落点与 `downloadType=1` 行为同样待真机实测：
+  `downloadImage` 以「重拉元素的 `sourcePath`/`picPath` 出现在磁盘」为完成信号，若 native
+  落在其他路径会走超时分支。事件路径限时下载失败时保留原路径（下游仍可能读不到，由调用方
+  日志告警），不阻塞消息链。
 - `onRecvOfflineFileMsg`、`onGroupEssenceListChange`、`Buddy/onBuddyReqChange` 的 payload
   形状仍在 adapter 侧校准，未实证字段保持 `unknown`，由订阅方防御收窄。
 - `msg_emoji_like` 没有推送回调；读取面是否经 `onMsgInfoListUpdate` 携带或需轮询

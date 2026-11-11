@@ -385,6 +385,161 @@ describe("NapukettoOneBot11Adapter（group_upload 报形式开关，B4）", () =
     });
 });
 
+describe("NapukettoOneBot11Adapter（入站图片补本地文件，issue #105）", () => {
+    let tmpRoot = "";
+    afterAll(() => {
+        if (tmpRoot !== "") {
+            rmSync(tmpRoot, { recursive: true, force: true });
+        }
+    });
+
+    /** 惰性创建临时根目录（测试可能先写文件再建 harness）。 */
+    function ensureTmpRoot(): string {
+        if (tmpRoot === "") {
+            tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-ob11-img-"));
+        }
+        return tmpRoot;
+    }
+
+    /** 私聊图片消息（模拟宿主未落盘：sourcePath 指向不存在的文件）。 */
+    function picRecvMsg(sourcePath: string): unknown {
+        return {
+            msgId: "7001",
+            msgSeq: "1",
+            msgTime: "1700000000000",
+            msgType: 2,
+            chatType: 1,
+            peerUid: "u10001",
+            peerUin: "10000",
+            senderUid: "u10001",
+            senderUin: "10000",
+            peerName: "",
+            sendNickName: "发送者",
+            elements: [{ elementType: 2, elementId: "e1", picElement: { sourcePath } }],
+        };
+    }
+
+    /** 配置 + broadcaster 捕获 + 可注入 downloadImage 桩的适配器。 */
+    function makeHarness(downloadImage?: ReturnType<typeof vi.fn>): {
+        adapter: NapukettoOneBot11Adapter;
+        msg: ReturnType<typeof captureChannel>;
+        events: Record<string, unknown>[];
+    } {
+        if (tmpRoot === "") {
+            tmpRoot = ensureTmpRoot();
+        }
+        const msg = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const adapter = new NapukettoOneBot11Adapter({
+            ...stubOptions(),
+            msgApi: downloadImage === undefined ? {} : { downloadImage },
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: {
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            } as unknown as EventBroadcaster,
+            msgChannel: msg.channel,
+        } as unknown as OneBot11AdapterOptions);
+        return { adapter, msg, events };
+    }
+
+    it("本地文件缺失 → 下载回填真实路径（image 段 file 指向可读文件）", async () => {
+        const file = join(ensureTmpRoot(), "a.jpg");
+        writeFileSync(file, "x");
+        const downloadImage = vi.fn(async () => ({ filePath: file, element: {} }));
+        const { adapter, msg, events } = makeHarness(downloadImage);
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([picRecvMsg(join(tmpRoot, "missing.jpg"))]);
+        await vi.waitFor(() => expect(events).toHaveLength(1));
+        const message = (
+            events[0] as { message: Array<{ type: string; data: Record<string, unknown> }> }
+        ).message;
+        expect(message.find((s) => s.type === "image")?.data["file"]).toBe(file);
+        expect(downloadImage).toHaveBeenCalledWith(
+            "7001",
+            { chatType: 1, peerUid: "u10001" },
+            expect.objectContaining({ elementId: "e1" }),
+        );
+    });
+
+    it("本地文件已存在 → 不触发下载", async () => {
+        const file = join(ensureTmpRoot(), "b.jpg");
+        writeFileSync(file, "y");
+        const downloadImage = vi.fn(async () => ({ filePath: file, element: {} }));
+        const { adapter, msg, events } = makeHarness(downloadImage);
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([picRecvMsg(file)]);
+        await vi.waitFor(() => expect(events).toHaveLength(1));
+        expect(downloadImage).not.toHaveBeenCalled();
+    });
+
+    it("已有 picUrl → 不补下载，image 段带 url", async () => {
+        const downloadImage = vi.fn(async () => ({ filePath: "/never.jpg", element: {} }));
+        const { adapter, msg, events } = makeHarness(downloadImage);
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([
+            {
+                ...(picRecvMsg(join(tmpRoot, "missing-url.jpg")) as object),
+                elements: [
+                    {
+                        elementType: 2,
+                        elementId: "e1",
+                        picElement: {
+                            sourcePath: join(tmpRoot, "missing-url.jpg"),
+                            picUrl: "https://img.example/a.jpg",
+                        },
+                    },
+                ],
+            },
+        ]);
+        await vi.waitFor(() => expect(events).toHaveLength(1));
+        expect(downloadImage).not.toHaveBeenCalled();
+        const message = (
+            events[0] as { message: Array<{ type: string; data: Record<string, unknown> }> }
+        ).message;
+        expect(message.find((s) => s.type === "image")?.data).toMatchObject({
+            url: "https://img.example/a.jpg",
+        });
+    });
+
+    it("下载失败 → 保留原路径 + warn，事件照常广播", async () => {
+        const warn = vi.fn();
+        const missing = join(ensureTmpRoot(), "c.jpg");
+        const downloadImage = vi.fn(async () => {
+            throw new Error("图片下载未完成（超时）");
+        });
+        const msg = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const adapter = new NapukettoOneBot11Adapter({
+            ...stubOptions(),
+            msgApi: { downloadImage },
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: {
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            } as unknown as EventBroadcaster,
+            msgChannel: msg.channel,
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        } as unknown as OneBot11AdapterOptions);
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([picRecvMsg(missing)]);
+        await vi.waitFor(() => expect(events).toHaveLength(1));
+        const message = (
+            events[0] as { message: Array<{ type: string; data: Record<string, unknown> }> }
+        ).message;
+        expect(message.find((s) => s.type === "image")?.data["file"]).toBe(missing);
+        expect(warn).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () => {
     /** varint 编码（合成 sysmsg 用）。 */
     function encVarint(v: number): number[] {

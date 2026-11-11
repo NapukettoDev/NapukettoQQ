@@ -8,6 +8,7 @@
  * 翻译为纯函数（ADR-008）：只读入参（RawMessage），不调 API、不读缓存。
  */
 
+import { existsSync } from "node:fs";
 import type {
     BuddyCacheEventChannel,
     BuddyEventChannel,
@@ -16,6 +17,7 @@ import type {
     GroupEventChannel,
     GroupNotify,
     MsgEventChannel,
+    PicElement,
     RawMessage,
 } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
@@ -69,6 +71,28 @@ import { assembleOb11Transports } from "./transport.js";
 
 /** 毫秒 → 秒（Unix 时间戳）。 */
 const MS_TO_SEC = 1000;
+
+/**
+ * 入站图片补图限时（issue #105）：宿主无 UI 时 `sourcePath` 只是目标路径，事件里报
+ * 不存在的路径会让下游读图失败。翻译前主动下载，超时即放弃（保留原路径 + warn），
+ * 避免慢网/失败下载拖住消息链。
+ */
+const IMAGE_EVENT_DOWNLOAD_TIMEOUT_MS = 5_000;
+
+/** PIC 本地文件是否已落盘（picPath → sourcePath）。 */
+function picFileExists(pic: PicElement): boolean {
+    for (const value of [pic.picPath, pic.sourcePath]) {
+        if (value !== undefined && value !== "" && existsSync(value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** 图片是否已有可用直链（`picUrl` 非空）；有直链时下游优先用 url，无需补本地文件。 */
+function picHasUrl(pic: PicElement): boolean {
+    return pic.picUrl !== undefined && pic.picUrl !== "";
+}
 
 /**
  * info/warn 级 raw 字段截断上限（2026-10-25 输出内容治理）：hex/base64/JSON
@@ -644,7 +668,9 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
      * 翻译失败退化为原样（不阻塞上报）。
      */
     private async broadcastMessageEvent(msg: RawMessage): Promise<void> {
-        const elements = toCanonicalElements(msg);
+        // 入站图片先保活本地文件（issue #105）：翻译仍是纯函数，I/O 只发生在边界
+        const message = await this.ensureLocalImageFiles(msg);
+        const elements = toCanonicalElements(message);
         const { atUids } = collectReceiveNeeds(elements);
         let uidToUin: Map<string, string> | undefined;
         if (atUids.length > 0) {
@@ -665,13 +691,80 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         };
         this.broadcastEvent(
             toOb11MessageEvent(
-                msg,
+                message,
                 this.selfUin,
                 this.oneBotApi.messageUnique,
                 this.messageFormat,
                 ctx,
             ),
         );
+    }
+
+    /**
+     * 入站图片补本地文件（issue #105）。
+     *
+     * 自建宿主没有 UI，QQ NT 只给 `sourcePath` 目标路径，原图要显式下载才落盘；入站
+     * `originImageUrl` 缺 rkey 不能当直链。事件里直接报这条不存在的路径会让下游
+     * （如 AstrBot）读图抛 FileNotFoundError，因此翻译前按元素并发调
+     * `MsgApi.downloadImage` 并把真实路径回填到 `sourcePath`。
+     *
+     * fail-soft：单张下载失败/超时只打 warn 并保留原路径，不阻塞消息事件。
+     * 已有 `picUrl` 时不补（下游优先用 url，避免每张图都等下载）。
+     */
+    private async ensureLocalImageFiles(msg: RawMessage): Promise<RawMessage> {
+        const targets: Array<{ index: number; elementId: string }> = [];
+        msg.elements.forEach((el, index) => {
+            const pic = el.picElement;
+            if (pic === undefined || picFileExists(pic) || picHasUrl(pic)) {
+                return;
+            }
+            targets.push({ index, elementId: el.elementId ?? "" });
+        });
+        if (targets.length === 0) {
+            return msg;
+        }
+        const peer = { chatType: msg.chatType, peerUid: msg.peerUid };
+        const results = await Promise.all(
+            targets.map(async (target) => {
+                try {
+                    const { filePath } = await this.oneBotApi.msgApi.downloadImage(
+                        msg.msgId,
+                        peer,
+                        { elementId: target.elementId, timeoutMs: IMAGE_EVENT_DOWNLOAD_TIMEOUT_MS },
+                    );
+                    return { index: target.index, filePath };
+                } catch (err) {
+                    this.calibLogger?.warn(
+                        {
+                            msgId: msg.msgId,
+                            elementId: target.elementId,
+                            err: err instanceof Error ? err.message : String(err),
+                        },
+                        "ob11: 入站图片主动下载失败（保留原路径）",
+                    );
+                    return null;
+                }
+            }),
+        );
+        const hits = results.filter(
+            (hit): hit is { index: number; filePath: string } => hit !== null,
+        );
+        if (hits.length === 0) {
+            return msg;
+        }
+        const elements = [...msg.elements];
+        for (const hit of hits) {
+            const el = elements[hit.index];
+            if (el?.picElement === undefined) {
+                continue;
+            }
+            elements[hit.index] = {
+                ...el,
+                // picPath 是 canonical 的首选路径，必须一并回填，避免残留的旧路径继续被读取
+                picElement: { ...el.picElement, picPath: hit.filePath, sourcePath: hit.filePath },
+            };
+        }
+        return { ...msg, elements };
     }
 
     /** 广播 grayTip → notice 事件（批量 uidToUin 后翻译，纯函数）。 */

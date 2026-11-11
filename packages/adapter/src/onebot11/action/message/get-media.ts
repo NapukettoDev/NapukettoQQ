@@ -6,7 +6,9 @@
  *  - 本地文件解析：NT 相对路径（sourcePath/filePath）按 mediaBaseDir（QQ NT
  *    global 目录）解析为绝对路径，命中磁盘即返回 file
  *  - 图片主动下载：本地未命中且有 picUrl → @napuketto/media downloadUrl 落
- *    cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name
+ *    cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name；
+ *    无 picUrl（Windows/Linux 入站形态）或 HTTP 下载失败 → kernel
+ *    MsgApi.downloadImage 原生按需下载（issue #105）
  *  - 语音主动下载（B1）：本地未命中 → kernel MsgApi.downloadPtt（原生
  *    downloadRichMedia + 轮询元素回查）→ filePath 落盘后返回绝对路径；
  *    失败回退原始 filePath（NT 相对/绝对）+ 元数据，不抛错
@@ -15,7 +17,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { kernelError, type RawElement } from "@napuketto/kernel";
+import { kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
@@ -93,14 +95,15 @@ async function downloadImageToCache(
 
 /**
  * 反查消息并提取媒体元素路径。
- * 返回 null = 消息不存在；extract 返回 undefined = 无匹配元素。
+ * 返回 result = null 语义不存在：消息缺失抛错；extract 返回 undefined = 无匹配元素。
+ * 同时回传 msgId/peer，供后续主动下载复用（避免二次反查）。
  */
 async function resolveMedia(
     id: number | string,
     label: string,
     deps: GetMediaDeps,
     extract: (element: RawElement) => MediaInfoResult | undefined,
-): Promise<MediaInfoResult> {
+): Promise<{ result: MediaInfoResult; msgId: string; peer: Peer }> {
     const { msgId, peer } = resolveMsgIdAndPeer(id, deps.messageUnique);
     const msgs = await deps.msgApi.fetchMsgsByMsgId(peer, [msgId]);
     const [first] = msgs;
@@ -110,7 +113,7 @@ async function resolveMedia(
     for (const el of first.elements) {
         const found = extract(el);
         if (found !== undefined) {
-            return found;
+            return { result: found, msgId, peer };
         }
     }
     throw kernelError(`消息 ${id} 不包含${label}`, "NOT_FOUND");
@@ -125,7 +128,7 @@ function takeId(payload: GetMediaPayload, actionName: string): number | string {
     return id;
 }
 
-/** 获取图片信息（本地优先，picUrl 主动下载兜底）。 */
+/** 获取图片信息（本地优先，picUrl 主动下载 + 原生按需下载兜底）。 */
 export class GetImageAction extends BaseAction<GetMediaPayload, MediaInfoResult> {
     readonly name = "get_image";
     readonly schema = getMediaSchema;
@@ -140,7 +143,11 @@ export class GetImageAction extends BaseAction<GetMediaPayload, MediaInfoResult>
 
     protected async _handle(payload: GetMediaPayload): Promise<MediaInfoResult> {
         const id = takeId(payload, "get_image");
-        const base = await resolveMedia(id, "图片", this.deps, (el) => {
+        const {
+            result: base,
+            msgId,
+            peer,
+        } = await resolveMedia(id, "图片", this.deps, (el) => {
             const pic = el.picElement;
             if (pic === undefined) {
                 return undefined;
@@ -169,6 +176,15 @@ export class GetImageAction extends BaseAction<GetMediaPayload, MediaInfoResult>
             const downloaded = await downloadImageToCache(base.url, this.deps);
             if (downloaded !== null) {
                 base.file = downloaded;
+            }
+        }
+        // 仍无文件（无 picUrl 的 Windows/Linux 入站形态，或 HTTP 下载失败）→ 原生按需下载
+        if (base.file === undefined) {
+            try {
+                const { filePath } = await this.deps.msgApi.downloadImage(msgId, peer);
+                base.file = filePath;
+            } catch {
+                // 下载失败：回退元数据（不抛错，对齐语音口径）
             }
         }
         return base;

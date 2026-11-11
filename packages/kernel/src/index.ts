@@ -16,6 +16,8 @@ export type {
     FriendCategory,
     GroupHonorWebInfo,
     HonorListItem,
+    ImageDownloadOptions,
+    ImageDownloadResult,
     PinnedContact,
     StrangerInfo,
 } from "./apis/index.js";
@@ -157,6 +159,7 @@ export type {
     NodeQQNTWrapperUtil,
     NudgeParam,
     Peer,
+    PicElement,
     PlatformType,
     RawElement,
     RawMessage,

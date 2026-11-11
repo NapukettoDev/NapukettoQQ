@@ -119,18 +119,18 @@ NodeIKernelRichMediaService（单对象参数，比 Msg 版多一个 elem）
 
 ### PIC 元素跨平台
 
-Linux 原生宿主入站 `picElement` **既无 `picPath` 也无 `picUrl`**（字段缺失，不是空串），
-原图已落 `sourcePath`（绝对路径），`originImageUrl` 是无 host 的相对路径，`thumbPath` 是空对象：
+入站 `picElement` 跨平台形态（Linux 侧同样缺 `picPath`/`picUrl`、原图已落 `sourcePath`、
+`thumbPath` 为空对象，见 [adapter evidence](../../adapter/docs/evidence.md)）：Windows 9.9.37
+（issue #105）`sourcePath` 是**尚未下载**的目标路径（磁盘不存在），`thumbPath` 是 `Map<198|720|0, path>`：
 
 ```json
-{"fileName":"764F…A3A7.png","fileSize":"438107","picWidth":1637,"picHeight":1125,
- "md5HexStr":"764f…a3a7",
- "sourcePath":"<数据根>/nt_qq/<uid>/nt_data/Pic/<月>/Ori/764f…a3a7.png",
- "originImageUrl":"/download?appid=1407&fileid=…&spec=0","fileUuid":"…","thumbPath":{}}
+{"fileName":"D39E…jpg","fileSize":"338018","md5HexStr":"d39e…","sourcePath":"C:/…/Pic/…/Ori/d39e….jpg",
+ "thumbPath":{"198":"…_198.jpg","720":"…_720.jpg"},"originImageUrl":"/download?appid=1406&fileid=…&spec=0"}
 ```
 
-取值链 `picPath → picUrl → sourcePath`，空串视为缺失；`canonical.url` 只在 `picUrl` 非空
-时给出，不伪造 CDN 域名。Windows 侧 `picPath` / `picUrl` 均有值，行为不变。
+取值链 `picPath → picUrl → sourcePath`，空串视为缺失；`canonical.url` 只在 `picUrl` 非空时给出，
+不伪造 CDN 域名。`originImageUrl` 不能当直链（补 host 后实测 `invalid rkey`，按 md5 的
+`gchatpic_new` 兜底同为 400）；可用引用只能靠主动下载落盘（`MsgApi.downloadImage`）。
 
 ### Linux 原生对象空值与 msgTime
 

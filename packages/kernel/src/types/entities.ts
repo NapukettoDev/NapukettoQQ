@@ -38,8 +38,15 @@ export interface PicElement {
     picHeight?: number;
     md5?: string;
     fileName?: string;
+    /** 接收原图的本地目标路径；文件是否已落盘与平台/是否下载过有关（见 downloadImage）。 */
     sourcePath?: string;
-    thumbPath?: string;
+    /** 接收缩略图路径：实测 `Map<198|720|0, path>`（跨进程序列化为平面对象）。 */
+    thumbPath?: Map<number, string> | Record<string, string> | string;
+    /**
+     * 接收原图的相对下载路径（`/download?appid=…&fileid=…&spec=0`，无 host）。
+     * 不能当直链：补 CDN 域名后仍缺 rkey，实测回 `invalid rkey`（kernel evidence）。
+     */
+    originImageUrl?: string;
     // 发送用完整字段（NapCat 式，2026-08-11 实证：缺任一发送失败）
     md5HexStr?: string;
     fileSize?: string;

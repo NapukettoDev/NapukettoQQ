@@ -7,6 +7,7 @@
  * 方法面（P2-1）：发送 / 撤回 / 拉历史 / 标记已读。group/friend 等后续 apis 同构。
  */
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import type { MsgEventChannel } from "../bridge/msg-bridge.js";
@@ -17,6 +18,7 @@ import type {
     NodeIQQNTWrapperSession,
     NudgeParam,
     Peer,
+    PicElement,
     PttElement,
     RawElement,
     RawMessage,
@@ -86,9 +88,17 @@ const RICH_MEDIA_DOWNLOAD_TYPE_THUMB = 2;
 /** downloadRichMedia 契约值（2026-09-08 B1 实测：downloadType=2 可用 / thumbSize=0）。 */
 const DOWNLOAD_TYPE_COMMON = 2;
 const THUMB_SIZE_NONE = 0;
+/**
+ * 图片下载契约值：downloadType=1 = 原文件（Ori）。
+ * 宿主无 UI 时入站图片只有 `sourcePath` 目标路径、文件未落盘，需显式拉取。
+ */
+const IMAGE_DOWNLOAD_TYPE_ORIGIN = 1;
 /** 语音下载轮询参数（300ms × 34 ≈ 10s；返回 void 只能经重拉元素观察完成）。 */
 const PTT_POLL_INTERVAL_MS = 300;
 const PTT_POLL_TIMES = 34;
+/** 图片下载轮询默认上限（300ms × 20 ≈ 6s；事件路径会传更短的 timeoutMs）。 */
+const IMAGE_POLL_INTERVAL_MS = 300;
+const IMAGE_POLL_TIMEOUT_MS = 6_000;
 
 /** sleep（下载轮询间隔）。 */
 function sleep(ms: number): Promise<void> {
@@ -110,6 +120,21 @@ function pttDownloadResult(latest: PttElement | undefined, isLastPoll: boolean):
     const hasPath = latest.filePath !== undefined && latest.filePath !== "";
     const done = latest.transferStatus === 2 || latest.transferStatus === 4;
     return hasPath && (done || isLastPoll) ? latest : null;
+}
+
+/** 图片下载选项（同一消息内多图按 elementId 逐张下载）。 */
+export interface ImageDownloadOptions {
+    /** 指定元素 id（缺省取消息内第一个 PIC 元素）。 */
+    elementId?: string;
+    /** 轮询上限（毫秒，默认 6000）。事件路径可用更短值避免阻塞消息链。 */
+    timeoutMs?: number;
+}
+
+/** 图片下载结果：filePath 是磁盘上真实存在的绝对路径（existsSync 已命中）。 */
+export interface ImageDownloadResult {
+    filePath: string;
+    /** 下载后重拉到的 PIC 元素（fileName / fileSize 等元数据供 get_image 用）。 */
+    element: PicElement;
 }
 
 /** 收藏表情项 → url（字段名待校准，url/imageUrl/emojiUrl 逐个兜底）。 */
@@ -630,6 +655,51 @@ export class MsgApi {
         throw kernelError("语音下载未完成（超时）", "TIMEOUT");
     }
 
+    /**
+     * 图片主动下载（get_image 兜底 + OB11 事件补图，issue #105）。
+     *
+     * 自建宿主没有 UI：入站 `picElement.sourcePath` 只是目标路径，文件通常不在磁盘，
+     * 且 `originImageUrl` 缺 rkey 不能当直链。此方法 `downloadType=1`（原文件）调
+     * `downloadRichMedia`，再轮询重拉元素，直到 `picPath`/`sourcePath` 在磁盘上真实
+     * 存在；已存在则直接返回（不重复下载）。返回的 `filePath` 保证 `existsSync` 命中。
+     */
+    async downloadImage(
+        msgId: string,
+        target: Peer,
+        opts: ImageDownloadOptions = {},
+    ): Promise<ImageDownloadResult> {
+        const found = await this.picElementOf(msgId, target, opts.elementId);
+        if (found === null) {
+            throw kernelError("消息中不包含图片", "NOT_FOUND");
+        }
+        const existing = picLocalFile(found.pic);
+        if (existing !== null) {
+            return { filePath: existing, element: found.pic };
+        }
+        await this.service.downloadRichMedia({
+            msgId,
+            elemId: found.elemId,
+            chatType: target.chatType,
+            downloadType: IMAGE_DOWNLOAD_TYPE_ORIGIN,
+            thumbSize: THUMB_SIZE_NONE,
+        });
+        const timeoutMs = opts.timeoutMs ?? IMAGE_POLL_TIMEOUT_MS;
+        const times = Math.max(1, Math.ceil(timeoutMs / IMAGE_POLL_INTERVAL_MS));
+        for (let i = 0; i < times; i++) {
+            await sleep(IMAGE_POLL_INTERVAL_MS);
+            const again = await this.fetchMsgsByMsgId(target, [msgId]);
+            const pic = findPicElement(again, opts.elementId)?.picElement;
+            if (pic === undefined) {
+                continue;
+            }
+            const path = picLocalFile(pic);
+            if (path !== null) {
+                return { filePath: path, element: pic };
+            }
+        }
+        throw kernelError("图片下载未完成（超时）", "TIMEOUT");
+    }
+
     /** 取消息内语音元素（无则 null；附 elemId 供主动下载）。 */
     private async pttElementOf(
         msgId: string,
@@ -642,6 +712,21 @@ export class MsgApi {
             return null;
         }
         return { elemId: el.elementId ?? "", ptt };
+    }
+
+    /** 取消息内图片元素（elementId 可指定；无则 null；附 elemId 供主动下载）。 */
+    private async picElementOf(
+        msgId: string,
+        target: Peer,
+        elementId?: string,
+    ): Promise<{ elemId: string; pic: PicElement } | null> {
+        const msgs = await this.fetchMsgsByMsgId(target, [msgId]);
+        const el = findPicElement(msgs, elementId);
+        const pic = el?.picElement;
+        if (el === null || pic === undefined) {
+            return null;
+        }
+        return { elemId: el.elementId ?? "", pic };
     }
 
     /** 发送输入状态（set_input_status；eventType=1 输入中，0 停止）。 */
@@ -774,6 +859,43 @@ function findPttElement(msgs: RawMessage[]): RawElement | null {
         return null;
     }
     return first.elements.find((el) => el.pttElement !== undefined) ?? null;
+}
+
+/**
+ * PIC 本地路径候选（`picPath` 优先，其次 `sourcePath`；空串视为缺失）。
+ * 都只是「应该是本地路径」，是否落盘由 `picLocalFile` 判定。
+ */
+function picPathCandidates(pic: PicElement): string[] {
+    const out: string[] = [];
+    for (const value of [pic.picPath, pic.sourcePath]) {
+        if (value !== undefined && value !== "") {
+            out.push(value);
+        }
+    }
+    return out;
+}
+
+/** 磁盘上真实存在的 PIC 本地路径（无则 null）；下载完成判定与已下载短路共用。 */
+function picLocalFile(pic: PicElement): string | null {
+    for (const path of picPathCandidates(pic)) {
+        if (existsSync(path)) {
+            return path;
+        }
+    }
+    return null;
+}
+
+/** 在消息列表中找含 picElement 的元素（可指定 elementId；找不到返回 null）。 */
+function findPicElement(msgs: RawMessage[], elementId?: string): RawElement | null {
+    const [first] = msgs;
+    if (first === undefined) {
+        return null;
+    }
+    const pics = first.elements.filter((el) => el.picElement !== undefined);
+    if (elementId === undefined) {
+        return pics[0] ?? null;
+    }
+    return pics.find((el) => el.elementId === elementId) ?? null;
 }
 
 /** 在消息列表中找含 multiForwardMsgElement 的元素（找不到返回 null）。 */

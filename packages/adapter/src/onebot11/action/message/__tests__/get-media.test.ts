@@ -14,13 +14,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { GetImageAction, GetRecordAction, resolveLocalMediaFile } from "../get-media.js";
 
-/** 桩依赖（msgApi.fetchMsgsByMsgId / downloadPtt 可控返回）。 */
+/** 桩依赖（msgApi.fetchMsgsByMsgId / downloadPtt / downloadImage 可控返回）。 */
 function makeDeps(
     msg: RawMessage | null,
     extra: {
         mediaBaseDir?: string;
         cacheDir?: string;
         downloadPtt?: (msgId: string, peer: unknown) => Promise<unknown>;
+        downloadImage?: (msgId: string, peer: unknown) => Promise<unknown>;
     } = {},
 ) {
     const messageUnique = new MessageUnique();
@@ -36,6 +37,13 @@ function makeDeps(
                 : {
                       downloadPtt: vi.fn(async () => {
                           throw new Error("下载不可用");
+                      }),
+                  }),
+            ...(extra.downloadImage !== undefined
+                ? { downloadImage: vi.fn(extra.downloadImage) }
+                : {
+                      downloadImage: vi.fn(async () => {
+                          throw new Error("图片下载不可用");
                       }),
                   }),
         },
@@ -146,6 +154,48 @@ describe("GetImageAction", () => {
         const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeUndefined();
+    });
+
+    it("无 picUrl（宿主未落盘形态）→ 原生 downloadImage 返回真实路径", async () => {
+        const deps = makeDeps(picMsg({ sourcePath: "C:/nt/Pic/a.jpg", fileName: "a.jpg" }), {
+            downloadImage: async () => ({
+                filePath: "C:/nt/Pic/a.jpg",
+                element: { fileName: "a.jpg" },
+            }),
+        });
+        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        expect(result?.file).toBe("C:/nt/Pic/a.jpg");
+        expect(result?.url).toBeUndefined();
+        expect(result?.file_name).toBe("a.jpg");
+    });
+
+    it("原生下载失败 → 仅返回元数据，不抛错", async () => {
+        const deps = makeDeps(picMsg({ sourcePath: "C:/nt/Pic/b.jpg", fileName: "b.jpg" }), {
+            downloadImage: async () => {
+                throw new Error("图片下载未完成（超时）");
+            },
+        });
+        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        expect(result?.file).toBeUndefined();
+        expect(result?.file_name).toBe("b.jpg");
+    });
+
+    it("picUrl HTTP 下载成功 → 不再走原生下载", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(new Uint8Array([1]), { status: 200 })),
+        );
+        const downloadImage = vi.fn(async () => ({
+            filePath: "C:/never.jpg",
+            element: {},
+        }));
+        const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {
+            cacheDir: tempDir("cache3"),
+            downloadImage,
+        });
+        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        expect(result?.file).toBeDefined();
+        expect(downloadImage).not.toHaveBeenCalled();
     });
 
     it("消息无 pic 元素 → retcode 102「不包含图片」", async () => {

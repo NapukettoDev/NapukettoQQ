@@ -18,6 +18,7 @@ export type {
 export { FriendApi } from "./friend.js";
 export { GroupApi } from "./group.js";
 export { GroupNotifyApi } from "./group-notify.js";
+export type { ImageDownloadOptions, ImageDownloadResult } from "./msg.js";
 export { MsgApi } from "./msg.js";
 export { ProfileApi } from "./profile.js";
 export { ProfileLikeApi } from "./profile-like.js";
