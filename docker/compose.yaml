@@ -1,0 +1,40 @@
+# NapukettoQQ 官方镜像的 Compose 部署示例（Linux / Docker Desktop 均可）
+#
+# 首次部署：
+#   cp napuketto.toml.example napuketto.toml   # 改 qq / token / 端口
+#   docker compose up -d
+#   docker compose logs -f                     # 看首启：下载 QQ → 解包 → 二维码
+#
+# 数据全在 ./.napuketto（账号目录、日志、二维码、QQ 原生文件），重建容器不丢；
+# 升级只换 image tag（或 docker compose pull），配置与已登录票据保留。
+services:
+    napuketto:
+        image: ghcr.io/napukettodev/napukettoqq:latest
+        # 本地验证自己改的 Dockerfile：先在本目录 `docker build -t <上面的 image> .`，
+        # 再 `docker compose up -d`（compose 有本地镜像时不会去拉远端）。
+        # 这里刻意不写 build:，避免只下载 compose 的用户被要求先有 Dockerfile。
+        # 容器内 PID 1 之外的孤儿进程回收（supervisor 会派生子进程）
+        init: true
+        restart: unless-stopped
+        # supervisor 收到 SIGTERM 后停止全部账号，8s 兜底强杀；这里给足余量
+        stop_grace_period: 30s
+        ports:
+            # 默认只绑定回环：公网/局域网访问请改成 HOST_BIND=0.0.0.0 并配好 token
+            - "${HOST_BIND:-127.0.0.1}:${ONEBOT_HTTP_PORT:-3000}:3000"
+            - "${HOST_BIND:-127.0.0.1}:${ONEBOT_WS_PORT:-3001}:3001"
+        environment:
+            TZ: ${TZ:-Asia/Shanghai}
+            NAPKETTO_LOG_LEVEL: ${NAPKETTO_LOG_LEVEL:-info}
+        volumes:
+            # 必填：配置文件缺失时入口脚本会给出提示并以 78 退出
+            - ./napuketto.toml:/app/napuketto.toml
+            # 数据根：账号目录 / 日志 / 二维码 / QQ 原生文件（约 300MB）
+            - ./.napuketto:/app/.napuketto
+            # 可选：复用宿主机已安装的 Linux QQ，跳过约 190MB 下载
+            # - /opt/QQ:/opt/QQ:ro
+        # 容器日志限制，避免长期运行撑满磁盘（二维码与内核日志都在这里）
+        logging:
+            driver: json-file
+            options:
+                max-size: "10m"
+                max-file: "3"

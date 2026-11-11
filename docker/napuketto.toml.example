@@ -1,0 +1,49 @@
+# ============================================================
+# NapukettoQQ Docker 部署配置示例
+# ============================================================
+# 用法：cp napuketto.toml.example napuketto.toml，改 qq / token / 端口，
+#      然后 docker compose up -d。
+# 完整字段说明见 docs/guides/configuration.md。
+#
+# 容器与原生部署的唯一区别在**监听地址**：容器内的 127.0.0.1 是容器自己的
+# 回环，宿主机连不上；要让 `-p 3000:3000` 真正可用，这里必须写 0.0.0.0。
+
+autoRestart = true
+restartDelayMs = 2000
+
+[[accounts]]
+# 替换为你的 QQ 号（5-11 位纯数字）
+qq = "123456789"
+
+[accounts.onebot11]
+# 暴露到宿主机/局域网时务必设置；留空 = 不鉴权
+token = "change-me"
+
+[[accounts.onebot11.httpServers]]
+enabled = true
+# 0.0.0.0 = 监听容器内所有网卡（宿主机经 -p 映射访问）
+host = "0.0.0.0"
+port = 3000
+
+[[accounts.onebot11.wsServers]]
+enabled = true
+host = "0.0.0.0"
+port = 3001
+# token = "change-me"       # 可选：覆盖上面的全局 token
+
+# ---- 其他协议按需启用（不写段 = 不启用） ----
+# [[accounts.satori]]
+# [[accounts.satori.httpServers]]
+# enabled = true
+# host = "0.0.0.0"
+# port = 5500
+# [[accounts.satori.wsServers]]
+# enabled = true
+# host = "0.0.0.0"
+# port = 5501
+
+# ---- 正向 WS（机器人主动连出去，适合连 Koishi：无需映射端口） ----
+# [[accounts.onebot11.wsReverseUrls]]
+# enabled = true
+# url = "ws://host.docker.internal:5140/onebot"
+# token = "change-me"

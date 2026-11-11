@@ -1,0 +1,85 @@
+# 官方镜像构建流水线
+#
+# 触发：CLI 的发布 tag（release.yml 在 prepare 阶段推 `@napuketto/cli@<版本>`）或手动触发。
+# 用 tag 而不是 workflow_run：release.yml 的 publish 需要 environment 审批，workflow_run
+# 要等审批完成才拿到 completed 事件；tag 在 prepare 阶段就推送，镜像构建与 npm 发布并行。
+#
+# 只构建 linux/amd64：arm64 的 stub / 清单条目尚未交付（见
+# docs/architecture/linux-native-host.md 附录 E.2），不发布未验证的平台。
+#
+# 镜像内容只由已发布的 npm 包决定（Dockerfile 里 `npm install -g @napuketto/cli@<版本>`），
+# 不 COPY 工作树源码——因此 tag 指向的源码被改动也不会把未发布代码带进镜像。
+#
+# 首次发布后 GHCR 包默认 private，需要在包设置里手动改为 public（或用带凭据的拉取）。
+
+name: Image
+
+on:
+    push:
+        tags:
+            - "@napuketto/cli@*"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    packages: write
+
+concurrency:
+    group: image-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    image:
+        name: build & push (linux/amd64)
+        runs-on: ubuntu-24.04
+        timeout-minutes: 45
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: 解析版本与镜像名
+              id: ver
+              run: |
+                  if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+                      version="$(jq -r .version apps/cli/package.json)"
+                  else
+                      version="${GITHUB_REF_NAME##*@}"
+                  fi
+                  echo "version=${version}" >> "${GITHUB_OUTPUT}"
+                  echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/napukettoqq" >> "${GITHUB_OUTPUT}"
+
+            - name: Set up Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: 登录 GHCR
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: 生成镜像标签
+              id: meta
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ steps.ver.outputs.image }}
+                  tags: |
+                      type=raw,value=latest
+                      type=raw,value=cli-${{ steps.ver.outputs.version }}
+                      type=sha,format=short,prefix=sha-
+
+            - name: 构建并推送
+              uses: docker/build-push-action@v6
+              with:
+                  context: docker
+                  file: docker/Dockerfile
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  build-args: |
+                      NAPUKETTO_VERSION=${{ steps.ver.outputs.version }}
+                  provenance: true
+                  sbom: true
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
