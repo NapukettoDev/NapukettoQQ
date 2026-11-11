@@ -27,6 +27,18 @@
  * 未知则记 0，运行时从 `major.node` 重解析）。Linux 侧失败只 warn 不抛：Windows 更新
  * 成功仍要落盘（反之亦然），两侧互不拖累。
  *
+ * Linux 防降级与失败隔离（2026-11-11，issue #100 事故）：CDN 边缘把 linuxConfig.js 缓存
+ * 在旧版（3.2.33，源站已是 3.2.35）时，旧 deb 早已下架 → 下载 404 → 异常冒到 main，
+ * 把整次运行判失败并开追踪 issue（Windows 侧其实无事可做）。现在：
+ *   · 官方营销版本低于清单最新 → info 跳过（防降级，与 Windows 同口径）；
+ *   · 单架构下载 / 临时目录 / 解包抛错 → warn 跳过该架构；main 再兜最后一层，
+ *     Windows 侧已算好的更新照常落盘。
+ *
+ * ⚠️ 执行方式约束：本文件在 CI 与本地都由 `node` 直接跑（类型剥离，无构建、无 tsconfig），
+ * 所以它只能依赖 `packages/loader/src/qq/qq-release-manifest.ts` 这类**零相对 import** 的
+ * 模块——Node 不会把 `./x.js` 说明符改写成 `./x.ts`。守卫：同目录
+ * update-qq-releases.import.test.ts。
+ *
  * ⚠️ 下载 URL 归一化（2026-10-07，issue #6 根因）：官方 rainbow 给出的
  * `ntDownloadX64Url` 形如 `.../qqfile/QQNTV2/...`，腾讯 CDN 边缘 WAF 对字面量
  * `/QQNTV2/` 路径段 **区分大小写** 地拦截（403 + Content-Length: 0 + Return
@@ -46,8 +58,11 @@ import type {
     QqReleaseArch,
     QqReleaseEntry,
     QqReleasesFile,
-} from "../../packages/loader/src/qq/qq-releases.ts";
-import { normalizeDownloadUrl, releasePlatform } from "../../packages/loader/src/qq/qq-releases.ts";
+} from "../../packages/loader/src/qq/qq-release-manifest.ts";
+import {
+    normalizeDownloadUrl,
+    releasePlatform,
+} from "../../packages/loader/src/qq/qq-release-manifest.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -336,6 +351,17 @@ function compareVersions(a: string, b: string): number {
     return pa.build - pb.build;
 }
 
+/**
+ * 官方营销版本是否低于清单已知版本（防降级）。
+ *
+ * Windows 与 Linux 共用同一口径：营销三段逐位比较、忽略构建号。CDN 边缘可能仍在供
+ * **旧缓存**配置（2026-11-11：部分边缘的 linuxConfig.js 回退到 3.2.33，源站已是
+ * 3.2.35），把旧版当新版处理会去下载早已下架的包。
+ */
+function isDowngrade(officialMarketing: string, knownVersion: string): boolean {
+    return compareVersions(officialMarketing, marketingOf(knownVersion)) < 0;
+}
+
 /** 平台排序权重（Windows 段在前，Linux 段在后，保持清单可读）。 */
 function platformRank(entry: QqReleaseEntry): number {
     return releasePlatform(entry) === "linux" ? 1 : 0;
@@ -527,7 +553,8 @@ async function buildLinuxEntry(
     try {
         const debPath = join(tmp, "qq.deb");
         info(`Linux ${arch}：下载 deb 并计算 sha256…`);
-        // 与 Windows 同理：请求走小写路径段，清单仍存官方原样 URL
+        // 与 Windows 同理：请求走小写路径段，清单仍存官方原样 URL；
+        // 重试穷尽后的失败由 safeLinuxEntry 兜住（只 warn 并跳过该架构）
         const sha256 = await downloadFileWithRetry(normalizeDownloadUrl(url), debPath);
         info(`Linux ${arch} sha256: ${sha256}`);
         // 解包失败（7z 缺失/归档损坏）只影响 Linux 这一侧：warn 后跳过该架构，
@@ -561,6 +588,29 @@ async function buildLinuxEntry(
 }
 
 /**
+ * 组装 Linux 条目（单架构失败隔离）：下载 / 临时目录 / 解包任一环节抛错都只 warn 并
+ * 返回 null，由调用方跳过该架构。
+ *
+ * **为什么需要**（2026-11-11，issue #100）：CDN 边缘供旧版配置 → 旧 deb 已下架 →
+ * 下载 404 重试穷尽后抛错，异常一路冒到 main，把整次运行判失败并开追踪 issue（Windows
+ * 侧其实无事可做）。Linux 是附加条目，失败只该降级成一条 warn。
+ */
+async function safeLinuxEntry(
+    arch: QqReleaseArch,
+    url: string,
+    release: LinuxRelease,
+    coreVersion: string,
+    existing: QqReleaseEntry | undefined,
+): Promise<QqReleaseEntry | null> {
+    try {
+        return await buildLinuxEntry(arch, url, release, coreVersion, existing);
+    } catch (err) {
+        warn(`Linux ${arch} 处理失败（${errorMessage(err)}），跳过该架构`);
+        return null;
+    }
+}
+
+/**
  * 取某架构下**版本最高**的 Linux 条目。
  *
  * 清单按设计保留历史版本（Windows 那边也是多条），所以同一 arch 可能有多条记录；
@@ -582,6 +632,33 @@ function latestLinuxEntry(
         );
 }
 
+/**
+ * 该架构是否无需更新：URL 未变（已是最新）或官方回退旧版（防降级）。
+ *
+ * 返回需要打印的 info 文案，需要更新时返回 null。把判定与提示放在一起，是为了让
+ * updateLinuxStep 的循环保持线性（复杂度门禁口径，见 fallow 配置注释）。
+ */
+function linuxSkipReason(
+    existing: QqReleaseEntry | undefined,
+    marketingVersion: string,
+    url: string,
+    arch: QqReleaseArch,
+): string | null {
+    if (existing === undefined) {
+        return null;
+    }
+    if (existing.url === url) {
+        return `Linux ${arch} 已是最新（${existing.version}），URL 未变，跳过`;
+    }
+    if (isDowngrade(marketingVersion, existing.version)) {
+        return (
+            `Linux ${arch} 官方配置为 ${marketingVersion}，低于清单 ${existing.version}` +
+            "（CDN 边缘可能仍是旧缓存），跳过（防降级）"
+        );
+    }
+    return null;
+}
+
 /** Linux 更新单步：每架构比对 URL → 变更时下载/解版本 → 合并（失败只 warn）。 */
 async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promise<UpdateStep> {
     const release = await fetchLinuxRelease();
@@ -600,8 +677,9 @@ async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promis
     for (const target of targets) {
         const { url } = target;
         const existing = latestLinuxEntry(entries, target.arch);
-        if (existing !== undefined && existing.url === url) {
-            info(`Linux ${target.arch} 已是最新（${existing.version}），URL 未变，跳过`);
+        const skip = linuxSkipReason(existing, release.marketingVersion, url, target.arch);
+        if (skip !== null) {
+            info(skip);
             continue;
         }
         const coreVersion = coreVersionOf(url);
@@ -613,7 +691,7 @@ async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promis
             info(`[dry-run] 将更新 Linux ${target.arch} 条目（core=${coreVersion}，URL=${url}）`);
             continue;
         }
-        const entry = await buildLinuxEntry(target.arch, url, release, coreVersion, existing);
+        const entry = await safeLinuxEntry(target.arch, url, release, coreVersion, existing);
         if (entry === null) {
             continue;
         }
@@ -733,10 +811,7 @@ async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Pro
         info(`清单已是最新（${latest.version}），URL 未变，无需更新`);
         return { entries: manifest.known, changed: false };
     }
-    if (
-        latest !== undefined &&
-        compareVersions(`${release.marketingVersion}-0`, `${marketingOf(latest.version)}-0`) < 0
-    ) {
+    if (latest !== undefined && isDowngrade(release.marketingVersion, latest.version)) {
         info(
             `官方返回营销版本 ${release.marketingVersion} 低于清单 ${latest.version}，跳过（防降级）`,
         );
@@ -784,13 +859,20 @@ async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Pro
     }
 }
 
-/** 主流程（可被 CLI 直接调用；返回退出码）：Windows 与 Linux 两侧各跑一次，合并后落盘。 */
+/**
+ * 主流程（可被 CLI 直接调用；返回退出码）：Windows 与 Linux 两侧各跑一次，合并后落盘。
+ * Windows 侧失败要非零退出（用户拿不到新版 = 真故障）；Linux 侧失败只 warn（附加条目）。
+ */
 async function main(argv: readonly string[]): Promise<number> {
     const { dryRun } = parseArgs(argv);
     const manifest = loadManifest();
 
     const windows = await updateWindowsStep(manifest, dryRun);
-    const linux = await updateLinuxStep(windows.entries, dryRun);
+    // 最后一层隔离：Linux 侧漏网异常只 warn，Windows 已算好的更新照常落盘
+    const linux = await updateLinuxStep(windows.entries, dryRun).catch((err: unknown) => {
+        warn(`Linux 更新异常（${errorMessage(err)}），跳过 Linux 条目`);
+        return { entries: windows.entries, changed: false };
+    });
     const known = linux.entries;
 
     if (windows.changed || linux.changed) {

@@ -938,9 +938,9 @@ const LINUX_ARM_DEB =
     "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.37/release/816b3c79/QQ_3.2.35_261103_arm64_01.deb";
 
 /** linuxConfig.js 夹具（脚本只解析 `var params = {...};` 载荷）。 */
-function linuxConfig(x64Deb = LINUX_X64_DEB, armDeb = LINUX_ARM_DEB): string {
+function linuxConfig(x64Deb = LINUX_X64_DEB, armDeb = LINUX_ARM_DEB, version = "3.2.35"): string {
     const params = JSON.stringify({
-        version: "3.2.35",
+        version,
         x64DownloadUrl: { deb: x64Deb, rpm: "https://x/x.rpm" },
         armDownloadUrl: { deb: armDeb },
         updateDate: "2026-11-03",
@@ -1388,5 +1388,165 @@ describe("Linux（deb）条目自动维护", () => {
         expect(warned("Linux 官方配置结构不符")).toBe(true);
         expect(mocks.httpsGet).not.toHaveBeenCalled();
         expect(writtenManifests).toHaveLength(0);
+    });
+
+    // —— 旧版配置（CDN 边缘缓存滞后）与 Linux 失败隔离（issue #100）——
+
+    it("官方配置回退旧版（3.2.33 < 清单 3.2.35）→ 防降级跳过，不下载不写清单", async () => {
+        manifestContent = fixtureManifestWithLinux(
+            "https://old.example/qq-x64.deb",
+            "https://old.example/qq-arm64.deb",
+        );
+        // 2026-11-11 真实失败的 URL：旧 deb 早已下架（请求 404），正是靠版本判定挡住它
+        const staleDeb =
+            "https://qqdl.gtimg.cn/qqfile/QQNTV2/9.9.35/release/1763096b/QQ_3.2.33_260902_amd64_01.deb";
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) }, // Windows URL 未变 → no-op
+            { status: 200, body: linuxConfig(staleDeb, LINUX_ARM_DEB, "3.2.33") },
+        ]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
+        expect(writtenManifests).toEqual([]);
+        expect(
+            logSpy.mock.calls.some((call: unknown[]) => String(call[0]).includes("防降级")),
+        ).toBe(true);
+    });
+
+    it("Linux deb 下载失败（非 200 重试穷尽）→ 只 warn 跳过该架构，Windows 侧更新照常落盘", async () => {
+        vi.useFakeTimers();
+        try {
+            manifestContent = JSON.stringify({
+                schema: 2,
+                known: [
+                    {
+                        version: "9.99.90-100000",
+                        url: "https://old.example/qq.exe",
+                        sha256: "aa".repeat(32),
+                        appid: 42,
+                        source: "official",
+                    },
+                    {
+                        version: "3.2.35-54395",
+                        platform: "linux",
+                        arch: "x64",
+                        coreVersion: "9.9.37",
+                        url: "https://old.example/qq-x64.deb",
+                        sha256: "cc".repeat(32),
+                        appid: 537403759,
+                        source: "official",
+                        buildDate: "2026-11-03",
+                    },
+                ],
+            });
+            stubConfigFetch([
+                { status: 200, body: rainbowConfig(OFFICIAL_URL) }, // Windows 有新版本要落盘
+                { status: 200, body: linuxConfig() },
+            ]);
+            mocks.execFile.mockImplementation(((
+                _cmd: string,
+                _args: string[],
+                _opts: unknown,
+                cb: (err: null, stdout: string) => void,
+            ) => {
+                cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+            }) as never);
+            // 第 1 次给 Windows 安装包；Linux deb 连续 3 次非 200（与 404 同路径：重试穷尽后抛错）
+            downloadBehaviors = ["ok", "http403", "http403", "http403"];
+            await import("./update-qq-releases.ts");
+            await pumpRealIo();
+            await vi.runAllTimersAsync();
+            await pumpRealIo();
+            // Linux 不再是致命失败：退出码 0、不开追踪 issue
+            expect(process.exitCode).toBe(0);
+            expect(writtenManifests).toHaveLength(1);
+            const saved = JSON.parse(writtenManifests[0] as string) as {
+                known: Array<{ version: string; platform?: string; url: string }>;
+            };
+            // Windows 侧更新没有被 Linux 的失败拖掉
+            expect(saved.known.some((entry) => entry.version === "9.99.91-777777")).toBe(true);
+            // Linux 条目保持原样（旧 URL / 旧 sha256 不被半成品污染）
+            expect(saved.known.find((entry) => entry.platform === "linux")?.url).toBe(
+                "https://old.example/qq-x64.deb",
+            );
+            expect(warned("跳过该架构")).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("清单还没有 Linux 条目（首次登记）→ 下载并追加 platform=linux 条目", async () => {
+        manifestContent = fixtureManifest(OFFICIAL_URL); // 只有 Windows 条目，且已是最新
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) },
+            { status: 200, body: linuxConfig() },
+        ]);
+        stubLinuxSevenZip();
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{
+                version: string;
+                platform?: string;
+                arch?: string;
+                coreVersion?: string;
+                appid: number;
+            }>;
+        };
+        const linuxEntry = saved.known.find((entry) => entry.platform === "linux");
+        expect(linuxEntry?.version).toBe("3.2.35-54395"); // 版本取自 deb 内 package.json
+        expect(linuxEntry?.arch).toBe("x64");
+        expect(linuxEntry?.coreVersion).toBe("9.9.37");
+        expect(linuxEntry?.appid).toBe(0); // 无既有条目 → appid 记 0，运行时从 major.node 重解析
+        expect(mocks.httpsGet).toHaveBeenCalledTimes(1); // Windows no-op，只下载 deb
+    });
+
+    it("Linux 步骤漏网异常（多层隔离之外的 bug）→ 只 warn，Windows 侧更新仍落盘", async () => {
+        manifestContent = JSON.stringify({
+            schema: 2,
+            known: [
+                {
+                    version: "9.99.90-100000",
+                    url: "https://old.example/qq.exe",
+                    sha256: "aa".repeat(32),
+                    appid: 42,
+                    source: "official",
+                },
+            ],
+        });
+        stubConfigFetch([
+            { status: 200, body: rainbowConfig(OFFICIAL_URL) }, // Windows 有新版本要落盘
+            { status: 200, body: linuxConfig() },
+        ]);
+        mocks.execFile.mockImplementation(((
+            _cmd: string,
+            _args: string[],
+            _opts: unknown,
+            cb: (err: null, stdout: string) => void,
+        ) => {
+            cb(null, "Files\\versions\\9.99.91-777777\\x.node");
+        }) as never);
+        // 注入点：Linux 侧第一条 info 抛错，模拟 updateLinuxStep 内部未被单架构隔离覆盖的
+        // 意外异常（正常路径下单架构失败已被 safeLinuxEntry 挡住，这是 main 的最后一层兜底）
+        logSpy.mockImplementation((...args: unknown[]) => {
+            if (String(args[0]).includes("Linux 官方最新")) {
+                throw new Error("injected-linux-failure");
+            }
+        });
+        downloadBehaviors = ["ok"];
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(0);
+        expect(writtenManifests).toHaveLength(1);
+        const saved = JSON.parse(writtenManifests[0] as string) as {
+            known: Array<{ version: string }>;
+        };
+        expect(saved.known.some((entry) => entry.version === "9.99.91-777777")).toBe(true);
+        expect(warned("Linux 更新异常")).toBe(true);
+        expect(warned("injected-linux-failure")).toBe(true);
     });
 });

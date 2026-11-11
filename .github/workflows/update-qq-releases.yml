@@ -18,6 +18,15 @@ name: update-qq-releases
 # 失败仍在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
 # 本地跑 tooling/qq-releases/update-qq-releases.ts 兜底更新清单。
 #
+# 2026-11-11 修正（issue #100）：CDN 边缘曾把 linuxConfig.js 缓存成旧版（3.2.33，
+# 源站已是 3.2.35），旧 deb 早已下架 → 下载 404 → 异常冒到 main，整次运行判失败并
+# 开追踪 issue（其实 Windows 侧无事可做）。现在 Linux 侧与 Windows 同口径防降级，
+# 且单架构下载/解包失败只 warn；因此**本 job 的报警只代表 Windows 侧 / 配置解析 /
+# 清单本身真失败**，Linux 附加条目不会再刷出这条 issue。
+# 另：脚本由 node 直接执行 TS（无构建），依赖链必须保持「零相对 import」——
+# 2026-11-11 的分组重构曾让本地兜底命令 ERR_MODULE_NOT_FOUND，守卫见
+# tooling/qq-releases/update-qq-releases.import.test.ts。
+#
 # 为什么提 PR 用 App token 而不是 github.token（2026-11-04 修复，run 41818514612）：
 # 此前用 `github.token` 提 PR，本仓一直提不出来——仓库设置
 # 「Allow GitHub Actions to create and approve pull requests」是关的，REST 直接回
@@ -97,6 +106,9 @@ jobs:
                           `若仍失败，请按日志判断阶段：① 配置源 pcConfig.json 改版 → 解析失败；`,
                           `② 拦截规则收紧（如改为大小写不敏感）→ 需重新定位可用路径；`,
                           `③ 安装包结构变化 → 版本目录名解析失败。`,
+                          ``,
+                          `Linux 侧（附加条目）的旧版配置会被防降级跳过、单架构下载失败只写 warn，`,
+                          `不会触发这条告警——到这里说明 Windows 侧或配置解析真的失败了。`,
                           ``,
                           `兜底方式：本地跑 \`node tooling/qq-releases/update-qq-releases.ts\`，`,
                           `把变更后的 packages/loader/qq-releases.json 提交上来。`,
