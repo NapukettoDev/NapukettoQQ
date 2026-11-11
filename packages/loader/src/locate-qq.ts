@@ -22,7 +22,6 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveDataRoot } from "./data-root.js";
-import { isLinuxNativeEnabled } from "./linux-native.js";
 import { downloadFile } from "./qq-download.js";
 import {
     bundledSevenZipSupported,
@@ -211,12 +210,13 @@ function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
     if (!existsSync(wrapperPath)) {
         throw new Error(`未找到 wrapper.node: ${wrapperPath}`);
     }
-    // Linux 原生模式只认 ELF：WSL 下容易误指向 /mnt/c 的 Windows 安装（PE），
-    // 原生 node dlopen 会报 invalid ELF header，这里提前给出可读错误。
-    if (process.platform === "linux" && isLinuxNativeEnabled() && !isElfFile(wrapperPath)) {
+    // Linux 只认 ELF（ADR-027 起 Wine 退役，PE wrapper 在 Linux 上没有任何加载路径）：
+    // WSL 下容易误指向 /mnt/c 的 Windows 安装，原生 node dlopen 会报 invalid ELF
+    // header，这里提前给出可读错误。
+    if (process.platform === "linux" && !isElfFile(wrapperPath)) {
         throw new Error(
-            `wrapper.node 不是 ELF（Linux 原生模式）: ${wrapperPath}\n` +
-                "请指向 Linux deb 解包产物，或改用 NAPUTO_LINUX_NATIVE=0 走 Wine",
+            `wrapper.node 不是 ELF（Linux 宿主不接受 Windows PE 安装）: ${wrapperPath}\n` +
+                "请指向 Linux deb 解包产物（官方 deb 或 /opt/QQ），或改用 NAPUTO_QQ_DIR",
         );
     }
     return {
@@ -285,19 +285,14 @@ export function resolveLinuxQqInstall(installDir: string): QqInstallInfo | null 
 /**
  * L1b：Linux 本地安装探测（`NAPUTO_QQ_DIR` > `/opt/QQ`）。
  *
- * 只在 Linux 原生分支启用——Wine 分支需要 PE `wrapper.node`，扁平目录里的 ELF 不可用。
- * `installDir` / `platform` / `linuxNative` 仅测试注入（缺省读 env 与开关）。
+ * 只在 Linux 生效（ADR-027 起 Linux 只有 ELF 宿主；Wine 分支已删除）。
+ * `installDir` / `platform` 仅测试注入（缺省读 env 与当前平台）。
  */
 export function tryResolveLinuxLocalQq(
-    options: {
-        installDir?: string | undefined;
-        platform?: NodeJS.Platform | undefined;
-        linuxNative?: boolean | undefined;
-    } = {},
+    options: { installDir?: string | undefined; platform?: NodeJS.Platform | undefined } = {},
 ): QqInstallInfo | null {
     const platform = options.platform ?? process.platform;
-    const linuxNative = options.linuxNative ?? isLinuxNativeEnabled();
-    if (platform !== "linux" || !linuxNative) {
+    if (platform !== "linux") {
         return null;
     }
     const installDir = options.installDir ?? process.env["NAPUTO_QQ_DIR"] ?? LINUX_QQ_INSTALL_DIR;

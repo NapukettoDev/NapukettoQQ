@@ -97,9 +97,9 @@ node packages/loader/scripts/verify-lock.mjs
 - stub 目录必须包含 `QQNT.dll`；启动时该目录与 `wrapper.node` 所在目录会被前置到 `PATH`。
 - 宿主必须是真正的 Node：Bun 等运行时下 `wrapper.node` 的符号绑定会失败，loader 会尝试
   找系统 `node.exe` 或下载 Windows 版 Node。
-- Linux/WSL：确认 wine 已安装（`wine --version`）；所有路径会被转成 `Z:\`，`PATH` 必须是
-  纯 Windows 风格（分号分隔）。wine 缺失时 loader 会在 spawn 前给出安装提示。
-  Linux 还有一条**原生 ELF 分支**（`NAPUTO_LINUX_NATIVE=1`，不跑 wine），它的排障见 §4.8。
+- Linux/WSL：确认包内 `.so` stub 存在（`native/build/linux-<arch>/libnapuketto_stub.so`，
+  `NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`（Ubuntu 24.04 装 `libgnutls30t64`，
+  Debian 12 装 `libgnutls30`）。Linux **不需要 Wine**（ADR-027 已退役），排障见 §4.8。
 
 ### 4.4 QQ 文件定位/下载失败
 
@@ -137,11 +137,18 @@ node packages/loader/scripts/verify-lock.mjs
 - 鉴权失败：OB11 的 WS 以 4401 关闭；Satori HTTP 用 Bearer，WS 在 IDENTIFY 中带 token。
   token 为空表示不鉴权。
 
-### 4.8 Linux 原生宿主（`NAPUTO_LINUX_NATIVE=1`）
+### 4.8 Linux 原生宿主（Linux 唯一路径，无需 Wine）
 
-Linux 默认仍走 wine；显式设 `NAPUTO_LINUX_NATIVE=1` 才切到「标准 Linux node + 最小
-`.so` stub + 官方 ELF `wrapper.node`」的原生分支。设计/实测依据见
+Linux 只有一条路线：**标准 Linux `node` + 最小 `.so` stub + 官方 ELF `wrapper.node`**
+（`LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`）。Wine 已于 ADR-027 退役——不再需要
+`wine`、Windows 版 `node.exe`、`WINEPREFIX` 或 `Z:\` 路径转换；`NAPUTO_LINUX_NATIVE`
+与 `NAPUTO_WINE` 均失效（设 `=0` 只会打印一句「已失效」）。设计/实测依据见
 [linux-native-host.md](../architecture/linux-native-host.md)。
+
+> **从旧版本升级**：升级后 `wine` 可以卸载；`<数据根>/runtime/win-node/` 与旧版
+> `qq-files/<Windows 版本>/` 缓存不再被读取，可手动删除释放磁盘。若之前在 WSL 里靠
+> `NAPUTO_QQ_PATH` 指向 `/mnt/c` 的 Windows 安装，请改指 Linux 安装（`NAPUTO_QQ_DIR`
+> 或默认 `/opt/QQ`），或让它自动下载官方 deb。
 
 **系统依赖（缺了会以不同方式失败）**
 
@@ -152,34 +159,34 @@ Linux 默认仍走 wine；显式设 `NAPUTO_LINUX_NATIVE=1` 才切到「标准 L
 | `libuuid1` | arm64 的 `wrapper.node` 缺 `uuid` 的 `DT_NEEDED`（x64 自带） | 首次 `uuid_generate` 时 symbol lookup error（arm64 需手工 preload，loader 尚未接管，见 linux-native-host 附录 E.2） |
 | 内置 `assets/7zip/7zz` | deb 解包；缺失时回退下载（要 `tar` + `xz-utils`） | 解包阶段报 7-Zip 相关错误 |
 
-**与 wine 分支的行为差异**
+**与 Windows 分支的行为差异**
 
-- 不再下载 Windows `node.exe`、不做 `Z:\` 路径转换、不校验 `QQNT.dll`。
+- 不下载 Windows `node.exe`、不校验 `QQNT.dll`、不做 `Z:\` 路径转换。
 - QQ 数据固定落在 **`<数据根>/nt_qq`**（不读写 `$HOME/Documents/Tencent Files`）。
 - 原生层残余的 `$HOME` 写入：`libbugly` 的崩溃记录不走 `desktopGlobalPath`，固定写
-  `$HOME/.config/QQ/crash_files/`。原生分支因此把子进程 `HOME`（连同 `XDG_CONFIG_HOME` /
+  `$HOME/.config/QQ/crash_files/`。因此把子进程 `HOME`（连同 `XDG_CONFIG_HOME` /
   `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME`）收敛到 **`<数据根>/home`**
   （`NAPUTO_LINUX_HOME` 可覆盖；`XDG_RUNTIME_DIR` 不接管，那是会话级目录）：查崩溃去
   `<数据根>/home/.config/QQ/crash_files/`，用户目录零写入。
 - 只认 **ELF** 的 `wrapper.node`：误指向 `/mnt/c` 下的 Windows 安装（PE）会立刻报
-  「wrapper.node 不是 ELF（Linux 原生模式）」，不会走到 `dlopen`。
+  「wrapper.node 不是 ELF（Linux 宿主不接受 Windows PE 安装）」，不会走到 `dlopen`。
 - `libbugly` 会打印 `InitBuglyManager path:`、`getCrashDetailBeanFromRecord … open file
   error` 一类原生行，属固有噪音（同 §4.6），不影响功能。
 
 **排障顺序**（从外到内）
 
-1. `NAPUTO_LINUX_NATIVE=1` 下若报「Linux stub 未找到」→ loader 包内
+1. 报「Linux stub 未找到」→ loader 包内
    `native/build/linux-<arch>/libnapuketto_stub.so` 缺失（安装包不全），用
-   `NAPUTO_LINUX_STUB` 指到可用的 `.so`，或改用 wine 分支。
+   `NAPUTO_LINUX_STUB` 指到可用的 `.so`。
 2. 报 gnutls 相关 → 装系统 `libgnutls30t64` 后重试（loader 会自动 preload）。
 3. `dlopen` 报缺 `.so` → 按上表补 `libx11` / `libxext` / `libxcb` 等。
 4. 仍失败 → 用 `ldd <wrapper.node>` 看未解析项，并对照
    [linux-native-host.md](../architecture/linux-native-host.md) §5 的依赖清单。
 
 **当前未覆盖**：arm64 只在 qemu 模拟下验到「加载 + 引擎初始化 + 登录握手」，二进制承诺仅
-x64（真机与交付缺口见 linux-native-host 附录 E.2）；他人消息的实时入站（需第二个账号）；
-视频/文件上传。完整阶段结论与验证数据集中在
-[linux-native-host.md](../architecture/linux-native-host.md)。
+x64（真机与交付缺口见 linux-native-host 附录 E.2）；群文件「列表式上传」尚无原生入口，
+`upload_group_file` 走闪传分享卡片（语义见 [kernel design §15](../../packages/kernel/docs/design.md)）。
+完整阶段结论与验证数据集中在 [linux-native-host.md](../architecture/linux-native-host.md)。
 
 ## 5. 诊断开关
 

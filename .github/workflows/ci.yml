@@ -11,7 +11,7 @@
 #            tsc 直接 TS2307，本地因 dist 常在而感知不到该顺序依赖）
 #          （build 必须前置于 test：tooling/package-exports.test.ts 断言
 #            dist 里的类型声明文件，干净环境无 dist 时必挂）
-# - windows 跨平台测试补位：运行时目标是 Windows 优先（QQ 原生）+ Linux（wine），
+# - windows 跨平台测试补位：运行时目标是 Windows 优先（QQ 原生）+ Linux（原生 ELF 宿主），
 #            测试套件按跨平台设计（纯函数 + mock fixture + skipIf 平台守卫），
 #            与 gate 同一套用例再验一个 OS。只跑测试，不重复 check 与覆盖率。
 # - audit  fallow 增量门禁：fallow audit --base 只报本次改动引入的死代码 /

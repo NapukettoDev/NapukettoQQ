@@ -226,7 +226,7 @@ function buildLaunchOptions(ctx: SelfHostLaunchContext): LaunchOptions {
 }
 
 /** 启动自建宿主子进程（包入口解析 → stub 目录 → 启动信息 → launchSelfHost）。
- * ⚠️ P2（2026-08-12）：launchSelfHost 变 async（linux 场景需下载 win-node）。 */
+ * ⚠️ P2（2026-08-12）：launchSelfHost 变 async（win32 非 node 宿主需解析/下载 win-node）。 */
 async function startSelfHost(
     opts: BootOptions,
     qq: QqInstallInfo,

@@ -1,14 +1,16 @@
 /**
- * launcher：自建宿主引导（2026-08-07 唯一路线）——spawn 标准 node 跑 self-host.cjs。
+ * launcher：自建宿主引导（2026-08-07 唯一路线）——spawn node 跑 self-host.cjs。
  *
  * 历史（V1/路线 B 事实链，已归档 archive/）：
  *  1. wrapper.node 只能在 QQ 定制版 Electron 里注册（实测纯 Node/普通 Electron 均 self-register 失败）
  *  2. QQ 是打包应用，禁 NODE_OPTIONS（实测 stderr）
  *  → 旧方案：NapukettoBootMain.exe 启动 QQ + 注入 NapukettoWinBootHook.dll（已废弃）
- *  → 现方案：stub QQNT.dll 转发宿主符号 → 标准 node 直接 dlopen wrapper.node（自建宿主）
+ *  → 现方案：stub 转发宿主符号 → 标准 node 直接 dlopen wrapper.node（自建宿主）
  *
- * P2（2026-08-12）：平台分支——win32 本机 node；linux 经 wine 跑 Windows 版 node.exe
- * （ensureWinNode 下载）。所有传给 wine 子进程的路径过 toWinePath（Z:\）。
+ * 平台分支（ADR-027，2026-11-14）：
+ *  - win32：本机 node + PE stub `QQNT.dll`（非 node 宿主如 Bun 时先解析真 `node.exe`）
+ *  - linux：标准 Linux node + stub `.so`（`LD_PRELOAD`）直跑官方 Linux `wrapper.node`
+ *  - Wine 分支已退役（不再有 Windows 版 `node.exe` / `Z:\` 路径转换 / `NAPUTO_WINE`）
  */
 import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -17,7 +19,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
     defaultLinuxStubPath,
-    isLinuxNativeEnabled,
     linuxHomeEnv,
     linuxPreload,
     resolveGnutls,
@@ -26,15 +27,6 @@ import {
 } from "./linux-native.js";
 import type { QqInstallInfo } from "./locate-qq.js";
 import { ensureWinNode } from "./win-node.js";
-import {
-    buildSpawnCommand,
-    isLinux,
-    toWinePath,
-    unixPathToWinePath,
-    wineBinary,
-    wineCheckError,
-    wineInstallHint,
-} from "./wine.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -65,7 +57,7 @@ export interface LaunchOptions {
     ipc?: boolean;
     /** 自建宿主入口（默认 dist/host/self-host.cjs）。 */
     selfHostEntry?: string;
-    /** Windows 版 node.exe 路径（linux 下载覆盖 / win32 非 node 宿主时显式指定；缺省自动解析）。 */
+    /** Windows 版 node.exe 路径（win32 非 node 宿主时显式指定；缺省系统 PATH 探测/自动下载）。 */
     winNodePath?: string;
     /**
      * 子进程工作目录（缺省继承父进程 cwd）。
@@ -82,14 +74,14 @@ export interface LaunchOptions {
      */
     stdio?: StdioOptions;
     /**
-     * 追加注入子进程的环境变量（覆盖同名继承值；值按原样传递，不转 wine 路径）。
+     * 追加注入子进程的环境变量（覆盖同名继承值；值按原样传递）。
      * cli 用：传播有效控制台渲染决策（NAPUKETTO_LOG_FORMAT/COLORIZE——子进程
      * stdout 恒为 pipe，TTY 判定失真）与数据根（NAPUTO_DATA_ROOT，停止哨兵用）。
      */
     extraEnv?: Record<string, string>;
     /**
-     * 阶段回调（stub 校验/win-node 下载/spawn 提示，2026-08-23 起——下载
-     * 313MB 安装包与 win-node 全程静默的坑）。调用方接 logger.info。
+     * 阶段回调（stub 校验 / node 解析下载 / spawn 提示，2026-08-23 起——首次下载
+     * 313MB 安装包与解析宿主 node 全程静默的坑）。调用方接 logger.info。
      */
     onStage?: (message: string) => void;
 }
@@ -102,15 +94,13 @@ export interface LaunchResult {
 }
 
 /**
- * 启动自建宿主（路线 A）：spawn 标准 node 直接跑 self-host.cjs，不拉起 QQ / 不注入。
+ * 启动自建宿主（路线 A）：spawn node 直接跑 self-host.cjs，不拉起 QQ / 不注入。
  *
- * 关键（HANDOVER-V7 技术数据）：wrapper.node 从 QQNT.dll 导入 99 符号
+ * 关键（HANDOVER-V7 技术数据）：Windows 版 `wrapper.node` 从 QQNT.dll 导入 99 符号
  * （napi_*×40 + uv_*×56 + qq_magic×1 + v8/node mangled×2）——标准 node 无这些宿主
  * 符号，必须 PATH 前置 stub QQNT.dll 目录（转发到 node.exe）+ QQ resources\app
- * （wrapper.node 同目录依赖 DLL）才能 dlopen 成功。
- *
- * P2 平台分支：win32 用本机 node；linux 用 wine + Windows 版 node.exe
- * （ensureWinNode 自动下载，路径过 toWinePath）。async（win-node 可能需下载）。
+ * （wrapper.node 同目录依赖 DLL）才能 dlopen 成功。Linux 版 `wrapper.node` 是 ELF，
+ * 宿主符号由官方 node 的全局符号表直接解析，stub `.so` 只补 3 个缺失符号（LD_PRELOAD）。
  */
 export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResult> {
     const selfHostPath =
@@ -121,10 +111,15 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
         );
     }
 
-    // Linux 原生 ELF 分支（Stage 1，默认关闭）：标准 node + stub .so + gnutls preload。
-    if (isLinuxNativeEnabled()) {
-        const child = launchLinuxNative(options, selfHostPath);
-        return { child, bootJsPath: selfHostPath };
+    // Linux：原生 ELF 宿主（ADR-027 起唯一分支）。NAPUTO_LINUX_NATIVE 已退役——
+    // 显式设 0 只播报一句，不再回退 Wine（Wine 分支代码已删除）。
+    if (process.platform === "linux") {
+        if (process.env["NAPUTO_LINUX_NATIVE"] === "0") {
+            options.onStage?.(
+                "NAPUTO_LINUX_NATIVE=0 已失效（Wine 于 ADR-027 退役）：Linux 恒走原生 ELF 宿主",
+            );
+        }
+        return { child: launchLinuxNative(options, selfHostPath), bootJsPath: selfHostPath };
     }
 
     // stub QQNT.dll 校验（自建宿主必需：PATH 前置 stub 转发 napi_* 到 node.exe，
@@ -139,11 +134,11 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     }
     options.onStage?.(`stub QQNT.dll 就绪：${stub}`);
 
-    // 平台分支：win32 本机 node；linux wine + win-node（下载）
-    const { useWine, winNodePath } = await resolveNodeExecutable(options);
+    // 平台分支：win32 解析宿主 node（非 node 宿主如 Bun 需真 node.exe）
+    const hostNode = await resolveHostNodePath(options);
 
-    const env = buildLaunchEnv(options, useWine);
-    applyPathEnv(env, { stub, wrapperPath: options.qq.wrapperPath, useWine });
+    const env = buildLaunchEnv(options);
+    applyPathEnv(env, { stub, wrapperPath: options.qq.wrapperPath });
 
     // 标准 node 直接跑入口（不拉起 QQ，不注入）
     // cwd 显式指向数据根（cli 传入）：QQ 原生层 fallback 落盘（guild1.db 等）
@@ -151,15 +146,8 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     if (options.cwd !== undefined) {
         mkdirSync(options.cwd, { recursive: true });
     }
-    // spawn 命令：win32 = node.exe selfHostPath；linux = wine winNodePath selfHostPath
-    // wine 场景 selfHostPath 也需转 Windows 路径（wine 内 node 读参数）
-    // winNodePath：resolveNodeExecutable 解析出的宿主 node（wine 下载 / win32 非
-    // node 宿主解析）；未解析（win32 标准 node 环境，execPath 即 node 自身）回退。
-    const { command, args } = buildSpawnCommand({
-        ...(winNodePath !== undefined ? { winNodePath } : { winNodePath: process.execPath }),
-        selfHostPath: useWine ? toWinePath(selfHostPath) : selfHostPath,
-        wine: wineBinary(),
-    });
+    const command = hostNode ?? process.execPath;
+    const args = [selfHostPath];
     options.onStage?.(`启动自建宿主子进程：${command} ${args.join(" ")}`);
     const child = spawn(command, args, {
         // exactOptionalPropertyTypes：未传 cwd 时不显式写入 undefined（继承父进程）
@@ -169,15 +157,15 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
         windowsHide: false,
     });
 
-    // ⚠️ spawn error 兜底（2026-08-23 WSL 生产事故）：wine 未安装时 Node 异步
+    // ⚠️ spawn error 兜底（2026-08-23 WSL 生产事故）：子进程命令不存在时 Node 异步
     // emit 'error'（ENOENT），无监听者 = EventEmitter 默认 throw →
-    // uncaughtException → 整个宿主进程（koishi）崩溃。预检（assertWineAvailable）
-    // 已覆盖常见场景，这里防漏网并输出可读信息，绝不让宿主进程崩掉。
+    // uncaughtException → 整个宿主进程（koishi）崩溃。预检已覆盖常见场景，
+    // 这里防漏网并输出可读信息，绝不让宿主进程崩掉。
     child.once("error", (err) => {
         const code = (err as NodeJS.ErrnoException).code;
         const message =
             code === "ENOENT"
-                ? `无法启动子进程（命令不存在）: ${command}\n${isLinux() ? wineInstallHint() : ""}`
+                ? `无法启动子进程（命令不存在）: ${command}`
                 : `子进程启动失败: ${err.message}`;
         // 防崩溃兜底输出（driver 侧另有 error 监听转 onError 友好流程）
         process.stderr.write(`[napuketto-loader] ${message}\n`);
@@ -187,8 +175,9 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
 }
 
 /**
- * Linux 原生 ELF 分支：标准 node + 最小 stub `.so` + 系统 libgnutls 预加载。
- * 不转 wine 路径、不下载 Windows node.exe、不动 PATH（ELF 全局符号表直接解析）。
+ * Linux 原生 ELF 分支（ADR-027 起 Linux 唯一路径）：标准 node + 最小 stub `.so` +
+ * 系统 libgnutls 预加载。不需要 PATH 前置（ELF 全局符号表直接解析），也不下载
+ * 任何 Windows 产物。
  */
 function launchLinuxNative(options: LaunchOptions, selfHostPath: string): ReturnType<typeof spawn> {
     const stub =
@@ -212,7 +201,7 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
             "Linux 原生宿主需要可执行的 node（当前宿主不是 node，且 PATH 中找不到 node）",
         );
     }
-    const env = buildLaunchEnv(options, false);
+    const env = buildLaunchEnv(options);
     env["LD_PRELOAD"] = linuxPreload(stub, gnutls);
     env[ENV.STUB_DIR] = stub;
     // HOME/XDG 收敛（Stage 3c）：Bugly 的崩溃处理器只认 $HOME，改它才能把
@@ -243,44 +232,20 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
 }
 
 /**
- * 平台分支解析 node 可执行：win32 本机（非 node 宿主时解析真 node）；linux wine +
- * Windows 版 node.exe（ensureWinNode 下载）。
+ * 解析宿主 node 可执行（win32）：标准 node 宿主直接用自身（返回 undefined，调用方
+ * 回退 process.execPath）；非 node 宿主（koishi CE 等 Bun 运行时，execPath=bun.exe）
+ * 必须解析真 node——wrapper.node 的符号由 stub QQNT.dll 绑定到 node.exe，bun.exe
+ * 进程内无此模块，LoadLibrary 报 1114「DLL 初始化例程失败」（2026-09-05 实测）。
  */
-async function resolveNodeExecutable(options: LaunchOptions): Promise<{
-    useWine: boolean;
-    winNodePath: string | undefined;
-}> {
-    if (!isLinux()) {
-        // win32：标准 node 宿主（execPath 即 node）直接用自身；非 node 宿主
-        // （koishi CE 等 Bun 运行时，execPath=bun.exe）必须解析真 node——
-        // wrapper.node 的符号由 stub QQNT.dll 绑定到 node.exe，bun.exe 进程内
-        // 无此模块，LoadLibrary 报 1114「DLL 初始化例程失败」（2026-09-05 实测）。
-        if (isNodeExecutable(process.execPath)) {
-            return { useWine: false, winNodePath: undefined };
-        }
-        const hostNode = await resolveWinHostNode({
-            ...(options.winNodePath !== undefined ? { explicitPath: options.winNodePath } : {}),
-            ...(options.cwd !== undefined ? { dataRoot: options.cwd } : {}),
-            ...(options.onStage !== undefined ? { onStage: options.onStage } : {}),
-        });
-        return { useWine: false, winNodePath: hostNode };
+async function resolveHostNodePath(options: LaunchOptions): Promise<string | undefined> {
+    if (isNodeExecutable(process.execPath)) {
+        return undefined;
     }
-    // ⚠️ wine 预检（2026-08-23 WSL 生产事故）：spawn 前确认 wine 可执行——
-    // 干净 WSL 环境默认没有 wine，缺失时给出安装指引（throw 可读错误，由
-    // 调用方 driver 捕获转 [W] 驱动错误），而不是 spawn 后异步 'error' 崩进程。
-    const wine = wineBinary();
-    const probe = spawnSync(wine, ["--version"], { stdio: "ignore" });
-    const hint = wineCheckError(probe);
-    if (hint !== null) {
-        throw new Error(hint);
-    }
-    options.onStage?.("wine 就绪，获取 Windows 版 node.exe（Linux/wine 场景）…");
-    const winNode = await ensureWinNode({
+    return resolveWinHostNode({
+        ...(options.winNodePath !== undefined ? { explicitPath: options.winNodePath } : {}),
         ...(options.cwd !== undefined ? { dataRoot: options.cwd } : {}),
-        ...(options.winNodePath !== undefined ? { exePath: options.winNodePath } : {}),
+        ...(options.onStage !== undefined ? { onStage: options.onStage } : {}),
     });
-    options.onStage?.(`Windows 版 node.exe 就绪：${winNode.exePath}（${winNode.version}）`);
-    return { useWine: true, winNodePath: winNode.exePath };
 }
 
 /** 可执行文件名是否 node（win32 宿主判定；node.exe / node 两种形态）。 */
@@ -375,23 +340,16 @@ export async function resolveWinHostNode(
     return winNode.exePath;
 }
 
-/** 注入 PATH（stub 目录 + wrapper.node 目录前置）与 STUB_DIR（wine 场景转 Z:\）。 */
+/** 注入 PATH（stub 目录 + wrapper.node 目录前置）与 STUB_DIR（win32 分支）。 */
 function applyPathEnv(
     env: Record<string, string>,
-    opts: { stub: string; wrapperPath: string; useWine: boolean },
+    opts: { stub: string; wrapperPath: string },
 ): void {
-    const p = (linuxPath: string): string => (opts.useWine ? toWinePath(linuxPath) : linuxPath);
-    // ⚠️ wine 场景 PATH 必须纯 Windows 风格（全部 Z:\ 条目 + 分号分隔）：混入
-    // Unix PATH（冒号分隔）会让 wine 按错误分隔符拆分，盘符路径（Z:\...）被拆散，
-    // stub 目录丢失 → wrapper.node 依赖的 QQNT.dll 找不到（2026-08-14 生产实测
-    // "import_dll Library QQNT.dll not found"）。Unix PATH 逐条转 Z:\ 再并入。
-    const unixPath = process.env["PATH"] ?? "";
-    const winPath = opts.useWine ? unixPathToWinePath(unixPath) : unixPath;
-    const pathEntries = [p(opts.stub), p(dirname(opts.wrapperPath)), winPath]
-        .filter((entry) => entry !== undefined && entry !== "")
+    const pathEntries = [opts.stub, dirname(opts.wrapperPath), process.env["PATH"] ?? ""]
+        .filter((entry) => entry !== "")
         .join(";");
     env["PATH"] = pathEntries;
-    env[ENV.STUB_DIR] = p(opts.stub);
+    env[ENV.STUB_DIR] = opts.stub;
 }
 
 /**
@@ -402,33 +360,31 @@ export function defaultStubDir(): string {
     return join(__dirname, "..", "native", "build", "stub-test-env");
 }
 
-/** 装配自建宿主环境变量（wine 场景路径转 Z:\；win32 原样）。 */
-function buildLaunchEnv(options: LaunchOptions, useWine: boolean): Record<string, string> {
+/** 装配自建宿主环境变量。 */
+function buildLaunchEnv(options: LaunchOptions): Record<string, string> {
     // 配置目录兜底
     const cfg = resolve(options.cfgDir);
     mkdirSync(cfg, { recursive: true });
 
-    // wine 场景：传给子进程的路径全转 Z:\（node.exe 在 wine 内按 Windows 路径读）
-    const p = (linuxPath: string): string => (useWine ? toWinePath(linuxPath) : linuxPath);
     const env: Record<string, string> = {
         ...process.env,
-        [ENV.QQ_PATH]: p(options.qq.qqPath),
-        [ENV.KERNEL_ENTRY]: p(resolve(options.kernelEntry)),
-        [ENV.CFG_DIR]: p(cfg),
+        [ENV.QQ_PATH]: options.qq.qqPath,
+        [ENV.KERNEL_ENTRY]: resolve(options.kernelEntry),
+        [ENV.CFG_DIR]: cfg,
         [ENV.QQ_VERSION]: options.qq.version,
-        [ENV.WRAPPER_PATH]: p(options.qq.wrapperPath),
+        [ENV.WRAPPER_PATH]: options.qq.wrapperPath,
     };
     // 可选注入（对象展开，保持低复杂度）
     const optional: Record<string, string> = {
         ...(options.selfHost === true ? { [ENV.SELF_HOST]: "1" } : {}),
         ...(options.adapterEntry !== undefined
-            ? { [ENV.ADAPTER_ENTRY]: p(resolve(options.adapterEntry)) }
+            ? { [ENV.ADAPTER_ENTRY]: resolve(options.adapterEntry) }
             : {}),
         ...(options.networkEntry !== undefined
-            ? { [ENV.NETWORK_ENTRY]: p(resolve(options.networkEntry)) }
+            ? { [ENV.NETWORK_ENTRY]: resolve(options.networkEntry) }
             : {}),
         ...(options.configPath !== undefined
-            ? { [ENV.CONFIG_PATH]: p(resolve(options.configPath)) }
+            ? { [ENV.CONFIG_PATH]: resolve(options.configPath) }
             : {}),
         ...(options.quickUin !== undefined ? { [ENV.QUICK_UIN]: options.quickUin } : {}),
         ...(options.qrOnly === true ? { [ENV.QR_ONLY]: "1" } : {}),

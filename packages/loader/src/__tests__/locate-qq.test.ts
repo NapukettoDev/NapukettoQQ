@@ -23,6 +23,9 @@ import {
 /** 临时安装目录（每个测试独立，测后清理）。 */
 const tmpDirs: string[] = [];
 
+/** ELF 魔数开头的假 wrapper（Linux 平台守卫用；Windows 平台不校验）。 */
+const ELF_HEAD = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+
 /** 构造最小 QQ 安装结构：<root>/QQ.exe + <root>/versions/<v>/resources/app/wrapper.node。 */
 function makeFakeInstall(): { root: string; version: string } {
     const root = mkdtempSync(join(tmpdir(), "napuketto-qq-"));
@@ -30,7 +33,8 @@ function makeFakeInstall(): { root: string; version: string } {
     const version = "9.9.33-51802";
     const wrapperDir = join(root, "versions", version, "resources", "app");
     mkdirSync(wrapperDir, { recursive: true });
-    writeFileSync(join(wrapperDir, "wrapper.node"), "");
+    // wrapper 写 ELF 魔数：Linux 平台下 resolveFromRoot 会校验（真实 wrapper 是 PE 或 ELF）
+    writeFileSync(join(wrapperDir, "wrapper.node"), ELF_HEAD);
     writeFileSync(join(root, "QQ.exe"), "");
     return { root, version };
 }
@@ -48,7 +52,7 @@ function makeFakeCache(dataRoot: string): string {
         "app",
     );
     mkdirSync(appDir, { recursive: true });
-    writeFileSync(join(appDir, "wrapper.node"), "");
+    writeFileSync(join(appDir, "wrapper.node"), ELF_HEAD);
     return version;
 }
 

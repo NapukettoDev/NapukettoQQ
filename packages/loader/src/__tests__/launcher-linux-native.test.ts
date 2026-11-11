@@ -1,7 +1,7 @@
 /**
  * launcher-linux-native.test.ts：`launchLinuxNative` 的 spawn 装配（Stage 3c HOME 收敛）。
  *
- * 平台判定由 `../linux-native.js` 的 `isLinuxNativeEnabled` 注入（钉死 true），
+ * ADR-027 起 Linux 恒走原生分支——平台用 withPlatform 钉成 linux（不再是环境变量开关），
  * spawn / spawnSync 打桩，stub 用临时空 fixture——不触真实 ELF 与外部二进制。
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -30,11 +30,26 @@ vi.mock("../linux-native.js", async (importOriginal) => {
     const actual = await importOriginal<typeof import("../linux-native.js")>();
     return {
         ...actual,
-        isLinuxNativeEnabled: () => true,
         resolveGnutls: () => "/usr/lib/x86_64-linux-gnu/libgnutls.so.30",
         resolveLinuxNode: () => process.execPath,
     };
 });
+
+/** 平台切换（用后还原；Linux 分支判定只看 process.platform）。 */
+function withLinux<T>(fn: () => Promise<T>): Promise<T> {
+    const original = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", {
+        value: "linux",
+        configurable: true,
+        writable: true,
+        enumerable: true,
+    });
+    return fn().finally(() => {
+        if (original !== undefined) {
+            Object.defineProperty(process, "platform", original);
+        }
+    });
+}
 
 let tmpRoot = "";
 
@@ -98,7 +113,9 @@ function spawnedEnv(call = h.spawnCalls[0]): Record<string, string> {
 describe("launchLinuxNative：HOME/XDG 收敛", () => {
     it("spawn 标准 node，HOME 指向 <数据根>/home，XDG_* 同目录派生", async () => {
         const options = baseOptions();
-        await launchSelfHost(options);
+        await withLinux(async () => {
+            await launchSelfHost(options);
+        });
 
         expect(h.spawnCalls).toHaveLength(1);
         const call = h.spawnCalls[0];
@@ -115,15 +132,19 @@ describe("launchLinuxNative：HOME/XDG 收敛", () => {
     });
 
     it("受管 HOME 目录被提前创建（原生层只 mkdir 自己的子目录）", async () => {
-        await launchSelfHost(baseOptions());
+        await withLinux(async () => {
+            await launchSelfHost(baseOptions());
+        });
         const home = spawnedEnv()["HOME"] ?? "";
-        expect(existsSync(home)).toBe(true);
+        expect(home !== "" && existsSync(home)).toBe(true);
     });
 
     it("同时保留 Linux 原生分支的 LD_PRELOAD 与 STUB_DIR", async () => {
         const options = baseOptions();
         const stub = options.linuxStubPath ?? "";
-        await launchSelfHost(options);
+        await withLinux(async () => {
+            await launchSelfHost(options);
+        });
         const env = spawnedEnv();
         expect(env["LD_PRELOAD"]).toBe(`${stub}:/usr/lib/x86_64-linux-gnu/libgnutls.so.30`);
         expect(env[ENV.STUB_DIR]).toBe(stub);
@@ -132,7 +153,9 @@ describe("launchLinuxNative：HOME/XDG 收敛", () => {
     it("NAPUTO_LINUX_HOME 显式覆盖受管 HOME（调试/特殊部署）", async () => {
         const custom = join(tmpRoot, "custom-home");
         vi.stubEnv("NAPUTO_LINUX_HOME", custom);
-        await launchSelfHost(baseOptions());
+        await withLinux(async () => {
+            await launchSelfHost(baseOptions());
+        });
         expect(spawnedEnv()["HOME"]).toBe(custom);
     });
 
@@ -140,7 +163,24 @@ describe("launchLinuxNative：HOME/XDG 收敛", () => {
         const options = baseOptions();
         const withoutCwd: LaunchOptions = { ...options };
         delete (withoutCwd as { cwd?: string }).cwd;
-        await launchSelfHost(withoutCwd);
+        await withLinux(async () => {
+            await launchSelfHost(withoutCwd);
+        });
         expect(spawnedEnv()["HOME"]).toBe(join(tmpRoot, "data", "10001", "home"));
+    });
+
+    it("NAPUTO_LINUX_NATIVE=0 已退役：只播报一句，行为不变（不走 stub QQNT.dll 校验）", async () => {
+        const stages: string[] = [];
+        vi.stubEnv("NAPUTO_LINUX_NATIVE", "0");
+        await withLinux(async () => {
+            // 未传 stubDir（win32 分支会因缺 QQNT.dll 抛错）——能正常 spawn 即证明走了原生分支
+            await launchSelfHost(
+                baseOptions({
+                    onStage: (m) => stages.push(m),
+                }),
+            );
+        });
+        expect(stages.some((m) => m.includes("NAPUTO_LINUX_NATIVE=0 已失效"))).toBe(true);
+        expect(h.spawnCalls[0]?.command).toBe(process.execPath);
     });
 });

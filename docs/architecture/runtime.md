@@ -30,12 +30,9 @@ stub QQNT.dll（PATH 前置）
   `napi_*` / `uv_*` / `qq_magic_*` 等宿主符号。
 - Windows 上优先使用当前 Node（`process.execPath` 是 `node`/`node.exe`）。若宿主是 Bun 等
   非 Node 运行时，loader 会另找系统 `node.exe` 或下载 Windows 版 Node，再由它执行自建宿主。
-- Linux 上用 wine 运行 Windows 版 `node.exe`；所有传给 wine 的路径都转成 `Z:\` 形式，
-  `PATH` 必须是纯 Windows 风格（分号分隔），否则 stub 目录会丢失。
-- **Linux 原生 ELF 分支（`NAPUTO_LINUX_NATIVE=1`）**：标准 Linux `node` + 最小 `.so` stub
-  + 官方 ELF `wrapper.node`，已实现并随 loader 0.6.1+ 发布；x64 的加载 / 登录 / 收发 /
-  富媒体均实测通过，见 [linux-native-host.md](linux-native-host.md)。ADR 落地前 wine 仍是
-  默认链路（回退开关不设即走 wine）。
+- Linux 直接跑系统 `node` + 最小 `.so` stub（`LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`）
+  + 官方 ELF `wrapper.node`：ELF 全局符号表直接解析宿主符号，不需要 PATH 前置，也不需要
+  Wine（ADR-027 已退役 Wine，见 [linux-native-host.md](linux-native-host.md)）。
 - 账号之间是进程隔离：一个账号一个自建宿主进程，天然满足 kernel“无全局单例”的前提。
 
 ## 2. 启动序列
@@ -60,13 +57,15 @@ boot 进程；boot 退出且 `autoRestart=true` 时延迟重启。
 `launchSelfHost`：
 
 1. 检查 `dist/host/self-host.cjs` 存在。
-2. 检查 stub 目录下的 `QQNT.dll`；默认 `packages/loader/native/build/stub-test-env`，
-   可用 `--stub-dir` / `NAPUTO_STUB_DIR` 覆盖。
-3. 平台分支：Windows 原生 Node，或 Linux wine + Windows `node.exe`（需要时自动下载）。
+2. Windows：检查 stub 目录下的 `QQNT.dll`；默认 `packages/loader/native/build/stub-test-env`，
+   可用 `--stub-dir` / `NAPUTO_STUB_DIR` 覆盖。Linux 改校 `libnapuketto_stub.so`
+   （包内 `native/build/linux-<arch>/`，`NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
+3. 平台分支：Windows 用本机 Node（非 Node 宿主时另解析真 `node.exe`）；Linux 直接跑系统 `node`。
 4. 构造环境变量（`NAPUTO_QQ_PATH`、`NAPUTO_KERNEL_ENTRY`、`NAPUTO_CFG_DIR`、
    `NAPUTO_QQ_VERSION`、`NAPUTO_WRAPPER_PATH`、adapter/network 入口、配置路径、快速登录
-   账号等），把 stub 目录与 `wrapper.node` 所在目录前置到 `PATH`。
-5. spawn 自建宿主；捕获 spawn `error`，避免 wine 缺失等场景把父进程带崩。
+   账号等）；Windows 另把 stub 目录与 `wrapper.node` 所在目录前置到 `PATH`，Linux 另注入
+   `LD_PRELOAD` 与受管 `HOME`/`XDG_*`。
+5. spawn 自建宿主；捕获 spawn `error`，避免命令缺失等场景把父进程带崩。
 
 ### 2.3 宿主内引导
 

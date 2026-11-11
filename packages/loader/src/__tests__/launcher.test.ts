@@ -1,7 +1,7 @@
 /**
  * launcher.test.ts：win32 非 node 宿主解析链单测（isNodeExecutable /
  * resolveWinHostNode，2026-09-05 Bun 宿主 dlopen 1114 修复）。
- * 探测/下载均注入假实现，不依赖真实 node 环境（与 wine.test.ts 同策略）。
+ * 探测/下载均注入假实现，不依赖真实 node 环境（探测全注入，不触真实二进制）。
  */
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

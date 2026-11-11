@@ -147,7 +147,7 @@ vi.mock("./qq-extract.js", async (importOriginal) => {
         // 模拟成功提取：<cacheRoot>/<v>/versions/<v>/resources/app/wrapper.node
         const appDir = join(cacheRoot, version, "versions", version, "resources", "app");
         mkdirSync(appDir, { recursive: true });
-        writeFileSync(join(appDir, "wrapper.node"), "wrapper");
+        writeFileSync(join(appDir, "wrapper.node"), elfBytes());
         const versionDir = join(cacheRoot, version);
         return {
             qqPath: join(versionDir, "QQ.exe"),
@@ -228,7 +228,9 @@ function makeInstall(version = "9.9.33-51802"): string {
     const root = mkdtempSync(join(tmpdir(), "napuketto-qq-install-"));
     const appDir = join(root, "versions", version, "resources", "app");
     mkdirSync(appDir, { recursive: true });
-    writeFileSync(join(appDir, "wrapper.node"), "");
+    // wrapper 写 ELF 魔数：Linux 平台下 resolveFromRoot 会校验（真实 wrapper 是 PE 或 ELF，
+    // 空文件在 Linux 上会被守卫拒绝，用例本身与平台无关）
+    writeFileSync(join(appDir, "wrapper.node"), elfBytes());
     writeFileSync(join(root, "QQ.exe"), "");
     return root;
 }
@@ -245,7 +247,7 @@ function makeCache(dataRoot: string, version: string): string {
         "app",
     );
     mkdirSync(appDir, { recursive: true });
-    writeFileSync(join(appDir, "wrapper.node"), "");
+    writeFileSync(join(appDir, "wrapper.node"), elfBytes());
     return appDir;
 }
 
@@ -377,9 +379,13 @@ describe("Linux 原生模式（平台注入）", () => {
         return withPlatform("linux", fn);
     }
 
-    it("ELF 守卫：NAPUTO_LINUX_NATIVE=1 且 wrapper 非 ELF → 可读错误（不交给 dlopen）", async () => {
+    it("ELF 守卫：Linux 平台下 wrapper 非 ELF → 可读错误（不交给 dlopen）", async () => {
         const root = makeInstall("3.2.35-54395");
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
+        // 覆盖成 PE（MZ）：Linux 宿主不接受，resolveFromRoot 必须提前报错
+        writeFileSync(
+            join(root, "versions", "3.2.35-54395", "resources", "app", "wrapper.node"),
+            "MZ",
+        );
         await withLinuxPlatform(async () => {
             await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
                 /不是 ELF/,
@@ -401,7 +407,6 @@ describe("Linux 原生模式（平台注入）", () => {
             wrapperPath,
             Buffer.concat([Buffer.from([0x7f, 0x45, 0x4c, 0x46]), Buffer.from("rest")]),
         );
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
         await withLinuxPlatform(async () => {
             const info = await resolveQqFiles({ qqFilesDir: root, autoDownload: false });
             expect(info.wrapperPath).toBe(wrapperPath);
@@ -420,7 +425,6 @@ describe("Linux 原生模式（平台注入）", () => {
         );
         rmSync(wrapperPath, { force: true });
         mkdirSync(wrapperPath);
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
         await withLinuxPlatform(async () => {
             await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
                 /不是 ELF/,
@@ -460,7 +464,6 @@ describe("Linux 原生模式（平台注入）", () => {
     it("L1b：扁平安装（NAPUTO_QQ_DIR）→ local，且不触发 deb 下载", async () => {
         const root = makeLinuxInstall();
         vi.stubEnv("NAPUTO_QQ_DIR", root);
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
         await withLinuxPlatform(async () => {
             const info = await resolveQqFiles({ dataRoot: tmpRoot });
             expect(info.source).toBe("local");
@@ -473,20 +476,9 @@ describe("Linux 原生模式（平台注入）", () => {
         });
     });
 
-    it("L1b：Wine 分支（未开原生开关）不认扁平安装 → 继续兜底", async () => {
-        const root = makeLinuxInstall();
-        vi.stubEnv("NAPUTO_QQ_DIR", root);
-        await withLinuxPlatform(async () => {
-            await expect(
-                resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false }),
-            ).rejects.toThrow("未找到 QQ 原生文件");
-        });
-    });
-
     it("L1b：扁平安装 wrapper 非 ELF → 视为未命中", async () => {
         const root = makeLinuxInstall("3.2.35-54395", "pe");
         vi.stubEnv("NAPUTO_QQ_DIR", root);
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
         await withLinuxPlatform(async () => {
             await expect(
                 resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false }),
@@ -503,7 +495,6 @@ describe("Linux 原生模式（平台注入）", () => {
         const flat = makeLinuxInstall();
         vi.stubEnv("NAPUTO_QQ_PATH", join(canonical, "QQ.exe"));
         vi.stubEnv("NAPUTO_QQ_DIR", flat);
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "1");
         await withLinuxPlatform(async () => {
             const info = await resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false });
             // 平台切成 linux 后路径归一化为正斜杠（Windows 上跑用例时需同样归一化）
@@ -539,29 +530,16 @@ describe("resolveLinuxQqInstall（扁平布局纯定位）", () => {
     });
 });
 
-describe("tryResolveLinuxLocalQq（平台/开关注入）", () => {
-    it("linux + 原生开关开启 → 解析扁平安装", () => {
+describe("tryResolveLinuxLocalQq（平台注入）", () => {
+    it("linux → 解析扁平安装", () => {
         const root = makeLinuxInstall();
-        const info = tryResolveLinuxLocalQq({
-            installDir: root,
-            platform: "linux",
-            linuxNative: true,
-        });
+        const info = tryResolveLinuxLocalQq({ installDir: root, platform: "linux" });
         expect(info?.version).toBe("3.2.35-54395");
     });
 
     it("非 linux 平台 → null（Windows 走注册表/常见路径）", () => {
         const root = makeLinuxInstall();
-        expect(
-            tryResolveLinuxLocalQq({ installDir: root, platform: "win32", linuxNative: true }),
-        ).toBeNull();
-    });
-
-    it("未开原生开关（Wine 分支）→ null", () => {
-        const root = makeLinuxInstall();
-        expect(
-            tryResolveLinuxLocalQq({ installDir: root, platform: "linux", linuxNative: false }),
-        ).toBeNull();
+        expect(tryResolveLinuxLocalQq({ installDir: root, platform: "win32" })).toBeNull();
     });
 
     it("缺省安装根是 /opt/QQ", () => {
@@ -569,7 +547,7 @@ describe("tryResolveLinuxLocalQq（平台/开关注入）", () => {
         delete process.env["NAPUTO_QQ_DIR"];
         try {
             // 开发机通常没有 /opt/QQ → null；关键是走默认路径而非 env
-            expect(tryResolveLinuxLocalQq({ platform: "linux", linuxNative: true })).toBeNull();
+            expect(tryResolveLinuxLocalQq({ platform: "linux" })).toBeNull();
             expect(LINUX_QQ_INSTALL_DIR).toBe("/opt/QQ");
         } finally {
             if (saved !== undefined) {

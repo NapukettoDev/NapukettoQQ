@@ -283,7 +283,7 @@ jobs:
                       exit 1
                   }
                   grep -q 'native/build/linux-x64/libnapuketto_stub.so' "$RUNNER_TEMP/loader-pack.txt" || {
-                      echo "::error::@napuketto/loader 打包清单缺少 native/build/linux-x64/libnapuketto_stub.so（files 未含 Linux stub 目录），NAPUTO_LINUX_NATIVE=1 在用户机器上会报 stub 未找到，已阻止发布。"
+                      echo "::error::@napuketto/loader 打包清单缺少 native/build/linux-x64/libnapuketto_stub.so（files 未含 Linux stub 目录），Linux 用户在用户机器上会报 stub 未找到，已阻止发布。"
                       exit 1
                   }
 

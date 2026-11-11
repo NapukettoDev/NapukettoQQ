@@ -1,10 +1,13 @@
 /**
- * win-node.ts：Windows 版 node.exe 获取（P2，Linux/wine 场景用）。
+ * win-node.ts：Windows 版 node.exe 获取（**仅 win32**，非 node 宿主场景）。
  *
- * wine 只能跑 Windows PE 程序——自建宿主在 Linux 上必须用 Windows 版 node.exe
- * 作为宿主（wrapper.node 是 PE 原生模块，只能被 Windows node.exe dlopen）。
- * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，
- * 运行时下载到 <数据根>/runtime/win-node/，可被 NAPUTO_WIN_NODE_PATH 覆盖）。
+ * koishi CE 等 Bun 运行时里 execPath=bun.exe，而 PE `wrapper.node` 的宿主符号由 stub
+ * `QQNT.dll` 转发到 node.exe——bun.exe 进程内没有该模块，LoadLibrary 报 1114。此时需要
+ * 一份真正的 Windows node.exe（优先系统 `where node`，缺失才下载）。
+ *
+ * ⚠️ 与 Linux 无关：Linux 自建宿主直接跑系统 node（ADR-027 起唯一路径，Wine 已退役）。
+ * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，运行时下载到
+ * <数据根>/runtime/win-node/，可被 NAPUTO_WIN_NODE_PATH 覆盖）。
  *
  * 设计文档 §3.1。与 qq-download.ts 同构：https 下载 + 解压 + 缓存幂等。
  */
@@ -24,7 +27,7 @@ export const WIN_NODE_DIR_NAME = "win-node";
 
 /** Windows node.exe 定位结果。 */
 export interface WinNodeInfo {
-    /** node.exe 绝对路径（Windows 视角，供 wine 调用）。 */
+    /** node.exe 绝对路径（供 stub QQNT.dll 转发目标进程使用）。 */
     exePath: string;
     /** 已下载的完整版 node zip 版本号（如 v24.16.0）。 */
     version: string;

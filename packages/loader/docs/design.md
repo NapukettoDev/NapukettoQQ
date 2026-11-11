@@ -5,24 +5,22 @@
 >
 > **用户拍板（2026-08-12，含技术栈逐条确认）**：
 > 1. **绝不内置腾讯二进制**——wrapper.node / QQNT.dll / 官方安装包都不得进入 npm 包、Docker 镜像或任何发布产物；文件必须在用户机器上运行时获取。
-> 2. **只接受方案 a**（wine 跑 Windows 版 node.exe + stub + dlopen wrapper.node），不接受方案 b（wine 跑完整 QQ NT）。
-> 3. **架构事实确认**：整个业务栈（kernel + adapter + network + cli）都在 wine 内跑 Windows node.exe，对外只暴露**无状态的标准 OneBot11/Satori 网络协议端口（localhost）**——高内聚低耦合，符合云原生微服务理念。
-> 4. **wine 版本 = wine-stable**（或发行版默认）；Docker 内仅 `wine64`（省 100MB+ 镜像体积）。不追新：QQNT 核心不依赖 wine-devel 特性，稳定优先防 regression。
-> 5. **路径映射确认**：launcher 层必须做 Linux 路径 → wine `Z:\` 路径转换（`toWinePath`），写入 §3.2。
+> 2. **只接受自建宿主**（node + stub + dlopen wrapper.node），不接受「跑完整 QQ NT」。原始方案是 Linux 用 wine 跑 Windows 版 node.exe；**2026-11-14 已改为原生 ELF 并删除 Wine**（ADR-027，见 §3）。
+> 3. **架构事实确认**：整个业务栈（kernel + adapter + network + cli）都在自建宿主进程内，对外只暴露**无状态的标准 OneBot11/Satori 网络协议端口（localhost）**——高内聚低耦合，符合云原生微服务理念。（原文前提「都在 wine 内跑 Windows node.exe」已废止。）
+> 4. ~~**wine 版本 = wine-stable**~~ **已废止（ADR-027）**：Wine 退役，Linux 只依赖系统 `node` + `libgnutls30` 等运行库。
+> 5. ~~**路径映射确认**（`toWinePath`）~~ **已删除（ADR-027）**：不再有 `Z:\` 视角，`buildLaunchEnv` 两平台共用、零路径转换。
 > 6. **版本清单自动化立项**：探测腾讯公开版本接口/官方下载页，有则 CI 自动更新，无则人肉维护 + `NAPUTO_QQ_URL` 兜底。**2026-08-13 实测：官方下载配置 JSON（SPA 数据源）可读，探测方案可行**（见 §2.2）。
 > 7. **下载实现 = Node 内置 `https` + `crypto`**（无第三方依赖，轻依赖即美德）。
 > 8. **解包工具 = 内置 `7za.exe`**（LGPL 可分发，Windows 纯净环境兜底）+ Linux/Docker 用系统 `p7zip-full`。
 > 9. **ARM = 第一版只承诺 `linux/amd64`**，ARM（M1/M2/树莓派）列为后置 P2/P3。
-> 10. **DPAPI/票据持久化**：wine 的 DPAPI 用随机本地密钥模拟——**wine 容器/`WINEPREFIX` 被销毁则登录状态丢失**，需提示用户持久化哪些路径（见 §6）。
-> 11. **反风控为核心风险**：P2 阶段立刻推进快速登录/扫码登录冒烟测试，尽早试探腾讯风控对 wine 环境的容忍度。
+> 10. ~~**DPAPI/票据持久化**~~ **已废止（ADR-027）**：没有 `WINEPREFIX`，登录票据在 `<数据根>/nt_qq`，随数据根持久化即可。
+> 11. **反风控为核心风险**：P2 阶段立刻推进快速登录/扫码登录冒烟测试。~~试探腾讯风控对 wine 环境的容忍度~~ → 现已改为对**原生 Linux 宿主**的实测（快速登录 + 扫码 + 收发均已跑通）。
 >
-> **2026-11-08 研判注记（非拍板）**：Linux 原生 ELF 自建宿主（标准 Linux `node` + 2 必需
-> 符号 + `PerfTrace` 的 `.so` stub，`dlopen` 官方 Linux `wrapper.node`）的可行性研判见
+> **2026-11-14 平台路线定稿（ADR-027）**：Linux 只走**原生 ELF 自建宿主**（标准 Linux
+> `node` + `.so` stub + `dlopen` 官方 Linux `wrapper.node`），Wine 分支与其代码一并删除
+> （`wine.ts` / `tooling/wine/*`）。研判与实测数据见
 > [`docs/architecture/linux-native-host.md`](../../../docs/architecture/linux-native-host.md)。
-> 在完整 Stage 0 通过并按规则新增 ADR 之前，本文档的 wine 方案（含 ARM 后置结论）仍是
-> 现行实现，本文不据此改动。2026-11-08 已完成 dlopen / exports / O3 / engine init /
-> getLoginList 的核心链路实测；2026-11-09 完成扫码 + 快速登录 + session READY
-> （wrapper 层，`getMsgService` 与七个核心 service 非空）。
+> 本文 §3 已按定稿重写；§6 风险表与 §8 拍板细节里残留的 Wine 语境按「已废止」保留，供追溯。
 >
 > **发布形态（2026-08-13 补充：对外 API 双格式）**：
 > - 对外 API（`dist/index.mjs` + `dist/index.cjs`）与 kernel 同步输出 **ESM + CJS 双格式**，
@@ -38,16 +36,16 @@
 
 ### 1.1 现状约束
 
-- 自建宿主（路线 A）是唯一实现方式：标准 Node + stub QQNT.dll 转发 → `process.dlopen(wrapper.node)`。
+- 自建宿主（路线 A）是唯一实现方式：标准 Node + stub 转发 → `process.dlopen(wrapper.node)`（Windows 用 PE `QQNT.dll`，Linux 用 `.so` + `LD_PRELOAD`）。
 - 当前 `locate-qq.ts` 只支持 **Windows 本机已装 QQ** 的场景：注册表 / 常见路径 / `NAPUTO_QQ_PATH`，找不到就抛错。
-- stub QQNT.dll 是 **PE 格式**，Linux 加载器不认 → Linux 上必须靠 wine 的 PE 加载能力。
+- stub `QQNT.dll` 是 **PE 格式**，只能给 Windows 宿主用；Linux 侧用自研 `.so` stub（ADR-027）。
 
 ### 1.2 三个目标
 
 | # | 目标 | 解决的问题 |
 |---|---|---|
 | G1 | **本机无 QQ 也能运行** | 用户机器没装 QQ NT（或装了但被卸载），无需手动安装 |
-| G2 | **Linux 支持（方案 a）** | 服务器 / 无 GUI 环境跑机器人 |
+| G2 | **Linux 支持（原生 ELF 宿主）** | 服务器 / 无 GUI 环境跑机器人 |
 | G3 | **Docker 镜像**（⚠️ 未实现/规划） | 一键部署，`docker run` 即用 |
 
 ### 1.3 硬约束（违反 = 错误）
@@ -55,7 +53,7 @@
 1. **不内置腾讯二进制**：所有发布产物（npm 包 / Docker 镜像 / 仓库文件）不得包含
    `wrapper.node`、`QQNT.dll`、官方安装包 `.exe`、`major.node` 等腾讯文件（含压缩/编码形式）。
 2. **不内置 GPL-2.0-only 实现代码**（与 MIT 不兼容，AGENTS.md 红线不变）。
-3. **只接受 wine 方案 a**：Linux 上 = wine 跑 Windows 版 node.exe + stub + dlopen wrapper.node，
+3. **Linux 只走原生 ELF 方案**：标准 Linux node + `.so` stub + dlopen 官方 Linux wrapper.node，
    不跑完整 QQ 客户端。
 4. **零磁盘篡改**（AGENTS.md 第 7 条不变）：只读加载，不改写任何腾讯文件。
 5. 业务层优先 NAPI，逆向手段仅限 loader 载具层（不变）。
@@ -81,8 +79,8 @@ resolveQqFiles()   ← 替代现有 resolveQqInstall() 的文件定位部分
 - **阶段日志（2026-08-23 WSL 事故后新增）**：`ensureQqFiles` / `launchSelfHost` 支持
   `onStage` 回调（检查缓存/下载/校验/解包/提取/win-node/spawn 各阶段提示）——此前
   首次下载 313MB 安装包全程静默，用户以为流程没生效。
-- **依赖预检（2026-08-23 事故后新增）**：Linux 分支 spawn 前预检 wine
-  （`spawnSync wine --version`），缺失时抛可读错误（含 `apt install` 指引）并挂
+- **依赖预检（2026-08-23 事故后新增；ADR-027 起改为 Linux 原生依赖）**：Linux 分支 spawn
+  前校验 stub `.so` / `libgnutls.so.30` / `node`，缺失时抛可读错误（含包名指引）并挂
   child 'error' 监听兜底——此前 spawn 异步 emit 'error' 无监听者 =
   `uncaughtException` 直接崩掉整个 koishi 宿主进程。
 - **tmp 唯一化**：下载临时文件带 pid+时间戳后缀，解包前校验存在性——此前固定文件名
@@ -210,7 +208,7 @@ Linux 原生宿主不下载 Windows exe，改下载官方 **deb**，并在缓存
 - **提取白名单**：顶层 `*.node` / `*.so` / `*.so.N` + `pub.key` / `cacert.pem` /
   `package.json` / `application.json`；`sharp-lib/` 整体保留。跳过 `avsdk/`（50MB）、
   `resource/`、`application.asar` 等与无头 wrapper 无关的目录。
-- **ELF 守卫**：`NAPUTO_LINUX_NATIVE=1` 时 `resolveFromRoot` 校验 `wrapper.node` 魔数，
+- **ELF 守卫**：Linux 平台下 `resolveFromRoot` 校验 `wrapper.node` 魔数，
   误指向 `/mnt/c` 的 Windows 安装（PE）立即报可读错误，而不是等 `dlopen` 报
   invalid ELF header。
 - **下载 URL**：官方 `linuxConfig.js`（`x64DownloadUrl.deb` / `armDownloadUrl.deb`），
@@ -227,155 +225,110 @@ Linux 原生宿主不下载 Windows exe，改下载官方 **deb**，并在缓存
   `docs/architecture/linux-native-host.md` §9.11 与附录 E.1），但仍缺私有 `native/` 的
   arm64 stub 产物与真机运行，按既定策略三件事（stub 入包、preload `libuuid`、清单条目）
   等真机后一起做（附录 E.2）。解包工具链的架构问题已由 §11 修掉；本地 `/opt/QQ` 扁平安装
-  已在 §3.4 实现。
+  已在 §3.5 实现。
 
 ---
 
-## 3. G2：Linux 支持（方案 a：wine + Windows node.exe）
+## 3. G2：Linux 支持（原生 ELF 自建宿主，ADR-027）
 
 ### 3.1 形态
 
 ```
 Linux 主机（无 QQ 安装）
-  └─ wine（系统包，模拟 Windows PE 加载）
-       └─ Windows 版 node.exe（从 nodejs.org 官方下载，非腾讯二进制）
-            └─ 标准 Node 自建宿主链路（与 Windows 完全一致）：
-               PATH 前置 stub 目录 + wrapper.node 目录
-               → process.dlopen(wrapper.node)
-               → O3MiscService 激活 → 登录 → session READY → 协议装配
+  └─ 系统 node（官方 ELF 可执行）
+       └─ LD_PRELOAD=<libnapuketto_stub.so>:<libgnutls.so.30>
+            └─ process.dlopen(官方 Linux wrapper.node)   ← ELF，宿主符号走 node 全局符号表
+                 → O3MiscService 激活 → 登录 → session READY → 协议装配
 ```
 
-- **Windows 版 node.exe 来源**：`https://nodejs.org/dist/<版本>/node-v<版本>-win-x64.zip`（Node 官方，非腾讯）。
-  与腾讯二进制不同——这是**开源软件官方发行版**，但为保守起见同样**不内置**，运行时自动下载到
-  `<数据根>/runtime/win-node/`（可被 `NAPUTO_WIN_NODE_PATH` 覆盖）。
-  > ⚠️ **升级 Windows node 需手动改常量**：`win-node.ts` 的 `DEFAULT_WIN_NODE_VERSION`（当前
-  > `v24.16.0`）为兜底版本（`NAPUTO_WIN_NODE_VERSION` 可覆盖）。nodejs.org/dist 保留历史版本
-  > 不会 404，但 pin 死旧 patch 收不到安全更新——升级 node 时记得同步 bump 该常量。
-- **wine 来源**：Linux 用户用系统包管理器安装（`apt install wine` 等）；Docker 镜像内预装（G3）。
+- 只补 3 个符号：`qq_magic_napi_register` / `node::IsEnvironmentStopping` / `PerfTrace`；
+  Windows 那 98 条 PE export forwarder 在 Linux 归零（研判数据见
+  [`docs/architecture/linux-native-host.md`](../../../docs/architecture/linux-native-host.md) §1）。
+- **不需要**：Wine、Windows 版 `node.exe`、`WINEPREFIX` / DPAPI、`Z:\` 路径转换、PATH 前置。
+- **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
 
 ### 3.2 launcher 的平台分支
 
-```ts
-// launcher.ts：spawn 命令平台分支
-const nodeBin = process.platform === "win32"
-    ? process.execPath                                    // Windows：本机 node
-    : await ensureWinNode();                              // Linux：wine + win node.exe
-// spawn 参数：
-//   win32: [selfHostPath]
-//   linux: ["wine", winNodePath, selfHostPath]
-```
-
-- PATH 装配逻辑**不变**（stub 目录 + wrapper.node 目录前置），wine 会把这些目录当作 Windows PATH 解析。
-- 环境变量透传逻辑不变（`buildLaunchEnv` 复用）。
-
-**路径映射（toWinePath，2026-08-12 拍板确认）**：
-
-Windows 版 node.exe 在 wine 内把整个 Linux 根目录挂载在 `Z:\`。`process.dlopen` 收到的是 wine 视角的 Windows 路径，而现有代码里 `wrapperPath` / stub 目录 / cfgDir 都是 Linux 路径。launcher 层必须做转换：
-
-```ts
-// launcher.ts 内部：Linux 路径 → wine Z:\ 路径
-function toWinePath(linuxPath: string): string {
-    // 例：/app/.napuketto/qq-files/9.9.33/wrapper.node → Z:\app\.napuketto\qq-files\9.9.33\wrapper.node
-    // 注意反斜杠转义 + 去除前导 /；wine 自动把 Z:\ 映射到 Linux 根目录
-    return "Z:\\" + linuxPath.replaceAll("/", "\\").replace(/^\\/, "");
-}
-```
-
-- **用途**：`NAPUTO_WRAPPER_PATH` / `NAPUTO_CFG_DIR` / stub 目录 / self-host.cjs 路径等**所有传给 wine 子进程的环境变量与参数**都要过 `toWinePath`。
-- **实现位置**：launcher.ts（高内聚，单独纯函数可单测）。
-
-### 3.3 关键验证点（2026-08-12 WSL2 实测，全绿）
-
-| 验证点 | 结果 | 实测记录 |
+| 平台 | 宿主 | stub | 额外注入 |
 |---|---|---|---|
-| wine 跑 Windows node.exe | ✅ **通过** | `wine node.exe -e "..."` → `win-node-ok x64 v24.16.0`（process.arch=x64 证明 PE 二进制） |
-| stub QQNT.dll PE Export Forwarding 生效 | ✅ **通过** | wine 下 dlopen wrapper.node → **98 exports**（NodeIQQNTWrapperEngine / NodeIKernelLoginService 全在） |
-| wine 下 dlopen wrapper.node | ✅ **通过** | `const m={exports:{}}; process.dlopen(m, wrapper.node)` → 98 exports |
-| 登录 + session READY | ⏳ 待测（Step 2：完整 self-host 登录冒烟） | 需要账号 + 快速登录/扫码 |
-| 无头 | ✅ 自建宿主本就不依赖 UI | wine 无窗口跑 |
+| win32 | 本机 node（非 node 宿主如 Bun 先解析真 `node.exe`） | `QQNT.dll`（PATH 前置 + `STUB_DIR`） | — |
+| linux | 系统 node（`process.execPath` 是 node 直接用，否则 `which node`） | `libnapuketto_stub.so`（`LD_PRELOAD`） | `LD_PRELOAD` / 受管 `HOME` + `XDG_*` |
 
-**⚠️ 实测坑（必须记住）**：wine 读 **DrvFS（/mnt/c）会 "File not found"**（文件在 Linux 侧 `ls` 正常，但 wine `dir` 看不到）——
-**QQ 文件必须放 ext4 文件系统**（WSL 原生 `~/...`）。验证过程：复制到 `~/.qqfiles/`（ext4）后 wine 正常读取。
-这正是设计里「数据根/qq-files 缓存」放 Linux 原生路径的实证。**Docker 场景无此问题**（容器内天然 ext4）。
+- 环境变量装配（`buildLaunchEnv`）两平台共用，**不做任何路径转换**。
+- `NAPUTO_LINUX_NATIVE` 已随 ADR-027 退役：Linux 恒走原生分支，设 `0` 只播报一句提示。
 
-**dlopen 参数形态（实测）**：`const m = { exports: {} }; process.dlopen(m, wrapper.node)`——
-直接传 `{ exports: {} }` 字面量会报 `Cannot convert undefined or null to object`（wrapper 需要 module 对象载体）。
+### 3.3 stub 与打包
 
-> 若冒烟发现某个环节 wine 不支持（理论风险低），回退手段：该环节改用 wine 的
-> `winedbg`/调试工具定位；不切换方案 b（用户拍板）。
-
-### 3.4 Linux 原生 ELF 分支（Stage 1，开关 `NAPUTO_LINUX_NATIVE=1`）
-
-Wine 仍是默认实现；只有显式设置 `NAPUTO_LINUX_NATIVE=1` 才走原生分支。实现已随
-0.6.1–0.7.x 发布：0.6.1 `HOME`/`XDG_*` 收敛、0.7.0 本地 deb 安装识别、0.7.1 发布包补上
-Linux stub、0.7.2 解包工具按架构分流。
-
-- **宿主**：系统 `node`（`process.execPath` 是 node 直接用，否则 `which node`），不再下载
-  Windows `node.exe`、不再 wine、路径不转 `Z:\`。
-- **stub**：`native/build/linux-<arch>/libnapuketto_stub.so`（私有 native 产物），缺省用
-  `NAPUTO_LINUX_STUB` 覆盖；只 3 个导出符号（`qq_magic_napi_register` /
-  `node::IsEnvironmentStopping` / `PerfTrace`）。
+- **stub**：`native/build/linux-<arch>/libnapuketto_stub.so`（私有 native 产物），
+  `NAPUTO_LINUX_STUB` 可覆盖；只 3 个导出符号。
 - **预加载**：`LD_PRELOAD=<stub>:<libgnutls.so.30>`。gnutls 是 `libbugly` 的无
   `DT_NEEDED` 隐藏依赖；Ubuntu 24.04 包名 `libgnutls30t64`，Debian 12 为 `libgnutls30`。
 - **打包（2026-11-10 补）**：`files` 必须同时含 `native/build/stub-test-env`（Windows）
   与 `native/build/linux-x64`（Linux）——只列前者时 tarball 里没有
-  `libnapuketto_stub.so`，用户设 `NAPUTO_LINUX_NATIVE=1` 会直接报「Linux stub 未找到」
-  （0.6.0 发布包实测如此）。双重守卫：`release.yml` 发布前 `npm pack --dry-run` grep
+  `libnapuketto_stub.so`，Linux 启动会直接报「Linux stub 未找到」（0.6.0 发布包实测如此）。
+  双重守卫：`release.yml` 发布前 `npm pack --dry-run` grep
   `native/build/linux-x64/libnapuketto_stub.so`；`tooling/package-exports.test.ts`
   断言 `files` 含该目录。
-- **不做**：PATH 前置、stub 目录、QQNT.dll 校验——这些只属于 wine 分支。
-- **失败提示**：stub 缺失 / gnutls 缺失 / node 缺失分别抛可读错误，不进入 spawn。
-- **与 kernel 的衔接**：kernel 已按 `process.platform` 生成 KLINUX engine/session 配置并从
-  `major.node` 扫 qua；本分支只负责进程与预加载。`bootEnv` 额外带 `dataRoot`
+- **与 kernel 的衔接**：kernel 按 `process.platform` 生成 KLINUX engine/session 配置并从
+  `major.node` 扫 qua；loader 只负责进程与预加载。`bootEnv` 额外带 `dataRoot`
   （`NAPUTO_DATA_ROOT`），kernel 据此把 QQ 数据根固定到 `<数据根>/nt_qq`，不再读写
   `$HOME/Documents/Tencent Files`。
-- **HOME/XDG 收敛（Stage 3c，2026-11-09）**：`desktopGlobalPath` 只覆盖 QQ 自己的数据，
-  原生层仍有不经它的落盘——`libbugly` 的 `NativeCrashHandler` 无条件使用
-  `$HOME/.config/QQ/crash_files/`。原生分支因此把子进程 `HOME` 收敛到
-  `<数据根>/home`（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），
-  并把 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 一并指到
-  该目录下（`XDG_RUNTIME_DIR` 不接管：那是 dbus/会话级目录，语义不同）。
-  strace 实测（2026-11-09）：Bugly 只读 `$HOME`、**不读 `XDG_CONFIG_HOME`**，所以关键变量
-  是 `HOME`；改 `HOME` 后 `mkdir .config/QQ/crash_files` 落在受管目录，快速登录仍成功
-  （登录票据在 `<数据根>/nt_qq`，与 `HOME` 无关）。wine / win32 分支不做此收敛（Windows
-  数据目录已由 `desktopGlobalPath` 管住）。
-- 实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
-  Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
-- **本地 deb 安装（Stage 3d，2026-11-09）**：Linux 原生分支优先识别扁平布局
-  `/opt/QQ`（`NAPUTO_QQ_DIR` 可覆盖）：`<根>/qq` + `<根>/resources/app/wrapper.node`，
-  版本号取自 `resources/app/package.json`。命中即用本机安装，省掉 190MB deb 下载。
-  校验 ELF 魔数（防 WSL 下误指 `/mnt/c` 的 Windows PE 安装）与版本字段（缺失就跳过，
-  不瞎填——版本参与登录）。Wine 分支不认该布局（需要 PE）。
+
+### 3.4 HOME/XDG 收敛（Stage 3c，2026-11-09）
+
+`desktopGlobalPath` 只覆盖 QQ 自己的数据，原生层仍有不经它的落盘——`libbugly` 的
+`NativeCrashHandler` 无条件使用 `$HOME/.config/QQ/crash_files/`。因此把子进程 `HOME`
+收敛到 `<数据根>/home`（`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到
+`<账号目录>/home`），并把 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` /
+`XDG_STATE_HOME` 一并指到该目录下（`XDG_RUNTIME_DIR` 不接管：那是 dbus/会话级目录，
+语义不同）。
+
+strace 实测（2026-11-09）：Bugly 只读 `$HOME`、**不读 `XDG_CONFIG_HOME`**，所以关键变量是
+`HOME`；改 `HOME` 后 `mkdir .config/QQ/crash_files` 落在受管目录，快速登录仍成功
+（登录票据在 `<数据根>/nt_qq`，与 `HOME` 无关）。win32 分支不做此收敛（Windows 数据目录
+已由 `desktopGlobalPath` 管住）。
+
+实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
+Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
+
+### 3.5 本地 deb 安装（Stage 3d，2026-11-09）
+
+Linux 优先识别扁平布局 `/opt/QQ`（`NAPUTO_QQ_DIR` 可覆盖）：`<根>/qq` +
+`<根>/resources/app/wrapper.node`，版本号取自 `resources/app/package.json`。命中即用本机
+安装，省掉 190MB deb 下载。校验 ELF 魔数（防 WSL 下误指 `/mnt/c` 的 Windows PE 安装）
+与版本字段（缺失就跳过，不瞎填——版本参与登录）。
+
+### 3.6 历史：Wine 方案（已删除，2026-11-14）
+
+2026-08 的方案是「Wine 跑 Windows 版 `node.exe` + PE stub `QQNT.dll`」，并为此实现了
+`toWinePath` / `unixPathToWinePath` / `wineBinary` / `wineCheckError` /
+`buildSpawnCommand` 与两个 `tooling/wine/*` 冒烟脚本。ADR-027 删除了全部代码：Linux 的
+QQ 文件获取早已按 `process.platform` 只选 deb + ELF，Wine 分支实际只对「手边有 Windows
+版 QQ 安装」的 WSL 开发环境成立，而原生 ELF 路线在登录 / 收发 / 富媒体 / 文件投递上均已
+实测。需要追溯时查 git 历史（关键字 `toWinePath`）。
 
 ---
 
-## 4. G3：Docker 镜像
+## 4. G3：Docker 镜像（⚠️ 未实现/规划，全仓库无 Dockerfile）
 
-### 4.1 镜像设计（不内置腾讯二进制）—— ⚠️ 未实现/规划（全仓库无 Dockerfile / docker/ 目录）
+### 4.1 镜像设计（不内置腾讯二进制）
+
+镜像只带自研产物 + 系统运行库，`wrapper.node` 仍由运行时下载官方 Linux deb 解包获得
+（ADR-019「不内置腾讯二进制」原则不变）：
 
 ```
 Dockerfile.linux
-  FROM node:22-slim（仅 wine64，不装 wine32，省 100MB+）
-  RUN apt-get install -y wine64 p7zip-full   # wine64 + 解包工具（wine-stable）
-  COPY 自研代码（dist 产物 + stub QQNT.dll）   # 注意：stub 是自研，可内置
-  COPY entrypoint.sh
-  VOLUME /app/.napuketto                       # 数据卷：账号数据 + qq-files 缓存 + win-node
-  VOLUME /app/.wine                           # WINEPREFIX（DPAPI 票据持久化，见 §6）
+  FROM node:24-slim
+  RUN apt-get install -y libgnutls30 libx11-6 libxext6 libx11-xcb1 libxcb1 tar xz-utils
+  COPY 自研代码（dist 产物 + stub .so）        # stub 是自研，可内置
+  VOLUME /app/.napuketto                      # 数据卷：账号数据 + nt_qq + qq-files 缓存
   ENV NAPUTO_DATA=/app/.napuketto
-  ENV WINEPREFIX=/app/.wine
-  ENTRYPOINT ["/app/entrypoint.sh"]
+  ENTRYPOINT ["node", "apps/cli/dist/index.mjs"]
 ```
 
-**平台支持（2026-08-12 拍板）**：第一版只承诺 `linux/amd64`；ARM（M1/M2 Mac、树莓派）需 QEMU 用户态模拟，性能损耗大且易段错误，列为后置 P2/P3。
+**平台支持**：第一版只承诺 `linux/amd64`；arm64 待真机验证（linux-native-host 附录 E.2）。
 
-**entrypoint.sh 职责**（首次启动自动准备，无腾讯二进制进镜像）：
-
-```
-1. 确保 Windows 版 node.exe（下载 nodejs.org 官方 zip → 解压到数据卷）
-2. 确保 QQ 文件缓存（按版本清单下载官方安装包 → 7z 解包 → 提取 wrapper.node 等）
-3. 确保 WINEPREFIX 初始化（wineboot；DPAPI 密钥生成并持久化在数据卷）
-4. 执行 self-host（wine node.exe …）
-```
+**首次启动**：loader 自动下载官方 deb（约 180MB）→ 解包 → 缓存进数据卷；后续启动秒级。
 
 ### 4.2 使用形态
 
@@ -390,7 +343,6 @@ docker run -d \
   napuketto/qq --config /app/.napuketto/napuketto.toml
 ```
 
-- 首次启动较慢（下载 QQ 安装包 + win-node），后续启动秒级。
 - 数据卷必须挂载，否则每次重建容器都重新下载。
 
 ---
@@ -405,7 +357,7 @@ packages/loader/
 │   ├── qq-download.ts        # 新增：官方安装包下载（https + sha256 校验 + 断点续传可选）
 │   ├── qq-extract.ts         # 新增：7z 解包 + 提取 wrapper.node/QQNT.dll/major.node
 │   ├── win-node.ts           # 新增：Windows 版 node.exe 获取（下载/解压/缓存/覆盖）
-│   ├── launcher.ts           # 改：spawn 平台分支（win32 / wine）
+│   ├── launcher.ts           # 改：spawn 平台分支（win32 / linux 原生 ELF）
 │   └── index.ts              # 改：导出新模块
 ├── Dockerfile.linux          # 新增（仓库根或 loader 包内）
 ├── docker/entrypoint.sh      # 新增
@@ -422,13 +374,11 @@ packages/loader/
 | 风险 | 等级 | 对策 |
 |---|---|---|
 | 官方链接漂移（腾讯改 URL/下线版本） | 🟡 中 | **CI 自动爬官方下载页**（§2.2）+ `NAPUTO_QQ_URL` 覆盖；错误信息明确提示去更新清单 |
-| wine 下某个环节不兼容（理论低） | 🟡 低 | §3.3 冒烟验证点前置；不切换方案 b（用户拍板） |
-| **DPAPI 票据丢失**（隐形炸弹） | 🟡 中 | wine 的 `CryptProtectData` 用随机本地密钥模拟——**wine 容器 / WINEPREFIX 被销毁则登录状态必然丢失**。对策：① Docker 挂载 `WINEPREFIX` 数据卷（§4.1）；② 文档明确告知用户需持久化哪些路径（`.wine` / `.napuketto`）；③ 快速登录票据存 kernel 数据根，同样随数据卷持久化 |
-| **反风控环境特征（核心风险）** | 🔴 高 | wine 内注册表结构 / MAC / 硬盘序列号特征单一。对策：**P2 阶段立刻做快速登录/扫码登录冒烟测试**，尽早试探腾讯风控对 wine 的容忍度；失败则评估进程名伪装/环境模拟（loader 载具层） |
-| v8 JIT + wine 兼容 | 🟢 低 | Electron 体系跑 wine 已有先例（VS Code/Discord）；只要 wrapper.node 不重度依赖未公开 Windows API 即可 |
-| 首次下载慢 / 网络被墙 | 🟡 中 | sha256 校验保证完整性；`NAPUTO_QQ_FILES` 支持预置目录（用户手动拷贝绕过下载） |
-| 镜像体积大（wine ~1GB） | 🟢 低 | `node:22-slim` + `wine64`（省 100MB+）；QQ 文件放数据卷不进镜像 |
-| ARM 模拟性能（后置） | 🟢 低 | 第一版只承诺 amd64；ARM 列为 P2/P3 |
+| 系统库缺失（`libgnutls30` / `libx11` 等） | 🟡 中 | spawn 前校验 gnutls、缺失即抛可读错误（含发行版包名）；`dlopen` 缺库按 §3 表补 |
+| **反风控环境特征（核心风险）** | 🔴 高 | 原生 Linux 宿主的注册表 / MAC / 硬盘序列号特征与 Windows 不同。对策：快速登录 / 扫码 / 收发 / 富媒体 / 文件均已在真机（WSL2 + 官方 Linux QQ）实测通过；异常时评估进程名伪装 / 环境模拟（仅限 loader 私有 native 组件） |
+| 首次下载慢 / 网络被墙 | 🟡 中 | sha256 校验保证完整性；`NAPUTO_QQ_FILES` / `NAPUTO_QQ_DIR` 支持预置目录（用户手动拷贝绕过下载） |
+| 镜像体积 | 🟢 低 | 镜像只装系统运行库，QQ 文件放数据卷不进镜像（§4，未实现） |
+| ARM 真机未验证（后置） | 🟢 低 | 第一版只承诺 amd64；arm64 加载 / 引擎 / 登录握手已在 qemu 验证（linux-native-host 附录 E） |
 
 ---
 
@@ -440,20 +390,20 @@ packages/loader/
 |---|---|---|
 | **P0** ✅ | `locate-qq.ts` 多级来源 + `resolveQqFiles`（L0/L1/L2 纯定位，不下载） | Windows 本机路径回归不破 |
 | **P1** ✅ | `qq-releases.json` + `qq-download.ts` + `qq-extract.ts`（下载→校验→解包→缓存） | Windows 上删掉本机 QQ 探测也能跑起来（用缓存） |
-| **P2** ✅ | `win-node.ts` + `launcher.ts` 平台分支 | Linux 冒烟：wine node.exe → dlopen wrapper.node（登录 + session READY 待测） |
+| **P2** ✅ | `launcher.ts` 平台分支（win32 / linux 原生 ELF） | Linux 端到端：原生 node + stub `.so` → dlopen wrapper.node → 登录 → session READY（已实测，见 linux-native-host.md） |
 | **P3** ⏳ | Dockerfile + entrypoint + 文档（**未实现**） | `docker run` 全链路跑通（数据卷持久化验证） |
 
 ---
 
 ## 8. 已拍板细节（2026-08-12 技术栈讨论结论）
 
-1. **wine 版本**：`wine-stable`（发行版默认）；Docker 仅 `wine64`。
-2. **路径映射**：`toWinePath` 纯函数入 launcher（§3.2），所有传给 wine 子进程的路径过转换。
+1. ~~**wine 版本**：`wine-stable`（发行版默认）；Docker 仅 `wine64`。~~ **已废止（ADR-027）**：Wine 退役。
+2. ~~**路径映射**：`toWinePath` 纯函数入 launcher（§3.2）。~~ **已删除（ADR-027）**：Linux 原生宿主无路径转换。
 3. **版本探测**：已立项，实测官方下载配置 JSON（SPA 数据源）可读（§2.2）；CI Cron 自动更新清单已落地（`tooling/qq-releases/update-qq-releases.ts` + `.github/workflows/update-qq-releases.yml`）。
 4. **下载实现**：Node 内置 `https` + `crypto`（sha256），无第三方依赖。
-5. **解包工具**：内置 `7za.exe`（LGPL 合规可分发）+ Linux/Docker 系统 `p7zip-full`。
-6. **ARM**：第一版只承诺 `linux/amd64`，ARM 列后置 P2/P3。
-7. **DPAPI**：WINEPREFIX 必须随数据卷持久化（§4.1/§6），文档明确持久化路径。
+5. **解包工具**：内置 `7za.exe`（LGPL 合规可分发）+ Linux/Docker 系统 `p7zip-full`（非 x64 Linux 回退系统 7z，§11）。
+6. **ARM**：第一版只承诺 `linux/amd64`，ARM 列后置 P2/P3（qemu 已验证加载 / 引擎 / 登录握手）。
+7. ~~**DPAPI**：WINEPREFIX 必须随数据卷持久化。~~ **已废止（ADR-027）**：票据在 `<数据根>/nt_qq`。
 8. **反风控**：P2 阶段第一优先 = 快速登录/扫码登录冒烟测试。
 
 **遗留待实现时确认**：
