@@ -9,7 +9,7 @@
  * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，运行时下载到
  * <数据根>/runtime/win-node/，可被 NAPUTO_WIN_NODE_PATH 覆盖）。
  *
- * 设计文档 §3.1。与 qq-download.ts 同构：https 下载 + 解压 + 缓存幂等。
+ * 设计文档「平台分支」。与 qq-download.ts 同构：https 下载 + 解压 + 缓存幂等。
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { copyFile, readdir, rm } from "node:fs/promises";

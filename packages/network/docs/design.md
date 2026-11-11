@@ -1,11 +1,10 @@
-# @napuketto/network 设计书（2026-11-03 首版）
+# @napuketto/network 设计书
 
-> 本包是**协议无关的底层传输原语层**（ADR-002）：通用 HTTP client/server、
-> WebSocket client/server、SSE 响应原语、泛型广播总线。它只解决「怎么传」，
-> 不解决「传什么」——路由分发、鉴权规则、载荷序列化、心跳与重连策略全部由
-> 协议层通过注入点提供。同一套原语要同时供 OneBot 11 / Satori / Milky 复用。
+> 本包是**协议无关的底层传输原语层**（ADR-002）：HTTP client/server、WebSocket
+> client/server、SSE 与泛型广播。只解决「怎么传」，不解决「传什么」——路由、鉴权、
+> 序列化、心跳与重连由协议层注入；同一套原语供 OneBot 11 / Satori / Milky 复用。
 
-## 1. 包职责与架构边界（ADR-002）
+## 包职责与架构边界（ADR-002）
 
 ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义写进传输层，Satori
 的路径路由、Milky 的同端口 WS 升级、KuroBot 的子协议握手就会各自打补丁。
@@ -38,7 +37,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 - **依赖方向**：`kernel` / `media` / `network` 三个底层包互不依赖；本包被
   `packages/adapter`（协议层容器）与 `apps/cli`（宿主装配）以 `workspace:*`
   消费；kernel 不依赖 network。
-- **WS 连接类型归本包所有**（2026-11-03 依赖收敛）：`types.ts` 导出 `WsSocket`
+- **WS 连接类型归本包所有**（依赖收敛）：`types.ts` 导出 `WsSocket`
   （ws 的连接类型）与 `isWsOpen()`（`readyState === OPEN` 的唯一判定入口）。协议层
   （adapter 的 Milky `/event` 枢纽）只经这两个符号接触连接，因此**不需要**在自己的
   `dependencies` 里声明 `ws`——ws 的版本与实例由 network 单点持有。
@@ -55,7 +54,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 - **无全局状态**：不读配置文件、不持有进程生命周期、不自行决定端口；
   `host` / `port` / `timeoutMs` 等全部由调用方传入，每个实例独立。
 
-## 2. 核心抽象与实现清单
+## 核心抽象与实现清单
 
 | 文件 | 导出 | 职责 |
 | :--- | :--- | :--- |
@@ -68,7 +67,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 | `src/broadcaster.ts` | `EventBroadcaster` | 泛型广播总线：`register` / `unregister` / `emit`，对 `Set` 内全部 `TransportAdapter` 广播同一事件；重复注册幂等 |
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
 
-## 3. 构建与导出形态
+## 构建与导出形态
 
 - **零配置 tsdown**：包内没有 `tsdown.config.ts`，直接 `tsdown` 默认行为——入口
   `src/index.ts`、默认 ESM 格式，产出 `dist/index.mjs` 与类型声明
@@ -84,7 +83,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
     应参照 `@napuketto/media` 的双格式 + `require` 条件方案另开 PR）。
   - 记录为观察项，供后续依赖方（Koishi 插件的加载形态）核对。
 
-## 4. 测试布局
+## 测试布局
 
 单元测试统一放 `src/__tests__/`（与 kernel / media / adapter 一致，避免与源码
 同层平铺），由根 `vitest.config.ts` 的 `packages/*/src/**/*.test.ts` 发现，

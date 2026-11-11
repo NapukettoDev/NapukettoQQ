@@ -22,7 +22,7 @@
 | ADR-013 | 协议适配器统一进 `@napuketto/adapter`（core + 各协议目录） | 每个协议一个平级包 | 生命周期/动作注册/配置框架只写一次，协议只做薄映射 |
 | ADR-014 | adapter 子路径导出（`.` / `./core` / `./onebot11` / `./satori` / `./kurobot`） | 单入口聚合全部协议 | 消费方只加载用到的协议；tree-shaking 友好；根入口保持轻量 |
 | ADR-015 | 多账号 = 多进程，cli 编排；kernel 无全局单例 | 单进程多账号 | wrapper 多 session 共存未验证；进程天然隔离；每进程一份运行时对象 |
-| ADR-016 | 数据目录按账号隔离；全局配置放项目根 | 数据/配置放程序目录或用户目录 | 程序目录可能只读；多账号目录天然分离；配置靠近项目便于管理。2026-08-08 修订为账号内嵌协议段 |
+| ADR-016 | 数据目录按账号隔离；全局配置放项目根，协议配置内嵌账号段 | 数据/配置放程序目录或用户目录；独立 JSON 协议配置 | 程序目录可能只读；多账号目录天然分离；配置靠近项目便于管理 |
 | ADR-017 | `KernelError` 类型化错误 + 协议错误码映射表 | 各协议各写一套错误判断 | 错误分类集中在 kernel，协议层只做映射 |
 | ADR-018 | wrapper 版本探测独立模块 | 硬编码版本路径/appid | appid、qua 与版本强相关；从 `major.node` 运行时解析 |
 | ADR-019 | loader 跨平台：不内置腾讯二进制（Linux 运行方式部分已被 ADR-027 替代） | wine 跑完整 QQ；在发布产物中内置腾讯二进制 | 只暴露标准协议端口；运行时下载官方安装包，仓库保持干净 |
@@ -31,26 +31,23 @@
 | ADR-022 | 版本管理用 Changesets；GitHub Release 的 repo tag 与包版本解耦 | 手工改版本；repo tag 锚定包版本 | 多包联动 bump 自动化；各包独立版本、独立发布 |
 | ADR-023 | Koishi 适配器独立成仓 | 继续 submodule + 主仓 workspace 双身份 | submodule 只适合源码保密边界；独立发布单元需要自己的 lockfile/CI/版本节奏 |
 | ADR-024 | 自建宿主为唯一运行路线（标准 Node + stub `QQNT.dll`） | 注入 QQ 主进程 / utilityProcess worker / 载具激活 `cpp_impl` | 无 QQ 进程与 UI、内存可控、部署简单；登录→READY→收发→协议装配已全链路验证 |
-| ADR-025 | 新增 Milky 协议适配器（**规划中，未实现**），目标 1.3.0，与 OB11/Satori/KuroBot 并行 | 用 Milky 替换 OB11；先全量迁移再保留双协议；参考/移植 GPL 系实现 | 语义天然对齐 kernel（消息段替代 CQ 码、原生 `message_seq`、`message_scene` 三值）；规范 MIT 且机读（OpenAPI/JSON Schema/IR 可生成类型），实现成本低于 OB11；跨 Minor 有兼容契约。三家实现全 GPL（含 GPL-2.0-only 的 LLBot）→ 只读规范、不读源码。详见 `docs/protocols/milky.md` |
-| ADR-027 | Linux 只走**原生 ELF 自建宿主**（标准 Linux `node` + stub `.so` + `dlopen` 官方 Linux `wrapper.node`）；**Wine 退役**，代码与脚本删除，`NAPUTO_LINUX_NATIVE` 开关失效 | 继续 Wine + Windows `node.exe` 作默认/回退；双路线长期并存 | ELF 全局符号表消除近百条 forwarder；去掉 Wine / Windows `node.exe` / `WINEPREFIX` / `Z:\` 路径转换；官方 Linux QQ 同时提供 x64 与 arm64 包；加载 / 登录 / 收发（含他人消息实时入站）/ 图片 / 语音 / 视频 / 文件投递已全链路实测。详见 [linux-native-host.md](linux-native-host.md) |
+| ADR-025 | 新增 Milky 协议适配器（**已实现**，对齐 1.3.0），与 OB11/Satori/KuroBot 并行 | 用 Milky 替换 OB11；先全量迁移再保留双协议；参考/移植 GPL 系实现 | 语义天然对齐 kernel（消息段替代 CQ 码、原生 `message_seq`、`message_scene` 三值）；规范 MIT 且机读，实现成本低于 OB11；三家实现全 GPL（含 GPL-2.0-only 的 LLBot）→ 只读规范、不读源码。能力面见 `docs/protocols/milky.md` |
+| ADR-027 | Linux 只走**原生 ELF 自建宿主**（标准 Linux `node` + stub `.so` + `dlopen` 官方 Linux `wrapper.node`）；**Wine 退役** | 继续 Wine + Windows `node.exe` 作默认/回退；双路线长期并存 | ELF 全局符号表消除近百条 forwarder；去掉 Wine / Windows `node.exe` / `WINEPREFIX` / `Z:\` 路径转换；加载 / 登录 / 收发 / 富媒体 / 文件投递已全链路验证。详见 [linux-native-host.md](linux-native-host.md) |
 
 编号说明：本仓编号 001~025、027 连续（**026 / 030 属姊妹项目 KuroAdapter / KuroBridge**，
 本仓不复用，故 ADR-027 起续号）。
 
-> **ADR-019 状态（2026-11-14）**：Linux 运行方式部分**已被 ADR-027 替代**——Wine 分支已删除，
-> Linux 恒走原生 ELF 宿主；「不内置腾讯二进制」原则**仍然有效**（运行时下载官方 Linux deb /
-> Windows 安装包）。
+## 补充说明
 
-> **ADR-027 展开（2026-11-14）**：Linux 不再需要 Wine、Windows 版 `node.exe`（约 30MB 下载）、
-> Windows QQ 安装包（约 313MB）与 `Z:\` 路径转换——只 preload
-> `libnapuketto_stub.so:libgnutls.so.30`，其余符号由官方 `node` 的全局符号表直接解析。
-> Windows 保持 PE stub `QQNT.dll`（ADR-024）。退役依据：① 五条主线能力（登录 / 收发 /
-> 富媒体 / 文件投递 / 优雅退出）全部实测；② Linux 的 QQ 文件获取早已按 `process.platform`
-> 只选 deb + ELF，Wine 分支实际只对「手边有 Windows 版 QQ 安装」的 WSL 开发环境成立，纯
-> Linux 部署下本来就走不通。删除面：`wine.ts`（`toWinePath` / `unixPathToWinePath` /
-> `wineBinary` / `wineCheckError` / `wineInstallHint` / `buildSpawnCommand`）、`tooling/wine/*`
-> 两个冒烟脚本、环境变量 `NAPUTO_WINE`。`win-node.ts` 保留（win32 非 node 宿主如 Bun 仍需
-> 解析真 `node.exe`）。arm64 真机验证是**独立交付项**，与本次退役无关。
+**ADR-019**：Linux 运行方式部分已被 ADR-027 替代——Wine 分支已删除，Linux 恒走原生 ELF
+宿主；「不内置腾讯二进制」原则仍然有效（运行时下载官方 Linux deb / Windows 安装包）。
+
+**ADR-027**：Linux 只 preload `libnapuketto_stub.so:libgnutls.so.30`，其余符号由官方
+`node` 的全局符号表解析，不再需要 Wine、Windows 版 `node.exe`、Windows QQ 安装包或
+`Z:\` 路径转换；Windows 保持 PE stub `QQNT.dll`（ADR-024）。退役依据：登录 / 收发 /
+富媒体 / 文件投递 / 优雅退出全链路验证；纯 Linux 部署下 Wine 分支本就走不通。
+删除面：`wine.ts`、`tooling/wine/*` 冒烟脚本、`NAPUTO_WINE`。`win-node.ts` 保留
+（win32 非 Node 宿主如 Bun 仍需解析真 `node.exe`）。arm64 真机验证是独立交付项。
 
 ## 已废止路线（只留结论）
 
@@ -58,7 +55,7 @@
 |---|---|
 | V1：注入 QQ 主进程 + IAT hook 引导 boot JS | 可用但内存约 1GB，不可接受；已删除 |
 | V2：Native Bypass 载具激活 session `cpp_impl` | 自建宿主不需要；载具不再编译，历史实现查 git |
-| 路线 B：拉起 QQ → 注入 → utilityProcess worker | 已淘汰（2026-08-07 用户拍板），CLI 不再实现或调用 |
+| 路线 B：拉起 QQ → 注入 → utilityProcess worker | 已淘汰，CLI 不再实现或调用 |
 | OneBot 12 | 规范过于模糊，已删除占位 |
 | 独立 JSON 协议配置 / 顶层 `[onebot11]` 配置 | 改为项目根单一 TOML + 账号内嵌协议段 |
 | framework 模式 / WebUI / 插件系统 | 永远不做；功能范围 = 完整协议 + API 能力 − WebUI − 插件系统 |

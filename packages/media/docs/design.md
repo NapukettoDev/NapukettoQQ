@@ -1,11 +1,10 @@
-# @napuketto/media 设计书（2026-11-03 首版）
+# @napuketto/media 设计书
 
-> 本包是**独立的媒体处理层**（ADR-011）：语音 SILK 编解码、视频探测与转码、
-> 图片/文件类型识别、HTTP(S) 媒体下载。`@napuketto/kernel` 是唯一原生交互层，
-> **严禁依赖本包**；本包也只被协议层 `@napuketto/adapter` 消费。边界只有一句话：
+> 本包是**独立的媒体处理层**（ADR-011）：语音 SILK 编解码、视频探测与转码、图片/文件
+> 类型识别、HTTP(S) 下载。kernel 严禁依赖本包；本包只被协议层 `@napuketto/adapter` 消费。
 > 媒体能力属于协议语义，不属于原生交互，也不属于传输原语。
 
-## 1. 包职责与架构边界（ADR-011）
+## 包职责与架构边界（ADR-011）
 
 ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（外部进程）与
 `silk-wasm`（WASM）只有协议层的语音/视频收发需要，放进 kernel 会让所有宿主
@@ -24,7 +23,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 - **无内部依赖**：`@napuketto/media` 不 import 任何 `@napuketto/*` 包。
 - **只被 adapter 消费**：adapter 用 `encodePcmToSilk` / `decodeSilkToWav` /
   `transcodeVideo` / `downloadUrl` / `inferExtension`（见
-  `packages/adapter/docs/design.md` §5）。协议语义留在 adapter，本包只提供
+  `packages/adapter/docs/design.md` 的媒体依赖面）。协议语义留在 adapter，本包只提供
   与协议无关的媒体原语。
 - **kernel 严禁依赖**：kernel 的 `package.json` 不得出现本包；反向 import 视为
   架构违规（红线 6：media 严格解耦，kernel 不背媒体依赖）。
@@ -33,7 +32,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 - **错误语义**：可预期的媒体失败统一抛 `MediaError`（`types.ts`），不静默回落，
   便于协议层映射为错误码。
 
-## 2. 模块清单
+## 模块清单
 
 | 文件 | 导出 | 职责 |
 | :--- | :--- | :--- |
@@ -45,14 +44,14 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
 | `src/__tests__/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
 
-## 3. 构建与发布形态
+## 构建与发布形态
 
 产物为 **ESM + CJS 双格式**（`tsdown.config.ts`）：
 
 - `dist/index.mjs`（ESM）+ `dist/index.cjs`（CJS），类型声明 `dist/index.d.mts` /
   `dist/index.d.cts`；`package.json` 的 `exports` 同时保留 `import` 与 `require`
   条件。
-- **为什么必须双格式**（2026-08-24 生产事故）：koishi 适配器发布形态是 CJS
+- **为什么必须双格式**（历史生产事故）：koishi 适配器发布形态是 CJS
   （`lib/index.cjs`），koishi loader 用 `require()` 加载插件 → 插件 CJS 产物
   `require` 本包。此前本包只有 ESM 入口，CJS 解析报
   `ERR_PACKAGE_PATH_NOT_EXPORTED`。修复方式是与 kernel/loader 一致补双格式 +
@@ -64,7 +63,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 - **保持 external 的依赖**：`image-size`（双格式）与 `silk-wasm`（CJS）本身可被
   CJS `require` 正常加载，按默认 externals 处理，避免无谓增大产物体积。
 
-## 4. 测试布局
+## 测试布局
 
 单元测试统一放 `src/__tests__/`（与 kernel/adapter 等包一致，避免测试文件与源码
 同层平铺）。测试通过根 `vitest.config.ts` 的 `packages/*/src/**/*.test.ts` 发现，

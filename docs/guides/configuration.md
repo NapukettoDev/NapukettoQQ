@@ -1,309 +1,150 @@
 # 配置与路径
 
-## 1. 配置文件
+> 本页说明 NapukettoQQ 的全局配置、数据目录与运行环境变量。
+> 适用场景：首次部署、修改账号或协议端口、嵌入式宿主注入配置；前置是已安装 CLI。
 
-所有配置在**项目根**的单个 TOML 文件：
+## 操作步骤
 
-```
-<项目根>/napuketto.toml
-```
+1. 运行 `napuketto config init`；文件形态下首次启动也会自动生成模板，已存在不覆盖。
+2. 在 `[[accounts]]` 填入真实 `qq`，并在账号内添加所需协议段。
+3. 需要独立数据目录时，启动加 `--data-dir <dir>` 或设置 `NAPKETTO_DATA`。
+4. 启动前运行 `napuketto config validate`；返回 0 才继续。
 
-- 首次启动或 `napuketto config init` 时生成带注释模板；已存在则不覆盖。
-- 本机配置不入库（`.gitignore`），模板由 cli/scaffold 生成。
-- 不再使用独立 JSON 协议配置文件；`ConfigBase` 仍支持按扩展名读取 JSON，但主配置固定 TOML。
+## 配置文件与来源
 
-配置来源优先级（文件形态下仍为单一 TOML；全链路 cli / loader 一致，2026-10-25）：
+默认位置为项目根 `napuketto.toml`，与数据根解耦。来源优先级：
 
-1. `NAPKETTO_CONFIG_JSON` 环境变量：内联配置 JSON 文本（见 1.1；最高优先级）。
-2. `NAPKETTO_CONFIG` 环境变量（显式完整路径）。
-3. 项目根探测：入口模块向上找 `pnpm-workspace.yaml`；找不到则从 `cwd` 向上找
-   `pnpm-workspace.yaml` 或 `package.json`。
+1. `NAPKETTO_CONFIG_JSON`：内联 JSON 文本（最高优先级，见下节）。
+2. `NAPKETTO_CONFIG`：显式配置文件路径。
+3. 项目根探测：入口模块向上找 `pnpm-workspace.yaml`；未命中则从 `cwd` 向上找
+   `pnpm-workspace.yaml` 或 `package.json`，取根下 `napuketto.toml`。
 4. 数据根兜底：`<dataRoot>/napuketto.toml`。
 
-CLI 启动时会把解析结果通过 `NAPKETTO_CONFIG` 注入自建宿主，保证子进程读到同一份配置
-（内联形态改为经环境变量整树继承，不注入文件路径）。
+文件来源且缺失时自动写入带注释模板，全文见 [template.ts](../../apps/cli/src/config/template.ts)。
 
-### 1.1 内联配置 `NAPKETTO_CONFIG_JSON`（嵌入式宿主，2026-10-25）
+### 内联配置 `NAPKETTO_CONFIG_JSON`
 
-KuroBridge 等嵌入式宿主每次拉起前整体生成配置，经环境变量喂 JSON 文本（与
-napuketto.toml **同构**：`dataDir` / `autoRestart` / `restartDelayMs` / `accounts[]` /
-`log`，协议段嵌在账号内），消除托管 toml 文件本体。
+KuroBridge 等嵌入式宿主把整份配置作为 JSON 文本经环境变量传入，契约如下：
 
-- 内联生效时不读、不写、不校验任何 toml 文件：跳过模板生成、跳过 `NAPKETTO_CONFIG`
-  路径注入；启动日志打一行 `配置来源: inline（NAPKETTO_CONFIG_JSON）`。
-- 校验失败与文件形态同族（ConfigError，见退出码契约），错误文案指明「内联配置」
-  且不含任何 toml 文件路径。
-- 协议段热更新在内联形态不可用（无文件可重读；seed 模式本就不读盘）。
-- Windows 单环境变量上限 32767 字符（约 32KB），嵌入式配置形状远小于该限；
-  超限宿主退回 `NAPKETTO_CONFIG` 文件形态。
-- 键名精确匹配（Windows 的 process.env 本身大小写不敏感）；空串 / 纯空白视为未设置。
+- 与 `napuketto.toml` 同构：`dataDir` / `autoRestart` / `restartDelayMs` / `accounts[]` /
+  `log`，协议段仍嵌在账号内；共用同一校验器。
+- 生效时零 toml 落盘：不生成模板，不读、不写、不校验任何 toml，也不注入 `NAPKETTO_CONFIG`。
+- 协议段热更新不可用：无文件可重读，装配使用启动时的配置。
+- 键名精确匹配；空串或纯空白视为未设置，回退文件形态。
+- Windows 单环境变量上限 32767 字符（约 32KB）；超限宿主应改用 `NAPKETTO_CONFIG` 文件形态。
+- 校验失败均为 ConfigError（退出码 78），错误文案标注「内联配置」且不含 toml 路径。
 
-## 2. 数据根
+## 数据根
 
 数据根承载账号目录、日志、缓存、QQ 原生文件与运行时状态。优先级：
 
 1. CLI `--data-dir <dir>`。
-2. `NAPKETTO_DATA` 环境变量。
-3. `<项目根>/.napuketto`（默认）。
-4. 裸脚本场景回退用户目录下的 `.napuketto`。
+2. `NAPKETTO_DATA` 环境变量（空串视为未设置）。
+3. `<项目根>/.napuketto`。
+4. 裸脚本场景（探测不到项目根）：用户主目录下 `.napuketto`。
 
-支持绝对路径、`~/` 前缀（用户主目录）和相对路径（相对启动目录）；消费端
-`resolveDataRoot` 统一展开为绝对路径。**配置文件位置与数据根解耦**：默认在项目根
-（`NAPKETTO_CONFIG` 可显式覆盖），`dataDir` 只决定数据放哪里。
+支持绝对路径、`~/` 前缀与相对启动目录的路径，消费端统一展开为绝对路径。
 
-目录布局：
+布局（`<数据根>/`）：
 
-```
-<数据根>/
-├─ <uin>/                          # 每个账号一个目录
-│  ├─ config/                      # 账号级文件（历史产物；协议配置已改走 TOML seed）
-│  ├─ logs/
-│  │  ├─ napuketto.log             # kernel pino 文件日志
-│  │  └─ loader.log                # loader 业务/校准日志
-│  ├─ cache/                       # 临时文件、媒体缓存、qrcode.png
-│  ├─ instance.lock                # 单实例锁
-│  ├─ napuketto-boot.log           # 引导阶段纯文本日志
-│  └─ runtime.json                 # status/stop/restart 读取的运行时状态
-├─ supervisor.json                 # 多账号 supervisor 状态
-├─ qq-files/<版本>/versions/<版本>/resources/app/   # 下载解包的 wrapper.node 与依赖
-├─ tmp/                            # 下载临时文件
-└─ runtime/7zip/7zz                # Linux 7-Zip 缓存（内置资产缺失时）
+```text
+<uin>/                 # 每账号：config/、logs/、cache/、instance.lock、runtime.json
+                       # logs/ 内为 napuketto.log、loader.log；账号根下 napuketto-boot.log 为引导日志
+supervisor.json        # 多账号 supervisor 状态
+qq-files/<版本>/       # 解包后的 wrapper.node 与依赖缓存
+tmp/                   # 下载临时文件
+runtime/7zip/7zz       # Linux 7-Zip 缓存
 ```
 
-## 3. 全局字段
+## 全局字段
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `dataDir` | string | `<项目根>/.napuketto` | 数据根；支持 `~` 与相对路径 |
+| `dataDir` | string | `<项目根>/.napuketto` | 数据根，支持 `~` 与相对路径 |
 | `autoRestart` | boolean | `true` | supervisor 是否自动重启崩溃账号 |
 | `restartDelayMs` | 正整数 | `2000` | 重启延迟（毫秒） |
-| `accounts` | 数组 | 无（必填） | 至少一个账号，见下 |
+| `accounts` | 数组 | 必填 | 至少一个账号，见「账号」 |
 
-`config apply` 用外部文件做**顶层合并**（`{ ...existing, ...patch }`）后整体校验写回；
-`config list` 打印当前有效配置与账号目录清单。
+## 日志段
 
-### 3.1 日志段 `[log]`（2026-10-25 日志可配置化）
-
-不配置该段即用缺省：控制台格式按 TTY 自动（终端 = pretty 多行彩色，与历史行为
-一致；管道/重定向 = single-line 单行无色），全局级别 info，启动 banner 打印。
+不写 `[log]` 即全缺省：格式按 TTY 自动（终端 pretty，管道 single-line），级别 `info`，
+打印启动 banner。字段与合法值：
 
 ```toml
 [log]
-format = "single-line"     # pretty | single-line | json（缺省按 TTY 自动）
-level = "info"             # trace|debug|info|warn|error|fatal（控制台级别）
-banner = true              # 启动字符画（supervisor 派生子进程自动不再打）
-timestamp = "local"        # local=[HH:MM:ss.l] | iso8601=2026-10-25T16:01:33.294+08:00 | elapsed=+123.456s
-unboundReceive = true      # false = 未绑定频道的接收行不打（kurobot 握手拿到绑定表后生效）
-
-[log.levels]               # 按模块覆盖级别，模块：cli / kernel / loader / ob11
-# loader = "debug"         # 例：终端上看接收行（2026-10-25 起接收行默认降 debug）
-# ob11 = "debug"           # 例：协议校准数据（含原始 hex，逆向/校准采集用）
-
-[log.file]                 # 可选独立文件 sink（相对路径按数据根展开）
+format = "single-line"   # pretty | single-line | json；缺省按 TTY 自动
+level = "info"           # trace / debug / info / warn / error / fatal / silent
+banner = true            # 启动字符画；supervisor 子进程自动关闭
+timestamp = "local"      # local | iso8601 | elapsed（json 格式恒为 ISO8601）
+unboundReceive = true    # false = 不打未绑定频道的接收行（kurobot 握手后生效）
+[log.levels]             # 按模块覆盖控制台级别：cli / kernel / loader / ob11
+# loader = "debug"
+[log.file]               # 可选独立文件 sink；路径相对数据根
 # path = "logs/napuketto-console.log"
-# level = "debug"          # 文件级别可低于控制台（控制台干净与排查信息兼得）
+# level = "debug"        # 文件级别可低于控制台
 ```
 
-- **pretty**：多行彩色（kernel 自渲染，无 pino-pretty 依赖）：头部
-  `[16:01:33.294] INFO (cli/14344): 启动账号`，字段逐行 4 空格缩进 `key: value`，
-  嵌套对象/数组按 JSON 形状展开（`err.stack` 多行原样展开）。
-- **single-line**：一条记录一行，字段内联 `key=value`：
-  `[16:20:41.481] INFO (cli/14344): 启动账号 service=cli qq=3567141148`。
-- **json**：NDJSON，每行一个完整对象，可逐行 `JSON.parse`：
-  `{"time":"...+08:00","level":"info","module":"loader","account":"3567141148","pid":27256,"msg":"..."}`
-  （`module` = logger 来源 cli/kernel/loader/ob11；`account` = 登录账号，已知时才有）。
-- 级别重分配（默认生效，CHANGELOG 列出）：ob11 校准遥测（含 raw hex）与
-  `loader | 接收` 行降 debug；QQ 文件来源/数据目录等引导细节降 debug；
-  账号上线、QR 状态、握手结果、致命错误保持 info 及以上。warn 级 raw 字段
-  截断为 64 字符 + `…(+N)`，完整值在 debug 级。
-- 时间戳统一取单调墙钟（`performance.timeOrigin + performance.now()`）：
-  QQNT 原生层会在部分回调窗口内篡改进程 `Date`（实测 onRecvSysMsg 期间记录
-  时间冻结为假值），单调钟不受影响，三层（cli/kernel/loader）同源。
+`[log.file].level` 缺省跟随全局；`[log.levels]` 只接受上述四个模块名，未知键报错。
 
-## 4. 账号
+## 账号
 
 ```toml
 [[accounts]]
-qq = "10001"          # 必填，5-11 位纯数字；模板占位值 123456 / 654321 会被拒绝
+qq = "10001"          # 必填，5-11 位纯数字；模板占位 123456 / 654321 会被拒绝
 enabled = true        # 可选，默认 true；supervisor 只拉起启用的账号
-
-[accounts.onebot11]   # 段存在 = 启用 OB11；空段也合法（使用全部默认值）
-[accounts.satori]     # 段存在 = 启用 Satori
-[accounts.kurobot]    # 非空段才启用 KuroBot；段内必须含 url（空段等同未启用）
-```
-
-- 账号内没写某协议段 = 不启用该协议。
-- 显式 `-q <uin>` 启动单账号时绕过 `accounts` 列表与 `enabled` 过滤。
-- `qq` 必须与登录后的实际 uin 一致；协议段按登录 uin 从 `accounts` 中匹配。
-
-## 5. OneBot 11 段
-
-协议级字段：
-
-| 字段 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `token` | string | 空 | 全局鉴权 token；实例可覆盖。空 = 不鉴权（仅本机调试） |
-| `heartbeatInterval` | 整数 | `3000` | 心跳 meta 事件间隔（毫秒）；`0` 关闭 |
-| `reportSelfMessage` | boolean | `false` | 是否上报机器人自己发的消息 |
-| `messagePostFormat` | `"array"` / `"string"` | `"array"` | 消息段数组或 CQ 码字符串 |
-| `groupUploadAsNotice` | boolean | `false` | `true` = 含文件元素的群消息改报 `group_upload` notice；`false` = 作为 message 的 file 段 |
-| `httpServers` | 数组 | `[]` | HTTP 反向服务器（接收第三方 POST 指令） |
-| `httpPostUrls` | 数组 | `[]` | HTTP 正向上报（Webhook） |
-| `wsServers` | 数组 | `[]` | WS 反向服务器（第三方客户端连入） |
-| `wsReverseUrls` | 数组 | `[]` | WS 正向客户端（主动连第三方，双向） |
-
-传输实例字段与默认值：
-
-| 实例 | 字段 |
-|---|---|
-| `httpServers[]` | `enabled=false`、`host="127.0.0.1"`、`port=3000`、可选 `token` |
-| `httpPostUrls[]` | `enabled=false`、`url`、可选 `token`、可选 `timeoutMs`（缺省不超时） |
-| `wsServers[]` | `enabled=false`、`host="127.0.0.1"`、`port=3001`、可选 `token`、`heartbeatInterval=30000`（WS ping） |
-| `wsReverseUrls[]` | `enabled=false`、`url`、可选 `token`、`reconnectDelayMs=5000`、`maxReconnectAttempts`（缺省无限）、`rejectUnauthorized=true`、`heartbeatInterval=30000` |
-
-鉴权：实例 `token` 覆盖全局；HTTP/WS 握手接受 `Authorization: Bearer <token>`、裸
-`Authorization: <token>` 或 `?access_token=<token>`。WS 鉴权失败以 4401 关闭。
-
-旧版单对象字段（`http` / `httpPost` / `ws` / `wsReverse`）已移除；zod 会静默忽略，不做迁移。
-
-## 6. Satori 段
-
-| 字段 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `token` | string | 空 | 全局鉴权 token；空 = 不鉴权 |
-| `cacheDir` | string | `<账号目录>/cache` | 媒体资源下载缓存目录 |
-| `httpServers` | 数组 | `[]` | HTTP RPC（`POST /v1/{resource}.{method}`） |
-| `wsServers` | 数组 | `[]` | WS 事件服务（路径固定 `/v1/events`） |
-
-实例字段：`enabled=false`、`host="127.0.0.1"`、`port`（HTTP 默认 5500 / WS 默认 5501）、
-可选 `token`（覆盖全局）。HTTP 用 `Authorization: Bearer <token>`；WS 在 `IDENTIFY` 信令的
-`body.token` 中校验。
-
-## 7. KuroBot 段
-
-| 字段 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `url` | string | 无（必填） | KuroBridge 服务端地址，`ws://` 或 `wss://` |
-| `token` | string | `""` | 鉴权 token；服务端配了非空 token 时必须一致，否则 1008 关闭 |
-| `client` | string | `napukettoqq/<adapter 版本>` | hello 自报身份 |
-| `commandPrefix` | string | `"/"` | 群消息以此前缀开头 → 发 command 帧 |
-| `pingIntervalMs` | 正整数 | `15000` | 应用层心跳；须显著小于服务端 30s 空闲阈值 |
-| `chatTemplate` | string | `"[{player}] {content}"` | MC 聊天 → QQ 群 |
-| `joinTemplate` | string | `"{player} 加入了服务器"` | 玩家进服 |
-| `leaveTemplate` | string | `"{player} 离开了服务器"` | 玩家退服 |
-| `deathTemplate` | string | `"{player} {message}"` | 玩家死亡；`message` 为空时显示“死亡了” |
-
-模板占位符：`{player}`、`{content}`、`{message}`；未知占位符原样保留。所有发群文本超过
-1500 个 UTF-16 码元时截断并追加 `…(截断)`。
-
-## 8. Milky 段（P1）
-
-账号段存在且 `enabled = true` 才启用；不写 = 不启用。单端口 HTTP：`POST /api/:api`
-调用动作，`GET /event` 推送事件（按 `Upgrade: websocket` 头分流 WS，否则 SSE）。
-目标协议版本 Milky 1.3.0。
-
-| 字段 | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `enabled` | boolean | `false` | 启用开关（false = 装配空转，不占端口） |
-| `host` | string | `"127.0.0.1"` | 监听地址 |
-| `port` | int | `3001` | 监听端口（/api 与 /event 同端口） |
-| `token` | string | `""` | access_token；空 = 不校验（仅限内网） |
-| `eventModes` | 数组 | `["sse", "ws"]` | /event 允许的连接形态 |
-| `webhooks` | 数组 | `[]` | 额外事件推送地址（WebHook POST，请求头带 Bearer token） |
-| `cacheDir` | string | 无 | 发送远程媒体 URI（http(s)/base64）的下载缓存目录；缺省 = 远程媒体发送不可用 |
-
-鉴权：`Authorization: Bearer <token>`，SSE/WS 允许 `?access_token=` 查询参数兜底；
-失败 HTTP 401。错误码：-400 参数解析失败、-403 未登录、其余业务错误自定负数；
-未知 API HTTP 404（空 body）、Content-Type 不符 415。
-
-动作面（P1，49 个）：P0 的 9 个 + 资料/票据（get_user_profile / get_friend_info /
-set_avatar / set_nickname / set_bio / get_cookies / get_csrf_token）+ 好友操作
-（send_profile_like / delete_friend / get_friend_requests / accept/reject_friend_request）+
-消息（get_history_messages / get_forwarded_messages / mark_message_as_read）+ 群管
-（get_group_info / get_group_member_list / get_group_member_info / set_group_name /
-set_group_member_card / set_group_member_admin / set_group_member_mute /
-set_group_whole_mute / kick_group_member / quit_group）+ 精华与表态
-（get_group_essence_messages / set_group_essence_message / send_group_message_reaction）+
-群通知（get_group_notifications / accept/reject_group_request /
-accept/reject_group_invitation）+ 群文件（get_group_files / move_group_file /
-rename_group_file / delete_group_file / persist_group_file / create_group_folder /
-delete_group_folder）。
-
-事件（P1，15 个）：message_receive / message_recall / friend_request /
-group_join_request / group_invited_join_request / group_invitation /
-group_member_increase / group_member_decrease / group_mute / group_whole_mute /
-group_name_change / group_disband / friend_nudge / group_nudge / group_file_upload。
-
-## 9. 最小示例
-
-```toml
-autoRestart = true
-restartDelayMs = 2000
-
-[[accounts]]
-qq = "10001"
-enabled = true
-
-[accounts.onebot11]
-token = "change-me"
-heartbeatInterval = 3000
-messagePostFormat = "array"
-
-[[accounts.onebot11.httpServers]]
-enabled = true
-host = "127.0.0.1"
-port = 3000
-
-[[accounts.onebot11.wsServers]]
-enabled = true
-host = "127.0.0.1"
-port = 3001
-
-[[accounts]]
-qq = "10002"
-
+[accounts.onebot11]   # 协议段嵌在账号内
 [accounts.satori]
-token = "change-me-too"
-
-[[accounts.satori.httpServers]]
-enabled = true
-host = "127.0.0.1"
-port = 5500
-
-[[accounts.satori.wsServers]]
-enabled = true
-host = "127.0.0.1"
-port = 5501
 ```
 
-完整带注释模板见 `apps/cli/src/config/template.ts`，或运行 `napuketto config init` 查看。
+- 写哪个协议段就启用哪个协议；没写的协议不装配（OB11 例外，见下节）。
+- `-q <uin>` 单账号启动绕过 `accounts` 列表与 `enabled` 过滤，直接拉起该 uin。
+- 登录后按实际 uin 匹配 `accounts` 中的 `qq`，两者应一致；不一致时以 uin 为准。
 
-## 10. 环境变量
+## 协议段
 
-用户可设置的：
+| 协议 | 启用条件 | 高频字段 | 文档与 schema |
+|---|---|---|---|
+| OneBot 11 | 始终装配，缺段用默认值 | token、httpServers、wsServers | [onebot11.md](../protocols/onebot11.md) / [schema](../../packages/adapter/src/onebot11/helper/config.ts) |
+| Satori | 账号段非空 | token、httpServers、wsServers | [satori.md](../protocols/satori.md) / [schema](../../packages/adapter/src/satori/helper/config.ts) |
+| KuroBot | 账号段非空且含 url | url、token、commandPrefix | [kurobot.md](../protocols/kurobot.md) / [schema](../../packages/adapter/src/kurobot/config.ts) |
+| Milky | 账号段非空且 enabled=true | enabled、host、port、token | [milky.md](../protocols/milky.md) / [schema](../../packages/adapter/src/milky/config.ts) |
+
+全量字段、默认值与传输实例见各协议 schema；Milky 的 `enabled` 缺省 `false`，未开启不监听。
+
+## 环境变量
 
 | 变量 | 作用 |
 |---|---|
-| `NAPKETTO_CONFIG_JSON` | 内联配置 JSON 文本（最高优先级，见 1.1） |
-| `NAPKETTO_CONFIG` | 全局配置文件路径 |
+| `NAPKETTO_CONFIG_JSON` | 内联配置 JSON（最高优先级） |
+| `NAPKETTO_CONFIG` | 配置文件路径（显式覆盖） |
 | `NAPKETTO_DATA` | 数据根 |
-| `NAPUKETTO_LOG_LEVEL` | 日志级别覆盖（全进程链生效；兼容旧拼写 `NAPKETTO_LOG_LEVEL`） |
-| `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖（pretty / single-line / json） |
-| `NAPUKETTO_NO_BANNER` | `1`/`true` = 关启动字符画 |
-| `NAPUKETTO_LOG_COLORIZE` | `1`/`0` 颜色覆盖（CLI 顶层向管道子进程传播用） |
-| `NAPUTO_QQ_PATH` | 本机 QQ 安装路径（Windows `QQ.exe` / Linux `qq`） |
-| `NAPUTO_QQ_FILES` | 显式 QQ 文件根（含 `versions/` 结构） |
-| `NAPUTO_QQ_URL` | 覆盖 QQ 安装包下载地址 |
-| `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录（Windows） |
-| ~~`NAPUTO_LINUX_NATIVE`~~ | **已退役**（ADR-027）：Linux 恒走原生 ELF 宿主，设 `0` 只打印一句提示、不回退 Wine |
-| `NAPUTO_LINUX_STUB` | Linux `.so` stub 路径（缺省用 loader 包内 `native/build/linux-<arch>/`） |
-| `NAPUTO_7Z_PATH` / `NAPUTO_7Z_URL` | 7-Zip 可执行文件 / Linux 7zz 下载地址 |
-| ~~`NAPUTO_WINE`~~ | **已删除**（ADR-027：Wine 退役，设了也不读） |
-| `NAPUTO_WIN_NODE_PATH` | 非 Node 宿主（Bun 等）使用的 Windows 版 `node.exe` |
-| `NAPUTO_QUICK_UIN` / `NAPUTO_QR_ONLY` | 强制快速登录账号 / 强制扫码 |
-| `NAPUTO_SMOKE` / `NAPUTO_SMOKE_PEER` | 启动后收发冒烟自检 |
-| `NAPUTO_PROBE` | 运行时探测（诊断用） |
+| `NAPUKETTO_LOG_LEVEL` | 日志级别覆盖 |
+| `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖 |
+| `NAPUKETTO_NO_BANNER` | `1`/`true` 关闭启动 banner |
+| `NAPUKETTO_LOG_COLORIZE` | 颜色开关（子进程传播） |
+| `NAPUTO_QQ_PATH` | 本机 QQ 安装路径 |
+| `NAPUTO_QQ_FILES` | QQ 文件根（含 `versions/`） |
+| `NAPUTO_QQ_URL` | QQ 安装包下载地址 |
+| `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录 |
+| `NAPUTO_LINUX_STUB` | Linux `.so` stub 路径 |
+| `NAPUTO_7Z_PATH` | 7-Zip 可执行文件 |
+| `NAPUTO_7Z_URL` | Linux 7zz 下载地址 |
+| `NAPUTO_WIN_NODE_PATH` | 非 Node 宿主用 `node.exe` |
+| `NAPUTO_QUICK_UIN` | 强制快速登录账号 |
+| `NAPUTO_QR_ONLY` | 强制扫码登录 |
+| `NAPUTO_SMOKE` | 启动后收发冒烟自检 |
+| `NAPUTO_SMOKE_PEER` | 冒烟自检对端 |
+| `NAPUTO_PROBE` | 运行时探测（诊断） |
 
-`NAPUTO_KERNEL_ENTRY`、`NAPUTO_ADAPTER_ENTRY`、`NAPUTO_NETWORK_ENTRY`、`NAPUTO_CFG_DIR`、
-`NAPUTO_QQ_VERSION`、`NAPUTO_WRAPPER_PATH`、`NAPUTO_SELF_HOST`、`NAPUTO_IPC` 等由 CLI/loader
-注入，正常部署不要手工设置。
+日志变量的旧拼写 `NAPKETTO_LOG_LEVEL` 仍被接受（`NAPUKETTO_` 优先）。
+
+`NAPUTO_KERNEL_ENTRY`、`NAPUTO_ADAPTER_ENTRY`、`NAPUTO_CFG_DIR`、`NAPUTO_IPC` 等由
+CLI/loader 注入，正常部署不要手工设置。
+
+## 验证与常见排障
+
+- `napuketto config validate` 返回 0 表示合法；78 表示 ConfigError，宿主不会自动重启。
+- 启动日志出现 `配置来源: inline（NAPKETTO_CONFIG_JSON）` 说明走内联，否则为文件来源。
+- 报「缺少 accounts」或占位 QQ 号时编辑模板对应段；`qq` 必须是 5-11 位真实号码。
+- 协议未监听：确认协议段非空（Milky 还需 `enabled = true`）且端口未被占用。
+- 内联内容超 32KB 或需要热更新时，改用 `NAPKETTO_CONFIG` 指向的 TOML 文件。
