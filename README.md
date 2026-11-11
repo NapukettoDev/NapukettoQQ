@@ -49,8 +49,6 @@ pnpm start
 <br>
 
 <img src=".github/assets/Deploy.webp" alt="NapukettoQQ 部署演示" width="600">
-首次启动会在项目根目录生成 `napuketto.toml`。部署演示：
-![NapukettoQQ 部署演示](.github/assets/Deploy.webp)
 
 </details>
 
@@ -67,7 +65,6 @@ pnpm start
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
 
-# 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址请保持 0.0.0.0）
 # 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址保持 0.0.0.0）
 docker compose up -d
 docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲染二维码
@@ -76,7 +73,6 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 完整说明详见 [Docker 部署指南](./docs/guides/docker.md)。
 
 </details>
-完整说明见 [Docker 部署指南](./docs/guides/docker.md)。
 
 <br>
 
