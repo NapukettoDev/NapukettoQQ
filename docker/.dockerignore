@@ -1,0 +1,4 @@
+# 部署产物：用户在本目录直接 compose 时会生成配置与数据根，别让它们进构建上下文
+.napuketto/
+napuketto.toml
+*.tar.gz

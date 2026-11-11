@@ -121,6 +121,22 @@ OneBot 11 WS     ws://127.0.0.1:3001
 > `pnpm exec napuketto stop` / `pnpm exec napuketto restart`；supervisor 开启 `autoRestart`
 > 时，单账号 `stop` 会被重新拉起。
 
+### Docker 部署（可选）
+
+服务器上不想装 Node 时，用官方镜像（仅 `linux/amd64`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
+# 改 qq / token；容器内监听地址保持 0.0.0.0
+docker compose up -d
+docker compose logs -f      # 首启：下载 QQ → 解包 → 二维码
+```
+
+数据落在 `./.napuketto`；二维码同时渲染在日志与 `./.napuketto/<QQ号>/cache/qrcode.png`。
+镜像不内置腾讯二进制，`wrapper.node` 由 loader 首启时从官方 CDN 下载。
+完整说明见 [Docker 部署](./docs/guides/docker.md)。
+
 ---
 
 ## 工作原理

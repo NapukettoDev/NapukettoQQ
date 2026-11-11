@@ -23,10 +23,11 @@
 | [architecture/overview.md](architecture/overview.md) | 项目定位、包职责、依赖方向、分层原则、硬性红线 |
 | [architecture/runtime.md](architecture/runtime.md) | 进程拓扑、启动序列、QQ 文件来源、登录/session、数据流、多账号与 IPC |
 | [architecture/decisions.md](architecture/decisions.md) | 现行 ADR 与已废止路线（只保留仍然约束代码的结论） |
-| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主（**已实现并发布**，开关 `NAPUTO_LINUX_NATIVE=1`；2 必需 + PerfTrace stub、无头依赖、双版本、各阶段实测与 arm64 交付缺口；未替代 ADR-019） |
+| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主（**已实现并发布**；ADR-027 起为 Linux 唯一路线、Wine 已退役；2 必需 + PerfTrace stub、无头依赖、双版本、各阶段实测与 arm64 交付缺口；保留 ADR-019 的不内置腾讯二进制原则） |
 | [guides/development.md](guides/development.md) | 本地开发、构建顺序、测试、CI、changeset、代码风格 |
 | [guides/configuration.md](guides/configuration.md) | 全局 TOML、账号内协议段、传输实例默认值、数据目录、环境变量 |
 | [guides/operations.md](guides/operations.md) | 单实例锁、停启与状态、日志、登录/文件/原生宿主依赖/噪音排障 |
+| [guides/docker.md](guides/docker.md) | 官方镜像与 Compose 部署、首启链路、端口与安全、备份迁移、镜像构建、排障 |
 | [guides/release.md](guides/release.md) | changeset → CI 发布链、OIDC、仓库一次性配置、补发与排障 |
 | [protocols/onebot11.md](protocols/onebot11.md) | OB11 传输、动作面、事件面、ID 映射、已接线与待校准项 |
 | [protocols/satori.md](protocols/satori.md) | Satori HTTP RPC / WS 事件、动作与 501、元素编解码、ID 映射 |
