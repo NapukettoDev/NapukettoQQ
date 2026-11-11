@@ -10,6 +10,12 @@
 # 镜像内容只由已发布的 npm 包决定（Dockerfile 里 `npm install -g @napuketto/cli@<版本>`），
 # 不 COPY 工作树源码——因此 tag 指向的源码被改动也不会把未发布代码带进镜像。
 #
+# 一次构建产出两个变体（同一 Dockerfile，只差 WITH_FFMPEG）：
+#   - 默认：带静态 ffmpeg/ffprobe，语音/视频开箱即用；标签 latest / cli-<版本> / sha-<sha>
+#   - slim：不带 ffmpeg（纯文本 Bot）；标签 latest-slim / cli-<版本>-slim / sha-<sha>-slim
+# 两个变体在同一个 job 里顺序构建，slim 直接吃 full 刚导出的 GHA 缓存（只重跑最后
+# 一个条件层），额外耗时几秒；顺序执行也避免两个 job 并发写同一个缓存 scope。
+#
 # 首次发布后 GHCR 包默认 private，需要在包设置里手动改为 public（或用带凭据的拉取）。
 
 name: Image
@@ -58,7 +64,7 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: 生成镜像标签
+            - name: 生成镜像标签（默认，含 ffmpeg）
               id: meta
               uses: docker/metadata-action@v5
               with:
@@ -68,7 +74,7 @@ jobs:
                       type=raw,value=cli-${{ steps.ver.outputs.version }}
                       type=sha,format=short,prefix=sha-
 
-            - name: 构建并推送
+            - name: 构建并推送（默认，含 ffmpeg）
               uses: docker/build-push-action@v6
               with:
                   context: docker
@@ -79,7 +85,37 @@ jobs:
                   labels: ${{ steps.meta.outputs.labels }}
                   build-args: |
                       NAPUKETTO_VERSION=${{ steps.ver.outputs.version }}
+                      WITH_FFMPEG=true
                   provenance: true
                   sbom: true
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+                  cache-from: type=gha,scope=napukettoqq
+                  cache-to: type=gha,scope=napukettoqq,mode=max
+
+            - name: 生成镜像标签（slim，无 ffmpeg）
+              id: meta-slim
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ steps.ver.outputs.image }}
+                  flavor: |
+                      suffix=-slim
+                  tags: |
+                      type=raw,value=latest
+                      type=raw,value=cli-${{ steps.ver.outputs.version }}
+                      type=sha,format=short,prefix=sha-
+
+            - name: 构建并推送（slim，无 ffmpeg）
+              uses: docker/build-push-action@v6
+              with:
+                  context: docker
+                  file: docker/Dockerfile
+                  platforms: linux/amd64
+                  push: true
+                  tags: ${{ steps.meta-slim.outputs.tags }}
+                  labels: ${{ steps.meta-slim.outputs.labels }}
+                  build-args: |
+                      NAPUKETTO_VERSION=${{ steps.ver.outputs.version }}
+                      WITH_FFMPEG=false
+                  provenance: true
+                  sbom: true
+                  # 只读 full 导出到同一 scope 的缓存；slim 自身没有新层，不需要再写一份
+                  cache-from: type=gha,scope=napukettoqq

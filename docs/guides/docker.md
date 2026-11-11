@@ -9,7 +9,7 @@
 **同一套进程拓扑**，没有另起一套运行模式：
 
 ```
-entrypoint(sh) → gosu node → napuketto CLI(supervisor)
+entrypoint(sh) → setpriv node → napuketto CLI(supervisor)
                                 └─ 每账号一个 boot 进程 → 自建宿主 → dlopen wrapper.node
 ```
 
@@ -28,8 +28,19 @@ entrypoint(sh) → gosu node → napuketto CLI(supervisor)
 |---|---|
 | Docker | Engine 24+ / Docker Desktop，含 compose v2 |
 | 架构 | `linux/amd64`（arm64 尚未交付，见 [linux-native-host.md](../architecture/linux-native-host.md) 附录 E.2） |
-| 磁盘 | 镜像约 1GB（含 ffmpeg）+ 数据卷（QQ 原生文件约 300MB）+ 首启临时解包空间约 1GB |
+| 磁盘 | 镜像约 520MB（默认，含静态 ffmpeg；slim 约 240MB）+ 数据卷（QQ 原生文件约 300MB）+ 首启临时解包空间约 1GB |
 | 出网 | `ghcr.io`（拉镜像）、`qqdl.gtimg.cn`（首启下载 QQ） |
+
+官方镜像有两个变体（同一份 `Dockerfile`，只差一个构建参数）：
+
+- **默认** `latest` / `cli-<版本>` / `sha-<短 sha>`：带静态 `ffmpeg`/`ffprobe`，
+  语音（PCM 归一化 → Silk）与视频（抽首帧、转码）开箱即用；拉取约 190MB。
+- **slim** `latest-slim` / `cli-<版本>-slim` / `sha-<短 sha>-slim`：不含 ffmpeg，
+  纯文本 Bot 用；拉取约 80MB，容器内约 240MB。语音/视频转换会抛
+  `ffmpeg 不可用`，需要换默认 tag，或自建时加 `WITH_FFMPEG=true`。
+
+`compose.yaml` 默认用 `latest`（完整版）；纯文本部署把 `image:` 改成
+`ghcr.io/napukettodev/napukettoqq:latest-slim` 即可。
 
 ## 3. 快速开始
 
@@ -160,17 +171,27 @@ docker compose start
 ## 10. 构建自己的镜像
 
 ```bash
+# 默认：带静态 ffmpeg/ffprobe
 docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napukettoqq:0.5.17 docker/
+
+# 轻量：不带 ffmpeg
+docker build --build-arg NAPUKETTO_VERSION=0.5.17 --build-arg WITH_FFMPEG=false \
+  -t napukettoqq:0.5.17-slim docker/
 ```
 
 - 构建只从 npm 安装**已发布**的 `@napuketto/cli`，不 COPY 仓库源码——镜像内容与源码
   分支无关，可复现、可审计。
 - `NAPUKETTO_VERSION` 缺省 `latest`；生产建议钉版本。
+- `WITH_FFMPEG` 缺省 `true`：ffmpeg/ffprobe 是 `mwader/static-ffmpeg` 的纯静态二进制
+  （镜像摘要钉死，含 libx264/aac/opus 等常用编解码器），不引入 Debian ffmpeg 的
+  LLVM/Mesa/SDL 动态库闭包。默认镜像拉取约 190MB / 容器内约 520MB；slim 约 80MB / 240MB
+  （随 CLI 版本浮动）。
 - `compose.yaml` 刻意不带 `build:`（只下载 compose 的用户不该被要求先有 Dockerfile）。
   自建镜像后把 compose 里的 `image:` 改成自己的 tag，或直接用它覆盖官方 tag：
   `docker build -t ghcr.io/napukettodev/napukettoqq:latest docker/`。
 - 官方镜像由 `.github/workflows/image.yml` 在 CLI 发布 tag（`@napuketto/cli@<版本>`）
-  时自动构建推送，标签为 `latest`、`cli-<版本>`、`sha-<短 sha>`。
+  时自动构建推送，标签为 `latest`、`cli-<版本>`、`sha-<短 sha>`，以及对应的
+  `-slim` 变体（`latest-slim` 等）。
 - GHCR 包首次发布后默认是 **private**，需要在包设置里改成 public（或改用带凭据的拉取）。
 
 ## 11. 排障
@@ -179,6 +200,7 @@ docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napukettoqq:0.5.17 docker/
 |---|---|---|
 | `libbugly.so: undefined symbol: gnutls_free` | 镜像缺系统 gnutls | 自建镜像要装 `libgnutls30`（官方镜像已装） |
 | `libX11.so.6: cannot open shared object file` | 缺 X11 客户端库 | 装 `libx11-6 libx11-xcb1 libxext6 libxcb1` |
+| 语音/视频报 `ffmpeg 不可用` | 用的是 `-slim` tag（镜像不含 ffmpeg） | 换默认 tag，或自建时加 `WITH_FFMPEG=true` |
 | 宿主机连不上 3000/3001 | 配置里还是 `127.0.0.1`，或没映射端口 | 改 `host = "0.0.0.0"`，确认 `docker compose ps` 的 PORTS |
 | 容器不断重启，日志有 `exit 78` | 配置校验失败 | 修 `napuketto.toml`；容器起不来时用 `docker compose up` 前台看错误 |
 | 首启卡住 / 下载失败 | 到 `qqdl.gtimg.cn` 不通 | 配代理，或挂载宿主机 `/opt/QQ` 复用本地安装 |
@@ -193,3 +215,7 @@ docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napukettoqq:0.5.17 docker/
 镜像只包含 MIT 许可的本仓运行时代码与第三方系统库；腾讯 QQ 的二进制（`wrapper.node`
 等）**不随镜像分发**，由使用者机器在运行时从腾讯官方 CDN 下载，与手动安装 Linux QQ
 等价。请遵守腾讯软件许可与当地法律法规。
+
+默认镜像里的 `ffmpeg`/`ffprobe` 来自 [`mwader/static-ffmpeg`](https://github.com/wader/static-ffmpeg)
+的 GPL 静态构建（作为独立可执行文件分发，不链接本仓代码），源码可在该项目对应 tag
+获取；slim 变体不含它们。

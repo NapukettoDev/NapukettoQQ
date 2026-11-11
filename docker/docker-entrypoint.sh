@@ -7,6 +7,7 @@
 # - 数据根可能是新建命名卷（root 属主）或宿主机 bind mount，首启统一对齐到 node。
 # - 用 exec 替换 PID 1，SIGTERM 直接到达 cli/supervisor，容器停止才能走优雅退出
 #   （supervisor 收到信号后停止全部账号，8s 兜底强杀）。
+# - 降权用 util-linux 自带的 setpriv（Debian 基础镜像已有），不再安装 gosu。
 set -eu
 
 APP_DIR="${APP_DIR:-/app}"
@@ -42,7 +43,7 @@ if [ "$(id -u)" = "0" ]; then
         chown -R node:node "$DATA_ROOT" 2>/dev/null || true
         : >"$DATA_ROOT/.owner-ok" 2>/dev/null || true
     fi
-    exec gosu node "$@"
+    exec setpriv --reuid=node --regid=node --init-groups "$@"
 fi
 
 exec "$@"
