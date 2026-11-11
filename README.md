@@ -151,7 +151,7 @@ pnpm exec napuketto config list         # 查看当前有效配置
 | **总览与架构** | [文档首页](./docs/README.md) · [架构总览](./docs/architecture/overview.md) · [运行链路](./docs/architecture/runtime.md) · [架构决策记录 (ADR)](./docs/architecture/decisions.md) |
 | **使用与维护** | [配置指南](./docs/guides/configuration.md) · [开发指南](./docs/guides/development.md) · [运维手册](./docs/guides/operations.md) · [发布流程](./docs/guides/release.md) |
 | **协议参考** | [Milky](./docs/protocols/milky.md) · [OneBot 11](./docs/protocols/onebot11.md) · [Satori](./docs/protocols/satori.md) · [KuroBot](./docs/protocols/kurobot.md) |
-| **官方生态** | [koishi-plugin-adapter-napuketto](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto)（独立仓库，直接依赖 npm 上已发布的 `@napuketto/*`） |
+| **官方生态** | [koishi-plugin-adapter-napuketto](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto)（独立仓库[Adapter-Koishi](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto) ） |
 | **开源治理** | [贡献指南](./.github/CONTRIBUTING.md) · [安全策略](./.github/SECURITY.md) · [MIT 许可证](./LICENSE) |
 
 ---
