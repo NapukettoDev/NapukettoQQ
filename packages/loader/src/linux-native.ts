@@ -1,15 +1,16 @@
 /**
- * linux-native.ts：Linux 原生 ELF 自建宿主（Stage 1，开关 `NAPUTO_LINUX_NATIVE=1`）。
+ * linux-native.ts：Linux 原生 ELF 自建宿主（ADR-027 起 Linux 唯一路径）。
  *
- * 与 wine 分支的区别：
- *  - 宿主是 Linux 原生 `node`（不是 wine 里的 Windows node.exe）
+ * 与 Windows 分支的区别：
+ *  - 宿主是 Linux 原生 `node`（不是 Wine 里的 Windows node.exe——Wine 已退役）
  *  - `wrapper.node` 是 ELF，宿主符号由官方 node 直接导出；只 preload 最小 stub
  *  - stub 是 `libnapuketto_stub.so`（native/build/linux-<arch>/），不再是 QQNT.dll 目录
  *  - `libbugly` 的 gnutls 是无 DT_NEEDED 的隐藏依赖，必须与 stub 一起 preload
  *  - `HOME`/`XDG_*` 收敛到数据根（Stage 3c）：Bugly 的 NativeCrashHandler 不受
  *    `desktopGlobalPath` 控制，总是写 `$HOME/.config/QQ/crash_files/`
  *
- * 默认关闭：ADR 未落、Wine 仍是现行实现。只有显式设置 NAPUTO_LINUX_NATIVE=1 才走本分支。
+ * 平台判定一律用 `process.platform === "linux"`；旧的 `NAPUTO_LINUX_NATIVE` 开关已退役
+ * （ADR-027），设成 0 只在 launcher 里播报一句、不再改变行为。
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -24,11 +25,6 @@ const LINE_SPLIT = /\r?\n/;
 
 /** 数据根下受管 HOME 的目录名（Linux 原生宿主专用）。 */
 export const LINUX_HOME_DIRNAME = "home";
-
-/** Linux 原生分支开关（必须显式 =1）。 */
-export function isLinuxNativeEnabled(): boolean {
-    return process.platform === "linux" && process.env["NAPUTO_LINUX_NATIVE"] === "1";
-}
 
 /** 当前架构对应的 stub 目录名（x64 → linux-x64，arm64 → linux-arm64）。 */
 export function linuxStubArchDir(arch: string = process.arch): string {

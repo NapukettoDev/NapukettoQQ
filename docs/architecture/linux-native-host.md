@@ -1,20 +1,17 @@
 # Linux 原生自建宿主研判（ELF + 最小 stub）
 
-> **状态**：研判稿（2026-11-08），**实现已发布**（loader 0.6.1–0.7.x，开关
-> `NAPUTO_LINUX_NATIVE=1`）。**未替代 ADR-019**：Linux 默认仍是 wine + Windows
-> `node.exe`（见 [decisions.md](decisions.md) 的 ADR-019 与 [runtime.md](runtime.md) §1），
-> 原生分支只是显式开关；ADR 与 Wine 退役等 arm64 与「他人消息入站 / 视频 / 文件」补齐后
-> 再定。2026-11-08 完成 Stage 0 核心链路实测（dlopen / exports / O3 / engine init /
-> `getLoginList`）；2026-11-09 完成 Stage 0b（真实扫码 + 快速登录 + session READY，wrapper
-> 层）、Stage 1 端到端（CLI + kernel 平台参数 + loader 原生分支）、Stage 2（deb
-> 下载/解包/缓存管线）、Stage 3（消息发送/撤回）、Stage 3b（arm64 符号 + 解包 + stub
-> 交叉编译的静态核验）、Stage 3c（`HOME`/`XDG_*` 收敛）与 Stage 3d（本地 `/opt/QQ` 扁平
-> 安装）；2026-11-10 完成 Stage 3e（X11 消费方盘点）、Stage 4（图片/语音富媒体）、arm64
-> qemu 运行期（引擎初始化 + 登录握手）与交付工程化（发布包带 stub、nightly smoke、清单
-> 自动维护、解包工具按架构分流）。
-> 仍未验证：文件上传（协议侧无 `upload_group_file`，`file` 段到 xml 元素未实现）与
-> arm64 真机登录与收发。他人消息的实时入站已于 2026-11-10 实测通过
-> （真 CLI + OB11 WS + 第二账号，见附录 D.1）。
+> **状态**：研判稿（2026-11-08）→ **实现已发布**（loader 0.6.1–0.7.x）→ **已成 Linux 唯一
+> 路线，Wine 已退役**（ADR-027，2026-11-14，见 [decisions.md](decisions.md)）。`NAPUTO_LINUX_NATIVE`
+> 开关随之失效：Linux 恒走「标准 Linux `node` + `.so` stub + 官方 ELF `wrapper.node`」，
+> 不再有 Windows `node.exe` / `WINEPREFIX` / `Z:\` 路径转换。
+> Stage 0（2026-11-08）dlopen / exports / O3 / engine init / `getLoginList`；Stage 0b
+> （2026-11-09）真实扫码 + 快速登录 + session READY；Stage 1 端到端；Stage 2 deb 管线；
+> Stage 3 消息发送/撤回；Stage 3b arm64 符号 + 解包 + stub 交叉编译静态核验；Stage 3c
+> `HOME`/`XDG_*` 收敛；Stage 3d 本地 `/opt/QQ` 扁平安装；Stage 3e（2026-11-10）X11 消费方
+> 盘点；Stage 4 图片/语音/视频富媒体；附录 D.1 他人消息实时入站；附录 D.2 文件投递（闪传）；
+> 附录 E arm64 qemu 运行期（引擎初始化 + 登录握手）；工程化（发布包带 stub、nightly smoke、
+> 清单自动维护、解包工具按架构分流）。
+> 仍未验证：**arm64 真机**（独立交付项，与 Wine 退役无关，见附录 E.2）。
 >
 > **结论**：核心加载链路已实测通过，符号层确实比 Windows 简单；但“零 GUI 依赖 /
 > 比 Windows 简单得多”只对符号转发成立，实际还漏出 gnutls 这类隐藏依赖。
@@ -32,18 +29,18 @@
 - **2 个必需符号 + 1 个可选**：必需 `qq_magic_napi_register` 与
   `_ZN4node21IsEnvironmentStoppingEPN2v87IsolateE`；`PerfTrace` 是运行期 `dlsym`，
   给空实现可消除告警。
-- **可以退役 Wine**：不再需要 Wine、Windows 版 `node.exe`（约 30MB 下载）、Windows
+- **Wine 已退役（ADR-027）**：不再需要 Wine、Windows 版 `node.exe`（约 30MB 下载）、Windows
   QQ 安装包（约 313MB）、`Z:\` 路径转换、WINEPREFIX/DPAPI；官方 Linux QQ 同时提供
-  amd64 / arm64 / loongarch / mips64el。
+  amd64 / arm64 / loongarch / mips64el。loader 的 `wine.ts` 与 `tooling/wine/*` 已删除。
 - **“零 GUI 依赖”仍不成立**：加载期必须能找到 `libX11` / `libX11-xcb` / `libXext`，
   并经 `libbugly` 拉 `libgssapi-krb5` / `libgnutls`、经 `libssh2` 拉 `libgcrypt`。
   无 DISPLAY 的 dlopen / engine init 已实测通过；X11 运行期功能不构成缺口——本仓没有
   截图 / 剪贴板消费方，有 `DISPLAY` 时也不建 X 连接（附录 C）。
 - **工程量不在 3 个点**：真正的成本在 deb 包获取与布局、双版本号、平台参数、无头依赖、
   清单/更新链、arm64、CI/发布与 ADR。
-- **建议**：x64 链路的加载、登录、消息收发（含他人消息实时入站）、图片/语音/视频与数据根
-  收敛都已实测通过，实现已发布（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口是文件发送与 arm64
-  真机。补齐后再写 ADR、再退役 Wine——在此之前 Wine 保持默认，作为回退。
+- **落地结论**：x64 链路的加载、登录、消息收发（含他人消息实时入站）、图片/语音/视频、
+  文件投递（闪传）与数据根收敛全部实测通过；ADR-027 已把本路线定为 Linux 唯一路径并退役
+  Wine。剩余独立交付项只有 **arm64 真机**（附录 E.2），不影响 x64 的 Linux 承诺。
 
 ## 2. 背景：Windows 为什么需要近百条 forwarder
 
@@ -158,7 +155,7 @@ _ZN4node21IsEnvironmentStoppingEPN2v87IsolateE      (GLOBAL UND, JUMP_SLOT)
 | “按 `DT_NEEDED` / `ldd` 准备依赖就够” | `libbugly` 还缺 gnutls（有约 70 个 gnutls UND、但没有 `DT_NEEDED`） |
 | “AppID 参考 NapCat Releases 的映射” | 用 `major.node` 解析；`package.json` 的映射不是登录 appid |
 | “扩充 `qq-extract` / `qq-releases` 即可” | 还涉及扁平布局、`sharp-lib`、双版本、清单 schema |
-| “可以退役 `win-node.ts`” | Windows 非 node 宿主仍需要；退的是 `wine.ts` |
+| “可以退役 `win-node.ts`” | Windows 非 node 宿主仍需要；已退役的是 `wine.ts`（ADR-027） |
 
 ## 5. 运行时依赖：不是“零 GUI”
 
@@ -314,7 +311,7 @@ V1_LNX_NQ_3.2.35_54395_GW_B
 
 | 区域 | 改动 |
 |---|---|
-| `packages/loader` | ✅ Linux 平台分支（不再 wine）；`.so` stub 查找与 `LD_PRELOAD`；deb 解包与缓存布局；`qq-releases` 平台字段；本地 `/opt/QQ` 探测；`HOME`/`XDG_*` 收敛；非 x64 解包工具回退系统 7-Zip；Bun 宿主按平台解析 node |
+| `packages/loader` | ✅ Linux 唯一分支（无 Wine）；`.so` stub 查找与 `LD_PRELOAD`；deb 解包与缓存布局；`qq-releases` 平台字段；本地 `/opt/QQ` 探测；`HOME`/`XDG_*` 收敛；非 x64 解包工具回退系统 7-Zip；Bun 宿主按平台解析 node |
 | `packages/kernel` | ✅ `platform_type` / `qua` / session `platform` 平台化；双版本号；`major.node` qua 解析；Linux 数据目录回退 |
 | `native/`（私有 submodule） | x64 ✅：`stub-linux.cc`（2 必需 + `PerfTrace`）+ `linux-x64` 预编译 `.so`；arm64 产物待真机（附录 E.2 第 1 项） |
 | 发布链 | ✅ `files` 已含 `native/build/linux-x64`（2026-11-10 补：此前 0.6.0 的 tarball 只有 Windows `QQNT.dll`，`NAPUTO_LINUX_NATIVE=1` 的用户会直接报「Linux stub 未找到」）；`release.yml` 打包守卫同时检查 Linux `.so`；`tooling/package-exports.test.ts` 钉死白名单。已发布版本对应：0.6.1 `HOME` 收敛、0.7.0 本地安装、0.7.1 stub 入包，0.7.2（解包工具按架构分流）在发布队列中 |
@@ -322,7 +319,7 @@ V1_LNX_NQ_3.2.35_54395_GW_B
 | 文档 | ✅ 运维 §4.8 / 配置 §10 已补；ADR 待 arm64 真机与剩余缺口 |
 
 注意：**`win-node.ts` 不能整体删除**。Windows 上非 node 宿主（Bun / Koishi CE）仍走
-`resolveWinHostNode` → `ensureWinNode` 下载 Windows `node.exe`；能退役的是 `wine.ts`
+`resolveWinHostNode` → `ensureWinNode` 下载 Windows `node.exe`；已退役的是 `wine.ts`（ADR-027）
 及其 Linux 路径转换。
 
 ## 9. Stage 0 验证方案（核心链路已实测）
@@ -441,7 +438,7 @@ login `appid=537403759`、`platVer=Linux 6.18.33.2-2`、`clientVer=3.2.35-54395`
 2. **Stage 1**：stub 入私有 native（x64/arm64），loader Linux 分支与参数化；
 3. **Stage 2**：deb 管道、清单平台字段、缓存布局、提取器；
 4. **Stage 3**：kernel 平台参数、双版本、登录 READY、文档/ADR/CI；
-5. **Stage 4**：退役 wine（先保留一个版本的回退开关），真实登录/风控验证后再删。
+5. **Stage 4**：退役 Wine——已由 ADR-027（2026-11-14）执行：开关直接失效、`wine.ts` 与 `tooling/wine/*` 删除（不再保留回退版本）。
 
 ### 9.7 Stage 0b 实测：扫码 → 快速登录 → session READY（2026-11-09）
 
@@ -548,7 +545,7 @@ kernel 平台参数化与 loader `NAPUTO_LINUX_NATIVE=1` 分支合入后，用�
 **做法**：Linux 原生分支在 spawn 子进程前把 `HOME` 指向 `<数据根>/home`
 （`NAPUTO_LINUX_HOME` 可显式覆盖；无数据根时退到 `<账号目录>/home`），并把
 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 派到该目录下。
-实现是 `linux-native.ts` 的 `resolveLinuxHome` + `linuxHomeEnv`，wine / win32 分支不动。
+实现是 `linux-native.ts` 的 `resolveLinuxHome` + `linuxHomeEnv`，win32 分支不动。
 
 **实测（WSL2 Ubuntu 24.04，真 CLI + 真 Linux `wrapper.node`，数据根 `/tmp/ntqq2`）**：
 
@@ -621,7 +618,7 @@ arm64 node）。
 **做法**：`resolveQqFiles` 新增 L1b（仅 Linux 原生分支）：`NAPUTO_QQ_DIR` > `/opt/QQ`，
 校验 `resources/app/wrapper.node` 是 ELF、版本取自 `resources/app/package.json`
 （缺失/非法即跳过，不猜版本）；命中返回 `source: "local"`、`qqPath = <根>/qq`。
-Wine 分支不启用（要 PE）。
+PE wrapper 在 Linux 上已无法加载（ADR-027 起只认 ELF）。
 
 **实测（WSL2，真 x64 ELF wrapper，数据根拷贝去掉 `qq-files` 以排除 L2 命中）**：
 
@@ -638,25 +635,25 @@ Wine 分支不启用（要 PE）。
 `NAPUTO_QQ_DIR` 显式指定。版本号仍只从 `package.json` 取，不从 `wrapper.node`
 猜。
 
-## 10. 决策建议与待决事项
+## 10. 决策结论与待决事项
 
-**建议**：
+**已定（ADR-027，2026-11-14）**：
 
-- 把 Linux 原生 ELF 宿主作为 Linux 的目标路线；Windows 保持现有 PE stub 不动。
-- x64 的加载 / 登录 / 收发（含他人消息实时入站）/ 富媒体 / 数据根收敛都已通过，实现已随
-  loader 0.6.1+ 发布为显式开关（`NAPUTO_LINUX_NATIVE=1`）；剩余缺口（文件发送、arm64
-  真机）补齐前不改 ADR、不删 Wine。
-- 补齐后新增 ADR（草案见下），Wine 保留一个版本作为回退，随后删除。
-- arm64 作为独立交付项，不随首版承诺：加载链路、引擎初始化与登录握手已验证（qemu），
-  真机登录 / 收发待做。
+- Linux 只有一条路线：原生 ELF 自建宿主（标准 Linux `node` + stub `.so` + `dlopen` 官方
+  Linux `wrapper.node`）；Windows 保持现有 PE stub 不动。
+- 依据：x64 的加载 / 登录 / 收发（含他人消息实时入站）/ 图片 / 语音 / 视频 / 文件投递 /
+  数据根收敛全部实测通过（见下方“已验证”与附录 D、D.1、D.2）。
+- **Wine 直接退役**，不保留回退版本：`NAPUTO_LINUX_NATIVE` 开关失效（设 0 只播报一句）、
+  `wine.ts` 与 `tooling/wine/*` 删除。理由见 ADR-027 展开：Linux 的 QQ 文件获取早已只认
+  deb + ELF，Wine 分支实际只对“手边有 Windows 版 QQ 安装”的 WSL 开发环境成立。
+- arm64 作为**独立交付项**，不随首版承诺：加载链路、引擎初始化与登录握手已验证（qemu），
+  真机登录 / 收发待做（附录 E.2）。
 
-**拟新增 ADR 草案（剩余缺口补齐后写入）**：
-
-> Linux 默认走原生 ELF 自建宿主：标准 Linux `node` + 2 必需符号 + `PerfTrace` 的
-> stub `.so`，`dlopen` 官方 Linux `wrapper.node`；Windows 保持 PE stub。Wine 仅保留
-> 一个版本的兼容回退，随后删除。理由：ELF 全局符号表消除近百条 forwarder；去掉
-> Wine / Windows node.exe / WINEPREFIX；官方 Linux QQ 提供 x64/arm64。本条替代
-> ADR-019 的 Linux 运行方式部分，保留其“不内置腾讯二进制”原则。
+> 原 ADR 草案（2026-11-10）已落地为 [ADR-027](decisions.md)：Linux 默认走原生 ELF 自建
+> 宿主，标准 Linux `node` + 2 必需符号 + `PerfTrace` 的 stub `.so`，`dlopen` 官方 Linux
+> `wrapper.node`；Windows 保持 PE stub。理由：ELF 全局符号表消除近百条 forwarder；去掉
+> Wine / Windows node.exe / WINEPREFIX；官方 Linux QQ 提供 x64/arm64。本条替代 ADR-019
+> 的 Linux 运行方式部分，保留其“不内置腾讯二进制”原则。
 
 **已验证（2026-11-08 → 2026-11-10）**：`dlopen` + exports=104、O3 激活、无 DISPLAY、
 KLINUX engine init、`getLoginList`、gnutls 隐藏依赖、`PerfTrace` 运行期 dlsym；Stage 0b
@@ -689,8 +686,8 @@ Stage 3b 对 arm64 做静态核验：缺口集与 x64 逐一相同（41 `napi_*`
   启动/登录链路在有 `DISPLAY` 时也不建立 X 连接（strace 实测）；将来接入截图类能力时
   再按附录 C 的清单补验证。
 - 消息**发送 + 撤回已实测通过**（§9.10），**图片 + 语音 + 视频也已实测通过**（附录 D），
-  **他人消息实时入站也已实测通过**（附录 D.1）；未覆盖文件上传（协议侧无
-  `upload_group_file` 动作，`file` 段翻译到 xml 元素也尚未实现）。
+  **他人消息实时入站也已实测通过**（附录 D.1），**文件投递也已实测通过**（附录 D.2：
+  `upload_group_file` 走闪传，对端收到分享卡片；群文件列表式上传尚无原生入口）。
 - arm64：符号与解包**已静态核验**（§9.11），加载链路、引擎初始化与登录握手**已运行期
   验证**（qemu，附录 E.1）；**真机登录 / 收发未验证**。stub 的 arm64 产物尚未进私有
   `native/`、清单也还没有 arm64 条目、loader 还没 preload `libuuid`——三件事按既定策略
@@ -870,9 +867,10 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
 
 ### D.1 他人消息实时入站（2026-11-10 补测）
 
-环境同上（WSL2 + 真 x64 ELF `wrapper.node` + 真 CLI，`NAPUTO_LINUX_NATIVE=1`，
-数据根 `/tmp/ntqq2`）。单协议配置只有 `[accounts.onebot11]`：HTTP 39001 / WS 39002，
-`heartbeatInterval=5000`；双协议对照另追加 `[accounts.satori]` + WS 39003。
+环境同上（WSL2 + 真 x64 ELF `wrapper.node` + 真 CLI；当时靠 `NAPUTO_LINUX_NATIVE=1`
+开原生分支，该开关已被 ADR-027 退役为默认行为；数据根 `/tmp/ntqq2`）。单协议配置只有
+`[accounts.onebot11]`：HTTP 39001 / WS 39002，`heartbeatInterval=5000`；双协议对照另追加
+`[accounts.satori]` + WS 39003。
 
 | 步骤 | 结果 |
 |---|---|
@@ -978,5 +976,33 @@ LD_PRELOAD="/stub/libnapuketto_stub.so:$GNUTLS:$UUID" DATA=/data WRAPPER=/qq/wra
 > 第 4 项是 2026-11-10 复核时新增的：之前只想到「arm64 缺 libuuid」，没注意解包工具链本身
 > 也是 x64 二进制——arm64 首跑前必须先解决，否则连 `ensureQqFiles` 都过不去。现已由
 > loader 0.7.2 的架构分流修掉；剩余四项仍按真机策略一起做。
+
+## 附录 F：Wine 退役验收（2026-11-14，ADR-027）
+
+退役不改 Linux 行为，只删「另一条路」，所以验收重点是**默认链路（不设任何开关）**仍然可用、
+且 Wine 相关的进程/路径特征彻底消失。环境同前（WSL2 `NapukettoTest`，真 x64 ELF
+`wrapper.node` 3.2.35，**`wine` 未安装**，`/tmp/node-v24.16.0-linux-x64/bin/node`）。
+
+```bash
+# 关键点：不设 NAPUTO_LINUX_NATIVE、不设 NAPUTO_WINE
+NAPUTO_LINUX_STUB=/tmp/libnapuketto_stub.so \
+NAPUTO_QQ_FILES=/tmp/e2e-cache/qq-files/3.2.35-54395 \
+NAPKETTO_DATA=/tmp/ntqq2 NAPKETTO_CONFIG=<ob11 配置> \
+  node apps/cli/dist/index.mjs
+```
+
+| 检查项 | 结果 |
+|---|---|
+| HTTP 就绪 | 15–16s（与开启开关时一致） |
+| `get_status` / `get_login_info` | `online=true`、`user_id=1569227406`（PaperKoi，快速登录） |
+| `send_group_msg` → `get_group_msg_history` | `message_id=4`，历史回读一致 |
+| `upload_group_file`（闪传） | `retcode=0`，`fileSetId=e0c62ac4-…`（卡片真实投递） |
+| 子进程形态 | `/tmp/node-v24.16.0-linux-x64/bin/node …/self-host.cjs`（系统 node 直跑，无 wine 包装层） |
+| `/proc/<pid>/maps` | 命中 `libnapuketto_stub.so` 与 `…/wrapper.node`；**无** wine / win-node 相关映射 |
+| 子进程环境 | `LD_PRELOAD=/tmp/libnapuketto_stub.so:/usr/lib/x86_64-linux-gnu/libgnutls.so.30`、`HOME=/tmp/ntqq2/home`；**无** `NAPUTO_LINUX_NATIVE` / `NAPUTO_WINE` |
+
+代码侧证据：`NAPUTO_LINUX_STUB` / `LD_PRELOAD` / 受管 `HOME` 只由 `launchLinuxNative` 产生，
+而该函数从 `launchSelfHost` 的 `process.platform === "linux"` 分支直接进入——本机没有
+`wine` 可执行文件也能完整跑通，说明 Wine 分支已不再参与任何链路。
 
 

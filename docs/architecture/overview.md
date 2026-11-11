@@ -4,11 +4,11 @@
 
 NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人框架：
 
-- **自建宿主**：标准 Node 进程通过 stub `QQNT.dll` 直接 `dlopen` `wrapper.node`，
-  不拉起 QQ 客户端、不注入 QQ 进程、无 UI。Linux 下用 wine 运行 Windows 版 `node.exe`；
-  另有原生 ELF 分支（`NAPUTO_LINUX_NATIVE=1`，标准 Linux node + 最小 `.so` stub），
-  已实现并随 loader 0.6.1+ 发布，x64 的加载 / 登录 / 收发 / 富媒体均实测通过
-  （[linux-native-host.md](linux-native-host.md)）。ADR 落地前 wine 仍是默认链路。
+- **自建宿主**：标准 Node 进程通过 stub 直接 `dlopen` `wrapper.node`，不拉起 QQ 客户端、
+  不注入 QQ 进程、无 UI。Windows 用 PE stub `QQNT.dll`（PATH 前置转发宿主符号）；
+  Linux 用 `libnapuketto_stub.so` + `LD_PRELOAD` 加载官方 ELF `wrapper.node`，
+  不需要 Wine（ADR-027，加载 / 登录 / 收发 / 富媒体 / 文件投递均已实测，见
+  [linux-native-host.md](linux-native-host.md)）。
 - **多协议对外**：OneBot 11（主协议）、Satori，另含 KuroBot 群服互通客户端。
 - **全自研**：pnpm monorepo + TypeScript + tsdown + biome + vitest；MIT 许可。
 - **单一配置**：项目根一份 `napuketto.toml`，账号内嵌协议段；账号必填。
@@ -25,7 +25,7 @@ NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器�
 | `packages/network` | `@napuketto/network` | 协议无关传输原语：HTTP server/client、WS server/client、泛型广播 |
 | `packages/media` | `@napuketto/media` | 媒体识别与转码：图片尺寸/类型、silk、ffmpeg 视频 |
 | `packages/adapter` | `@napuketto/adapter` | 协议适配器容器：core 框架 + onebot11 / satori / kurobot |
-| `packages/loader` | `@napuketto/loader` | QQ 原生文件定位/下载、stub 校验、自建宿主启动、实例锁、IPC、wine |
+| `packages/loader` | `@napuketto/loader` | QQ 原生文件定位/下载、stub 校验、自建宿主启动、实例锁、IPC |
 | `apps/cli` | `@napuketto/cli` | 命令行入口：单账号/多账号 supervisor、config、status/stop/restart |
 | `apps/napuketto-create` | `create-napukettoqq` | 项目脚手架：生成 `napuketto.toml` 与目录骨架 |
 | 仓外 | `koishi-plugin-adapter-napuketto` | Koishi 适配器，独立仓库，只依赖 npm 上已发布的 `@napuketto/*` |
@@ -65,7 +65,7 @@ tarball 或 prerelease，不要恢复 workspace link（否则测的不是 npm �
 | **network** | HTTP/WS 传输与泛型广播 | 禁止 import 任何协议包；事件类型必须泛型化；路由/鉴权由协议层注入 |
 | **media** | 图片/音频/视频/文件识别与转码 | 只被协议层依赖；kernel 不背 ffmpeg/silk 依赖 |
 | **adapter** | 协议语义：事件翻译、动作注册表、动作错误码、传输装配 | 只认识 kernel 的 API/事件/缓存，不认识原生；协议实现走子路径导出 |
-| **loader** | 定位/下载 QQ 原生文件、校验 stub、spawn 自建宿主、实例锁、IPC、wine | 不写业务逻辑；逆向手段（如启用）仅限本层与私有 native 组件 |
+| **loader** | 定位/下载 QQ 原生文件、校验 stub、spawn 自建宿主、实例锁、IPC | 不写业务逻辑；逆向手段（如启用）仅限本层与私有 native 组件 |
 | **cli** | 启动编排、账号监督、配置命令、运维命令、登录渲染 | 不做协议翻译；只装配与转发 |
 | **create** | 脚手架 | 不包含运行时逻辑 |
 
@@ -74,8 +74,8 @@ tarball 或 prerelease，不要恢复 workspace link（否则测的不是 npm �
 ```
 CLI（单账号或 supervisor）
   └─ boot 进程
-       └─ 自建宿主进程（标准 Node；Linux 为 wine + Windows node.exe）
-            ├─ stub QQNT.dll（PATH 前置，转发宿主符号）
+       └─ 自建宿主进程（标准 Node；Windows 前置 PE stub，Linux preload `.so`）
+            ├─ stub（Windows：QQNT.dll / Linux：libnapuketto_stub.so）
             ├─ wrapper.node（dlopen）
             └─ kernel → 登录/session → 事件通道/缓存/API
                  ├─ adapter（onebot11 / satori）→ network 传输

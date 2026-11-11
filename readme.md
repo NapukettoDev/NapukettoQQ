@@ -63,7 +63,7 @@
 ### 环境要求
 
 - **Node.js 24**（与 CI 一致）
-- **Windows 10/11 x64**；Linux 需安装 Wine（loader 会给出缺失提示）
+- **Windows 10/11 x64**，或 **Linux x64**（官方 Linux QQ，需 `libgnutls30`；细节见 [原生宿主文档](./docs/architecture/linux-native-host.md)）
 - pnpm 12+（推荐）或 npm / yarn
 - **无需安装或启动 QQ 客户端**，原生文件由 loader 自动定位或下载
 
@@ -163,7 +163,7 @@ pnpm exec napuketto config list     # 查看当前有效配置
 
 日志位于 `<数据根>/<uin>/logs/`：`napuketto.log` 记录 kernel 生命周期与 API，
 `loader.log` 记录引导与协议校准，`napuketto-boot.log` 记录引导阶段的纯文本日志。
-登录、文件定位、Wine、端口占用与实例锁排障见 [运维手册](./docs/guides/operations.md)。
+登录、文件定位、原生宿主依赖、端口占用与实例锁排障见 [运维手册](./docs/guides/operations.md)。
 
 ---
 
@@ -191,7 +191,7 @@ CI 三个 job（`gate` / `windows` / `audit`）全绿后合并。开发约定见
 | `packages/network` | 协议无关传输原语：HTTP / WS server & client、泛型广播 |
 | `packages/media` | 图片、音频、视频与文件识别/转码 |
 | `packages/adapter` | 协议适配器容器：core + OneBot 11 / Satori / KuroBot |
-| `packages/loader` | QQ 文件定位/下载、stub 校验、自建宿主启动、实例锁、IPC、Wine |
+| `packages/loader` | QQ 文件定位/下载、stub 校验、自建宿主启动、实例锁、IPC |
 | `apps/cli` | 单账号 / 多账号 supervisor、配置命令、状态与停启 |
 | `apps/napuketto-create` | `create-napukettoqq` 项目脚手架 |
 

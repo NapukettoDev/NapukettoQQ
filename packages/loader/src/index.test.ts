@@ -41,9 +41,6 @@ describe("index 出口面", () => {
             "writeStopSentinel",
             "ensureWinNode",
             "nodeZipUrl",
-            "buildSpawnCommand",
-            "isLinux",
-            "toWinePath",
         ] as const;
         for (const name of fns) {
             expect(typeof (loader as unknown as Record<string, unknown>)[name], name).toBe(

@@ -16,7 +16,6 @@
         "network": "server",
         // tooling
         "git-hooks": "hook",
-        "qq-releases": "tasks",
-        "wine": "linux"
+        "qq-releases": "tasks"
     },
 }

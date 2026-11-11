@@ -25,22 +25,32 @@
 | ADR-016 | 数据目录按账号隔离；全局配置放项目根 | 数据/配置放程序目录或用户目录 | 程序目录可能只读；多账号目录天然分离；配置靠近项目便于管理。2026-08-08 修订为账号内嵌协议段 |
 | ADR-017 | `KernelError` 类型化错误 + 协议错误码映射表 | 各协议各写一套错误判断 | 错误分类集中在 kernel，协议层只做映射 |
 | ADR-018 | wrapper 版本探测独立模块 | 硬编码版本路径/appid | appid、qua 与版本强相关；从 `major.node` 运行时解析 |
-| ADR-019 | loader 跨平台：Linux 用 wine 跑 Windows `node.exe`；不内置腾讯二进制 | wine 跑完整 QQ；在发布产物中内置腾讯二进制 | 只暴露标准协议端口；运行时下载官方安装包，仓库保持干净 |
+| ADR-019 | loader 跨平台：不内置腾讯二进制（Linux 运行方式部分已被 ADR-027 替代） | wine 跑完整 QQ；在发布产物中内置腾讯二进制 | 只暴露标准协议端口；运行时下载官方安装包，仓库保持干净 |
 | ADR-020 | Koishi 插件经 loader IPC 共享动作表（`NAPUTO_IPC=1`） | 插件进程内直连原生；独立端口双开 | 零网络传输、零配置 IO；loader 运行时动态 import，不构成编译期依赖 |
 | ADR-021 | kurobot 连接层在 adapter 内自建（不复用 `network.WsClient`） | 给 `WsClient` 加子协议/onOpen/close-code 退避 | 子协议握手、应用层心跳、close-code 感知退避都是协议语义，下沉 network 违反协议无关 |
 | ADR-022 | 版本管理用 Changesets；GitHub Release 的 repo tag 与包版本解耦 | 手工改版本；repo tag 锚定包版本 | 多包联动 bump 自动化；各包独立版本、独立发布 |
 | ADR-023 | Koishi 适配器独立成仓 | 继续 submodule + 主仓 workspace 双身份 | submodule 只适合源码保密边界；独立发布单元需要自己的 lockfile/CI/版本节奏 |
 | ADR-024 | 自建宿主为唯一运行路线（标准 Node + stub `QQNT.dll`） | 注入 QQ 主进程 / utilityProcess worker / 载具激活 `cpp_impl` | 无 QQ 进程与 UI、内存可控、部署简单；登录→READY→收发→协议装配已全链路验证 |
 | ADR-025 | 新增 Milky 协议适配器（**规划中，未实现**），目标 1.3.0，与 OB11/Satori/KuroBot 并行 | 用 Milky 替换 OB11；先全量迁移再保留双协议；参考/移植 GPL 系实现 | 语义天然对齐 kernel（消息段替代 CQ 码、原生 `message_seq`、`message_scene` 三值）；规范 MIT 且机读（OpenAPI/JSON Schema/IR 可生成类型），实现成本低于 OB11；跨 Minor 有兼容契约。三家实现全 GPL（含 GPL-2.0-only 的 LLBot）→ 只读规范、不读源码。详见 `docs/protocols/milky.md` |
+| ADR-027 | Linux 只走**原生 ELF 自建宿主**（标准 Linux `node` + stub `.so` + `dlopen` 官方 Linux `wrapper.node`）；**Wine 退役**，代码与脚本删除，`NAPUTO_LINUX_NATIVE` 开关失效 | 继续 Wine + Windows `node.exe` 作默认/回退；双路线长期并存 | ELF 全局符号表消除近百条 forwarder；去掉 Wine / Windows `node.exe` / `WINEPREFIX` / `Z:\` 路径转换；官方 Linux QQ 同时提供 x64 与 arm64 包；加载 / 登录 / 收发（含他人消息实时入站）/ 图片 / 语音 / 视频 / 文件投递已全链路实测。详见 [linux-native-host.md](linux-native-host.md) |
 
-编号说明：文档或代码中出现的 **ADR-026 / ADR-030 属于姊妹项目 KuroAdapter / KuroBridge**，
-不是本仓编号。本仓编号 001~025 连续。
+编号说明：本仓编号 001~025、027 连续（**026 / 030 属姊妹项目 KuroAdapter / KuroBridge**，
+本仓不复用，故 ADR-027 起续号）。
 
-> **ADR-019 状态补充（2026-11-10）**：Linux 原生 ELF 分支已实现并随 loader 0.6.1+ 发布，
-> 但只是显式开关（`NAPUTO_LINUX_NATIVE=1`），默认链路仍是 wine——本条仍然有效，未替代。
-> 等 arm64 真机与剩余缺口（他人消息入站、视频/文件发送）补齐后，再新增 ADR 替代本条的
-> Linux 运行方式部分（保留“不内置腾讯二进制”原则）。演进记录与验证数据见
-> [linux-native-host.md](linux-native-host.md)。
+> **ADR-019 状态（2026-11-14）**：Linux 运行方式部分**已被 ADR-027 替代**——Wine 分支已删除，
+> Linux 恒走原生 ELF 宿主；「不内置腾讯二进制」原则**仍然有效**（运行时下载官方 Linux deb /
+> Windows 安装包）。
+
+> **ADR-027 展开（2026-11-14）**：Linux 不再需要 Wine、Windows 版 `node.exe`（约 30MB 下载）、
+> Windows QQ 安装包（约 313MB）与 `Z:\` 路径转换——只 preload
+> `libnapuketto_stub.so:libgnutls.so.30`，其余符号由官方 `node` 的全局符号表直接解析。
+> Windows 保持 PE stub `QQNT.dll`（ADR-024）。退役依据：① 五条主线能力（登录 / 收发 /
+> 富媒体 / 文件投递 / 优雅退出）全部实测；② Linux 的 QQ 文件获取早已按 `process.platform`
+> 只选 deb + ELF，Wine 分支实际只对「手边有 Windows 版 QQ 安装」的 WSL 开发环境成立，纯
+> Linux 部署下本来就走不通。删除面：`wine.ts`（`toWinePath` / `unixPathToWinePath` /
+> `wineBinary` / `wineCheckError` / `wineInstallHint` / `buildSpawnCommand`）、`tooling/wine/*`
+> 两个冒烟脚本、环境变量 `NAPUTO_WINE`。`win-node.ts` 保留（win32 非 node 宿主如 Bun 仍需
+> 解析真 `node.exe`）。arm64 真机验证是**独立交付项**，与本次退役无关。
 
 ## 已废止路线（只留结论）
 

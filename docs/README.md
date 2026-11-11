@@ -26,7 +26,7 @@
 | [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主（**已实现并发布**，开关 `NAPUTO_LINUX_NATIVE=1`；2 必需 + PerfTrace stub、无头依赖、双版本、各阶段实测与 arm64 交付缺口；未替代 ADR-019） |
 | [guides/development.md](guides/development.md) | 本地开发、构建顺序、测试、CI、changeset、代码风格 |
 | [guides/configuration.md](guides/configuration.md) | 全局 TOML、账号内协议段、传输实例默认值、数据目录、环境变量 |
-| [guides/operations.md](guides/operations.md) | 单实例锁、停启与状态、日志、登录/文件/wine/噪音排障 |
+| [guides/operations.md](guides/operations.md) | 单实例锁、停启与状态、日志、登录/文件/原生宿主依赖/噪音排障 |
 | [guides/release.md](guides/release.md) | changeset → CI 发布链、OIDC、仓库一次性配置、补发与排障 |
 | [protocols/onebot11.md](protocols/onebot11.md) | OB11 传输、动作面、事件面、ID 映射、已接线与待校准项 |
 | [protocols/satori.md](protocols/satori.md) | Satori HTTP RPC / WS 事件、动作与 501、元素编解码、ID 映射 |
@@ -39,7 +39,7 @@
 
 - [packages/kernel/docs/design.md](../packages/kernel/docs/design.md)——事件桥 / 事件通道 / API 实现细节 / 探测产物 / 视频发送
 - [packages/adapter/docs/design.md](../packages/adapter/docs/design.md)——onebot11 事件链 / 热更新 / 媒体动作 / sysmsg 解码 / kurobot
-- [packages/loader/docs/design.md](../packages/loader/docs/design.md)——QQ 文件来源 / wine / IPC / 登录相位机与软重登
+- [packages/loader/docs/design.md](../packages/loader/docs/design.md)——QQ 文件来源 / 平台分支 / IPC / 登录相位机与软重登
 - [apps/napuketto-create/docs/design.md](../apps/napuketto-create/docs/design.md)——脚手架交互与生成骨架
 - `packages/loader/native/docs/HANDOVER-V11.md`——载具层闭源交接，位于私有 submodule，不在公共仓库
 

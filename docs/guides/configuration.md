@@ -291,15 +291,15 @@ port = 5501
 | `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖（pretty / single-line / json） |
 | `NAPUKETTO_NO_BANNER` | `1`/`true` = 关启动字符画 |
 | `NAPUKETTO_LOG_COLORIZE` | `1`/`0` 颜色覆盖（CLI 顶层向管道子进程传播用） |
-| `NAPUTO_QQ_PATH` | 本机 QQ 安装路径（`QQ.exe`） |
+| `NAPUTO_QQ_PATH` | 本机 QQ 安装路径（Windows `QQ.exe` / Linux `qq`） |
 | `NAPUTO_QQ_FILES` | 显式 QQ 文件根（含 `versions/` 结构） |
 | `NAPUTO_QQ_URL` | 覆盖 QQ 安装包下载地址 |
-| `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录 |
-| `NAPUTO_LINUX_NATIVE` | `1` = Linux 走原生 ELF 自建宿主（不再 wine；默认仍 wine，见 [运维 §4.8](operations.md)） |
-| `NAPUTO_LINUX_STUB` | Linux 原生分支的 `.so` stub 路径（缺省用 loader 包内 `native/build/linux-<arch>/`） |
+| `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录（Windows） |
+| ~~`NAPUTO_LINUX_NATIVE`~~ | **已退役**（ADR-027）：Linux 恒走原生 ELF 宿主，设 `0` 只打印一句提示、不回退 Wine |
+| `NAPUTO_LINUX_STUB` | Linux `.so` stub 路径（缺省用 loader 包内 `native/build/linux-<arch>/`） |
 | `NAPUTO_7Z_PATH` / `NAPUTO_7Z_URL` | 7-Zip 可执行文件 / Linux 7zz 下载地址 |
-| `NAPUTO_WINE` | Linux wine 可执行文件（默认 `wine`） |
-| `NAPUTO_WIN_NODE_PATH` | wine/非 Node 宿主使用的 Windows 版 `node.exe` |
+| ~~`NAPUTO_WINE`~~ | **已删除**（ADR-027：Wine 退役，设了也不读） |
+| `NAPUTO_WIN_NODE_PATH` | 非 Node 宿主（Bun 等）使用的 Windows 版 `node.exe` |
 | `NAPUTO_QUICK_UIN` / `NAPUTO_QR_ONLY` | 强制快速登录账号 / 强制扫码 |
 | `NAPUTO_SMOKE` / `NAPUTO_SMOKE_PEER` | 启动后收发冒烟自检 |
 | `NAPUTO_PROBE` | 运行时探测（诊断用） |
