@@ -60,8 +60,8 @@ function needsVideoThumb(el: CanonicalElement): el is Extract<CanonicalElement, 
  * 为什么必须补：kernel 的 `prepareVideoElement` 只有在 `thumbPath` 存在时才写
  * `thumbMd5 / thumbSize / thumbPath(Map)`，缺失时 native 传输找不到缩略图，
  * `sendMsg` 只回 `sendStatus=0`（无错误信息）；`fileTime`（秒）也取自
- * `durationSec`，缺省 0。2026-11-10 Linux 原生宿主实测：只给 `file` 的
- * OB11 `video` 段必然失败，补上首帧后成功（§linux-native-host 附录 D）。
+ * `durationSec`，缺省 0。Linux 原生宿主实测：只给 `file` 的 OB11 `video` 段
+ * 必然失败，补上首帧后成功。
  *
  * 缩略图写在系统临时目录（发送时 kernel 会 copyFile 进 QQ 数据目录），
  * 由 `cleanup` 统一删除——不污染用户文件目录。

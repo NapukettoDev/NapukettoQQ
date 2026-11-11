@@ -19,7 +19,7 @@ entrypoint(sh) → setpriv node → CLI(supervisor) → 每账号 boot 进程 �
 ## 前置条件
 
 - **Docker**：Engine 24+ 或 Docker Desktop，含 compose v2。
-- **架构**：仅 `linux/amd64`；arm64 现状见 [linux-native-host.md](../architecture/linux-native-host.md)。
+- **架构**：仅 `linux/amd64`；arm64 未承诺交付。
 - **资源与出网**：镜像约 520MB（slim 240MB）+ 数据卷 300MB + 首启解包峰值 1GB；需能访问 `ghcr.io` 与 `qqdl.gtimg.cn`。
 
 ## 镜像变体与部署文件

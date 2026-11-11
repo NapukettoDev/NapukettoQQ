@@ -103,7 +103,7 @@ const LINUX_APP_PACKAGE_JSON = "./opt/QQ/resources/app/package.json";
  * 目前**自动维护**的 Linux 架构。
  *
  * 只开 x64：arm64 的 stub 产物、清单条目与 loader 预加载（libuuid）按既定策略要等
- * **真机**验证后一起上（见 `docs/architecture/linux-native-host.md` §9.11 / 附录 E）。
+ * **真机**验证后一起上（见私有 native 子模块的 arm64 交付缺口）。
  * 自动更新若抢先写入 arm64 条目，等于给用户一个未验证的下载入口——因此这里先钉死
  * x64，真机通过后把 "arm64" 加进数组即可（`arm64Deb` 已解析好，无需改别处）。
  */

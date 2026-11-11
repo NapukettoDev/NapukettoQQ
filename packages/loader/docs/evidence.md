@@ -2,7 +2,7 @@
 
 > 存放动态库加载、stub 校验、安装包解包、实例锁与 IPC 的探针命令和原始样本，仅供深水区
 > 排查，不是 API 契约；不含任何 RVA/Offset 或绝对地址。机制见 [design.md](design.md)，
-> Linux 选型研判见 [`linux-native-host.md`](../../../docs/architecture/linux-native-host.md)。
+> Linux 选型见 [decisions.md](../../../docs/architecture/decisions.md)。
 
 ## 探针与复现命令
 
