@@ -752,18 +752,18 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         if (hits.length === 0) {
             return msg;
         }
-        const elements = [...msg.elements];
-        for (const hit of hits) {
-            const el = elements[hit.index];
-            if (el?.picElement === undefined) {
-                continue;
+        const downloaded = new Map(hits.map((hit) => [hit.index, hit.filePath]));
+        const elements = msg.elements.map((el, index) => {
+            const filePath = downloaded.get(index);
+            if (filePath === undefined || el.picElement === undefined) {
+                return el;
             }
-            elements[hit.index] = {
+            return {
                 ...el,
                 // picPath 是 canonical 的首选路径，必须一并回填，避免残留的旧路径继续被读取
-                picElement: { ...el.picElement, picPath: hit.filePath, sourcePath: hit.filePath },
+                picElement: { ...el.picElement, picPath: filePath, sourcePath: filePath },
             };
-        }
+        });
         return { ...msg, elements };
     }
 

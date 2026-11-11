@@ -453,11 +453,25 @@ describe("NapukettoOneBot11Adapter（入站图片补本地文件，issue #105）
         const downloadImage = vi.fn(async () => ({ filePath: file, element: {} }));
         const { adapter, msg, events } = makeHarness(downloadImage);
         await adapter.subscribeOnly();
-        msg.handlers.get("Msg/onRecvMsg")?.([picRecvMsg(join(tmpRoot, "missing.jpg"))]);
+        // 文本 + 图片：只回填图片元素，非图片元素原样保留
+        msg.handlers.get("Msg/onRecvMsg")?.([
+            {
+                ...(picRecvMsg(join(tmpRoot, "missing.jpg")) as object),
+                elements: [
+                    { elementType: 1, textElement: { content: "看图" } },
+                    {
+                        elementType: 2,
+                        elementId: "e1",
+                        picElement: { sourcePath: join(tmpRoot, "missing.jpg") },
+                    },
+                ],
+            },
+        ]);
         await vi.waitFor(() => expect(events).toHaveLength(1));
         const message = (
             events[0] as { message: Array<{ type: string; data: Record<string, unknown> }> }
         ).message;
+        expect(message.find((s) => s.type === "text")?.data["text"]).toBe("看图");
         expect(message.find((s) => s.type === "image")?.data["file"]).toBe(file);
         expect(downloadImage).toHaveBeenCalledWith(
             "7001",

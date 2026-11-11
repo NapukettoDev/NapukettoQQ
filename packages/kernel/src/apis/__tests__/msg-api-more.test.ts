@@ -925,6 +925,45 @@ describe("downloadImage（入站图片按需下载，issue #105）", () => {
         expect(service.downloadRichMedia).not.toHaveBeenCalled();
     });
 
+    it("轮询中途元素缺失 → 跳过继续轮询，文件出现后返回", async () => {
+        vi.useFakeTimers();
+        try {
+            const file = join(dir, "late.jpg");
+            let calls = 0;
+            const { api } = makeApi({
+                getMsgsByMsgId: vi.fn(async () => {
+                    calls += 1;
+                    if (calls === 1) {
+                        return picMsg({ sourcePath: file }, "e1");
+                    }
+                    // 中间轮次：消息暂时没有 pic 元素（pic === undefined → continue）
+                    if (calls < 4) {
+                        return { result: 0, msgList: [{ msgId: "m1", elements: [] }] };
+                    }
+                    writeFileSync(file, "z");
+                    return picMsg({ sourcePath: file }, "e1");
+                }),
+                downloadRichMedia: vi.fn(async () => undefined),
+            });
+            const promise = api.downloadImage("m1", target);
+            const assertion = expect(promise).resolves.toMatchObject({ filePath: file });
+            await vi.advanceTimersByTimeAsync(300 * 5);
+            await assertion;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("消息列表为空 → NOT_FOUND（不触发下载）", async () => {
+        const { api, service } = makeApi({
+            getMsgsByMsgId: vi.fn(async () => ({ result: 0, msgList: [] })),
+        });
+        await expect(api.downloadImage("m1", target)).rejects.toMatchObject({
+            code: "NOT_FOUND",
+        });
+        expect(service.downloadRichMedia).not.toHaveBeenCalled();
+    });
+
     it("文件始终不出现 → TIMEOUT", async () => {
         vi.useFakeTimers();
         try {
