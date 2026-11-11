@@ -91,6 +91,7 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
   指定安装包地址。
 - 官方 URL 的 `/QQNTV2/` 段会被 CDN 按大小写拦截，loader 已统一为 `/qqntv2/`；仍 403
   时更新 `packages/loader/qq-releases.json` 或跑 `tooling/qq-releases/update-qq-releases.ts`。
+  追踪 issue 只代表 Windows 侧或配置解析失败；Linux deb 的旧版配置与下载失败只 warn。
 - 报 `无法从 major.node 解析 appid`：多为 QQ 文件不完整，重新下载，不要写死 appid。
 - 解包失败检查 `NAPUTO_7Z_PATH`；Linux 内置 `7zz`，回退下载需 `tar` + `xz-utils`。
 

@@ -107,6 +107,8 @@ x64 取 `x64DownloadUrl.deb`，arm64 取 `armDownloadUrl.deb`。URL 路径段 `/
 - 内置 `7zz` 是 x86-64 ELF：非 x64 架构跳过内置资产，回退系统 `7zz` / `7z`，两者都缺时报
   可读错误（这条路径不读 `NAPUTO_7Z_PATH`，与 `findSevenZip` 的探测顺序不同）。
 - 清单 schema 2 条目带 `platform` / `arch` / `coreVersion`，目前只维护 Linux x64。
+  自动更新对 CDN 边缘短暂返回旧版的 `linuxConfig.js` 做防降级跳过；单架构下载 / 解包
+  失败只 warn，不拖累 Windows 条目。
 
 ## 两套版本号
 
