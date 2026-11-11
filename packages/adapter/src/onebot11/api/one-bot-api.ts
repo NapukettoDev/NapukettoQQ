@@ -9,6 +9,7 @@
  */
 
 import type {
+    FlashTransferApi,
     FriendApi,
     GroupCache,
     GroupNotifyApi,
@@ -47,6 +48,8 @@ export interface OneBotApiOptions {
     friendApi: FriendApi;
     ticketApi: TicketApi;
     richMediaApi: RichMediaApi;
+    /** kernel 闪传 API（upload_group_file / upload_private_file 的投递通道）。 */
+    flashTransferApi: FlashTransferApi;
     profileApi: ProfileApi;
     profileLikeApi: ProfileLikeApi;
     webApi: WebApi;
@@ -75,6 +78,8 @@ export class OneBotApi {
     readonly ticketApi: TicketApi;
     /** kernel 富媒体 API（群文件/翻译用）。 */
     readonly richMediaApi: RichMediaApi;
+    /** kernel 闪传 API（文件投递：分享卡片，见 flash-transfer.ts 语义说明）。 */
+    readonly flashTransferApi: FlashTransferApi;
     /** kernel 资料 API（签名/昵称/头像用）。 */
     readonly profileApi: ProfileApi;
     /** kernel 点赞 API（send_like 用）。 */
@@ -109,6 +114,7 @@ export class OneBotApi {
         this.friendApi = opts.friendApi;
         this.ticketApi = opts.ticketApi;
         this.richMediaApi = opts.richMediaApi;
+        this.flashTransferApi = opts.flashTransferApi;
         this.profileApi = opts.profileApi;
         this.profileLikeApi = opts.profileLikeApi;
         this.webApi = opts.webApi;

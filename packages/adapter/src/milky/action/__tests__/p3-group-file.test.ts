@@ -4,7 +4,7 @@
  * 锁定：get_group_files 的文件/文件夹实体映射（fileSize 字符串数值化、
  * folder 元数据防御读取）、move/rename/delete/persist 的参数透传（target
  * 缺省根目录）、create_group_folder 返回 folder_id、upload_group_file
- * 消息发送链（file:// 展开 + fileUuid/file_id 兜底）、download_url、
+ * 走闪传（file:// 展开 + 上传文件集 + 卡片，file_id = fileSetId）、download_url、
  * rename_group_folder、schema 边界（空 id → -400）。
  */
 
@@ -204,48 +204,45 @@ describe("create / delete / rename folder", () => {
     });
 });
 
-describe("upload_group_file（消息发送链）", () => {
-    it("file:// file_uri 展开 + file_id 取 fileUuid", async () => {
-        const sent = {
-            msgId: "m-up",
-            msgSeq: "1",
-            msgTime: "1760000000000",
-            chatType: ChatType.GROUP,
-            peerUid: "10001",
-            elements: [{ elementType: 10, fileElement: { fileUuid: "uuid-9" } }],
-        };
-        const sendMessage = vi.fn(async () => ({ msgId: "m-up" }));
-        const registry = fileRegistry({
-            msgApi: { sendMessage, fetchMsgsByMsgId: vi.fn(async () => [sent]) },
-        });
+describe("upload_group_file（闪传通道）", () => {
+    it("file:// file_uri 展开 + 走闪传 sendFile（peer/paths/name 对齐）", async () => {
+        const sendFile = vi.fn(async () => ({
+            fileSetId: "fs-9",
+            shareLink: "https://qfile.qq.com/q/X",
+            fileCount: 1,
+        }));
+        const registry = fileRegistry({ flashTransferApi: { sendFile } });
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,
             file_uri: pathToFileURL(join("tmp", "up.bin")).href,
             file_name: "up.bin",
         });
-        expect(res.data).toEqual({ file_id: "uuid-9" });
-        const [peer, elements] = sendMessage.mock.calls[0] as unknown as [
+        expect(res.data).toEqual({ file_id: "fs-9" });
+        const [peer, paths, opts] = sendFile.mock.calls[0] as unknown as [
             unknown,
-            Array<{ type: string; path: string; name: string }>,
+            string[],
+            { name: string },
         ];
         expect(peer).toEqual({ chatType: ChatType.GROUP, peerUid: "10001" });
         // pathToFileURL 会把相对路径解析为绝对路径：断言「file:// 剥离 + 文件名保留」
-        expect(elements[0]?.type).toBe("file");
-        expect(elements[0]?.name).toBe("up.bin");
-        expect(elements[0]?.path.endsWith(join("tmp", "up.bin"))).toBe(true);
+        expect(paths).toHaveLength(1);
+        expect(paths[0]?.endsWith(join("tmp", "up.bin"))).toBe(true);
+        expect(opts.name).toBe("up.bin");
     });
 
-    it("回查无 fileElement → file_id 兜底 msgId", async () => {
-        const registry = fileRegistry({});
+    it("裸路径原样传入闪传（不再走消息发送链）", async () => {
+        const sendFile = vi.fn(async () => ({ fileSetId: "fs-raw", shareLink: "", fileCount: 1 }));
+        const registry = fileRegistry({ flashTransferApi: { sendFile } });
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,
             file_uri: "raw.bin",
             file_name: "raw.bin",
         });
-        expect(res.data).toEqual({ file_id: "m-up" });
+        expect(res.data).toEqual({ file_id: "fs-raw" });
+        expect((sendFile.mock.calls[0] as unknown as [unknown, string[]])[1]).toEqual(["raw.bin"]);
     });
 
-    it("parent_folder_id 仅 schema 兼容（不参与定位）", async () => {
+    it("parent_folder_id 仅 schema 兼容（闪传没有目录概念）", async () => {
         const registry = fileRegistry({});
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,

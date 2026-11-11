@@ -820,5 +820,9 @@ sendFile(peer, paths, opts?)                                  // 上传 + 发卡
   注销，卸载失败只吞掉（不影响本次结果）。
 - **语义边界写在模块头**：这张卡片不是 `fileElement` 文件消息，也不进群文件列表。
 
-对外动作映射**尚未做**：`upload_group_file` 要不要降级到闪传（还是明确报错）是产品决定，
-见 PR 说明里的两个选项。
+**对外动作映射（2026-11-11 拍板：映射到闪传）**：milky `upload_group_file` /
+`upload_private_file` 与 OB11 新增的同名两动作统一走 `FlashTransferApi.sendFile`，
+返回 `file_id = fileSetId`；原先「sendMessage 回查 fileUuid、缺省 msgId 兜底」的
+`sendFileMessage` 已删除（它是静默假成功的来源）。语义降级（分享卡片、不进群文件列表、
+file_id 不可用于群文件动作）已在 `docs/protocols/{onebot11,milky}.md` 与
+`packages/adapter/docs/design.md` 明示。

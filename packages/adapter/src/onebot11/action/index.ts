@@ -103,6 +103,7 @@ import {
 import { SetDiyOnlineStatusAction } from "./system/set-diy-online-status.js";
 import { SetOnlineStatusAction } from "./system/set-online-status.js";
 import { TranslateEn2ZhAction } from "./system/translate-en2zh.js";
+import { UploadGroupFileAction, UploadPrivateFileAction } from "./upload-file.js";
 
 /** 动作注册表依赖（P2-16：动作只依赖一个聚合对象）。 */
 export interface Ob11ActionDeps {
@@ -123,8 +124,18 @@ export function createOb11ActionRegistry(deps: Ob11ActionDeps): ActionRegistry {
     registerTicketActions(registry, deps);
     registerProfileActions(registry, deps);
     registerGroupFileActions(registry, deps);
+    registerFileUploadActions(registry, deps);
     registerWebActions(registry, deps);
     return registry;
+}
+
+/**
+ * 文件投递动作（upload_group_file / upload_private_file）：**闪传通道**。
+ * 语义降级说明见 ./upload-file.ts 文件头（分享卡片，非群文件条目）。
+ */
+function registerFileUploadActions(registry: ActionRegistry, deps: Ob11ActionDeps): void {
+    registry.register(new UploadGroupFileAction(deps.api));
+    registry.register(new UploadPrivateFileAction(deps.api));
 }
 
 /** 群空间 web / csrf / 陌生人 / 群请求动作（P2-15）。 */

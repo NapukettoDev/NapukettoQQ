@@ -111,7 +111,7 @@ session 注册表 getter 返回 null，运行中重新 get*Service 拿不到实�
 | delete_group_announcement | `GroupApi.deleteGroupAnnouncement` → deleteGroupBulletin | 待校准 |
 | set_group_avatar | `GroupApi.setGroupAvatar` → GroupService.setHeader | 待校准 |
 | set_group_member_special_title | `GroupApi.setMemberSpecialTitle` → setIdentityTitleInfo | 待校准（备选 setGroupIdentitySpec） |
-| upload_private_file / upload_group_file | `MsgApi` 补 file 元素发送链（P2-2 预留口子）：prepareFileElement（pic/ptt/video 同款 md5 → getRichMediaFilePathForGuild(FILE) → copyFile → fileElement）→ sendMessage；file_id 取发出消息 fileElement.fileUuid（缺省 msgId 兜底） | 发送链模式已验证；fileElement 字段待校准 |
+| upload_private_file / upload_group_file | `FlashTransferApi.sendFile`（**闪传通道**，2026-11-11 起）：上传文件集 + 发分享卡片；file_id = 闪传 fileSetId | ✅ 实测投递；语义降级见 §已知差异 |
 | get_group_file_download_url | `RichMediaApi.getGroupFileDownloadUrl`：getGroupFileList 按 fileId 查找取 url 字段 | url 字段待实机确认；仅根目录可达（已知差异） |
 | rename_group_folder | `RichMediaApi.renameGroupFolder`（renameGroupFile 同款 5 参形态） | §6 此前误标 ✅（kernel 无出口），本批修正 |
 
@@ -124,8 +124,12 @@ queryFileDownloadList 参数形状完全未知——盲装必错，随批次三�
 - get_resource_temp_url：当前接收段 resource_id 即临时链接（P0 模型，本地路径
   优先 url 兜底），http(s)/base64 形态原样返回，否则 NOT_FOUND。独立资源索引
   （稳定 resource_id + 反查）未建，留待按需。
-- upload_group_file 走消息发送链（生态同款）：群内产生一条文件消息（同时进群
-  文件区）；parent_folder_id 暂不参与定位（无 onlyUploadFile 校准前盲装风险高）。
+- **upload_group_file / upload_private_file 走闪传（2026-11-11 决定）**：文件消息路线被
+  服务端传输命令拒（`170019002`，逐维扫参无效，`fileUuid` 永远拿不到），唯一可用投递通道
+  是闪传。已知降级：①对端收到「分享链接卡片」（`qfile.qq.com`），不是文件消息、也不进群
+  文件列表；②返回的 `file_id` 是闪传文件集 id，不能喂给 `get_group_file_download_url` /
+  `delete_group_file` 等群文件动作；③`parent_folder_id` 仅 schema 兼容（闪传无目录）。
+  探测依据见 kernel design §15。
 - file:// / http(s):// / base64:// URI：image_uri / file_uri 经 helper/media-uri
   的 resolveUriToPath 展开（file:// 剥前缀，远程复用 resolveMediaUri 落盘）。
 - 待校准方法调用失败抛 KernelError（UNKNOWN/INVALID_PARAM），原始响应记 debug
@@ -500,8 +504,8 @@ webhooks = []             # 额外事件推送地址，可多个
 
 | API | 状态 | kernel 对应 / 缺口 |
 |---|---|---|
-| `upload_private_file` | ✅ | `MsgApi` file 元素发送链（file_id 取 fileUuid） |
-| `upload_group_file` | ✅ | 同上（走消息发送链，群内产文件消息） |
+| `upload_private_file` | ✅ | `FlashTransferApi.sendFile`（闪传卡片；file_id = fileSetId） |
+| `upload_group_file` | ✅ | 同上（闪传卡片，不进群文件列表——语义降级见 §已知差异） |
 | `get_private_file_download_url` | ❌ | rkey/TriSHA1 机制未校准（queryFileDownloadList 参数未知，批次三） |
 | `get_group_file_download_url` | ✅ | `RichMediaApi.getGroupFileDownloadUrl`（url 字段待实机确认，仅根目录） |
 | `get_group_files` | ✅ | `RichMediaApi.getGroupFileList` |

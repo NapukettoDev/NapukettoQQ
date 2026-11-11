@@ -160,6 +160,7 @@ export async function attachOb11IpcBridge(
             friendApi: services.friendApi,
             ticketApi: services.ticketApi,
             richMediaApi: services.richMediaApi,
+            flashTransferApi: services.flashTransferApi,
             profileApi: services.profileApi,
             profileLikeApi: services.profileLikeApi,
             webApi: services.webApi,

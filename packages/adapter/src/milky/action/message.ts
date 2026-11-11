@@ -593,7 +593,11 @@ export class GetResourceTempUrlAction extends MilkyApiAction<
     }
 }
 
-/** upload_private_file：上传私聊文件（file 元素消息链，file_id 取 fileUuid）。 */
+/**
+ * upload_private_file：上传并投递私聊文件（**闪传通道**：分享链接卡片）。
+ * file_id 返回闪传文件集 id（非文件消息 fileUuid）。语义降级同 upload_group_file：
+ * 对端收到的是分享链接卡片而不是 fileElement 文件消息（kernel design §15）。
+ */
 export class UploadPrivateFileAction extends MilkyApiAction<
     { user_id: number; file_uri: string; file_name: string },
     UploadFileOutput
@@ -612,25 +616,9 @@ export class UploadPrivateFileAction extends MilkyApiAction<
     }): Promise<UploadFileOutput> {
         const path = await resolveUriToPath(payload.file_uri, this.api.mediaDir);
         const peer = await this.api.resolvePeer("friend", payload.user_id);
-        const fileId = await sendFileMessage(this.api, peer, path, payload.file_name);
-        return { file_id: fileId };
+        const uploaded = await this.api.flashTransferApi.sendFile(peer, [path], {
+            name: payload.file_name,
+        });
+        return { file_id: uploaded.fileSetId };
     }
-}
-
-/**
- * 发送文件消息并回查 file_id：sendMessage（canonical file 元素，kernel 走
- * prepareFileElement 链）→ fetchMsgsByMsgId 取 fileElement.fileUuid（缺省 msgId）。
- * upload_private/group_file 共用。
- */
-export async function sendFileMessage(
-    api: MilkyApi,
-    peer: Peer,
-    path: string,
-    fileName: string,
-): Promise<string> {
-    const { msgId } = await api.msgApi.sendMessage(peer, [{ type: "file", path, name: fileName }]);
-    const [sent] = await api.msgApi.fetchMsgsByMsgId(peer, [msgId]);
-    const el = sent?.elements.find((e) => e.fileElement != null);
-    const uuid = el?.fileElement?.fileUuid;
-    return uuid !== undefined && uuid !== "" ? uuid : msgId;
 }

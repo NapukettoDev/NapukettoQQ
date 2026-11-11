@@ -6,6 +6,7 @@
  */
 import type {
     BuddyReq,
+    FlashTransferApi,
     FriendApi,
     GroupApi,
     GroupCache,
@@ -37,6 +38,8 @@ export interface MilkyApiOptions {
     webApi: WebApi;
     groupNotifyApi: GroupNotifyApi;
     richMediaApi: RichMediaApi;
+    /** kernel 闪传 API（upload_group_file / upload_private_file 的投递通道）。 */
+    flashTransferApi: FlashTransferApi;
     /** P2 批次二：会话列表（get_peer_pins 数据源）。 */
     recentContactApi: RecentContactApi;
     /** 登录身份（get_login_info / self_id / target_user_uid 用）。 */
@@ -63,6 +66,8 @@ export class MilkyApi {
     readonly webApi: WebApi;
     readonly groupNotifyApi: GroupNotifyApi;
     readonly richMediaApi: RichMediaApi;
+    /** kernel 闪传 API（文件投递：分享卡片，见 flash-transfer.ts 语义说明）。 */
+    readonly flashTransferApi: FlashTransferApi;
     readonly recentContactApi: RecentContactApi;
     readonly self: { uin: string; nickname: string; uid?: string };
     readonly groupCache: GroupCache | undefined;
@@ -84,6 +89,7 @@ export class MilkyApi {
         this.webApi = opts.webApi;
         this.groupNotifyApi = opts.groupNotifyApi;
         this.richMediaApi = opts.richMediaApi;
+        this.flashTransferApi = opts.flashTransferApi;
         this.recentContactApi = opts.recentContactApi;
         this.self = opts.self;
         this.groupCache = opts.groupCache;

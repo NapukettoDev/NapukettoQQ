@@ -537,9 +537,33 @@ image_uri / file_uri 经 helper/media-uri 新增 resolveUriToPath（file:// 剥�
 fileElement.fileUuid（fetchMsgsByMsgId 回查，缺省 msgId 兜底）。
 
 **已知差异（文档明示）**：get_resource_temp_url 当前 resource_id 即临时链接（P0
-模型）原样返回；upload_group_file 走消息发送链（群内产文件消息，生态同款），
-parent_folder_id 暂不参与定位；get_group_file_download_url 仅根目录可达。
+模型）原样返回；get_group_file_download_url 仅根目录可达；
 get_private_file_download_url 延后批次三（rkey/TriSHA1）。
+
+## 文件投递：upload_group_file / upload_private_file 走闪传（2026-11-11）
+
+**背景**：`sendMsg` 带 fileElement 时原生会自己发起文件传输，但该命令被服务端拒绝
+（`170019002`，逐维扫参无效，`fileUuid` 永远拿不到）；QQ NT 也没有「传进群文件列表」的
+NAPI。唯一实测可用的投递通道是**闪传**（kernel `FlashTransferApi`：上传文件集 + 发卡片）。
+探测依据见 [kernel design §15](../../kernel/docs/design.md)。
+
+**实现**：milky `upload_group_file` / `upload_private_file` 与 OB11 同名两动作统一走
+`FlashTransferApi.sendFile(peer, [path], { name })`，返回 `file_id = fileSetId`。
+原先的 `sendFileMessage`（sendMessage + 回查 fileUuid、缺省 msgId 兜底）已删除——它是
+静默假成功的来源（拿不到 fileUuid 时把 msgId 当 file_id 返回）。
+
+**语义降级（对外文档已明示）**：
+
+- 对端收到的是「分享链接卡片」（`qfile.qq.com`），**不是 fileElement 文件消息**，也
+  **不进群文件列表**；
+- 返回的 `file_id` 是闪传文件集 id，**不能**喂给 `delete_group_file` /
+  `get_group_file_download_url` 等群文件动作；
+- `parent_folder_id` / `folder` 仅 schema 兼容（闪传没有目录概念）；
+- OB11 侧入参只支持本地路径与 `file://`（远程 `http(s)://` / `base64://` 需要下载缓存与
+  媒体依赖，未接，返回 105）；milky 侧继续用 `resolveUriToPath`（远程会落盘）。
+
+**装配**：loader `kernel-services` 构造 `flashTransferApi`，`assemble-protocols` /
+`ipc-ob11` 透传进 `OneBotApiOptions` / `MilkyApiOptions`（richMediaApi 同款）。
 
 **loader 装配**：kernel-services 增构造 recentContactApi，assemble-protocols 透传
 入 MilkyApiOptions（richMediaApi 同款）。

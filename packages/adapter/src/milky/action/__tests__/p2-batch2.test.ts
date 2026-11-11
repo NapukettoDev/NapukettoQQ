@@ -16,6 +16,7 @@ function makeApi(overrides: {
     msgApi?: Record<string, unknown>;
     groupApi?: Record<string, unknown>;
     richMediaApi?: Record<string, unknown>;
+    flashTransferApi?: Record<string, unknown>;
     recentContactApi?: Record<string, unknown>;
     friendApi?: Record<string, unknown>;
     groupCache?: Record<string, unknown>;
@@ -47,6 +48,14 @@ function makeApi(overrides: {
             webApi: {},
             groupNotifyApi: {},
             richMediaApi: { ...overrides.richMediaApi },
+            flashTransferApi: {
+                sendFile: vi.fn(async () => ({
+                    fileSetId: "fs-stub",
+                    shareLink: "",
+                    fileCount: 1,
+                })),
+                ...overrides.flashTransferApi,
+            },
             recentContactApi: {
                 getPinnedContacts: vi.fn(async () => []),
                 ...overrides.recentContactApi,
@@ -251,38 +260,49 @@ describe("表情 / 资源反查", () => {
 });
 
 describe("文件上传 / 下载链接 / 文件夹改名", () => {
-    it("upload_private_file：file:// 本地路径 → file 元素发送 → file_id 取 fileUuid", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "msg-9" }));
-        const fetchMsgsByMsgId = vi.fn(async () => [
-            { elements: [{ elementType: 3, fileElement: { fileUuid: "uuid-9" } }] },
-        ]);
-        const { registry } = makeApi({ msgApi: { sendMessage, fetchMsgsByMsgId } });
+    it("upload_private_file：file:// 本地路径 → 闪传 sendFile（peer/paths/name 对齐）", async () => {
+        const sendFile = vi.fn(async () => ({
+            fileSetId: "fs-priv",
+            shareLink: "",
+            fileCount: 1,
+        }));
+        const { registry } = makeApi({ flashTransferApi: { sendFile } });
         const res = await action(registry, "upload_private_file").handle({
             user_id: 20002,
             file_uri: "file:///C:/docs/a.zip",
             file_name: "a.zip",
         });
-        expect(res.data).toEqual({ file_id: "uuid-9" });
-        expect(sendMessage).toHaveBeenCalledWith(
+        expect(res.data).toEqual({ file_id: "fs-priv" });
+        expect(sendFile).toHaveBeenCalledWith(
             expect.objectContaining({ peerUid: "uid-20002" }),
-            [{ type: "file", path: expect.stringMatching(/a\.zip$/), name: "a.zip" }],
+            [expect.stringMatching(/a\.zip$/)],
+            { name: "a.zip" },
         );
     });
 
-    it("upload_private_file：fileUuid 缺失兜底 msgId", async () => {
-        const fetchMsgsByMsgId = vi.fn(async () => [{ elements: [{ elementType: 3 }] }]);
-        const { registry } = makeApi({ msgApi: { fetchMsgsByMsgId } });
+    it("upload_private_file：闪传失败 → 错误透传（不再兜底成假 file_id）", async () => {
+        const { registry } = makeApi({
+            flashTransferApi: {
+                sendFile: vi.fn(async () => {
+                    throw new Error("闪传上传超时");
+                }),
+            },
+        });
         const res = await action(registry, "upload_private_file").handle({
             user_id: 20002,
             file_uri: "file:///C:/a.zip",
             file_name: "a.zip",
         });
-        expect(res.data).toEqual({ file_id: "msg-1" });
+        expect(res.retcode).not.toBe(0);
     });
 
-    it("upload_group_file：群 peer + parent_folder_id 仅 schema 兼容", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "msg-g" }));
-        const { registry } = makeApi({ msgApi: { sendMessage } });
+    it("upload_group_file：群 peer + parent_folder_id 仅 schema 兼容（闪传无目录）", async () => {
+        const sendFile = vi.fn(async () => ({
+            fileSetId: "fs-group",
+            shareLink: "",
+            fileCount: 1,
+        }));
+        const { registry } = makeApi({ flashTransferApi: { sendFile } });
         const res = await action(registry, "upload_group_file").handle({
             group_id: 10001,
             parent_folder_id: "/",
@@ -290,9 +310,10 @@ describe("文件上传 / 下载链接 / 文件夹改名", () => {
             file_name: "a.zip",
         });
         expect(res.retcode).toBe(0);
-        expect(sendMessage).toHaveBeenCalledWith(
+        expect(sendFile).toHaveBeenCalledWith(
             expect.objectContaining({ chatType: 2, peerUid: "10001" }),
-            expect.any(Array),
+            [expect.stringMatching(/a\.zip$/)],
+            { name: "a.zip" },
         );
     });
 

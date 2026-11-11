@@ -46,6 +46,8 @@ export interface KernelServices {
     groupNotifyApi: unknown;
     ticketApi: unknown;
     richMediaApi: unknown;
+    /** 闪传（upload_group_file / upload_private_file 的投递通道，见 kernel design §15）。 */
+    flashTransferApi: unknown;
     recentContactApi: unknown;
     profileApi: unknown;
     profileLikeApi: unknown;
@@ -258,6 +260,7 @@ export async function createKernelServices(
     const groupNotifyApi = new kernel.GroupNotifyApi(session);
     const ticketApi = new kernel.TicketApi(session);
     const richMediaApi = new kernel.RichMediaApi(session);
+    const flashTransferApi = new kernel.FlashTransferApi(session);
     // 会话列表（P2 批次二 get_peer_pins 数据源）
     const recentContactApi = new kernel.RecentContactApi(session);
     const profileApi = new kernel.ProfileApi(session);
@@ -283,6 +286,7 @@ export async function createKernelServices(
         groupNotifyApi,
         ticketApi,
         richMediaApi,
+        flashTransferApi,
         recentContactApi,
         profileApi,
         profileLikeApi,

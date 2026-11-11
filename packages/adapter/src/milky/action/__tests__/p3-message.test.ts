@@ -464,31 +464,33 @@ describe("send_private_message / send_group_message（动作层）", () => {
     });
 });
 
-describe("upload_private_file（sendFileMessage 链）", () => {
-    it("fileElement.fileUuid 有值 → file_id = fileUuid", async () => {
-        const sent = {
-            ...indexableMsg("1", "m-file"),
-            elements: [{ elementType: 10, fileElement: { fileUuid: "uuid-abc" } }],
-        };
-        const registry = messageApi({
-            msgApi: {
-                sendMessage: vi.fn(async () => ({ msgId: "m-file" })),
-                fetchMsgsByMsgId: vi.fn(async () => [sent]),
-            },
-        });
+describe("upload_private_file（闪传通道）", () => {
+    it("走闪传 sendFile：peer 为好友 uid、file_id = fileSetId", async () => {
+        const sendFile = vi.fn(async () => ({
+            fileSetId: "fs-abc",
+            shareLink: "https://qfile.qq.com/q/ABC",
+            fileCount: 1,
+        }));
+        const registry = messageApi({ flashTransferApi: { sendFile } });
         const res = await actionOf(registry, "upload_private_file").handle({
             user_id: 20002,
             file_uri: join("tmp", "a.bin"),
             file_name: "a.bin",
         });
-        expect(res.data).toEqual({ file_id: "uuid-abc" });
+        expect(res.data).toEqual({ file_id: "fs-abc" });
+        expect(sendFile).toHaveBeenCalledWith(
+            expect.objectContaining({ peerUid: "uid-20002" }),
+            [expect.stringMatching(/a\.bin$/)],
+            { name: "a.bin" },
+        );
     });
 
-    it("回查无 fileElement → file_id 兜底 msgId", async () => {
+    it("闪传抛错 → 动作失败（不静默假成功）", async () => {
         const registry = messageApi({
-            msgApi: {
-                sendMessage: vi.fn(async () => ({ msgId: "m-fallback" })),
-                fetchMsgsByMsgId: vi.fn(async () => []),
+            flashTransferApi: {
+                sendFile: vi.fn(async () => {
+                    throw new Error("闪传上传超时");
+                }),
             },
         });
         const res = await actionOf(registry, "upload_private_file").handle({
@@ -496,26 +498,7 @@ describe("upload_private_file（sendFileMessage 链）", () => {
             file_uri: "b.bin",
             file_name: "b.bin",
         });
-        expect(res.data).toEqual({ file_id: "m-fallback" });
-    });
-
-    it("fileUuid 空串 → 兜底 msgId", async () => {
-        const sent = {
-            ...indexableMsg("1", "m-empty"),
-            elements: [{ elementType: 10, fileElement: { fileUuid: "" } }],
-        };
-        const registry = messageApi({
-            msgApi: {
-                sendMessage: vi.fn(async () => ({ msgId: "m-empty" })),
-                fetchMsgsByMsgId: vi.fn(async () => [sent]),
-            },
-        });
-        const res = await actionOf(registry, "upload_private_file").handle({
-            user_id: 20002,
-            file_uri: "c.bin",
-            file_name: "c.bin",
-        });
-        expect(res.data).toEqual({ file_id: "m-empty" });
+        expect(res.status).not.toBe("ok");
     });
 
     it("file_uri 空串 → -400", async () => {
