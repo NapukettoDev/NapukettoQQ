@@ -1,5 +1,5 @@
 /**
- * OB11 动作注册表测试：createOb11ActionRegistry 79 个动作名齐（含域覆盖抽样）、
+ * OB11 动作注册表测试：createOb11ActionRegistry 81 个动作名齐（含域覆盖抽样）、
  * resolveUid（uin→uid 解析与失败抛 INVALID_PARAM）、ob11ErrorCodeMap 全量映射。
  */
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { createOb11ActionRegistry } from "../index.js";
 import { resolveUid } from "../resolve-uid.js";
 import { stubConverters } from "./test-support.js";
 
-/** 79 个动作名（与 action/index.ts 注册面一一对应，按域分组）。 */
+/** 81 个动作名（与 action/index.ts 注册面一一对应，按域分组）。 */
 const ALL_NAMES: string[] = [
     // 消息（15）
     "send_msg",
@@ -92,6 +92,9 @@ const ALL_NAMES: string[] = [
     "rename_group_file",
     "move_group_file",
     "trans_group_file",
+    // 文件投递（2，闪传通道：分享卡片）
+    "upload_group_file",
+    "upload_private_file",
     // web / csrf / 陌生人 / 群请求（7）
     "get_stranger_info",
     "get_csrf_token",
@@ -103,10 +106,10 @@ const ALL_NAMES: string[] = [
 ];
 
 describe("createOb11ActionRegistry", () => {
-    it("79 个动作名齐（去重后无多余、无缺失）", () => {
+    it("81 个动作名齐（去重后无多余、无缺失）", () => {
         const registry = createOb11ActionRegistry({ api: {} as never });
         const names = registry.names;
-        expect(names).toHaveLength(79);
+        expect(names).toHaveLength(81);
         expect([...names].sort()).toEqual([...ALL_NAMES].sort());
         for (const name of ALL_NAMES) {
             expect(registry.get(name)).toBeDefined();

@@ -269,6 +269,7 @@ export interface KernelLike {
         getCookies(domain: string, uin: string): Promise<Record<string, string>>;
     };
     RichMediaApi: new (session: unknown) => unknown;
+    FlashTransferApi: new (session: unknown) => unknown;
     RecentContactApi: new (session: unknown) => unknown;
     ProfileApi: new (session: unknown) => unknown;
     ProfileLikeApi: new (session: unknown) => unknown;

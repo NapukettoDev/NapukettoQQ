@@ -5,7 +5,7 @@
 | 文件 | 职责 |
 |---|---|
 | `packages/adapter/src/onebot11/adapter.ts` | 适配器主体：订阅 kernel 事件、翻译广播、请求分发 |
-| `action/index.ts` + `action/**` | 79 个动作的注册表与实现 |
+| `action/index.ts` + `action/**` | 81 个动作的注册表与实现 |
 | `api/one-bot-api.ts` | 动作依赖聚合（kernel API、message_id 映射、uin/uid 转换） |
 | `helper/` | CQ 码/消息段编解码、事件翻译、通知/请求翻译、sysmsg 解码、message_id 映射 |
 | `transport.ts` | HTTP/WS 多实例传输装配与鉴权 |
@@ -55,7 +55,7 @@
 
 - WS 请求带 `echo` 时，响应原样带回。
 
-### 动作面（79 个）
+### 动作面（81 个）
 
 动作全部注册在 `action/index.ts` 的 `createOb11ActionRegistry`，按域拆文件：
 
@@ -71,11 +71,23 @@
 | 票据 | 2 | `get_clientkey`、`get_cookies` |
 | 资料/点赞/翻译 | 5 | `set_self_longnick`、`set_qq_profile`、`set_qq_avatar`、`translate_en2zh`、`send_like` |
 | 群文件 | 9 | 根目录/文件夹查询、系统信息、创建/删除/重命名/移动/转存 |
+| 文件投递 | 2 | `upload_group_file`、`upload_private_file`（**闪传通道**，见下） |
 | 群空间/Web/陌生人 | 7 | `get_stranger_info`、`get_csrf_token`、`get_credentials`、群申请查询、`get_essence_msg_list`、`get_group_honor_info` |
 
-“79 个”是注册的动作名数量（含别名变体，如 `mark_msg_as_read` 的私聊/群聊细分、
+“81 个”是注册的动作名数量（含别名变体，如 `mark_msg_as_read` 的私聊/群聊细分、
 `get_csrf_token` / `get_credentials`、`get_image` / `get_record`）。具体名称与参数 schema
 以 `action/index.ts` 与各动作文件为准。
+
+> **`upload_group_file` / `upload_private_file` 的语义降级（2026-11-11）**：
+> QQ NT 没有「传进群文件列表」的 NAPI，`sendMsg` 带 fileElement 时走的文件传输命令被服务端
+> 拒绝（`170019002`，逐维扫参无效），`fileUuid` 永远拿不到。两个动作改走**闪传**：
+> 上传文件集后发**分享链接卡片**（`qfile.qq.com`）。因此：
+> - 对端收到的是卡片消息，**不是文件消息**，也**不进群文件列表**；
+> - 返回的 `file_id` 是闪传文件集 id，不能喂给 `delete_group_file` /
+>   `get_group_file_download_url` 等群文件动作；
+> - 入参 `file` 目前只支持**本地路径与 `file://` URI**（远程 URI 需下载缓存，未接，返回 105）；
+> - `folder` 字段仅 schema 兼容，闪传没有目录概念。
+> 探测依据见 [kernel design §15](../../packages/kernel/docs/design.md)。
 
 ## 4. 事件
 

@@ -3,8 +3,14 @@
  * persist_group_file / create_group_folder / delete_group_folder /
  * upload_group_file / get_group_file_download_url / rename_group_folder
  *
- * 全部走 RichMediaApi（群文件系列）。upload_group_file 走消息发送链（生态同款，
- * 群内产文件消息；parent_folder_id 暂不参与定位）；download_url 仅根目录可达。
+ * 群文件管理/查询走 RichMediaApi（群文件系列）；**upload_group_file 走闪传**
+ * （kernel FlashTransferApi：上传文件集 + 发分享卡片，2026-11-11 起）。
+ * 已知语义降级：①发出去的是「分享链接卡片」，不是群文件条目、也不进群文件列表；
+ * ②返回的 file_id 是闪传文件集 id，只能自己留存，不能喂给 get_group_file_download_url /
+ * delete_group_file 等群文件动作；③parent_folder_id 不参与定位（闪传没有目录概念）。
+ * 之所以不用消息发送链：`sendMsg` 带 fileElement 时原生会走文件传输命令，该命令被服务端
+ * 拒绝（170019002，扫参无效），fileUuid 永远拿不到（kernel design §15.3/§15.4）。
+ * download_url 仅根目录可达。
  * 实体字段以 GroupFileItemInfo / GroupFolderInfo 为源；下载次数 / 过期时间 /
  * 文件夹元数据等无源字段 0/null 兜底（待探测校准）。
  */
@@ -21,7 +27,6 @@ import type {
     UploadFileOutput,
 } from "../types.js";
 import { MilkyApiAction } from "./base-action.js";
-import { sendFileMessage } from "./message.js";
 
 const groupIdField = { group_id: z.number().int().min(10001) } as const;
 const fileIdField = { file_id: z.string().min(1) } as const;
@@ -227,7 +232,10 @@ function folderToEntity(info: GroupFolderInfo, groupId: number): GroupFolderEnti
     };
 }
 
-/** upload_group_file：上传群文件（消息发送链；parent_folder_id 暂不参与定位）。 */
+/**
+ * upload_group_file：上传并投递文件（**闪传通道**：分享链接卡片，见文件头语义说明）。
+ * file_id 返回闪传文件集 id（非群文件 fileId）。
+ */
 export class UploadGroupFileAction extends MilkyApiAction<
     {
         group_id: number;
@@ -253,8 +261,11 @@ export class UploadGroupFileAction extends MilkyApiAction<
     }): Promise<UploadFileOutput> {
         const path = await resolveUriToPath(payload.file_uri, this.api.mediaDir);
         const peer: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
-        const fileId = await sendFileMessage(this.api, peer, path, payload.file_name);
-        return { file_id: fileId };
+        // 闪传：上传文件集 + 发卡片（卡片即投递结果，不产生群文件条目）
+        const uploaded = await this.api.flashTransferApi.sendFile(peer, [path], {
+            name: payload.file_name,
+        });
+        return { file_id: uploaded.fileSetId };
     }
 }
 

@@ -5,6 +5,11 @@
  * 不对外暴露。
  */
 export type {
+    FlashTransferUploadOptions,
+    FlashTransferUploadResult,
+} from "./flash-transfer.js";
+export { FlashTransferApi } from "./flash-transfer.js";
+export type {
     DoubtFriendRequestInfo,
     Friend,
     FriendApiOptions,

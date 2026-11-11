@@ -10,6 +10,8 @@
 export type {
     DoubtFriendRequestInfo,
     EssenceMsgItem,
+    FlashTransferUploadOptions,
+    FlashTransferUploadResult,
     Friend,
     FriendCategory,
     GroupHonorWebInfo,
@@ -18,6 +20,7 @@ export type {
     StrangerInfo,
 } from "./apis/index.js";
 export {
+    FlashTransferApi,
     FriendApi,
     GroupApi,
     GroupNotifyApi,

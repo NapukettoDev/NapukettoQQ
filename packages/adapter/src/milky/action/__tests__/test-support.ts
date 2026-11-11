@@ -25,6 +25,7 @@ export interface ApiOverrides {
     webApi?: Record<string, unknown>;
     groupNotifyApi?: Record<string, unknown>;
     richMediaApi?: Record<string, unknown>;
+    flashTransferApi?: Record<string, unknown>;
     recentContactApi?: Record<string, unknown>;
     /** self.uid（nudge / friend_requests.target_user_uid 用；空串 = 缺失场景）。 */
     selfUid?: string;
@@ -102,6 +103,10 @@ export function buildMilkyApi(overrides: ApiOverrides = {}): MilkyApi {
             ...overrides.groupNotifyApi,
         },
         richMediaApi: { ...overrides.richMediaApi },
+        flashTransferApi: {
+            sendFile: vi.fn(async () => ({ fileSetId: "fs-stub", shareLink: "", fileCount: 1 })),
+            ...overrides.flashTransferApi,
+        },
         recentContactApi: {
             getPinnedContacts: vi.fn(async () => []),
             ...overrides.recentContactApi,

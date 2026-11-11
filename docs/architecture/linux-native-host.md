@@ -862,8 +862,10 @@ PNG（正确的 IHDR/IDAT CRC 与 IEND）后**立即成功**。→ 排障顺序�
   NAPI；`BatchTransfer` 与 `sendMsg` 文件元素走的是同一条被服务端拒的传输命令
   （扫参无效，且拒绝发生在目标校验之前）；**闪传通道实测可用**（上传文件集 +
   `sendFlashTransferMsg` 发卡片，已在测试群真实投递）。详见
-  [kernel design §15](../../packages/kernel/docs/design.md)。这与平台无关（Windows 同样未实现），
-  不属于 Linux 原生链路独有的缺口。
+  [kernel design §15](../../packages/kernel/docs/design.md)。
+  **文件投递已接线**：`upload_group_file` / `upload_private_file`（OB11 新增 + milky 改道）
+  走闪传，语义降级为「分享链接卡片」并在协议文档明示——功能可用，但仍不等于
+  「进群文件列表」。这与平台无关（Windows 同样如此），不属于 Linux 原生链路独有的缺口。
 - 大批量 / 大体积图片（如 4MB+ 照片）未压测；视频只测了 1s / 64×64 / H.264。
 
 ### D.1 他人消息实时入站（2026-11-10 补测）

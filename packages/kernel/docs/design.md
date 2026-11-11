@@ -800,3 +800,29 @@ els=["1:text:[ 对方通过QQ闪传发送文件给你，请打开链接查看：
   探针进程挂死；探针脚本一律 `timeout <N> node …`。
 - **变量名冲突**：复用 `session-smoke.cjs` 头部生成探针时，尾部追加段不能用 `target`/`list` 等
   头部已占用的名字（`const` 重复声明直接语法错）。
+
+### 15.7 落地：`FlashTransferApi`（2026-11-11）
+
+按 15.5 的实测形态封成 kernel API（`packages/kernel/src/apis/flash-transfer.ts`）：
+
+```ts
+uploadFileSet(paths, { name?, permissionCode?, timeoutMs? }) // → { fileSetId, shareLink, fileCount }
+sendCard(peer, fileSetId)                                     // target → { destType: chatType, destUid: peerUid }
+sendFile(peer, paths, opts?)                                  // 上传 + 发卡片一步
+```
+
+三处设计取舍：
+
+- **完成判定靠事件计数，不靠返回值**：`createFlashTransferUploadTask` 返回空对象，
+  `fileSetId` / 分享链接只能从 `onFileSetUploadStatusChanged` 取；完成条件是「每个文件都有
+  `onFileDidFinishUpload`」（按 `cliFileId` 去重，防重复事件提前判定）+ 取到 `fileSetId`。
+- **默认 10 分钟超时**（`timeoutMs` 可覆盖）→ 抛 `TIMEOUT`，不静默挂住；监听器在 `finally`
+  注销，卸载失败只吞掉（不影响本次结果）。
+- **语义边界写在模块头**：这张卡片不是 `fileElement` 文件消息，也不进群文件列表。
+
+**对外动作映射（2026-11-11 拍板：映射到闪传）**：milky `upload_group_file` /
+`upload_private_file` 与 OB11 新增的同名两动作统一走 `FlashTransferApi.sendFile`，
+返回 `file_id = fileSetId`；原先「sendMessage 回查 fileUuid、缺省 msgId 兜底」的
+`sendFileMessage` 已删除（它是静默假成功的来源）。语义降级（分享卡片、不进群文件列表、
+file_id 不可用于群文件动作）已在 `docs/protocols/{onebot11,milky}.md` 与
+`packages/adapter/docs/design.md` 明示。
