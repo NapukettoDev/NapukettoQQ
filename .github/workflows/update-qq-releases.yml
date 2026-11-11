@@ -33,7 +33,7 @@ name: update-qq-releases
 #
 # 代价与边界：
 #   · App 需要 **Pull requests: Read and write**（原本只有 Contents: Read and write；
-#     配置步骤与非代码前置见 docs/guides/release.md §3.1）。
+#     配置步骤与非代码前置见 .github/workflows/release.yml 头注释）。
 #   · App 同时具有 ruleset bypass 与 Contents 写权限（release.yml 用它直推 main）。
 #     这里的 token 只在更新脚本**跑完之后**才铸造，且用 `repositories: NapukettoQQ`
 #     限定到本仓（不含私有 submodule 仓），把持有面压到「只读代码之后的一步」。
@@ -64,7 +64,7 @@ jobs:
                   APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
               run: |
                   if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
-                      echo "::error::缺少 NapukettoBot App 配置（variable RELEASE_APP_CLIENT_ID / secret RELEASE_APP_PRIVATE_KEY），无法自动开 PR；见 docs/guides/release.md §3.1。"
+                      echo "::error::缺少 NapukettoBot App 配置（variable RELEASE_APP_CLIENT_ID / secret RELEASE_APP_PRIVATE_KEY），无法自动开 PR；见 .github/workflows/release.yml 头注释。"
                       exit 1
                   fi
 

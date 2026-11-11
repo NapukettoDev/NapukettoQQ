@@ -1,11 +1,10 @@
 # @napuketto/cli 模块设计
 
-> 本文件记录 `apps/cli/src` 的目录边界与依赖规则，是后续迭代的架构护栏。
-> 新增文件先确认归属目录；跨目录依赖先对照第 3 节。
-> 行为契约（命令、选项、stdout、退出码 0/78/1、配置优先级）以源码与
+> 本文件记录 `apps/cli/src` 的目录边界与依赖规则，是后续迭代的架构护栏。新增文件先确认
+> 归属目录；跨目录依赖先对照「配置来源口径」。命令/选项/stdout/退出码/配置优先级以源码与
 > `docs/guides/configuration.md` 为准，本文件不重复。
 
-## 1. 目录树与职责
+## 目录树与职责
 
 ```text
 apps/cli/src/
@@ -35,7 +34,7 @@ apps/cli/src/
 它需要读主配置的 `[log]` 段，因此允许依赖 `config/inline.ts`（叶子模块），
 但 `config/inline.ts` 不得反向依赖 logger。
 
-## 2. 各层允许的依赖
+## 各层允许的依赖
 
 ```text
 index        -> cli
@@ -54,7 +53,7 @@ logger       -> @napuketto/kernel, config/inline（只读叶子）
 roundtrip 断言，替代此前无法测试的第三方渲染路径。
 
 **版本号为什么读文件**（`cli/version.ts`）：`--version` 曾经是 `program.version("0.0.1")`
-硬编码字面量，发到 0.5.x 仍自报 0.0.1（2026-11-10 补发后装机冒烟发现）。改为运行时读
+硬编码字面量，发到 0.5.x 仍自报 0.0.1（补发后装机冒烟发现）。改为运行时读
 自身 `package.json` 的 `version`，候选 `../package.json`（生产 tsdown 单文件 `dist/index.mjs`）
 与 `../../package.json`（源码直跑），并要求 `name === "@napuketto/cli"` 防读错文件；
 全失败兜底 `0.0.0-unknown` 且不抛错——版本号缺失不该让 CLI 起不来。发版只改
@@ -68,7 +67,7 @@ roundtrip 断言，替代此前无法测试的第三方渲染路径。
 - 任何模块 import `index.ts`
 - `config/inline.ts` import `store.ts` / `logger.ts`（保持叶子，避免 logger 环）
 
-## 3. 配置来源口径（刻意不合并）
+## 配置来源口径（刻意不合并）
 
 cli 内部的读取分两档，调用方必须按场景选择：
 
@@ -88,8 +87,7 @@ strict/78 契约相反。两套读取是有意分层，不是重复实现。只�
 loader 需要严格校验、或内联契约再次变化时，才评估在 kernel 提供纯函数原语
 （env 键、文本读取、JSON 对象解析），并由 loader 经 `KernelLike` 特性探测采用。
 
-## 4. 测试布局
-
+## 测试布局
 测试与源码同目录，文件名对应被测模块；跨模块的领域套件可用领域名：
 
 ```text
@@ -112,12 +110,11 @@ logger.test.ts
 - 搬移文件后必须核对 `vi.mock` 说明符：它按测试文件位置解析，tsc 不会报错。
 - POSIX-only 用例（环境变量大小写别名）保持 `it.runIf(process.platform !== "win32")`。
 
-## 5. 变更检查清单
-
+## 变更检查清单
 - [ ] 新文件归属明确；顶层不再新增散落模块
 - [ ] `cli/` 只做参数/帮助/输出/退出码，不写业务编排
 - [ ] `commands/` 不 import commander
 - [ ] `config/` 不 import runtime/commands/cli
-- [ ] 新增配置读取前先读第 3 节，确认 strict/lenient 口径
+- [ ] 新增配置读取前先读「配置来源口径」，确认 strict/lenient 口径
 - [ ] `pnpm check`、`pnpm exec vitest run`、`pnpm exec fallow audit --base origin/main` 全绿
 - [ ] 对外 CLI 契约（命令/选项/stdout/退出码）无变化时不需要 changeset

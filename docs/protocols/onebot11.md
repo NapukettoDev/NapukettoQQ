@@ -1,46 +1,53 @@
 # OneBot 11 协议
 
-## 1. 代码位置
+> NapukettoQQ 的主协议适配器：HTTP / WS / 反向 WS / Webhook 四种接入形态，动作与事件按
+> OneBot 11 约定翻译。源码入口 `packages/adapter/src/onebot11/`。
 
-| 文件 | 职责 |
-|---|---|
-| `packages/adapter/src/onebot11/adapter.ts` | 适配器主体：订阅 kernel 事件、翻译广播、请求分发 |
-| `action/index.ts` + `action/**` | 81 个动作的注册表与实现 |
-| `api/one-bot-api.ts` | 动作依赖聚合（kernel API、message_id 映射、uin/uid 转换） |
-| `helper/` | CQ 码/消息段编解码、事件翻译、通知/请求翻译、sysmsg 解码、message_id 映射 |
-| `transport.ts` | HTTP/WS 多实例传输装配与鉴权 |
+## 配置方式
 
-## 2. 传输
+```toml
+[accounts.onebot11]
+token = "change-me"           # 空 = 不鉴权（仅本机调试）
+messagePostFormat = "array"   # array | string（CQ 码）
+heartbeatInterval = 3000      # meta 事件心跳；0 关闭
 
-| 方向 | 形态 | 用途 |
+[[accounts.onebot11.httpServers]]
+enabled = true
+host = "127.0.0.1"
+port = 3000
+
+[[accounts.onebot11.wsServers]]
+enabled = true
+port = 3001
+```
+
+另有 `httpPostUrls`（正向上报）与 `wsReverseUrls`（正向 WS 客户端），字段见
+`packages/adapter/src/onebot11/helper/config.ts`。OB11 始终装配；账号没写协议段时使用默认值
+（传输数组为空，不监听端口）。
+
+## 传输
+
+| 方向 | 配置 | 用途 |
 |---|---|---|
-| 反向 HTTP | `httpServers[]` | 第三方 POST `{action, params, echo}` 调用动作 |
-| 反向 WS | `wsServers[]` | 第三方 WS 连入，双向收发；事件广播，echo 透传 |
-| 正向 HTTP | `httpPostUrls[]` | 事件 POST 到第三方（Webhook，fire-and-forget） |
-| 正向 WS | `wsReverseUrls[]` | 主动连第三方，双向；带重连、心跳、证书选项 |
+| 反向 HTTP | `httpServers[]` | 第三方 POST `{action, params, echo}` |
+| 反向 WS | `wsServers[]` | 第三方 WS 连入，双向收发 |
+| 正向 HTTP | `httpPostUrls[]` | 事件 POST 到第三方（Webhook） |
+| 正向 WS | `wsReverseUrls[]` | 主动连第三方，带重连与心跳 |
 
-- 四类实例都可配置多个，字段与默认值见 [configuration.md](../guides/configuration.md)。
-- 鉴权 token 可在协议级设置，实例级覆盖。HTTP/WS 接受
-  `Authorization: Bearer <token>`、裸 `Authorization: <token>` 或 `?access_token=<token>`；
-  WS 鉴权失败以 **4401** 关闭。
-- 正向 WS 握手带 `X-Self-ID`、`x-client-role: Universal`、`User-Agent: OneBot/11`，
-  与 Koishi 等客户端的连接识别约定一致。
-- 心跳分两层：`heartbeatInterval` 是 meta 事件间隔；`wsServers[].heartbeatInterval` /
-  `wsReverseUrls[].heartbeatInterval` 是 WS ping 间隔。
+- 鉴权：协议级 `token`，实例级可覆盖；接受 `Authorization: Bearer <token>`、裸
+  `Authorization: <token>` 或 `?access_token=`。WS 鉴权失败以 4401 关闭。
+- 正向 WS 握手带 `X-Self-ID`、`x-client-role: Universal`、`User-Agent: OneBot/11`。
+- 心跳两层：`heartbeatInterval` 是 meta 事件间隔；WS 实例的 `heartbeatInterval` 是 ping。
 
-## 3. 请求与动作
-
-请求信封：
+## 请求与错误
 
 ```json
 { "action": "send_msg", "params": { "...": "..." }, "echo": "optional" }
 ```
 
-- `params` 可省略，按 `{}` 处理；动作内部用 zod 校验。
-- 成功：`{ retcode: 0, status: "ok", data, message: "" }`。
-- 参数校验失败：HTTP 入口 `retcode=400`，WS 入口 `retcode=1400`。
-- 未知 action / 缺 action：`retcode=404`。
-- 业务错误按 kernel `KernelErrorCode` 映射：
+- 成功：`{ retcode: 0, status: "ok", data, message: "" }`；WS 请求带 `echo` 时原样带回。
+- 参数校验失败：HTTP 入口 400，WS 入口 1400；未知/缺失 action：404。
+- 业务错误按 `KernelErrorCode` 映射：
 
 | KernelErrorCode | retcode |
 |---|---|
@@ -53,124 +60,59 @@
 | `INVALID_STATE` | 106 |
 | `UNKNOWN` | 999 |
 
-- WS 请求带 `echo` 时，响应原样带回。
+## 能力速查
 
-### 动作面（81 个）
+表头源码：`packages/adapter/src/onebot11/action/index.ts`。动作名含别名变体，参数 schema
+以各动作文件为准。
 
-动作全部注册在 `action/index.ts` 的 `createOb11ActionRegistry`，按域拆文件：
-
-| 域 | 数量 | 代表动作 |
-|---|---|---|
-| 消息 | 15 | `send_msg`、`send_private_msg`、`send_group_msg`、`delete_msg`、`get_msg`、历史消息、已读、`get_image`、`get_record`、`fetch_ptt_text`、`set_msg_emoji_like` |
-| 合并转发/在线状态 | 7 | `send_group_forward_msg`、`send_private_forward_msg`、`get_forward_msg`、`forward_group_single_msg`、`forward_friend_single_msg`、`set_online_status`、`set_diy_online_status` |
-| 查询 | 6 | `get_login_info`、`get_group_info`、`get_group_list`、群成员查询、`get_friend_list` |
-| 群管 | 10 | 踢/禁言/全员禁言/管理员/名片/群名/退群、精华设置与删除、`get_group_at_all_remain` |
-| 好友 | 6 | 好友申请、备注、删除、分类列表、可疑申请读写 |
-| 系统 | 9 | `get_status`、`get_version_info`、`clean_cache`、`can_send_image`、`can_send_record`、`get_robot_uin_range`、`download_file`、`bot_exit`、`set_restart` |
-| 群通知 | 3 | `set_group_add_request`、`get_group_system_msg`、`get_group_shut_list` |
-| 票据 | 2 | `get_clientkey`、`get_cookies` |
-| 资料/点赞/翻译 | 5 | `set_self_longnick`、`set_qq_profile`、`set_qq_avatar`、`translate_en2zh`、`send_like` |
-| 群文件 | 9 | 根目录/文件夹查询、系统信息、创建/删除/重命名/移动/转存 |
-| 文件投递 | 2 | `upload_group_file`、`upload_private_file`（**闪传通道**，见下） |
-| 群空间/Web/陌生人 | 7 | `get_stranger_info`、`get_csrf_token`、`get_credentials`、群申请查询、`get_essence_msg_list`、`get_group_honor_info` |
-
-“81 个”是注册的动作名数量（含别名变体，如 `mark_msg_as_read` 的私聊/群聊细分、
-`get_csrf_token` / `get_credentials`、`get_image` / `get_record`）。具体名称与参数 schema
-以 `action/index.ts` 与各动作文件为准。
-
-> **`upload_group_file` / `upload_private_file` 的语义降级（2026-11-11）**：
-> QQ NT 没有「传进群文件列表」的 NAPI，`sendMsg` 带 fileElement 时走的文件传输命令被服务端
-> 拒绝（`170019002`，逐维扫参无效），`fileUuid` 永远拿不到。两个动作改走**闪传**：
-> 上传文件集后发**分享链接卡片**（`qfile.qq.com`）。因此：
-> - 对端收到的是卡片消息，**不是文件消息**，也**不进群文件列表**；
-> - 返回的 `file_id` 是闪传文件集 id，不能喂给 `delete_group_file` /
->   `get_group_file_download_url` 等群文件动作；
-> - 入参 `file` 目前只支持**本地路径与 `file://` URI**（远程 URI 需下载缓存，未接，返回 105）；
-> - `folder` 字段仅 schema 兼容，闪传没有目录概念。
-> 探测依据见 [kernel design §15](../../packages/kernel/docs/design.md)。
-
-## 4. 事件
-
-### 4.1 消息事件
-
-- `message_type=group`：`sub_type=normal`；`group_id`、`user_id`、`sender`（nickname/card/
-  role）、`message`、`raw_message`、`font`。`sender.role` 接 kernel `GroupCache` 判定
-  owner/admin/member（缓存优先，缺失惰性回填；查询失败回退 `member`，不阻塞上报）；
-  `get_msg` / 历史消息返回结构同口径。
-- `message_type=private`：`sub_type=friend` 或 `group`（临时会话）。
-- `message` 格式由 `messagePostFormat` 决定：`array`（消息段数组）或 `string`（CQ 码）；
-  `raw_message` 始终是 CQ 码字符串。
-- 默认不上报机器人自己发的消息；`reportSelfMessage=true` 时上报。
-
-### 4.2 通知事件
-
-已接线的来源：
-
-| notice_type | 来源 |
+| 域 | 代表动作 |
 |---|---|
-| `group_upload` | 含 fileElement 的群消息；`groupUploadAsNotice=true` 时替代 message 事件 |
-| `group_increase` / `group_decrease` | 群成员变动的 grayTip |
-| `group_admin` | 管理员变更 grayTip |
-| `group_ban` | 禁言 grayTip |
-| `group_recall` / `friend_recall` | 撤回 grayTip（群聊/私聊分流） |
-| `friend_add` | `BuddyCache` 好友快照 diff |
-| `notify`（poke） | 戳一戳 grayTip；字段仍在真实事件校准中 |
-| `offline_file` | `Msg/onRecvOfflineFileMsg`；payload 形状防御性收窄，未知形状只打校准日志 |
-| `group_essence` | `Group/onGroupEssenceListChange` 列表 diff（唯一发射路径）+ `Msg/onRecvSysMsg` 732:1 加速触发；operator_id 仅 add 回填（类型可选），message_id 经 `MessageUnique` 正确空间映射 |
+| 消息 | `send_msg`、`send_private_msg`、`send_group_msg`、`delete_msg`、`get_msg`、历史消息、已读、`get_image`、`get_record`、`fetch_ptt_text`、`set_msg_emoji_like` |
+| 合并转发/在线状态 | `send_group_forward_msg`、`send_private_forward_msg`、`get_forward_msg`、`forward_group_single_msg`、`forward_friend_single_msg`、`set_online_status`、`set_diy_online_status` |
+| 查询 | `get_login_info`、`get_group_info`、`get_group_list`、群成员查询、`get_friend_list` |
+| 群管 | 踢/禁言/全员禁言/管理员/名片/群名/退群、精华设置与删除、`get_group_at_all_remain` |
+| 好友 | 好友申请、备注、删除、分类列表、可疑申请读写 |
+| 系统 | `get_status`、`get_version_info`、`clean_cache`、`can_send_image`、`can_send_record`、`get_robot_uin_range`、`download_file`、`bot_exit`、`set_restart` |
+| 群通知 | `set_group_add_request`、`get_group_system_msg`、`get_group_shut_list` |
+| 票据/资料 | `get_clientkey`、`get_cookies`、`set_self_longnick`、`set_qq_profile`、`set_qq_avatar`、`translate_en2zh`、`send_like` |
+| 群文件 | 根目录/文件夹查询、系统信息、创建/删除/重命名/移动/转存 |
+| 文件投递 | `upload_group_file`、`upload_private_file`（闪传，见下） |
+| 空间/Web/陌生人 | `get_stranger_info`、`get_csrf_token`、`get_credentials`、群申请查询、`get_essence_msg_list`、`get_group_honor_info` |
 
-已定义但当前未广播/未接线：
+`upload_group_file` / `upload_private_file` 走**闪传**：上传文件集后发 `qfile.qq.com` 分享
+卡片。对端收到的是卡片而非文件消息，也不进群文件列表；返回的 `file_id` 是闪传文件集 id，
+不能喂给群文件动作；`file` 只支持本地路径与 `file://`。
 
-- `group_title` / `group_sign`：来自 `Msg/onRecvSysMsg` protobuf；解码器已上线，识别表
-  已登记 732:21（group_card，2026-11-01），group_title / group_sign 判别值仍缺真实样本，
-  命中前只写结构化校准日志。
-- `msg_emoji_like`：没有推送回调；当前只有 `set_msg_emoji_like` 动作，没有对应的读取动作。
-- `onRecvOnlineFileMsg`：OB11 无对应通知，只打 raw 日志。
+## 事件
 
-### 4.3 请求事件
+- **消息**：`group`（normal）/ `private`（friend / group 临时会话）；`sender.role` 由
+  `GroupCache` 判定，缓存缺失惰性回填；`message` 格式由 `messagePostFormat` 决定，
+  `raw_message` 恒为 CQ 码；默认不上报机器人自己的消息。
+- **通知**：`group_upload`、`group_increase` / `group_decrease`、`group_admin`、
+  `group_ban`、`group_recall` / `friend_recall`、`friend_add`、`notify`（poke）、
+  `offline_file`、`group_essence`（列表 diff 为唯一发射路径）。
+- **请求**：群邀请/申请来自 `Group/onGroupNotifiesUpdated`；好友申请来自
+  `Buddy/onBuddyReqChange`；未处理项才推送，未知形状只打校准日志。
+- **元事件**：启动广播一次 `lifecycle/enable`；`heartbeat` 按间隔广播，`0` 关闭。
 
-- `request_type=group`：`Group/onGroupNotifiesUpdated` 的未处理邀请/申请；doubt 通知跳过。
-- `request_type=friend`：`Buddy/onBuddyReqChange`；部分 payload 字段（如留言 words）仍在
-  真实事件校准。
+未接线：`group_title` / `group_sign`（sysmsg 判别值缺样本）、`msg_emoji_like`（无推送回调）、
+`onRecvOnlineFileMsg`（OB11 无对应通知，只打 raw 日志）。
 
-### 4.4 元事件
+## ID 映射
 
-- 适配器启动时广播一次 `lifecycle` / `sub_type=enable`。
-- `heartbeat` 按 `heartbeatInterval` 定时广播，`status` 与 `get_status` 同构；`0` 关闭。
-- 适配器停止时不额外广播 `disable`（当前实现只发 enable）。
+- `message_id`：协议侧 int32，由 `MessageUnique` 为每个 NT `msgId` 双向分配并记录 `Peer`，
+  供 `delete_msg` / `get_msg` 反查；溢出复用已释放槽位。
+- `user_id` = uin；`group_id` = 群号。接收方向 at uid→uin、reply NT msgId→OB11 id；发送
+  方向 at uin→uid、reply OB11 id→NT msgId；失败时原样传递。
+- 群聊 `Peer` 为 `{chatType: GROUP, peerUid: 群号}`；私聊为 `{chatType: C2C, peerUid: uid}`。
 
-## 5. ID 映射
+## 已知缺口
 
-- `message_id`：协议侧 int32，由 `MessageUnique` 为每个 NT `msgId` 分配并双向映射，同时记录
-  `Peer` 供 `delete_msg` / `get_msg` 反查；溢出后复用已释放槽位。
-- `user_id`：QQ uin；`group_id`：群号（群消息的 `peerUid` 就是群号）。
-- 接收方向：`at` 的 uid → uin（批量 `uidToUin`，失败原样）；`reply` 的 NT msgId → OB11
-  message_id（反查不到原样）。
-- 发送方向：`at` 的 uin → uid（批量 `uinToUid`，失败交给 QQ 端判断）；`reply` 的 OB11 id →
-  NT msgId；私聊 `user_id` 经 uin → uid 得到 `peerUid`。
-- 私聊 `Peer` 为 `{ chatType: C2C, peerUid: uid }`；群聊为 `{ chatType: GROUP, peerUid: 群号 }`。
-- 精华事件 `group_essence` 的 `message_id`：msgSeq → 近段历史扫描（`fetchMessages` 60 条）
-  → NT msgId → `MessageUnique.alloc` 幂等分配（与消息事件同一空间，可被 `get_msg` 反查）；
-  扫描未命中则跳过该事件。
+- `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip `msgSeq`，与消息事件的
+  `MessageUnique` 不是同一空间，不能直接反查原消息。
+- `offline_file`、poke、好友申请的部分 payload 仍是防御性收窄 + 校准日志状态。
+- 通用 `send_msg` 覆盖 text / at / face / image / voice / reply / json（ARK 透传）与
+  预处理 video；`file` / `forward` / `xml` 不走通用发送。
+- IPC 桥模式只启动接收链路（`subscribeOnly`），不装配 HTTP/WS、不起心跳、不广播 lifecycle。
 
-## 6. 配置要点
-
-完整字段见 [configuration.md](../guides/configuration.md)。OB11 特有的是：
-
-- `messagePostFormat`：`array` / `string`。
-- `groupUploadAsNotice`：群文件报 `group_upload` notice 还是 message 的 file 段。
-- `reportSelfMessage`：是否上报自己发的消息。
-- 正向上报的 `x-self-id` 用于 Koishi 等接收端识别 bot。
-- 旧单对象传输字段（`http` / `httpPost` / `ws` / `wsReverse`）已移除，不做迁移。
-
-## 7. 已知缺口
-
-- sysmsg 识别表已登记 732:21（group_card）：`group_title` / `group_sign` 暂不广播，等真实样本登记规则。
-- `offline_file`、poke、好友申请的部分 payload 字段仍是“防御性收窄 + 校准日志”状态。
-- `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip 的 `msgSeq`，与消息事件的
-  `MessageUnique` int32 映射不是同一空间，不能直接按它反查原消息。
-- 通用 `send_msg` 的 canonical 发送覆盖 text / at / face / image / voice / reply /
-  json（ARK 卡片透传，`bytesData` 装卡片 JSON 字符串），以及经
-  `MsgApi` 预处理的 video；`file` / `forward` / `xml` 不走通用发送（合并转发用专用
-  动作，群文件用群文件动作）。
-- IPC 桥模式只启动接收链路（`subscribeOnly`）：不装配 HTTP/WS、不起心跳、不广播 lifecycle；
-  动作名整表挂到 IPC 动作表供外部驱动调用。
+> 错误码、字段与边界实测见 [adapter evidence](../../packages/adapter/docs/evidence.md)。

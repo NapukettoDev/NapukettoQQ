@@ -1,9 +1,9 @@
 # 运行链路
 
-本篇描述从命令到 QQ 原生调用、再到协议输出的完整运行链路。字段与默认值见
-[configuration.md](../guides/configuration.md)；协议翻译细节见各协议文档。
+> 面向贡献者与 AI 代理：从 CLI 命令到 QQ 原生调用、再到协议输出的完整链路。字段与默认值
+> 见 [configuration.md](../guides/configuration.md)；协议翻译见各协议文档。
 
-## 1. 进程拓扑
+## 进程拓扑
 
 ```
 CLI（node dist/index.mjs）
@@ -16,159 +16,119 @@ CLI（node dist/index.mjs）
 自建宿主进程内：
 
 ```
-stub QQNT.dll（PATH 前置）
+stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
   └─ process.dlopen(wrapper.node)
        └─ kernel（engine / loginService / session）
             ├─ 事件通道 + 事件桥 + 缓存 + 业务 API
-            ├─ adapter（onebot11 / satori）→ network 传输（HTTP / WS）
+            ├─ adapter（onebot11 / satori / milky）→ network 传输（HTTP / WS / SSE）
             └─ adapter（kurobot）→ 自带 WS 客户端
 ```
 
-关键点：
+- **没有 QQ 进程、没有注入、没有 UI**：标准 Node 通过 stub 转发 `napi_*` / `uv_*` /
+  `qq_magic_*` 等宿主符号。Windows 优先用当前 Node；Bun 等非 Node 宿主由 loader 另找或
+  下载 `node.exe`。Linux 用系统 `node` + ELF 全局符号表（ADR-027）。账号之间进程隔离：
+  一个账号一个宿主进程，天然满足 kernel“无全局单例”。
 
-- **没有 QQ 进程、没有注入、没有 UI**。标准 Node 通过 stub 转发 `wrapper.node` 需要的
-  `napi_*` / `uv_*` / `qq_magic_*` 等宿主符号。
-- Windows 上优先使用当前 Node（`process.execPath` 是 `node`/`node.exe`）。若宿主是 Bun 等
-  非 Node 运行时，loader 会另找系统 `node.exe` 或下载 Windows 版 Node，再由它执行自建宿主。
-- Linux 直接跑系统 `node` + 最小 `.so` stub（`LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`）
-  + 官方 ELF `wrapper.node`：ELF 全局符号表直接解析宿主符号，不需要 PATH 前置，也不需要
-  Wine（ADR-027 已退役 Wine，见 [linux-native-host.md](linux-native-host.md)）。
-- 账号之间是进程隔离：一个账号一个自建宿主进程，天然满足 kernel“无全局单例”的前提。
+## 启动序列
 
-## 2. 启动序列
-
-### 2.1 CLI 准备
+### CLI 准备
 
 单账号入口 `runSingleAccount`：
 
-1. 解析数据根（`--data-dir` > `NAPKETTO_DATA` > `<项目根>/.napuketto`）。
-2. 解析账号数据目录：`<数据根>/<uin>`；未指定 `-q` 时为 `<数据根>/default`。
-3. 定位 QQ 原生文件（见 §3），得到 `wrapperPath` 与版本。
-4. 预检实例锁：账号目录已被存活实例占用则快速失败，提示占用 PID。
-5. 解析 `@napuketto/kernel`、`@napuketto/adapter`、`@napuketto/network` 的 dist 入口。
-6. 调 `launchSelfHost`；子进程 `cwd` 指向数据根（QQ 原生层在账号上下文就绪前可能向 cwd
-   落盘），`NAPKETTO_CONFIG` 指向全局配置文件。
+1. 解析数据根（`--data-dir` > `NAPKETTO_DATA` > `<项目根>/.napuketto`），得到账号目录
+   `<数据根>/<uin>`（未指定 `-q` 时为 `<数据根>/default`）。
+2. 定位 QQ 原生文件（见下文），得到 `wrapperPath` 与版本；预检实例锁，已被存活实例占用则
+   快速失败并提示 PID。
+3. 解析 kernel / adapter / network 的 dist 入口，调 `launchSelfHost`；子进程 `cwd` 指向
+   数据根（QQ 原生层就绪前可能向 cwd 落盘），`NAPKETTO_CONFIG` 指向全局配置。
 
-多账号入口 `runSupervisor` 读 `accounts`（或显式 `-q A -q B`），为每个启用账号 spawn 一个
-boot 进程；boot 退出且 `autoRestart=true` 时延迟重启。
+多账号 `runSupervisor` 读 `accounts`（或显式 `-q A -q B`），为每个启用账号 spawn 一个 boot
+进程；boot 退出且 `autoRestart=true` 时延迟重启。
 
-### 2.2 启动自建宿主
+### 启动自建宿主
 
 `launchSelfHost`：
 
-1. 检查 `dist/host/self-host.cjs` 存在。
-2. Windows：检查 stub 目录下的 `QQNT.dll`；默认 `packages/loader/native/build/stub-test-env`，
-   可用 `--stub-dir` / `NAPUTO_STUB_DIR` 覆盖。Linux 改校 `libnapuketto_stub.so`
-   （包内 `native/build/linux-<arch>/`，`NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
-3. 平台分支：Windows 用本机 Node（非 Node 宿主时另解析真 `node.exe`）；Linux 直接跑系统 `node`。
-4. 构造环境变量（`NAPUTO_QQ_PATH`、`NAPUTO_KERNEL_ENTRY`、`NAPUTO_CFG_DIR`、
-   `NAPUTO_QQ_VERSION`、`NAPUTO_WRAPPER_PATH`、adapter/network 入口、配置路径、快速登录
-   账号等）；Windows 另把 stub 目录与 `wrapper.node` 所在目录前置到 `PATH`，Linux 另注入
-   `LD_PRELOAD` 与受管 `HOME`/`XDG_*`。
-5. spawn 自建宿主；捕获 spawn `error`，避免命令缺失等场景把父进程带崩。
+1. 检查 `dist/host/self-host.cjs` 存在；Windows 校验 stub 目录下的 `QQNT.dll`
+   （`--stub-dir` / `NAPUTO_STUB_DIR` 可覆盖），Linux 校验 `libnapuketto_stub.so`
+   （`NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
+2. 按平台准备 Node：Windows 用本机 Node（非 Node 宿主时解析真 `node.exe`），Linux 直接用
+   系统 `node`；构造 `NAPUTO_*` 入口/路径/账号变量，Windows 前置 stub 目录到 `PATH`，
+   Linux 注入 `LD_PRELOAD` 与受管 `HOME`/`XDG_*`。
+3. spawn 宿主；捕获 spawn `error`，避免命令缺失把父进程带崩。
 
-### 2.3 宿主内引导
+### 宿主内引导
 
-`self-host.cjs`（由 `src/host/core/self-host.ts` 打成单文件 CJS bundle）：
+`self-host.cjs`（`src/host/core/self-host.ts` 打成单文件 CJS bundle）：
 
-1. 若 `NAPUTO_IPC=1`，启用 JSON 行 IPC 并上报 `booting`。
-2. 获取账号数据目录实例锁；失败则退出。
-3. 校验 `NAPUTO_WRAPPER_PATH`，`process.dlopen` 加载 `wrapper.node`；检查 exports 至少含
-   `NodeIKernelLoginService`。
-4. 调 `NodeIO3MiscService.get().addO3MiscListener(...)` 激活事件分发。自建宿主没有 QQ 的
-   事件分发对象，不激活会导致 `getLoginList` 永不 resolve。
-5. 动态 import kernel；从 `major.node` 解析 appid（失败即报错，不再静默回退）。
-6. `NapukettoCore.create` → `attachWrapper`：
-   - 自建宿主在 `engine.initWithDeskTopConfig` **之前**创建 session（`StartupSessionWrapper.create`
-     / `getNTWrapperSession`），顺序反了会导致登录后 `onOpentelemetryInit` 不触发。
-   - 装配 engine、loginService、session 到 `CoreContext`。
-7. 登录（见 §4）。
-8. 登录成功后激活 session，等待 `getMsgService` 就绪。
-9. 创建 kernel 业务服务：消息/群/好友事件通道与事件桥、`GroupCache`、`BuddyCache`、各 API、
-   消息日志、在线状态。
-10. 装配协议（非 IPC）或挂 IPC 动作表（IPC）；成功后常驻（IPC 模式上报 `ready`）。
-11. 任一步失败：引导返回 `false` 并退出；IPC 模式额外上报 `failed`（若未上报更具体原因）。
-    多账号 supervisor 模式按 `autoRestart` 决定是否重启；单账号直接退出。
+1. `NAPUTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后取账号目录实例锁，失败即退出。
+2. 校验 `NAPUTO_WRAPPER_PATH`，`process.dlopen` 加载 `wrapper.node`；检查 exports 至少含
+   `NodeIKernelLoginService`，并调 `NodeIO3MiscService.get().addO3MiscListener(...)` 激活
+   事件分发（不激活会导致 `getLoginList` 永不 resolve）。
+3. 动态 import kernel；从 `major.node` 解析 appid（失败即报错）；`NapukettoCore.create` →
+   `attachWrapper`：在 `engine.initWithDeskTopConfig` **之前**创建 session
+   （`StartupSessionWrapper.create` / `getNTWrapperSession`），顺序反了登录后
+   `onOpentelemetryInit` 不触发。
+4. 登录 → 激活 session → 等 `getMsgService` 就绪 → 创建 kernel 业务服务（事件通道与桥、
+   `GroupCache`、`BuddyCache`、各 API、消息日志、在线状态）。
+5. 装配协议（非 IPC）或挂 IPC 动作表（IPC）；成功后常驻（IPC 上报 `ready`）。
+6. 任一步失败：返回 `false` 并退出，IPC 额外上报 `failed`；supervisor 按 `autoRestart`
+   决定是否重启，单账号直接退出。
 
-## 3. QQ 原生文件来源
+## QQ 原生文件来源
 
 `resolveQqFiles` 按优先级定位 `wrapper.node`：
 
 | 级别 | 来源 | 说明 |
 |---|---|---|
-| L0 | `NAPUTO_QQ_FILES` / `qqFilesDir` | 显式文件根，目录结构须为 `<root>/versions/<版本>/resources/app/wrapper.node` |
+| L0 | `NAPUTO_QQ_FILES` / `qqFilesDir` | 显式文件根，结构 `<root>/versions/<版本>/resources/app/wrapper.node` |
 | L1 | 本机 QQ 安装 | `--qq-path` / `NAPUTO_QQ_PATH` > 注册表 > 常见安装路径 |
-| L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物；Windows 解 exe、Linux 解 deb，统一合成 `versions/<版本>/resources/app/` 布局） |
-| 兜底 | 自动下载 | 读 `packages/loader/qq-releases.json` 中**当前平台/架构**的最新条目，下载官方安装包 → sha256 校验 → 7z 解包 → 提取 `wrapper.node` 及依赖到 L2 |
+| L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物） |
+| 兜底 | 自动下载 | `packages/loader/qq-releases.json` 当前平台条目 → 下载 → sha256 → 7z 解包 |
 
-约束与细节：
-
-- **不在仓库或 npm 包内置腾讯二进制**。安装包只在用户机器运行时下载到数据根。
-- 清单条目带 `platform` / `arch`（缺省 win32/x64）与 `coreVersion`；版本选择先按平台过滤，
-  避免 Windows 选中 Linux deb（反之亦然）。
-- Linux 条目下载官方 deb，`7zz` 三层解包（deb → data.tar[.xz] → 文件树），提取
-  `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到同一缓存布局；不依赖
-  `dpkg-deb`。`NAPUTO_LINUX_NATIVE=1` 时校验 wrapper 为 ELF，拒绝误用 Windows 文件。
-- 下载 URL 统一经 `normalizeDownloadUrl` 处理：腾讯 CDN 边缘 WAF 对字面量 `/QQNTV2/`
-  路径段区分大小写拦截，请求前归一化为小写 `/qqntv2/`；源站本身大小写不敏感。
-- 版本清单由 `.github/workflows/update-qq-releases.yml` 每日维护，也可本地跑
-  `node tooling/qq-releases/update-qq-releases.ts` 兜底。
-- cached 来源下 `qq.qqPath` 只是语义占位（缓存目录没有 `QQ.exe`），启动只消费
-  `wrapperPath` 与版本。
-- 解包工具：Windows 用内置 `assets/7zip/7z.exe`；Linux 用内置 `7zz`，缺失时回退数据根
-  缓存或下载。`NAPUTO_7Z_PATH` / `NAPUTO_7Z_URL` 可覆盖。
-
-## 4. 登录与 session
-
-### 4.1 登录
+- **不内置腾讯二进制**：安装包只在运行时下载到数据根；清单条目按 `platform` / `arch` 过滤，
+  避免 Windows 选中 Linux deb。
+- Windows 解 exe；Linux 下载官方 deb，`7zz` 三层解包（deb → data.tar[.xz] → 文件树），提取
+  `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到同一缓存布局。
+- 下载 URL 经 `normalizeDownloadUrl` 归一化：腾讯 CDN 边缘 WAF 对 `/QQNTV2/` 大小写敏感，
+  请求前转小写 `/qqntv2/`。
+- 清单由 `.github/workflows/update-qq-releases.yml` 维护；`NAPUTO_7Z_PATH` 可覆盖解包工具。
+## 登录与 session
 
 `NapukettoCore.login`：
 
 1. `loginService.initConfig`。`commonPath` 必须指向 QQ 真实数据目录
-   （`<QQ 用户数据根>/nt_qq/global`），否则读不到历史账号、快速登录列表为空。
-   Windows 的 QQ 用户数据根来自 `getNTUserDataInfoConfig()`（兜底
-   `$HOME/Documents/Tencent Files`）；Linux 原生分支直接使用 Napuketto 数据根，
-   即 QQ 数据固定落 `<数据根>/nt_qq`（不再读写 `$HOME`）。原生层残余的 `$HOME` 写入
-   （`libbugly` 的 `crash_files`）由 loader 把子进程 `HOME`/`XDG_*` 收敛到
-   `<数据根>/home` 一并管住。
-2. 自建宿主先 `connect()` 并等 `onLoginConnected`，再留短暂缓冲；不等连接直接快速登录会报
-   “登录系统连接异常”。
-3. 快速登录：默认自动选第一个可快速登录账号；`-q` / `NAPUTO_QUICK_UIN` 可强制指定。
-   单步有超时兜底，避免服务端已有同账号会话时永久挂起。
-4. 快速登录失败 → 二维码登录（`qrFallback`）。二维码 PNG 写到账号 `cache/qrcode.png`，
-   日志打印 URL；CLI 从子进程标记行解析后在终端渲染二维码，IPC 模式经 `qr` 消息转发。
-5. `qrOnly` 跳过快速登录，直接扫码（Koishi 面板“扫码登录”/切账号用）。
+   （`<QQ 用户数据根>/nt_qq/global`），否则快速登录列表为空。Windows 数据根来自
+   `getNTUserDataInfoConfig()`；Linux 固定用 `<数据根>/nt_qq`，loader 把子进程
+   `HOME`/`XDG_*` 收敛到 `<数据根>/home`，管住 `libbugly` 崩溃文件等残余写入。
+2. 先 `connect()` 等 `onLoginConnected` 再留短暂缓冲；快速登录默认选第一个可用账号
+   （`-q` / `NAPUTO_QUICK_UIN` 可指定），单步有超时兜底。
+3. 快速登录失败 → 二维码登录（`qrFallback`）：PNG 写 `cache/qrcode.png`，日志打印 URL，
+   CLI 渲染二维码，IPC 经 `qr` 消息转发；`qrOnly` 跳过快速登录。
 
-### 4.2 session 激活顺序
+登录成功后：构造 `sessionConfig`（`accountPath` 指 `nt_qq/global`，`downloadPath` 指其下
+临时目录，`machineGuid` 来自 `getMachineGuid()`）→ `session.init` → **随后**
+`startupSession.start()`（无则 `startNT`，顺序反了业务 service 不挂载）→ 等
+`onOpentelemetryInit(true)` 或 `onSessionInitComplete(0)`（超时按失败）→ 轮询
+`getMsgService()` 非空，确认 READY 后才建业务 API 与缓存。
 
-自建宿主登录成功后：
+## 数据流
 
-1. 构造 `sessionConfig`，`accountPath` 指向 QQ 的 `nt_qq/global`，`downloadPath` 指向其下
-   临时目录；`machineGuid` 从 `loginService.getMachineGuid()` 读取。
-2. `session.init(config, depends, dispatcher, listener)`。
-3. **随后**调用 `startupSession.start()`（没有则回退 `startNT`）。顺序必须是先 init 后
-   start；反过来业务 service 不会挂载。
-4. 等 `onOpentelemetryInit(is_init=true)`（主信号）或 `onSessionInitComplete(0)`（辅信号），
-   超时按失败处理。
-5. 轮询 `getMsgService()` 非空，确认 session READY；之后才创建业务 API 与缓存。
-
-## 5. 数据流
-
-### 5.1 调用链（第三方 → QQ）
+### 调用链（第三方 → QQ）
 
 ```
 第三方 HTTP/WS 请求
   → network 传输（HttpServer / WsServer / WsClient）
-  → adapter 协议层（OB11 / Satori 动作分发）
+  → adapter 协议层（OB11 / Satori / Milky 动作分发）
   → BaseAction：zod 校验 → 动作实现
   → kernel 业务 API（统一错误语义）
   → wrapper.node 原生服务
 ```
 
-错误语义：kernel 抛 `KernelError`（带 `KernelErrorCode`）；协议层只维护“错误码 → 协议
-retcode/HTTP 状态”的映射表，不解析底层错误。
+kernel 抛 `KernelError`（带 `KernelErrorCode`）；协议层只维护“错误码 → 协议 retcode/HTTP
+状态”映射，不解析底层错误。
 
-### 5.2 事件链（QQ → 第三方）
+### 事件链（QQ → 第三方）
 
 ```
 wrapper.node 原生回调
@@ -177,77 +137,44 @@ wrapper.node 原生回调
        ├─ 协议适配器订阅：翻译为协议事件（纯函数，只读入参/缓存）
        ├─ 缓存订阅：GroupCache / BuddyCache 主动维护
        └─ 消息日志订阅：控制台/文件输出
-  → network EventBroadcaster（**每协议一个**，见 §5.4）
-  → 本协议自己的 HTTP/WS 传输广播
+  → network EventBroadcaster（每协议一个）
+  → 本协议自己的 HTTP/WS/SSE 传输广播
 ```
 
-单个订阅者抛异常不会打断其他订阅者：`NTEventChannel.emit` 与
-`EventBroadcaster.emit` 都逐订阅者 `try/catch`。
+单个订阅者抛异常不打断其他订阅者：`NTEventChannel.emit` 与 `EventBroadcaster.emit` 都逐
+订阅者 `try/catch`。
 
-### 5.4 协议隔离（一协议一广播器）
+### 协议隔离
 
-`assemble-protocols` 为每个启用的协议各建一个 `EventBroadcaster`（OB11 / Satori /
-Milky；Kurobot 是纯客户端出向协议，无第三方接入门面，不需要广播器），adapter 的
-事件只进自己的广播器，再由自己的传输（HTTP / WS / WebHook）推给客户端。多协议同时
-启用也互不串台：OB11 端口只有 OneBot 11 事件（`post_type` 信封），Satori 端口只有
-`op/body` 信封。
+`assemble-protocols` 为每个启用协议各建一个 `EventBroadcaster`（OB11 / Satori / Milky；
+Kurobot 是纯出向协议，无第三方接入门面，不需要广播器）。多协议同时启用也互不串台：OB11
+端口只有 `post_type` 信封，Satori 端口只有 `op/body` 信封。可选协议一律「账号协议段非空
+才装配」：未配置的不实例化、不订阅、不占端口。IPC 模式的 OB11 出口是独立链路
+（`ipc-ob11.ts` 自己的广播器 → `sendEvent("ob11", ...)`）。
 
-可选协议（Satori / Kurobot / Milky）一律「账号协议段非空才装配」：未配置的协议
-不实例化、不订阅 kernel 事件、不占端口。历史上 Satori 曾无条件装配且四协议共用
-同一个广播器，导致单协议配置下也能在 OB11 端口收到 Satori 事件（2026-11-10 修复，
-见 [loader design §12](../../packages/loader/docs/design.md)）。
+**缓存层**：`GroupCache` 订阅群列表/详情/成员事件主动更新，未命中经 `GroupApi` 惰性回填并
+对并发回填去重；`BuddyCache` 把 `Buddy/onBuddyListChange` 全量快照与上一帧对比，产出
+`onBuddyAdded` / `onBuddyRemoved`（首帧只建 baseline）。协议翻译层只读缓存，不在翻译函数里
+发请求，因此翻译是纯函数，可并行、可单测。
 
-IPC 模式的 OB11 事件出口是另一条独立链路（`ipc-ob11.ts` 自己的广播器 →
-`sendEvent("ob11", ...)`），不走这里的协议装配。
+## 多账号与生命周期
 
-### 5.3 缓存
+- 一个账号一个 boot 子进程，再拉起自己的宿主；账号间不共享运行时对象。`autoRestart`
+  （默认 true）与 `restartDelayMs`（默认 2000ms）控制崩溃重启；SIGINT/SIGTERM 停止全部
+  子进程，超时未退则父进程强制退出。
+- `<账号目录>/instance.lock` 记录 pid + 启动时间 + 命令行摘要，同账号目录只允许一个实例。
+  pid 被复用（cmdline 不匹配）或查不到命令行时允许接管；旧锁无 cmdline 字段时保守判占用，
+  需手动删锁（见 [operations.md](../guides/operations.md)）。
+- `runtime.json`、`supervisor.json` 供 `status/stop/restart` 读取；进程存活以 pid 探测修正，
+  不只看文件里的 `running`。
 
-- `GroupCache`：订阅群列表/详情/成员事件主动更新；查询未命中时经 `GroupApi` 惰性回填，
-  并对并发回填做 in-flight 去重。
-- `BuddyCache`：把 `Buddy/onBuddyListChange` 的全量好友快照与上一帧对比，产出
-  `BuddyCache/onBuddyAdded` / `onBuddyRemoved` 归一化事件（首帧只建 baseline，不发事件）。
-- 协议翻译层只读缓存，不在翻译函数里发请求；因此翻译是纯函数，可并行、可单测。
+**IPC 模式**：`NAPUTO_IPC=1` 时宿主不装配 HTTP/WS 协议传输，stdout 只输出 JSON 行协议，
+stdin 接收 `action` / `control` / `ping`；pino console 关闭，文件日志照常。`control login`
+支持指定账号/强制扫码，已就绪时走“软重登”：清理旧协议/桥/缓存 → 用新登录结果重跑装配链，
+不重启进程。Koishi 适配器（独立仓库）通过此协议驱动宿主；普通 CLI 部署不需要 IPC。
 
-## 6. 多账号与生命周期
-
-### 6.1 supervisor
-
-- 一个账号一个 boot 子进程，子进程再拉起自己的自建宿主；账号之间不共享运行时对象。
-- `autoRestart`（默认 true）与 `restartDelayMs`（默认 2000ms）控制崩溃重启。
-- 收到 SIGINT/SIGTERM 时停止全部子进程；子进程超过时限未退出则父进程强制退出。
-
-### 6.2 实例锁与状态文件
-
-- `<账号数据目录>/instance.lock`：pid + 启动时间 + 命令行摘要。同账号目录只允许一个实例，
-  避免 QQ 原生层（MMKV/登录单例）抢锁挂起。
-- pid 存活但命令行摘要不匹配 → 视为 pid 被复用，允许接管；查不到命令行同样按“持有者已死”
-  处理。旧锁没有 cmdline 字段时保守判占用，需要手动删锁（见
-  [operations.md](../guides/operations.md)）。
-- `<账号数据目录>/runtime.json`、`<数据根>/supervisor.json` 供 `status/stop/restart`
-  读取；进程存活以 pid 探测修正，不只看文件里的 `running`。
-
-### 6.3 IPC 模式
-
-`NAPUTO_IPC=1` 时自建宿主不装配 HTTP/WS 协议传输，而是：
-
-- stdout 只输出 JSON 行协议，stdin 接收 `action` / `control` / `ping`。
-- pino console 关闭，避免与协议行交错；文件日志照常。
-- IPC 版本 `1`；消息类型 `status` / `login` / `qr` / `event` / `result` / `log` / `ping` /
-  `pong` / `action` / `control`。
-- 动作名采用点分域（如 `msg.sendMessage`）；登录后把 kernel 服务动作并入同一张表。
-  app 层注入 adapter/network 入口时，可再整表挂载 OB11 动作容器（只订阅事件，不装配网络）。
-- `control login` 支持指定账号/强制扫码；已就绪时走“软重登”：
-  清理旧协议/桥/缓存 → 用新登录结果重跑装配链，不重启进程。登录控制相位为
-  `login-race` → `assembling` → `ready`（或 `aborted`），迟到结果不误报。
-- `control status` 重播最近一条 status，供父进程丢失消息后重同步。
-
-Koishi 适配器（独立仓库）通过此协议驱动宿主；普通 CLI 部署不需要 IPC。
-
-## 7. 失败语义与约束
-
-- 引导失败**不留在常驻态**：`bootstrap` 返回 false → 上报 `failed` 并退出，避免父进程
-  把“假 ready”当成可用实例。supervisor 按 `autoRestart` 决定是否重启。
-- CLI 模式接管子进程 stdout/stderr 并逐行过滤原生噪音；IPC 模式 stdout 专用于协议行。
-- 非 Node 宿主（Bun 等）必须由 loader 解析出真正的 `node.exe`，否则 `wrapper.node` 的
-  宿主符号绑定失败。
-- 协议装配失败在 CLI 模式视为引导失败（跑宿主就是为了协议服务），不再 fail-soft。
+## 失败语义
+- 引导失败**不留在常驻态**：`bootstrap` 返回 false → 上报 `failed` 并退出，避免父进程把
+  “假 ready”当成可用实例。
+- CLI 接管子进程 stdout/stderr 并过滤原生噪音；IPC 模式 stdout 专用于协议行。非 Node 宿主
+  必须由 loader 解析出真正的 `node.exe`；协议装配失败在 CLI 模式视为引导失败。

@@ -3,7 +3,7 @@
 NapukettoQQ 命令行入口。
 
 ```bash
-napuketto                  # 启动：自动登录（快速/扫码）→ OneBot 11 服务
+napuketto                  # 启动：自动登录（快速/扫码）→ 按账号配置装配协议服务
 napuketto -q <QQ号>        # 指定账号快速登录
 napuketto -q A -q B        # 多账号 supervisor 编排
 napuketto supervisor       # 读全局配置 accounts 拉起多账号子进程

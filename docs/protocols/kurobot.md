@@ -1,6 +1,9 @@
 # KuroBot 协议
 
-## 1. 定位
+> KuroBridge 群服互通适配器：纯出向 WS 客户端，把 QQ 群消息送到 Minecraft 服务端插件，
+> 并把游戏事件渲染回 QQ 群。源码入口 `packages/adapter/src/kurobot/`。
+
+## 定位
 
 KuroBot 是第三条协议，形态与其他两条不同：**纯出向 WS 客户端**，把 QQ 群消息送到
 Minecraft 服务端的 KuroBridge 插件，并把游戏事件渲染回 QQ 群。没有 HTTP 服务、没有事件
@@ -11,7 +14,7 @@ Minecraft 服务端的 KuroBridge 插件，并把游戏事件渲染回 QQ 群。
   形状，将来可切换为真依赖。
 - 代码：`packages/adapter/src/kurobot/{adapter,connection,schema,translate,config}.ts`。
 
-## 2. 线格式
+## 线格式
 
 单行 JSON 文本帧：
 
@@ -25,7 +28,7 @@ Minecraft 服务端的 KuroBridge 插件，并把游戏事件渲染回 QQ 群。
 - 已知帧：`hello` / `hello_ack` / `ping` / `pong` / `chat` / `join` / `leave` / `death` /
   `status` / `bindings_updated` / `command` / `command_result` / `query` / `query_result`。
 
-## 3. 连接
+## 连接
 
 `KurobotConnection` 自建，不复用 `network.WsClient`，原因是四个协议语义：子协议握手、
 应用层心跳、每次 open 重发 hello、close-code 感知退避。
@@ -50,7 +53,7 @@ connecting → establishing（hello 已发，等 hello_ack）
 - 未知帧：事件帧（无 id）debug 忽略；请求帧（带 id）回同 id `<type>_result`
   `{ ok:false, error:"unknown frame type" }`；`_result` 结尾的帧不回执，防乒乓。
 
-## 4. QQ → 游戏
+## QQ → 游戏
 
 只处理群聊消息：
 
@@ -64,7 +67,7 @@ connecting → establishing（hello 已发，等 hello_ack）
 4. 普通聊天 → 仅当群号在 `bindings` 集合中才发 `chat` 事件；集合为空表示全部不发。
    `hello_ack.channelBindings` 建立初始集合，`bindings_updated` 全量替换。
 
-## 5. 游戏 → QQ
+## 游戏 → QQ
 
 | 帧 | 处理 |
 |---|---|
@@ -83,7 +86,7 @@ connecting → establishing（hello 已发，等 hello_ack）
 - 所有发群文本超过 1500 个 UTF-16 码元时截断，追加 `…(截断)`。
 - 群消息发送失败只记 error 日志，不影响连接与收链路。
 
-## 6. 配置
+## 配置
 
 `[accounts.kurobot]` 段非空即启用，且必须含 `url`（`ws://` 或 `wss://`）。字段与默认值见
 [configuration.md](../guides/configuration.md)：
@@ -103,7 +106,7 @@ url = "ws://127.0.0.1:25580"
 装载时只有段非空才装配；非空段必须含 `url`，否则 zod 校验失败导致装配失败。空段
 （`[accounts.kurobot]` 下没有任何键）等同未启用，不会报错。
 
-## 7. 已知限制
+## 已知限制
 
 - 协议仍是镜像实现；`@kuro-bridge/protocol` 发版后应切换真依赖，把 golden 对拍改为互验。
 - 富文本只做降级：MC → QQ 纯文本；QQ → MC 图片/语音/文件等只给占位或跳过，协议本身也

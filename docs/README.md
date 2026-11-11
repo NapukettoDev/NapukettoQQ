@@ -1,58 +1,76 @@
 # NapukettoQQ 文档
 
-> 代码是唯一事实来源。本目录只解释架构、机制、约束与操作流程；接口签名、字段默认值、
-> 动作列表、包版本以源码与 `package.json` 为准。文档与代码冲突时，以代码为准并顺手修文档。
+> 代码是唯一事实源。本目录只解释现行机制、边界与操作；字段默认值、动作名、类型签名与
+> 包版本以源码和 `package.json` 为准。文档与代码冲突时，以代码为准并顺手修文档。
 
-## 阅读顺序
+## 我该读哪篇
 
-1. 根目录 [AGENTS.md](../AGENTS.md)——工程指南：红线、工作流、代码风格。开始任何工作前必读。
-2. [architecture/overview.md](architecture/overview.md)——项目定位、包结构、依赖方向、分层红线。
-3. [architecture/runtime.md](architecture/runtime.md)——自建宿主启动链、登录与 session、调用与事件数据流。
-4. [guides/configuration.md](guides/configuration.md)——`napuketto.toml` 字段、路径解析、环境变量。
-5. 按需读协议文档：[OneBot 11](protocols/onebot11.md)、[Satori](protocols/satori.md)、
-   [KuroBot](protocols/kurobot.md)；[Milky](protocols/milky.md) P1 已落地（规划稿含 P2 待办），
-   动手前再读。
-6. 对应包的 `docs/design.md`——模块级设计、实测结论与实现细节（见下方“包内设计书”）。
+读者：**A** = 用户/运维，**B** = 贡献者，**C** = AI 代理。
 
-做运维、排障或发版时直接读对应的指南，不必从头开始。
+| 读者 | 任务 | 入口 |
+|---|---|---|
+| A | 安装并跑起第一个机器人 | [根 README 快速开始](../README.md#快速开始) → [配置](guides/configuration.md) |
+| A | Docker 部署 | [Docker 指南](guides/docker.md) |
+| A | 接 Koishi / 第三方客户端 | [OneBot 11](protocols/onebot11.md) · [Satori](protocols/satori.md) · [KuroBot](protocols/kurobot.md) · [Milky](protocols/milky.md) |
+| A | 启动失败、掉线、端口冲突 | [运维与排障](guides/operations.md) |
+| B | 本地开发、提交、changeset | [开发指南](guides/development.md) |
+| B | 改某个包 | 该包 `docs/design.md`（实测细节在同级 `docs/evidence.md`） |
+| B/C | 架构、启动链、历史取舍 | [架构总览](architecture/overview.md) · [运行链路](architecture/runtime.md) · [ADR](architecture/decisions.md) |
+| B | Linux ELF 宿主与依赖 | [Linux 原生宿主](architecture/linux-native-host.md)（探针见 [evidence](architecture/linux-native-host-evidence.md)） |
+| C | 固定入口链 | [AGENTS.md](../AGENTS.md) → 本页 → [overview](architecture/overview.md) → [runtime](architecture/runtime.md) → 包 design |
 
 ## 文档地图
 
-| 文档 | 内容 |
-|---|---|
-| [architecture/overview.md](architecture/overview.md) | 项目定位、包职责、依赖方向、分层原则、硬性红线 |
-| [architecture/runtime.md](architecture/runtime.md) | 进程拓扑、启动序列、QQ 文件来源、登录/session、数据流、多账号与 IPC |
-| [architecture/decisions.md](architecture/decisions.md) | 现行 ADR 与已废止路线（只保留仍然约束代码的结论） |
-| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux 原生 ELF 自建宿主（**已实现并发布**；ADR-027 起为 Linux 唯一路线、Wine 已退役；2 必需 + PerfTrace stub、无头依赖、双版本、各阶段实测与 arm64 交付缺口；保留 ADR-019 的不内置腾讯二进制原则） |
-| [guides/development.md](guides/development.md) | 本地开发、构建顺序、测试、CI、changeset、代码风格 |
-| [guides/configuration.md](guides/configuration.md) | 全局 TOML、账号内协议段、传输实例默认值、数据目录、环境变量 |
-| [guides/operations.md](guides/operations.md) | 单实例锁、停启与状态、日志、登录/文件/原生宿主依赖/噪音排障 |
-| [guides/docker.md](guides/docker.md) | 官方镜像与 Compose 部署、首启链路、端口与安全、备份迁移、镜像构建、排障 |
-| [guides/release.md](guides/release.md) | changeset → CI 发布链、OIDC、仓库一次性配置、补发与排障 |
-| [protocols/onebot11.md](protocols/onebot11.md) | OB11 传输、动作面、事件面、ID 映射、已接线与待校准项 |
-| [protocols/satori.md](protocols/satori.md) | Satori HTTP RPC / WS 事件、动作与 501、元素编解码、ID 映射 |
-| [protocols/kurobot.md](protocols/kurobot.md) | KuroBridge WS 客户端、连接状态机、QQ ↔ MC 映射、配置与限制 |
-| [protocols/milky.md](protocols/milky.md) | Milky 1.3.0：**P1 已实现**（传输/49 动作/15 事件/转发索引/装配），其余为实施规划（65 接口 × kernel 覆盖、21 事件 × 数据源、P2 待办） |
+| 文档 | 职责 | 何时更新 |
+|---|---|---|
+| [architecture/overview.md](architecture/overview.md) | 包拓扑、依赖方向、进程模型、分层红线 | 新增包或改变包间依赖 |
+| [architecture/runtime.md](architecture/runtime.md) | 启停生命周期、登录/session、数据流、IPC、多账号 | 改 supervisor 或生命周期 |
+| [architecture/decisions.md](architecture/decisions.md) | 仍约束代码的 ADR 与已废止路线结论 | 发生重大技术选型变更 |
+| [architecture/linux-native-host.md](architecture/linux-native-host.md) | Linux ELF 宿主机制、stub、最低依赖、arm64 现状 | 改 ELF 加载器或 stub 符号 |
+| [guides/configuration.md](guides/configuration.md) | `napuketto.toml` 结构、路径解析、环境变量 | 顶层配置 schema 变更 |
+| [guides/operations.md](guides/operations.md) | 停启、状态、日志、退出码、常见故障 | 新增高频运维故障模式 |
+| [guides/docker.md](guides/docker.md) | 官方镜像双变体、compose、卷、端口、备份 | Dockerfile 或镜像变体变更 |
+| [guides/development.md](guides/development.md) | 本地环境、构建顺序、测试、CI、代码风格 | 构建流或本地调试方式变更 |
+| [protocols/onebot11.md](protocols/onebot11.md) | OB11 配置、动作/事件面、ID 映射、差异 | 增改 OB11 行为 |
+| [protocols/satori.md](protocols/satori.md) | Satori 传输、动作/事件、元素编解码 | 增改 Satori 行为 |
+| [protocols/kurobot.md](protocols/kurobot.md) | KuroBridge WS 客户端、映射、限制 | 增改 KuroBot 行为 |
+| [protocols/milky.md](protocols/milky.md) | Milky 配置、能力面、已知差异 | Milky 接口实现变更 |
 
-## 包内设计书
+包内设计书与 evidence：
 
-跨包机制进本目录；单包内部实现细节留在包内，避免重复维护。
+- [kernel design](../packages/kernel/docs/design.md) · [evidence](../packages/kernel/docs/evidence.md)
+- [adapter design](../packages/adapter/docs/design.md) · [evidence](../packages/adapter/docs/evidence.md)
+- [loader design](../packages/loader/docs/design.md) · [evidence](../packages/loader/docs/evidence.md)
+- [create design](../apps/napuketto-create/docs/design.md)
+- [cli design](../apps/cli/docs/design.md) · [network design](../packages/network/docs/design.md) ·
+  [media design](../packages/media/docs/design.md)
 
-- [packages/kernel/docs/design.md](../packages/kernel/docs/design.md)——事件桥 / 事件通道 / API 实现细节 / 探测产物 / 视频发送
-- [packages/adapter/docs/design.md](../packages/adapter/docs/design.md)——onebot11 事件链 / 热更新 / 媒体动作 / sysmsg 解码 / kurobot
-- [packages/loader/docs/design.md](../packages/loader/docs/design.md)——QQ 文件来源 / 平台分支 / IPC / 登录相位机与软重登
-- [apps/napuketto-create/docs/design.md](../apps/napuketto-create/docs/design.md)——脚手架交互与生成骨架
-- `packages/loader/native/docs/HANDOVER-V11.md`——载具层闭源交接，位于私有 submodule，不在公共仓库
+## 写作规范（强制）
 
-Koishi 适配器自 2026-10-18 起是独立仓库
-（`NapukettoDev/koishi-plugin-adapter-napuketto`），其设计与发布文档在该仓库内；本仓只维护
-`@napuketto/*` 的公开契约。
+四类文档各用固定骨架，首屏 H1 下必须是 `>` 引用块（≤3 行）：解决什么问题、给谁看、源码在哪。
 
-## 维护约定
+- **`design.md`**：`## 核心机制`（拓扑/数据流/状态机）→ 跨包契约（接口边界与错误传播，
+  不抄签名）→ 关键取舍与不变量（改代码不能破的红线）；小包可合并小节。实测链接 `./evidence.md`。
+- **`evidence.md`**：`## 探针与复现命令` → `## 字段样本与边界表现`。只放逆向/实测证据，
+  不是 API 契约；严禁 RVA/Offset/内存地址，禁止日期与阶段进度。
+- **`protocols/*.md`**：`## 配置方式`（必填 + 高频项，全量字段指源码 schema）→ 按协议组织
+  传输、能力速查、事件与差异；表头注明源码目录，不写汇总数字。
+- **`guides/*.md`**：`## 操作步骤`（仅此处允许 `1. 2. 3.`）→ `## 验证与常见排障`；
+  参考型指南（如开发指南）可只保留命令与说明。
 
-- **不维护时点快照**：不写包版本表、轮次进展、历史交接。现状看代码与 CHANGELOG，历史看 git。
-- **不建 archive/**：已完结的调查、任务书与草案直接删除；需要追溯时查 git 历史。
-- **机制与路径优先**：文档写“谁负责、怎么流动、边界在哪”，不复制大段类型签名和默认值。
-- **设计先行**：改行为前先更新对应包的 `docs/design.md`；改跨包契约或运行链路时同步本目录。
-- **ADR 只追加**：新决策追加到 `architecture/decisions.md`，编号连续；已废止路线只留结论。
-- 文档一律简体中文；链接用相对路径；失效链接发现即修。
+格式红线：
+
+1. 标题不写手工编号（`## 1.`、`### 9.12`、`Stage 3b`）；最多到 H3。
+2. 除 `decisions.md` 外不写日期、Stage、进度标记、PR/issue 编号；历史交 Git。
+3. 非表格、非 URL 行 ≤120 字符；表格单元格不写长句，不放代码块。
+4. 单段 JSON >15 行必须进 `evidence.md`；正文只留最小示意。
+5. 固定术语：`wrapper.node`、Linux 原生宿主、`napuketto.toml`、内嵌协议段、`@napuketto/*`；
+   用户变量 `NAPKETTO_*`，loader 内部变量 `NAPUTO_*`（以源码为准）。
+
+## 维护红线
+
+- 改行为前先改对应包 `design.md`；跨包契约变化同步本目录。
+- 严禁向 `design.md` 追加带日期的进度记录或大段实测 JSON；证据一律进同级 `evidence.md`。
+- 不维护时点快照：不写版本表、轮次进展、历史交接；不建 `archive/`；过期即删，追溯查 Git。
+- ADR 只追加编号，被替代的条目保留并注明替代者。
+- 增删文档文件时同步本页路由；提交前跑 `pnpm check:docs`。
