@@ -12,10 +12,10 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { QqInstallInfo } from "./locate-qq.js";
+import { packageRoot } from "../../internal/package-root.js";
+import type { QqInstallInfo } from "../locate-qq.js";
 import {
     ensureLinuxSevenZip,
     ensureQqFiles,
@@ -25,8 +25,8 @@ import {
     resolveLinuxQqInstall,
     resolveQqFiles,
     tryResolveLinuxLocalQq,
-} from "./locate-qq.js";
-import { latestRelease, loadQqReleases } from "./qq-releases.js";
+} from "../locate-qq.js";
+import { latestRelease, loadQqReleases } from "../qq-releases.js";
 
 /** mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -113,7 +113,7 @@ function tarExtractFake(args: string[]): string {
     return "";
 }
 
-vi.mock("./qq-download.js", () => ({
+vi.mock("../qq-download.js", () => ({
     downloadFile: vi.fn(async (options: { dest: string; url: string; expectedSha256?: string }) => {
         h.downloads.push({
             dest: options.dest,
@@ -132,8 +132,8 @@ vi.mock("./qq-download.js", () => ({
     }),
 }));
 
-vi.mock("./qq-extract.js", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("./qq-extract.js")>();
+vi.mock("../qq-extract.js", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../qq-extract.js")>();
     /** 假提取：在缓存里落 wrapper.node，返回 cached QqInstallInfo。 */
     const fakeWrapperExtract = (
         extractedDir: string,
@@ -619,7 +619,7 @@ describe("ensureQqFiles 下载流", () => {
 
 describe("ensureLinuxSevenZip", () => {
     /** 与源码推导一致的内置资产路径（src → 包根 assets/7zip/7zz）。 */
-    const Bundled7zz = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "7zip", "7zz");
+    const Bundled7zz = join(packageRoot(), "assets", "7zip", "7zz");
 
     it.skipIf(!existsSync(Bundled7zz))(
         "内置资产命中（发布包静态二进制，7zz 已 755 → chmod 幂等）→ 直接返回",

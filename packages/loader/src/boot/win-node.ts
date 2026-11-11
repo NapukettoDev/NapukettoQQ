@@ -15,9 +15,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { copyFile, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { resolveDataRoot } from "./data-root.js";
-import { downloadFile } from "./qq-download.js";
-import { extractInstaller } from "./qq-extract.js";
+import { resolveDataRoot } from "../internal/data-root.js";
+import { downloadFile } from "../qq/qq-download.js";
+import { extractInstaller } from "../qq/qq-extract.js";
 
 /** 目标 Windows node.exe 可执行文件名（zip 内）。 */
 const WIN_NODE_EXE = "node.exe";

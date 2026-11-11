@@ -46,8 +46,8 @@ import type {
     QqReleaseArch,
     QqReleaseEntry,
     QqReleasesFile,
-} from "../../packages/loader/src/qq-releases.ts";
-import { normalizeDownloadUrl, releasePlatform } from "../../packages/loader/src/qq-releases.ts";
+} from "../../packages/loader/src/qq/qq-releases.ts";
+import { normalizeDownloadUrl, releasePlatform } from "../../packages/loader/src/qq/qq-releases.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");

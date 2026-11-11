@@ -12,7 +12,7 @@
  *    \0 转空格 / 空 / 抛错）、其他平台 null（不发起查询）
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { normalizeCmdline, readCmdlineForPid, selfCmdline } from "./pid-cmdline.js";
+import { normalizeCmdline, readCmdlineForPid, selfCmdline } from "../pid-cmdline.js";
 
 /** execFileSync / readFileSync mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -75,9 +75,9 @@ function withPlatform<T>(platform: NodeJS.Platform, fn: () => Promise<T>): Promi
 }
 
 /** 取全新模块（CMDLINE_PROBE_SUPPORTED 随当前平台重算）。 */
-async function fresh(): Promise<typeof import("./pid-cmdline.js")> {
+async function fresh(): Promise<typeof import("../pid-cmdline.js")> {
     vi.resetModules();
-    return await import("./pid-cmdline.js");
+    return await import("../pid-cmdline.js");
 }
 
 describe("normalizeCmdline", () => {

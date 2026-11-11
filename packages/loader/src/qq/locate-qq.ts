@@ -20,8 +20,8 @@ import {
 import { chmod, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
-import { resolveDataRoot } from "./data-root.js";
+import { resolveDataRoot } from "../internal/data-root.js";
+import { packageRoot } from "../internal/package-root.js";
 import { downloadFile } from "./qq-download.js";
 import {
     bundledSevenZipSupported,
@@ -406,7 +406,7 @@ export async function ensureLinuxSevenZip(
     }
 
     // 1. 内置资产（治本）：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
-    const bundled = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "7zip", "7zz");
+    const bundled = join(packageRoot(), "assets", "7zip", "7zz");
     if (existsSync(bundled)) {
         // npm 安装可能丢失执行位，保险设置（失败不阻塞：execFile 报 EACCES 时由调用方提示）
         await chmod(bundled, 0o755).catch(() => {

@@ -6,7 +6,7 @@
  */
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
-import { registerShutdownHook } from "../../shutdown.js";
+import { registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { env } from "../env.js";
 import {
     attachIpcServices,

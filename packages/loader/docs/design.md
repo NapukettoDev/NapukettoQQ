@@ -121,7 +121,7 @@ https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/a0ce07ad/QQ_9.9.33_260730_x64_0
   （实测 x64 安装包 `Content-Length: 330446512`，Range 请求 `206` 且首字节为 PE 头 `MZ`）。
   同一出口 IP、同一时刻、仅路径大小写不同的两次请求结果相反 → 成因是**路径匹配规则**，
   而非此前 workflow 注释里写的「数据中心 IP 被封」。
-  故 `normalizeDownloadUrl()`（`src/qq-releases.ts`）负责把 `/QQNTV2/` 降为小写，
+  故 `normalizeDownloadUrl()`（`src/qq/qq-releases.ts`）负责把 `/QQNTV2/` 降为小写，
   在**唯一出站口** `downloadFile()` 处统一生效；清单里仍保存官方原样 URL（可追溯），
   若腾讯日后修掉该规则，小写路径依旧等价可用。
   > 历史：`QQNT` 段（9.9.33 及更早）不受该规则影响，故旧条目 URL 保持原样。
@@ -288,7 +288,7 @@ strace 实测（2026-11-09）：Bugly 只读 `$HOME`、**不读 `XDG_CONFIG_HOME
 （登录票据在 `<数据根>/nt_qq`，与 `HOME` 无关）。win32 分支不做此收敛（Windows 数据目录
 已由 `desktopGlobalPath` 管住）。
 
-实现：`src/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
+实现：`src/boot/linux-native.ts`（纯函数）+ `launcher.ts` 的 `launchLinuxNative`；
 Stage 0b 已在 Linux QQ 3.2.35 / QQNT 9.9.37 上验证登录 + session READY。
 
 ### 3.5 本地 deb 安装（Stage 3d，2026-11-09）
@@ -351,18 +351,35 @@ docker run -d \
 
 ```
 packages/loader/
-├── qq-releases.json          # 新增：版本清单（URL + sha256 + appid，纯文本）
+├── qq-releases.json          # 版本清单（URL + sha256 + appid，纯文本）
 ├── src/
-│   ├── locate-qq.ts          # 改：保留 L1 本机探测；新增 resolveQqFiles/ensureQqFiles
-│   ├── qq-download.ts        # 新增：官方安装包下载（https + sha256 校验 + 断点续传可选）
-│   ├── qq-extract.ts         # 新增：7z 解包 + 提取 wrapper.node/QQNT.dll/major.node
-│   ├── win-node.ts           # 新增：Windows 版 node.exe 获取（下载/解压/缓存/覆盖）
-│   ├── launcher.ts           # 改：spawn 平台分支（win32 / linux 原生 ELF）
-│   └── index.ts              # 改：导出新模块
-├── Dockerfile.linux          # 新增（仓库根或 loader 包内）
-├── docker/entrypoint.sh      # 新增
+│   ├── index.ts              # 公共出口
+│   ├── qq/                   # 腾讯产物获取链（定位 → 清单 → 下载 → 解包）
+│   │   ├── locate-qq.ts      # L0/L1/L2 多级来源 + resolveQqFiles/ensureQqFiles
+│   │   ├── qq-releases.ts    # 版本清单读取 + URL 归一化
+│   │   ├── qq-download.ts    # 官方安装包下载（https + sha256）
+│   │   └── qq-extract.ts     # 7z 解包 + 提取 wrapper.node/*.dll/*.so
+│   ├── boot/                 # 宿主进程装配与拉起
+│   │   ├── launcher.ts       # spawn 平台分支（win32 / linux 原生 ELF）
+│   │   ├── linux-native.ts   # Linux 原生宿主环境（LD_PRELOAD / HOME 收敛）
+│   │   └── win-node.ts       # Windows 版 node.exe 获取（下载/解压/缓存）
+│   ├── lifecycle/            # 进程治理
+│   │   ├── instance-lock.ts  # 单实例锁
+│   │   ├── pid-cmdline.ts    # 跨进程 cmdline 探活（锁的 PID 复用校验）
+│   │   └── shutdown.ts       # 停止哨兵 + 关停钩子 + 信号
+│   ├── internal/             # 包内小工具
+│   │   ├── data-root.ts      # 数据根解析
+│   │   ├── package-info.ts   # 本包 package.json 元数据
+│   │   └── package-root.ts   # 包根定位（向上找 package.json，源码/产物通用）
+│   ├── host/                 # 自建宿主进程内运行时（self-host / bootstrap / IPC）
+│   └── __tests__/            # 入口级单测（index）；各组单测在 <group>/__tests__/
+├── Dockerfile.linux          # 仓库根（loader 相关）
 └── docs/design.md            # 本文件
 ```
+
+单测与源码同层就近放置：`qq/__tests__/`、`boot/__tests__/`、`lifecycle/__tests__/`、
+`internal/__tests__/`（`host/` 原有 `__tests__/` 不变），`src/__tests__/` 只留公共出口
+的入口级用例。
 
 **依赖**：loader 现有依赖不变（无新增运行时 npm 依赖）；`qq-download.ts` 用 Node 内置
 `https`/`crypto`（sha256）实现，不引第三方（与「无内部依赖」风格一致）。

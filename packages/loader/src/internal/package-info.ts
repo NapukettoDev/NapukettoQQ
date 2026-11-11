@@ -6,13 +6,8 @@
  * 定位行为不变（设计文档 §发布形态）。
  */
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-/** 包根路径（dist 与包根同层：dist/index.mjs → ../package.json）。 */
-function packageRoot(): string {
-    return dirname(dirname(fileURLToPath(import.meta.url)));
-}
+import { join } from "node:path";
+import { packageRoot } from "./package-root.js";
 
 /**
  * 读取本包版本号；失败（发布产物缺 package.json / 解析异常）兜底 "0.0.0"。

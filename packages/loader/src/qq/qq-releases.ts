@@ -16,9 +16,9 @@
  * rainbow 配置给出的 URL 直接请求必得 403。详见该函数注释。
  */
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { packageRoot } from "../internal/package-root.js";
 
 /** 清单条目平台（Linux 原生走 deb；旧条目缺省 win32，兼容 schema 1 遗留写法）。 */
 export type QqReleasePlatform = "win32" | "linux";
@@ -63,11 +63,6 @@ export class QqReleasesError extends Error {
         super(message);
         this.name = "QqReleasesError";
     }
-}
-
-/** 包根路径（dist 与包根同层：dist/index.mjs → ../qq-releases.json）。 */
-function packageRoot(): string {
-    return dirname(dirname(fileURLToPath(import.meta.url)));
 }
 
 /** 读版本清单（同步，启动期调用一次即可）。 */

@@ -5,7 +5,7 @@
  * 覆盖：真实 package.json 版本读取、读取失败兜底 0.0.0、version 非字符串兜底。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loaderVersion } from "./package-info.js";
+import { loaderVersion } from "../package-info.js";
 
 /** readFileSync 失败/坏 JSON 注入（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {

@@ -44,7 +44,7 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("../../../instance-lock.js", () => ({
+vi.mock("../../../lifecycle/instance-lock.js", () => ({
     acquireInstanceLock: vi.fn(() => h.lockAcquired),
     checkInstanceLock: vi.fn(() => ({ occupied: true, pid: 321, lockPath: "C:/x/instance.lock" })),
     registerLockCleanup: vi.fn((dataDir: string) => {
@@ -52,7 +52,7 @@ vi.mock("../../../instance-lock.js", () => ({
     }),
 }));
 
-vi.mock("../../../shutdown.js", () => ({
+vi.mock("../../../lifecycle/shutdown.js", () => ({
     installSignalShutdown: vi.fn(),
     watchStopSentinel: vi.fn((opts: { dataRoot: string; account?: string }) => {
         h.sentinelCalls.push({

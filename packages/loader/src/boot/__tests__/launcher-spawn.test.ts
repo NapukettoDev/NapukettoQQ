@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { packageRoot } from "../../internal/package-root.js";
+import type { QqInstallInfo } from "../../qq/locate-qq.js";
 import {
     defaultStubDir,
     ENV,
@@ -11,7 +12,9 @@ import {
     type LaunchOptions,
     launchSelfHost,
 } from "../launcher.js";
-import type { QqInstallInfo } from "../locate-qq.js";
+
+/** 默认 self-host 入口（与 launcher 的 packageRoot 推导一致；存在才跑该用例）。 */
+const DEFAULT_SELF_HOST_ENTRY = join(packageRoot(), "dist", "host", "self-host.cjs");
 
 /** child_process mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -186,37 +189,23 @@ describe("launchSelfHost 前置校验", () => {
         });
     });
 
-    it.skipIf(
-        !existsSync(
-            join(
-                dirname(fileURLToPath(import.meta.url)),
-                "..",
-                "..",
-                "dist",
-                "host",
-                "self-host.cjs",
-            ),
-        ),
-    )("默认 self-host 入口（dist 产物存在时）+ defaultStubDir 指向包内路径", async () => {
-        const defaultEntry = join(
-            dirname(fileURLToPath(import.meta.url)),
-            "..",
-            "..",
-            "dist",
-            "host",
-            "self-host.cjs",
-        );
-        const options = baseOptions({ stubDir: makeStubDir() });
-        delete options.selfHostEntry;
-        // 平台钉死 win32：否则 Linux 上会走原生 ELF 分支（spawn 被 mock，但断言是 win32 形态）
-        await withPlatform("win32", async () => {
-            await launchSelfHost(options);
-            // selfHostEntry 未传 → 走默认入口分支（dist 产物）
-            expect(h.spawnCalls[0]?.args[0]).toBe(defaultEntry);
-            // defaultStubDir 纯路径推导（不读 native 子模块内容）
-            expect(defaultStubDir().endsWith(join("native", "build", "stub-test-env"))).toBe(true);
-        });
-    });
+    it.skipIf(!existsSync(DEFAULT_SELF_HOST_ENTRY))(
+        "默认 self-host 入口（dist 产物存在时）+ defaultStubDir 指向包内路径",
+        async () => {
+            const options = baseOptions({ stubDir: makeStubDir() });
+            delete options.selfHostEntry;
+            // 平台钉死 win32：否则 Linux 上会走原生 ELF 分支（spawn 被 mock，但断言是 win32 形态）
+            await withPlatform("win32", async () => {
+                await launchSelfHost(options);
+                // selfHostEntry 未传 → 走默认入口分支（dist 产物）
+                expect(h.spawnCalls[0]?.args[0]).toBe(DEFAULT_SELF_HOST_ENTRY);
+                // defaultStubDir 纯路径推导（不读 native 子模块内容）
+                expect(defaultStubDir().endsWith(join("native", "build", "stub-test-env"))).toBe(
+                    true,
+                );
+            });
+        },
+    );
 
     it("onStage 播报 stub 就绪与 spawn 命令（win32 形态，平台钉死）", async () => {
         const stages: string[] = [];

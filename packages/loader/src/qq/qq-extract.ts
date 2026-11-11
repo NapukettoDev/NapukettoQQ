@@ -21,9 +21,9 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "./locate-qq.js";
 
 /** resources/app 下需要提取的文件扩展名（.node 原生模块 + .dll 依赖）。 */
@@ -130,13 +130,7 @@ export function findSevenZip(
         bundledSevenZipSupported(platform, arch)
     ) {
         const exeName = platform === "win32" ? "7z.exe" : "7zz";
-        const bundled = join(
-            dirname(fileURLToPath(import.meta.url)),
-            "..",
-            "assets",
-            "7zip",
-            exeName,
-        );
+        const bundled = join(packageRoot(), "assets", "7zip", exeName);
         if (existsSync(bundled)) {
             return { exe: bundled, source: "内置资产 assets/7zip" };
         }

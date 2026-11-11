@@ -16,7 +16,7 @@ import type { IncomingMessage } from "node:http";
 import { get, type RequestOptions } from "node:https";
 import { dirname } from "node:path";
 import process from "node:process";
-import { loaderVersion } from "./package-info.js";
+import { loaderVersion } from "../internal/package-info.js";
 import { normalizeDownloadUrl } from "./qq-releases.js";
 
 /** 下载请求 User-Agent（运行时读本包版本，失败兜底 0.0.0）。 */

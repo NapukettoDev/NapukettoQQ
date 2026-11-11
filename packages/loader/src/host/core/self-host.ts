@@ -26,8 +26,12 @@ import {
     acquireInstanceLock,
     checkInstanceLock,
     registerLockCleanup,
-} from "../../instance-lock.js";
-import { installSignalShutdown, requestShutdown, watchStopSentinel } from "../../shutdown.js";
+} from "../../lifecycle/instance-lock.js";
+import {
+    installSignalShutdown,
+    requestShutdown,
+    watchStopSentinel,
+} from "../../lifecycle/shutdown.js";
 import { env } from "../env.js";
 import {
     enableIpc,

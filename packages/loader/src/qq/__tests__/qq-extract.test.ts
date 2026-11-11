@@ -8,9 +8,9 @@ import {
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { packageRoot } from "../../internal/package-root.js";
 import {
     bundledSevenZipSupported,
     clearCacheVersion,
@@ -21,7 +21,7 @@ import {
     findSevenZip,
     findSystemSevenZip,
     isLinuxRuntimeFile,
-} from "./qq-extract.js";
+} from "../qq-extract.js";
 
 /** execFile mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -63,8 +63,7 @@ vi.mock("node:child_process", () => ({
 
 /** 内置 7z 资产路径（与源码推导一致；存在性决定「系统 PATH」分支可达性）。 */
 const BUNDLED_7Z = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
+    packageRoot(),
     "assets",
     "7zip",
     process.platform === "win32" ? "7z.exe" : "7zz",

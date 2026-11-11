@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveDataRoot } from "./data-root.js";
+import { resolveDataRoot } from "../data-root.js";
 
 let tmpRoot = "";
 
