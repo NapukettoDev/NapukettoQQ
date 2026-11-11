@@ -185,8 +185,10 @@ otherBusinessInfo{aiVoiceInfo, aiVoiceType} / *isInApplicationDataPath*。
   getMsgEmojiLikesList（7 参），待观测。
 - downloadRichMedia 对 transferStatus≠2 消息的真实下载行为（本机所有样本已下载，
   无法自然构造未下载样本——签名已实证，行为按轮询策略防御）。
-- **文件发送**：通道已探明（BDH / BatchUpload / FlashTransfer，见 §14），但业务参数未校准，
-  `prepareFileElement` 仍是预留实现（`sendMsg` 恒 `sendStatus=0`）。
+- **文件发送**：通道已探明（BDH / BatchUpload / BatchTransfer / FlashTransfer，见 §14、§15）。
+  文件**消息**路线被服务端传输命令拒（`170019002`，与业务参数无关，§15.3/§15.4），
+  `prepareFileElement` 仍是预留实现；**闪传**（上传文件集 + 分享卡片）已实测可用（§15.5），
+  待接成对外动作。
 
 ## 7. 登录域：快速登录超时兜底（T3，2026-09-10）
 
@@ -631,9 +633,170 @@ shouldUseFlashTransfer(1) / getFileMetas(1)
 
 ### 14.6 下一轮的待校准项
 
+> 2026-11-11 更新：第 1、2 项已由 §15 的探测排除（扫参不改变错误码，`sendMsg` 里原生
+> 确实会自己发起上传），第 3 项已落地——闪传通道实测可用。结论见 §15。
+
 1. `bizConfig.{appType,agentType,sceneType}` 与 task `businessType`、`fileType.klass`
    的真实取值（`businessType` 扫 0/1/2 都是同一个 `170019002`，说明不是单靠它决定）。
 2. `msgInfo.msg_info_body` 是否必须携带「待发送消息」的 PB body（batch upload 可能被设计成
    绑定一条正在编辑的消息）。
 3. 若 batch upload 长期过不去，评估闪传兜底，或维持 `upload_group_file` 未实现并在
    OB11 侧返回明确错误（不静默 `sendStatus=0`）。
+
+## 15. 文件发送第二轮：闪传通道打通、文件消息路线证伪（2026-11-11）
+
+第二轮把「有没有别的高层入口」和「到底缺什么参数」两个问题问到了底：全服务盘点证明没有
+「进群文件」的上传 NAPI，逐维扫参证明卡点不是业务参数，而**闪传通道实测可以完整投递文件**。
+
+### 15.1 结论先行
+
+- **全服务盘点**（69 个 session service / 104 个导出）确认：没有任何 NAPI 能把文件送进
+  **群文件列表**，也没有「给路径就传任意文件」的通用高层入口。
+- **文件消息路线也走同一条被拒的传输**：`sendMsg` 带 `fileElement{filePath,…}` 时原生
+  **确实会自己发起上传**，返回 `{"result":-1,"errMsg":"rich media transfer failed"}` ——
+  不是「缺字段静默失败」，而是这一族传输命令被服务端拒绝。
+- **拒绝发生在目标校验之前**：有效群号 / 不存在的群号 / 空群号返回完全一致（`170019002`），
+  逐维扫 `cmdType/appType/agentType/klass(0..30)/businessType(0..30)/strategy/urgent/resume`
+  全部同一错误 → **卡点不是这些业务参数**（否掉 §14.6 第 1 项）。
+- **闪传（FlashTransfer）通道可用**：上传文件集 + `sendFlashTransferMsg` 发卡片，已在测试群
+  （1101729931）真实投递成功。语义是**分享链接卡片**（`qfile.qq.com`），不是 `fileElement`
+  文件消息、也不进群文件列表。
+
+### 15.2 全服务盘点
+
+`session` 上 `get*` 方法 69 个、导出 104 个。与上传/文件/传输相关的导出：
+`NodeIKernel{BatchUpload,BdhUpload,BatchTransfer,FlashTransfer,FileAssistant,FileAutoDownload,FileBridgeClient,FileBridgeHost,GuildFileTransfer,RemoteFile}Service`
+与 `NodeIBatchUploadManager`。带 `upload` 的方法共 45 个，真正「能上传任意本地文件」的只有四族：
+
+| 族 | 入口 | 状态 |
+|---|---|---|
+| ① BDH | `getBdhUploadService().uploadFile` | 只拿到 `status=199` + 空 url（§14.2） |
+| ② BatchUpload | `getBatchUploadService()` | 管线跑通、服务端拒 170019002（§14.3） |
+| ③ BatchTransfer | `getBatchTransferService().batchTransferUpload` | 命令命中、同样 170019002（§15.3） |
+| ④ FlashTransfer | `getFlashTransferService()` | **✅ 上传 + 发卡片全通**（§15.5） |
+
+另有两个**不通用**入口，参数面就对不上需求（实测读取字段）：
+`RichMediaService.onlyUploadFile(arg1.guildId)`（只读 `guildId`）、
+`RichMediaService.uploadRMFileWithoutMsg({transferId, useNTV2})`（要预先登记的 transferId）。
+
+群文件相关方法**全部**在 `RichMediaService`（60 个方法里 19 个），且只有管理/查询侧：
+
+```text
+createGroupFolder downloadGroupFolder renameGroupFolder deleteGroupFolder getGroupSpace
+getGroupFileInfo getGroupFileList getGroupTransferList renameGroupFile moveGroupFile transGroupFile
+searchGroupFile searchGroupFileByWord searchMoreGroupFile cancelSearcheGroupFile deleteGroupFile
+batchGetGroupFileCount queryPicDownloadSize
+```
+
+可用性实测：
+- `getGroupSpace(groupCode)`：裸字符串即可，返回 `totalSpace`/`usedSpace`（测试群 10 GiB / 已用 1.1 MiB）。
+- `batchGetGroupFileCount([groupCode])`：返回 `groupFileCounts`（测试群 1 个文件）。
+- `getGroupFileList(groupCode, cb)`：**第 2 参是回调**，传数字会让调用永不返回（见 15.6）。
+- `transGroupFile(groupCode, fileInfo)`：实现存在（转存进群文件），但拿不到合法源 `fileInfo`，
+  乱填返回 `retCode=-102`「非群成员」。
+
+### 15.3 BatchTransferService（第三个「文件传输」入口）
+
+方法面只有 5 个：`addKernelBatchTransferListener` / `removeKernelBatchTransferListener` /
+`generateRandomJobId` / `batchTransferUpload(1)` / `batchTransferDownload(1)`。
+
+`batchTransferUpload(req)` 逐字段读取（35 个，顺序即原生读取顺序）：
+
+```text
+taskId,
+fileInfo{size, md5, sha1, cumulate_sha1s, file_name,
+         file_type{klass, pictureFormat, videoCodecFormat, audioCodecFormat},
+         file_path, width, height, time, is_original},
+cmdType, businessType, appType, agentType, bizTransInfo,
+c2cUserInfo{accountType, uid, tempSessionKey},
+groupUserInfo{groupCode},
+channelUserInfo{guildId, channelId, channelType},
+isUrgentTask, supportResume, uploadEngineStrategy
+```
+
+注意 `fileInfo` 里 4 个字段是**蛇形**（`file_name` / `file_path` / `is_original` / `cumulate_sha1s`），
+与 batch upload 的驼峰（§14.3）不同——同一层 API 内部命名不统一，照抄必错。
+
+回调与 batch upload 的 delegate **不是一组名字**：
+
+```text
+onUploadStart(taskId)
+onUploadProgress(…)
+onUploadComplete{taskId, errCode, svrErrCode, errMsg, errStep,
+                 resultExtInfo{fileUuid, isSecondHit, fileSavePath, downloadSize,
+                               totalDownloadTime, finalUrl, domain, urlPath, urlExpiredTime}}
+```
+
+诊断矩阵：
+
+| 变体 | 结果 |
+|---|---|
+| `cmdType=0` | `svrErrCode=170019002`「Service Failure」，`errStep=203` |
+| `cmdType=1/2/3` | `svrErrCode=170019001`「illegal params」→ 只有 `0` 是合法命令 |
+| 群号=有效 / 不存在 / 空 | **三者完全一致（170019002）** → 服务端在目标校验前就失败 |
+| `appType 0..7`、`agentType 0..4`、`klass 0..30`、`businessType 0..30`、`strategy 0..3`、`urgent/resume`、群号数字形态 | 全部同一 170019002 |
+
+用「真实参数 + 未读字段兜底」的记录型代理重放，原生**额外读取字段数 = 0**，说明请求 schema
+已经给全 —— 既不是缺字段，也不是字段名错。
+
+### 15.4 文件消息路线（`sendMsg` + `fileElement`）
+
+用记录型代理构造 `{elementType: 3, fileElement:{filePath, fileName, fileSize, file10MMd5,
+fileSha, fileSha3, fileUuid:"", expireTime, transferStatus, subElementType:9}}` 调 `sendMsg`：
+
+```text
+sendMsg -> {"result":-1,"errMsg":"rich media transfer failed"}
+```
+
+即 §14.1 里「`fileUuid: ""` 占位 → 恒 `sendStatus=0`」的真正原因：**原生会拿 `filePath` 自己上传**，
+失败点与 15.3 是同一条被拒的传输命令。所以补 `fileUuid` 之类字段不会更好，也不会更差。
+
+### 15.5 闪传通道（唯一跑通）
+
+「上传文件集 → 发卡片」全链路，Linux 原生宿主实测：
+
+1. `createFlashTransferUploadTask(delegate, taskInfo)` —— **调用即开始上传**，不需要再调
+   `startFileSetUpload`（该方法的参数语义仍未校准，本轮未用）。`taskInfo` 读取 20 个字段：
+
+   ```text
+   scene, name, uploaders, permission{code}, coverPath, coverOriginalInfos, paths,
+   albumFilePathList, excludePaths, expireLeftTime, validitySeconds, uploadSceneType,
+   isNeedDelDeviceInfo, isNeedDelLocation, pathsWithPrivacyInfo,
+   detectPrivacyInfoResult{exists, allDetectResults},
+   hybridFileInfos, announcement{announcementSegments, modifyTime, avatarUrl}
+   ```
+
+2. 事件（delegate 上按名取，实测顺序）：
+   `onFileDidStartUpload` → `onFileUploadStatusChanged` → `onFileSetUploadStatusChanged`
+   → `onFileSetUploadProgressChanged` / `onFileUploadProgressChanged` → `onFileDidFinishUpload`；
+   另有 `onThumbnailGeneratePath`（`result=1`、"NOT IMPLEMENTED!"，可忽略）。
+   `onFileSetUploadStatusChanged` 的 `fileSet.shareInfo.shareLink` 即分享链接，
+   `fileSetId` 从这里取（返回值是空对象 `{}`，拿不到 id）。
+
+3. `sendFlashTransferMsg({targets, fileSetId})` —— `targets` 元素**只读两个字段**：
+
+   ```text
+   destType   # ChatType：2=群、1=私聊
+   destUid    # 群号 / 用户 uid（不是 uin！）
+   ```
+
+实测投递（测试群，`getMsgs` 回读确认，`sendStatus=2`）：
+
+```text
+els=["1:text:[ 对方通过QQ闪传发送文件给你，请打开链接查看：https://qfile.qq.com/q/PW3KxCL0Ik … ]"]
+```
+
+**语义差异（对外文档必须写清）**：闪传发出去的是「分享链接文本消息」，不是 `fileElement`
+文件消息，也不进群文件列表。对 `upload_group_file` 而言这是**降级但可用**的投递方式。
+
+### 15.6 探针方法补充（本轮新增）
+
+- **记录型代理优于纯万能代理**：把已知字段填真值、未知字段用递归代理兜底，原生才会走真实分支；
+  纯万能代理让所有值都是函数（真值），原生分支会跑偏、读到的字段面偏小。
+  判据：换成记录型代理后**额外读取字段数 = 0**，即 schema 完整。
+- **先 OFAT 再网格**：7 个维度单独扫（含 `klass 0..30`、`businessType 0..30`）比网格快得多，
+  且足以否掉「某个枚举值不对」的假设；命中差异再上网格。
+- **命令必须包 timeout**：`getGroupFileList(groupCode, 数字)` 让原生**永久等待**（不抛错、不返回），
+  探针进程挂死；探针脚本一律 `timeout <N> node …`。
+- **变量名冲突**：复用 `session-smoke.cjs` 头部生成探针时，尾部追加段不能用 `target`/`list` 等
+  头部已占用的名字（`const` 重复声明直接语法错）。
