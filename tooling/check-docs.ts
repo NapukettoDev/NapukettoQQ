@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 文档防腐检查：日期/阶段词、手工标题编号、死链、行数、行宽、JSON 样本体积。
+ * 文档防腐检查：日期/阶段词、手工标题编号、死链、行数（README 不限）、行宽、JSON 样本体积。
  *
  * 运行：node tooling/check-docs.ts（或 pnpm check:docs）
  * 只扫描受治理的文档集（根 README / AGENTS / CONTRIBUTING / docs / 包内 docs），
@@ -13,8 +13,10 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * 行数上限（README 不在此列：不设行数限制，允许随功能与文档入口增长）。
+ */
 const LINE_LIMITS: Readonly<Record<string, number>> = {
-    "README.md": 110,
     "AGENTS.md": 95,
     ".github/CONTRIBUTING.md": 30,
     "docs/README.md": 80,
@@ -44,6 +46,8 @@ const LINE_LIMITS: Readonly<Record<string, number>> = {
 };
 
 const ROOT_DOCS = ["README.md", "AGENTS.md", ".github/CONTRIBUTING.md"] as const;
+/** 行数豁免（README 作为项目门面不设上限；其余受治理文档仍按 LINE_LIMITS/后缀兜底）。 */
+const NO_LINE_LIMIT: ReadonlySet<string> = new Set(["README.md"]);
 const PACKAGE_GROUPS = ["packages", "apps"] as const;
 
 const DATE_PATTERN = /\b20\d\d-\d\d-\d\d\b|\b20\d\d年\d{1,2}月\b|\b\d{1,2}月\d{1,2}日\b/;
@@ -176,9 +180,11 @@ function findFirstBody(lines: readonly string[]): number {
 }
 
 function checkHeader(rel: string, lines: readonly string[], push: PushProblem): void {
-    const limit = lineLimit(rel);
-    if (lines.length > limit) {
-        push(1, `行数 ${lines.length} 超过上限 ${limit}`);
+    if (!NO_LINE_LIMIT.has(rel)) {
+        const limit = lineLimit(rel);
+        if (lines.length > limit) {
+            push(1, `行数 ${lines.length} 超过上限 ${limit}`);
+        }
     }
 
     const first = lines[0] ?? "";
