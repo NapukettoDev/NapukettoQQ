@@ -964,6 +964,134 @@ describe("downloadImage（入站图片按需下载，issue #105）", () => {
         expect(service.downloadRichMedia).not.toHaveBeenCalled();
     });
 
+    it("原图超时但缩略图已落盘 → 降级返回 720 缩略图（degraded）", async () => {
+        vi.useFakeTimers();
+        try {
+            const thumb720 = join(dir, "t720.jpg");
+            const thumb198 = join(dir, "t198.jpg");
+            writeFileSync(thumb720, "t");
+            writeFileSync(thumb198, "t");
+            const { api } = makeApi({
+                getMsgsByMsgId: vi.fn(async () =>
+                    picMsg(
+                        {
+                            sourcePath: join(dir, "never.jpg"),
+                            thumbPath: new Map<number, string>([
+                                [198, thumb198],
+                                [720, thumb720],
+                                [0, ""],
+                            ]),
+                        },
+                        "e1",
+                    ),
+                ),
+                downloadRichMedia: vi.fn(async () => undefined),
+            });
+            const promise = api.downloadImage("m1", target, { timeoutMs: 600 });
+            const assertion = expect(promise).resolves.toMatchObject({
+                filePath: thumb720,
+                degraded: true,
+            });
+            await vi.advanceTimersByTimeAsync(1_000);
+            await assertion;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("720 缺失/未落盘 → 退到 198（平面对象形态）", async () => {
+        const thumb198 = join(dir, "p198.jpg");
+        writeFileSync(thumb198, "t");
+        const { api } = makeApi({
+            getMsgsByMsgId: vi.fn(async () =>
+                picMsg(
+                    {
+                        sourcePath: join(dir, "never.jpg"),
+                        thumbPath: {
+                            "720": join(dir, "gone-720.jpg"),
+                            "198": thumb198,
+                        },
+                    },
+                    "e1",
+                ),
+            ),
+            downloadRichMedia: vi.fn(async () => undefined),
+        });
+        await expect(api.downloadImage("m1", target, { timeoutMs: 1 })).resolves.toMatchObject({
+            filePath: thumb198,
+            degraded: true,
+        });
+    });
+
+    it("无 720/198/0 键 → 用其他 key 的已落盘缩略图", async () => {
+        const other = join(dir, "x999.jpg");
+        writeFileSync(other, "t");
+        const { api } = makeApi({
+            getMsgsByMsgId: vi.fn(async () =>
+                picMsg({ sourcePath: join(dir, "never.jpg"), thumbPath: { "999": other } }, "e1"),
+            ),
+            downloadRichMedia: vi.fn(async () => undefined),
+        });
+        await expect(api.downloadImage("m1", target, { timeoutMs: 1 })).resolves.toMatchObject({
+            filePath: other,
+            degraded: true,
+        });
+    });
+
+    it("thumbPath 字符串形态 → 直接当缩略图候选", async () => {
+        const thumb = join(dir, "s.jpg");
+        writeFileSync(thumb, "t");
+        const { api } = makeApi({
+            getMsgsByMsgId: vi.fn(async () =>
+                picMsg({ sourcePath: join(dir, "never.jpg"), thumbPath: thumb }, "e1"),
+            ),
+            downloadRichMedia: vi.fn(async () => undefined),
+        });
+        await expect(api.downloadImage("m1", target, { timeoutMs: 1 })).resolves.toMatchObject({
+            filePath: thumb,
+            degraded: true,
+        });
+    });
+
+    it("缩略图候选全不在磁盘 → 仍 TIMEOUT", async () => {
+        vi.useFakeTimers();
+        try {
+            const { api } = makeApi({
+                getMsgsByMsgId: vi.fn(async () =>
+                    picMsg(
+                        {
+                            sourcePath: join(dir, "never.jpg"),
+                            thumbPath: { "720": join(dir, "gone-720.jpg") },
+                        },
+                        "e1",
+                    ),
+                ),
+                downloadRichMedia: vi.fn(async () => undefined),
+            });
+            const promise = api.downloadImage("m1", target, { timeoutMs: 600 });
+            const assertion = expect(promise).rejects.toMatchObject({
+                code: "TIMEOUT",
+                message: /图片下载未完成/,
+            });
+            await vi.advanceTimersByTimeAsync(1_000);
+            await assertion;
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("thumbPath 空串形态 → 视为无缩略图（TIMEOUT）", async () => {
+        const { api } = makeApi({
+            getMsgsByMsgId: vi.fn(async () =>
+                picMsg({ sourcePath: join(dir, "never.jpg"), thumbPath: "" }, "e1"),
+            ),
+            downloadRichMedia: vi.fn(async () => undefined),
+        });
+        await expect(api.downloadImage("m1", target, { timeoutMs: 1 })).rejects.toMatchObject({
+            code: "TIMEOUT",
+        });
+    });
+
     it("文件始终不出现 → TIMEOUT", async () => {
         vi.useFakeTimers();
         try {

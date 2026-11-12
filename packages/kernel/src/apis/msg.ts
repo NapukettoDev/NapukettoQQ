@@ -99,6 +99,8 @@ const PTT_POLL_TIMES = 34;
 /** 图片下载轮询默认上限（300ms × 20 ≈ 6s；事件路径会传更短的 timeoutMs）。 */
 const IMAGE_POLL_INTERVAL_MS = 300;
 const IMAGE_POLL_TIMEOUT_MS = 6_000;
+/** 缩略图首选顺序（实测 thumbPath key 为 198/720/0；720 清晰度最高，0 作兜底）。 */
+const PIC_THUMB_KEY_ORDER = ["720", "198", "0"];
 
 /** sleep（下载轮询间隔）。 */
 function sleep(ms: number): Promise<void> {
@@ -135,6 +137,11 @@ export interface ImageDownloadResult {
     filePath: string;
     /** 下载后重拉到的 PIC 元素（fileName / fileSize 等元数据供 get_image 用）。 */
     element: PicElement;
+    /**
+     * true = 原图未能落盘（native no-op 或超时），返回的是磁盘上已有的缩略图。
+     * 缩略图按 720 > 198 > 0 > 其他 选最清晰的一张；调用方应记录降级日志。
+     */
+    degraded?: boolean;
 }
 
 /** 收藏表情项 → url（字段名待校准，url/imageUrl/emojiUrl 逐个兜底）。 */
@@ -662,6 +669,9 @@ export class MsgApi {
      * 且 `originImageUrl` 缺 rkey 不能当直链。此方法 `downloadType=1`（原文件）调
      * `downloadRichMedia`，再轮询重拉元素，直到 `picPath`/`sourcePath` 在磁盘上真实
      * 存在；已存在则直接返回（不重复下载）。返回的 `filePath` 保证 `existsSync` 命中。
+     *
+     * 原图始终不落盘时（native no-op / 超时）退回磁盘上已有的缩略图，
+     * 结果带 `degraded: true`；缩略图也没有才抛 TIMEOUT。
      */
     async downloadImage(
         msgId: string,
@@ -685,6 +695,7 @@ export class MsgApi {
         });
         const timeoutMs = opts.timeoutMs ?? IMAGE_POLL_TIMEOUT_MS;
         const times = Math.max(1, Math.ceil(timeoutMs / IMAGE_POLL_INTERVAL_MS));
+        let latest: PicElement = found.pic;
         for (let i = 0; i < times; i++) {
             await sleep(IMAGE_POLL_INTERVAL_MS);
             const again = await this.fetchMsgsByMsgId(target, [msgId]);
@@ -692,10 +703,18 @@ export class MsgApi {
             if (pic === undefined) {
                 continue;
             }
+            latest = pic;
             const path = picLocalFile(pic);
             if (path !== null) {
                 return { filePath: path, element: pic };
             }
+        }
+        // 原图始终没落盘（典型：transferStatus=2 但文件已被清理，native 直接 no-op）。
+        // 退回磁盘上已有的缩略图，至少不把不存在的路径交给下游（issue #105 的 Failure 形态）；
+        // 缩略图也没有才判超时。
+        const thumb = picThumbFile(latest);
+        if (thumb !== null) {
+            return { filePath: thumb, element: latest, degraded: true };
         }
         throw kernelError("图片下载未完成（超时）", "TIMEOUT");
     }
@@ -878,6 +897,51 @@ function picPathCandidates(pic: PicElement): string[] {
 /** 磁盘上真实存在的 PIC 本地路径（无则 null）；下载完成判定与已下载短路共用。 */
 function picLocalFile(pic: PicElement): string | null {
     for (const path of picPathCandidates(pic)) {
+        if (existsSync(path)) {
+            return path;
+        }
+    }
+    return null;
+}
+
+/**
+ * `thumbPath` 展开为 [key, path]（三形态：Map / 平面对象 / 字符串），空值丢弃。
+ * key 统一成字符串，便于按 `PIC_THUMB_KEY_ORDER` 排序。
+ */
+function picThumbEntries(thumb: PicElement["thumbPath"]): [string, string][] {
+    if (thumb === undefined) {
+        return [];
+    }
+    if (typeof thumb === "string") {
+        return thumb === "" ? [] : [["", thumb]];
+    }
+    const pairs: [string, string][] = [];
+    if (thumb instanceof Map) {
+        for (const [key, value] of thumb) {
+            if (typeof value === "string" && value !== "") {
+                pairs.push([String(key), value]);
+            }
+        }
+        return pairs;
+    }
+    for (const [key, value] of Object.entries(thumb)) {
+        if (typeof value === "string" && value !== "") {
+            pairs.push([key, value]);
+        }
+    }
+    return pairs;
+}
+
+/** 磁盘上真实存在的缩略图（720 > 198 > 0 > 其他；无则 null）。 */
+function picThumbFile(pic: PicElement): string | null {
+    const entries = picThumbEntries(pic.thumbPath);
+    for (const key of PIC_THUMB_KEY_ORDER) {
+        const hit = entries.find((entry) => entry[0] === key);
+        if (hit !== undefined && existsSync(hit[1])) {
+            return hit[1];
+        }
+    }
+    for (const [, path] of entries) {
         if (existsSync(path)) {
             return path;
         }

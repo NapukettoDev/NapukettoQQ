@@ -108,6 +108,7 @@
   事件边界按元素并发调 `MsgApi.downloadImage`（限时 5s，失败/超时只 warn 并保留原路径），
   把真实路径回填到 `sourcePath` 再翻译。宿主无 UI 不落盘原图，而 `originImageUrl` 缺 rkey
   不能当直链；不处理会让下游读图抛 `FileNotFoundError`。I/O 只在边界，翻译纯函数不变。
+  原图拉不到时内核可能返回 `degraded: true`（回退已落盘的缩略图），边界额外 warn 一次。
 - Satori：解析/渲染 XML；媒体元素在 `helper/element/media-convert.ts` 做本地化与转码。
 - KuroBot：text 原文、at → `@{display ?? uid}`、@全体 → `@全体成员`、image / face /
   reply 占位；其余类型忽略，结果空白不发。

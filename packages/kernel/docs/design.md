@@ -126,8 +126,11 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 - `MsgApi.downloadImage(msgId, peer, {elementId?, timeoutMs?})`：按 msgId 反查 PIC 元素
   （`elementId` 可指定同一消息内的某张图），`downloadType=1`（原文件）调
   `downloadRichMedia`，再轮询重拉元素直到 `picPath`/`sourcePath` 在磁盘上真实存在；
-  已存在则不重复下载，超时抛 `TIMEOUT`。返回 `{filePath, element}`，`filePath` 保证
-  `existsSync` 为真（下游可直接按路径读）。
+  已存在则不重复下载，超时抛 `TIMEOUT`。返回 `{filePath, element, degraded?}`，`filePath`
+  保证 `existsSync` 为真（下游可直接按路径读）。
+- 原图始终不落盘时（`transferStatus=2` 但文件被清理，native 直接 no-op）退回磁盘上已有的
+  缩略图：`thumbPath` 三形态统一读取，按 `720 > 198 > 0 > 其他 key` 取最清晰的一张，返回
+  `degraded: true`；缩略图也没有才抛 `TIMEOUT`。降级路径只读磁盘、不额外调 native。
 - OB11 事件边界在翻译前补齐：消息含 PIC 且本地文件不在磁盘时，按元素并发调用
   `downloadImage`（限时 fail-soft），把真实路径回填到 `picElement.sourcePath` 后再交给
   纯函数翻译——翻译层仍不做 I/O（ADR-008）。
@@ -193,6 +196,8 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
   `downloadImage` 以「重拉元素的 `sourcePath`/`picPath` 出现在磁盘」为完成信号，若 native
   落在其他路径会走超时分支。事件路径限时下载失败时保留原路径（下游仍可能读不到，由调用方
   日志告警），不阻塞消息链。
+- 缩略图降级只是兜底：无 UI 宿主下 `thumbPath` 的三个 key 是否真有文件落盘尚未实测；命中时
+  下游拿到的是缩略图（清晰度低于原图），调用方以 `degraded` 标记记日志。
 - `onRecvOfflineFileMsg`、`onGroupEssenceListChange`、`Buddy/onBuddyReqChange` 的 payload
   形状仍在 adapter 侧校准，未实证字段保持 `unknown`，由订阅方防御收窄。
 - `msg_emoji_like` 没有推送回调；读取面是否经 `onMsgInfoListUpdate` 携带或需轮询

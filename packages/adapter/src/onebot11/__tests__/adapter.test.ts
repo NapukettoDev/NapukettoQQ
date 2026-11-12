@@ -552,6 +552,43 @@ describe("NapukettoOneBot11Adapter（入站图片补本地文件，issue #105）
         expect(message.find((s) => s.type === "image")?.data["file"]).toBe(missing);
         expect(warn).toHaveBeenCalledTimes(1);
     });
+
+    it("降级（原图未落盘）→ 用缩略图路径回填 + warn，事件照常广播", async () => {
+        const warn = vi.fn();
+        const thumb = join(ensureTmpRoot(), "d-thumb.jpg");
+        writeFileSync(thumb, "t");
+        const downloadImage = vi.fn(async () => ({
+            filePath: thumb,
+            element: {},
+            degraded: true,
+        }));
+        const msg = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const adapter = new NapukettoOneBot11Adapter({
+            ...stubOptions(),
+            msgApi: { downloadImage },
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: {
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            } as unknown as EventBroadcaster,
+            msgChannel: msg.channel,
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        } as unknown as OneBot11AdapterOptions);
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([picRecvMsg(join(tmpRoot, "missing-degraded.jpg"))]);
+        await vi.waitFor(() => expect(events).toHaveLength(1));
+        const message = (
+            events[0] as { message: Array<{ type: string; data: Record<string, unknown> }> }
+        ).message;
+        expect(message.find((s) => s.type === "image")?.data["file"]).toBe(thumb);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[1])).toContain("缩略图");
+    });
 });
 
 describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () => {

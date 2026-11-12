@@ -727,11 +727,21 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         const results = await Promise.all(
             targets.map(async (target) => {
                 try {
-                    const { filePath } = await this.oneBotApi.msgApi.downloadImage(
+                    const { filePath, degraded } = await this.oneBotApi.msgApi.downloadImage(
                         msg.msgId,
                         peer,
                         { elementId: target.elementId, timeoutMs: IMAGE_EVENT_DOWNLOAD_TIMEOUT_MS },
                     );
+                    if (degraded === true) {
+                        this.calibLogger?.warn(
+                            {
+                                msgId: msg.msgId,
+                                elementId: target.elementId,
+                                filePath,
+                            },
+                            "ob11: 原图未落盘，改用已存在的缩略图兜底",
+                        );
+                    }
                     return { index: target.index, filePath };
                 } catch (err) {
                     this.calibLogger?.warn(
