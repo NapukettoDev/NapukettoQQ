@@ -130,15 +130,19 @@ export class OneBotApi {
         this.restart = opts.system.restart;
     }
 
-    /** uin→uid 转换（委托 groupApi；私聊目标/成员 user_id 用）。 */
-    uinToUid(uins: string[]): Promise<Map<string, string>> {
+    /**
+     * uin→uid 转换（委托 groupApi；私聊目标/成员 user_id 用）。
+     * 类字段箭头函数：动作会把本方法作为回调裸传（resolveUid 等），必须绑定实例，
+     * 脱绑调用 this 为 undefined 会炸 groupApi（issue #110 侧报）。
+     */
+    readonly uinToUid = (uins: string[]): Promise<Map<string, string>> => {
         return this.groupApi.uinToUid(uins);
-    }
+    };
 
-    /** uid→uin 转换（委托 groupApi；notice/grayTip 用）。 */
-    uidToUin(uids: string[]): Promise<Map<string, string>> {
+    /** uid→uin 转换（委托 groupApi；notice/grayTip 用；同 uinToUid 绑定实例）。 */
+    readonly uidToUin = (uids: string[]): Promise<Map<string, string>> => {
         return this.groupApi.uidToUin(uids);
-    }
+    };
 
     /**
      * 群成员角色（GroupCache 缓存优先，缺失惰性回填；sender.role 判定用）。
