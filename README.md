@@ -44,6 +44,7 @@ pnpm start
 <details>
 <summary><b>点击查看部署演示</b></summary>
 <img src=".github/assets/Deploy.webp" alt="NapukettoQQ 部署演示" width="600">
+
 </details>
 
 <details>
@@ -62,6 +63,8 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 
 完整说明详见 [Docker 部署指南](./docs/guides/docker.md)。
 </details>
+
+<br>
 
 ### 配置
 
