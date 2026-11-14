@@ -22,6 +22,7 @@ export function defaultCliConfig(dataRoot: string): CliConfig {
         dataDir: dataRoot,
         autoRestart: true,
         restartDelayMs: 2000,
+        nativeMediaPatch: true,
         accounts: [],
     };
 }

@@ -41,6 +41,7 @@ import {
 } from "../ipc/index.js";
 import { bootstrapExitCode, createState, errMsg, log } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
+import { reportMediaPatchStatus } from "./media-patch-status.js";
 
 const state = createState();
 
@@ -220,6 +221,8 @@ void (async () => {
             exitBootIncomplete();
         }
         log("[self-host] bootstrap 完成");
+        // stub 补丁状态上报（观测面，issue #105）：pending 时内部延迟复读一次
+        reportMediaPatchStatus();
         if (ipcMode) {
             sendStatus("ready");
         }

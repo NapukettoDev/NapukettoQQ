@@ -22,10 +22,12 @@ describe("configTemplate 模板内容", () => {
         const parsed = parseToml(configTemplate()) as {
             autoRestart?: unknown;
             restartDelayMs?: unknown;
+            nativeMediaPatch?: unknown;
             accounts?: Record<string, unknown>[];
         };
         expect(parsed.autoRestart).toBe(true);
         expect(parsed.restartDelayMs).toBe(2000);
+        expect(parsed["nativeMediaPatch"]).toBe(true);
         expect(parsed.accounts).toHaveLength(1);
         expect(parsed.accounts?.[0]?.["qq"]).toBe("123456");
         expect(parsed.accounts?.[0]?.["enabled"]).toBe(true);

@@ -70,17 +70,10 @@ loginService 形状，`types/services/` 以该产物为权威来源。时序坑�
 （`downloadFileForFileUuid` / `downloadFileByUrl` / `downloadFileForFileInfo` /
 `downloadFile` / `onlyDownloadFile`）。
 
-```text
-NodeIKernelMsgService（单对象参数，二进制断言 needs 1 arguments）
-  downloadRichMedia{msgId, elemId, chatType(2=群/1=C2C), downloadType(2), thumbSize(0)} -> Promise<void>
-NodeIKernelRichMediaService（单对象参数，比 Msg 版多一个 elem）
-  downloadRichMediaInVisit{同上 + elem(必填：完整 element 或媒体子对象)} -> Promise<unknown>
-```
-
-- `downloadRichMedia` resolve undefined，结果只能重拉元素观察；参数残缺（msgId/elemId
-  undefined）**不抛错**（内部静默 no-op），调用方必须自证参数完整。
-- 缺 `elem` 抛 `Cannot convert undefined or null to object`；只加 `elemType` /
-  `triggerType` / `peerUid` 不解决，`elem` 是唯一必需差异。
+- `downloadRichMedia` 是单对象参数（二进制断言 needs 1 arguments；`downloadRichMediaInVisit`
+  比 Msg 版多一个必填 `elem`，缺它抛 `Cannot convert undefined or null to object`）。
+- resolve undefined，结果只能重拉元素观察；参数残缺**不抛错**（内部静默 no-op），调用方
+  必须自证参数完整。
 - `pttElement.filePath` 收向是绝对路径
   （`<数据根>/nt_qq/<uid>/nt_data/Ptt/<月>/Ori/<md5>.ogg`），本地命中时 `existsSync` 可用。
 - `transferStatus`：4 = 自己发送（已上传）、2 = 收到（数据库标记已下载）。
@@ -348,3 +341,10 @@ els=["1:text:[ 对方通过QQ闪传发送文件给你，请打开链接查看：
 （`apis/flash-transfer.ts`）的取舍：完成判定靠事件计数（每个文件 `onFileDidFinishUpload`
 按 `cliFileId` 去重 + 取到 `fileSetId`），不靠返回值；默认 10 分钟超时抛 `TIMEOUT`，
 监听器在 `finally` 注销且卸载失败只吞掉。
+
+## 入站图片路径防御实测（issue #105 修复真机验收）
+
+stub 补丁状态 `applied`（boot 日志 `[media-patch] pending → applied cleared=1`，两次冷启动
+自动重放命中）后，真实入站图 432,173 B 落盘 `nt_data/Pic/<月>/Ori/`；OB11 事件 `file` 与
+Milky `resource_id` 均为 stat 通过的绝对路径。`Thumb/` 零文件、thumbPath 恒空（thumbSize=0
+走原图分支）；transferStatus 无暴露面未回查（防御层等文件存在性）；降级行为由单测覆盖。

@@ -6,6 +6,8 @@
  * 各协议（onebot11/satori）只写薄映射 canonical ↔ 协议格式。
  */
 
+import { existsSync } from "node:fs";
+
 import { kernelError } from "../infra/index.js";
 import type {
     FaceElement,
@@ -93,6 +95,37 @@ function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
     return undefined;
 }
 
+/** CDN/HTTP 前缀（URL 不是本地路径，不参与存在性校验）。 */
+const HTTP_URL_RE = /^https?:\/\//i;
+
+/** 非 CDN/HTTP 的候选路径（本地路径形态）。 */
+function isLocalPathCandidate(value: string): boolean {
+    return !HTTP_URL_RE.test(value);
+}
+
+/**
+ * pic 元素的本地路径候选（按 canonical 选取顺序去重）。
+ *
+ * 收向实测（issue #105，2026-11）：sourcePath 是 nt_data 下的绝对路径，指向
+ * 「自动下载完成后才会出现」的文件——补丁生效前该文件不存在。导出给
+ * pic-path-grace（桥层等待落盘）与 picToCanonical 共用同一候选序。
+ */
+export function picLocalCandidates(pic: PicElement | undefined): string[] {
+    if (pic === undefined) {
+        return [];
+    }
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of [pic.picPath, pic.sourcePath]) {
+        const value = emptyToUndefined(raw);
+        if (value !== undefined && isLocalPathCandidate(value) && !seen.has(value)) {
+            seen.add(value);
+            out.push(value);
+        }
+    }
+    return out;
+}
+
 /** PIC 元素 → canonical image。 */
 function picToCanonical(pic: PicElement | undefined): CanonicalElement {
     if (pic === undefined) {
@@ -102,8 +135,15 @@ function picToCanonical(pic: PicElement | undefined): CanonicalElement {
     //  - Windows：picPath（本地路径）/ picUrl（CDN 链接）；
     //  - Linux：两者都不存在，原图落 sourcePath（绝对本地路径），originImageUrl
     //    是相对路径（/download?appid=…&fileid=…，无 host，不能当 url 用）。
+    //
+    // 本地路径存在性防御（2026-11-14，issue #105）：候选链上取第一个真实存在的
+    // 本地路径；全部缺失时回退 picUrl（URL 可供下游下载）——严禁把不存在的本地
+    // 路径暴露给协议层（下游 AstrBot 一类直接 stat 的消费者会 FileNotFoundError）。
     const url = firstNonEmpty(pic.picUrl);
-    const path = firstNonEmpty(pic.picPath, pic.picUrl, pic.sourcePath) ?? "";
+    let path = picLocalCandidates(pic).find((candidate) => existsSync(candidate));
+    if (path === undefined) {
+        path = url ?? "";
+    }
     if (url === undefined) {
         return { type: "image", path };
     }

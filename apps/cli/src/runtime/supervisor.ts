@@ -226,7 +226,12 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         ...(opts.stubDir !== undefined ? { stubDir: opts.stubDir } : {}),
         children,
         restartCounts,
-        childEnv: effectiveConsoleEnv(logCfg),
+        // 入站图片自动下载补丁 killswitch（issue #105）：config.nativeMediaPatch=false
+        // 时注入（子进程 -q 直跑继承，launchSelfHost 不再覆盖——同名 env 优先级见 launcher）。
+        childEnv: {
+            ...effectiveConsoleEnv(logCfg),
+            ...(config.nativeMediaPatch === false ? { NAPUTO_DISABLE_MEDIA_PATCH: "1" } : {}),
+        },
         prefixEnabled: effectiveConsoleFormat(logCfg) === "pretty",
         isStopping: () => stopping,
     };

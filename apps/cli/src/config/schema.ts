@@ -15,6 +15,8 @@ export const RESERVED_PLACEHOLDER_QINS = ["123456", "654321"] as const;
 
 /** 默认自动重启。 */
 const DEFAULT_AUTO_RESTART = true;
+/** 默认入站图片自动下载补丁开关（stub 私有组件，issue #105）。 */
+const DEFAULT_NATIVE_MEDIA_PATCH = true;
 /** 默认重启延迟（毫秒；supervisor 显式 -q 场景复用，避免两处常量漂移）。 */
 export const DEFAULT_RESTART_DELAY_MS = 2000;
 
@@ -48,6 +50,12 @@ export interface CliConfig {
     restartDelayMs: number;
     /** 账号列表（至少一个，qq 必填）。 */
     accounts: CliAccountConfig[];
+    /**
+     * 入站图片自动下载补丁开关（issue #105，stub 私有组件）。缺省 true；
+     * false 时 supervisor 向账号子进程注入 NAPUTO_DISABLE_MEDIA_PATCH=1。
+     * -q 直跑不经 supervisor，用同名环境变量显式禁用。
+     */
+    nativeMediaPatch: boolean;
     /** [log] 日志配置段（kernel parseLogConfig 解析；未配置段时 undefined = 全缺省）。 */
     log?: LogConfig;
 }
@@ -106,6 +114,17 @@ function parseRestartDelayMs(raw: Record<string, unknown>): number {
         throw configError("主配置 restartDelayMs 必须是正整数");
     }
     return raw["restartDelayMs"];
+}
+
+/** 解析 nativeMediaPatch（缺省 true；显式给值必须是布尔）。 */
+function parseNativeMediaPatch(raw: Record<string, unknown>): boolean {
+    if (raw["nativeMediaPatch"] === undefined) {
+        return DEFAULT_NATIVE_MEDIA_PATCH;
+    }
+    if (typeof raw["nativeMediaPatch"] !== "boolean") {
+        throw configError("主配置 nativeMediaPatch 必须是布尔值");
+    }
+    return raw["nativeMediaPatch"];
 }
 
 /** 解析 accounts（必须至少一个账号，qq 必填）。 */
@@ -223,6 +242,7 @@ export function parseCliConfig(input: unknown): CliConfig {
     const dataDir = parseDataDir(raw);
     const autoRestart = parseAutoRestart(raw);
     const restartDelayMs = parseRestartDelayMs(raw);
+    const nativeMediaPatch = parseNativeMediaPatch(raw);
     const accounts = parseAccounts(raw);
     // [log] 段：kernel parseLogConfig 严格校验（非法值报错；未配置段 = undefined）
     const log =
@@ -231,6 +251,7 @@ export function parseCliConfig(input: unknown): CliConfig {
         dataDir,
         autoRestart,
         restartDelayMs,
+        nativeMediaPatch,
         accounts,
         ...(log !== undefined ? { log } : {}),
     };

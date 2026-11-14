@@ -46,6 +46,8 @@ const env = {
     NAPKETTO_DATA: process.env["NAPKETTO_DATA"],
     /** 数据根（launcher 注入，停止哨兵目录解析用）。 */
     NAPUTO_DATA_ROOT: process.env["NAPUTO_DATA_ROOT"],
+    /** 入站图片自动下载补丁状态文件路径（launcher 注入；stub 后台线程写 JSON，2026-11-14）。 */
+    NAPUTO_MEDIA_PATCH_STATUS: process.env["NAPUTO_MEDIA_PATCH_STATUS"],
 };
 
 export { env };

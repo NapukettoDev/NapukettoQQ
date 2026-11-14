@@ -21,6 +21,26 @@ function configWithQq(qq: string): Record<string, unknown> {
     };
 }
 
+describe("parseCliConfig nativeMediaPatch", () => {
+    it("缺省 = true（补丁默认启用）", () => {
+        const config = parseCliConfig(configWithQq("10000"));
+        expect(config.nativeMediaPatch).toBe(true);
+    });
+
+    it("显式 false / true 原样通过", () => {
+        const off = parseCliConfig({ ...configWithQq("10000"), nativeMediaPatch: false });
+        expect(off.nativeMediaPatch).toBe(false);
+        const on = parseCliConfig({ ...configWithQq("10000"), nativeMediaPatch: true });
+        expect(on.nativeMediaPatch).toBe(true);
+    });
+
+    it("非布尔值报 ConfigError", () => {
+        expect(() =>
+            parseCliConfig({ ...configWithQq("10000"), nativeMediaPatch: "false" }),
+        ).toThrow(ConfigError);
+    });
+});
+
 describe("parseCliConfig accounts.qq 校验", () => {
     it("接受 5 位纯数字 QQ 号", () => {
         const config = parseCliConfig(configWithQq("10000"));

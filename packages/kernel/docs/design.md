@@ -123,6 +123,23 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 `{elementType: ARK, arkElement:{bytesData}}`，非字符串 `raw` 做 JSON 序列化（循环引用抛
 `INVALID_PARAM`）。`xml` / `file` / `forward` 仍不支持（判别字段未探明或有专用动作）。
 
+### 入站图片路径防御（issue #105）
+
+入站 pic 的本地路径（picPath / sourcePath）指向 nt_data 下「自动下载完成后才出现」的
+文件——无头宿主原生补丁（loader 私有 native/）放行下载后，事件仍先于落盘到达；补丁
+降级时文件永远不出现。两层防御：
+
+1. **桥层落盘宽限**（`bridge/pic-path-grace.ts`）：MsgBridge 发射 `Msg/onRecvMsg` 与
+   `Msg/onMsgInfoListUpdate` 前，对本批消息全部 pic 本地路径候选做有界并行等待（任一
+   存在即放行；缺省上限 2s / 250ms 轮询）。快速路径（无 pic / 路径已在）保持同步发射，
+   事件时序不变；跨回调到达序无契约（原生回调本就无顺序保证）。
+2. **canonical 存在性裁决**（`types/message-element.ts` `picToCanonical`）：候选链上取
+   第一个真实存在的本地路径（picPath → sourcePath；http(s) URL 不校验直接可用）；全部
+   缺失时回退 picUrl（URL 供下游下载），仍无则置空。**严禁把不存在的本地路径暴露给
+   协议层**——下游直接 stat 的消费者（AstrBot 一类）会 FileNotFoundError。
+
+裁决只进不改：等待层不动消息内容，置空只在 canonical 单点发生（四协议共用）。
+
 ### listener 录制器
 
 `probe-listener.ts` 是探测工具而非运行路径：`NAPUTO_LISTENER_RECORD=1` 时由 loader

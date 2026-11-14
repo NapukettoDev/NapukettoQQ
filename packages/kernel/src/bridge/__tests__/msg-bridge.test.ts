@@ -5,6 +5,10 @@
  * register/unregister 幂等、session 未 init 抛 INVALID_STATE。
  * 原生 service 以桩注入（捕获 listener 对象后手动触发），不碰真实 wrapper。
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { NTEventChannel } from "../../event-channel.js";
 import type { MsgListener, RawMessage } from "../../types/index.js";
@@ -67,6 +71,33 @@ describe("MsgBridge", () => {
         const msgs: RawMessage[] = [{ msgId: "100", chatType: 1 } as never];
         listener()?.onRecvMsg(msgs);
         expect(onRecvMsg).toHaveBeenCalledWith(msgs);
+    });
+
+    it("onRecvMsg 图片路径缺失 → 宽限等待落盘后发射（issue #105 防御）", async () => {
+        const { bridge, channel, listener } = makeBridge();
+        const onRecvMsg = vi.fn();
+        channel.on("Msg/onRecvMsg", onRecvMsg);
+        bridge.register();
+        const dir = mkdtempSync(join(tmpdir(), "napuketto-bridge-grace-"));
+        try {
+            const picPath = join(dir, "late.png");
+            setTimeout(() => writeFileSync(picPath, "x"), 120);
+            const msgs: RawMessage[] = [
+                {
+                    msgId: "101",
+                    chatType: 1,
+                    elements: [{ elementType: 2, picElement: { picPath } }],
+                } as never,
+            ];
+            listener()?.onRecvMsg(msgs);
+            // 未落盘不发射（异步等待中）
+            expect(onRecvMsg).not.toHaveBeenCalled();
+            // 落盘后补发（宽限默认 2s 上限，120ms 内创建足够余量）
+            await vi.waitFor(() => expect(onRecvMsg).toHaveBeenCalled(), { timeout: 3000 });
+            expect(onRecvMsg).toHaveBeenCalledWith(msgs);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it("onRecvMsgReadReport → Msg/onRecvMsgReadReport", () => {
