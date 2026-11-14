@@ -50,7 +50,7 @@ Windows：
 - stub 校验：`native/build/stub-test-env/QQNT.dll`（`--stub-dir` 或 `NAPUTO_STUB_DIR`
   覆盖），缺失在 spawn 前抛错。
 - 环境：PATH 前置 stub 目录 + `wrapper.node` 目录，并注入 `NAPUTO_STUB_DIR`。
-- 入站图片自动下载补丁（issue #105，2026-11-14）：stub 私有组件在 wrapper 加载后
+- 入站图片自动下载补丁（issue #105）：stub 私有组件在 wrapper 加载后
   运行期放行 QQ 原生收图管线（零磁盘篡改；版本特征失配自动降级，绝不盲写内存）。
   `LaunchOptions.nativeMediaPatch`（缺省 true）控制；状态 JSON 落
   `<账号数据目录>/media-patch-status.json`，self-host bootstrap 完成后读一次记日志
@@ -90,7 +90,7 @@ Linux：
 | `NAPUTO_QR_ONLY` | 否 | `1` = 跳过快速登录强制扫码 |
 | `NAPUTO_IPC` | 否 | `1` = IPC 子进程模式 |
 | `NAPUTO_DATA_ROOT` | 否 | 数据根（停止哨兵；调用方 `extraEnv` 注入） |
-| `NAPUTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，2026-11-14 issue #105） |
+| `NAPUTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，issue #105） |
 | `NAPUTO_MEDIA_PATCH_STATUS` | 否 | 补丁状态文件路径（恒注入 `<账号数据目录>/media-patch-status.json`；stub 写 JSON，self-host 读后记日志） |
 
 - 子进程 `cwd` 缺省由调用方指向数据根：QQ 原生层在账号上下文就绪前会 fallback 到进程

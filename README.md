@@ -22,15 +22,14 @@
 | **OneBot11** | HTTP / WS / 反向 WS / Webhook | 消息、群管、好友、通知、系统与媒体 |
 | **KuroBot** | 出站 WS 客户端 | QQ 群聊与 Minecraft 服务器互通 |
 
-传输、鉴权、事件字段与限制见协议文档：[Milky](./docs/protocols/milky.md) ·
+协议文档（传输、鉴权、事件字段与限制）：[Milky](./docs/protocols/milky.md) ·
 [Satori](./docs/protocols/satori.md) · [OneBot 11](./docs/protocols/onebot11.md) ·
 [KuroBot](./docs/protocols/kurobot.md)。
 
 ## 快速开始
 
-- **运行环境**：Node.js 24+（Windows 10/11 x64 或 Linux x64）。
-- **依赖**：无需安装 QQ 客户端；Linux 另需 `libgnutls30` 与 X11 客户端库，见
-  [运维手册的 Linux 部分](./docs/guides/operations.md#linux-原生宿主)。
+- **运行环境**：Node.js 24+（Windows 10/11 x64 或 Linux x64）；无需安装 QQ 客户端。
+- **依赖**：Linux 另需 `libgnutls30` 与 X11 客户端库，见[运维手册](./docs/guides/operations.md#linux-原生宿主)。
 
 ### 创建并启动
 
@@ -40,45 +39,29 @@ cd <项目名>
 pnpm start
 ```
 
-* 首次启动，会在项目根目录生成 `napuketto.toml`；
-
-<br>
+首次启动会在项目根目录生成 `napuketto.toml`。部署演示：
 
 <details>
 <summary><b>点击查看部署演示</b></summary>
-<br>
-
 <img src=".github/assets/Deploy.webp" alt="NapukettoQQ 部署演示" width="600">
-首次启动会在项目根目录生成 `napuketto.toml`。部署演示：
-![NapukettoQQ 部署演示](.github/assets/Deploy.webp)
-
 </details>
-
-<br>
 
 <details>
 <summary><b>使用 Docker 部署（仅支持 <code>linux/amd64</code>）</b></summary>
-<br>
 
-官方容器镜像，无需安装 Node.js 环境
-**Docker 部署（仅 `linux/amd64`）**：无需 Node.js 环境，使用官方镜像。
+官方容器镜像，无需 Node.js 环境：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
 curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
 
-# 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址请保持 0.0.0.0）
 # 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址保持 0.0.0.0）
 docker compose up -d
 docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲染二维码
 ```
 
 完整说明详见 [Docker 部署指南](./docs/guides/docker.md)。
-
 </details>
-完整说明见 [Docker 部署指南](./docs/guides/docker.md)。
-
-<br>
 
 ### 配置
 
@@ -95,7 +78,8 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 </p>
 
 启动顺序与数据流见 [运行链路](./docs/architecture/runtime.md)；包拓扑与依赖方向见
-[架构总览](./docs/architecture/overview.md)。
+[架构总览](./docs/architecture/overview.md)；文档导航见 [docs/README.md](./docs/README.md)，
+架构决策记录见 [ADR](./docs/architecture/decisions.md)。
 
 ## 排障
 
@@ -105,31 +89,21 @@ pnpm exec napuketto stop                # 停止全部服务
 pnpm exec napuketto restart             # 重启 supervisor
 ```
 
-日志位于 `<数据根>/<uin>/logs/`（`napuketto.log` 业务、`loader.log` 引导、
-`napuketto-boot.log` 进程日志）。常见故障与缺库排障见
-[运维手册](./docs/guides/operations.md)。
+日志位于 `<数据根>/<uin>/logs/`（`napuketto.log` 业务、`loader.log` 引导、`napuketto-boot.log`
+进程日志）。常见故障与缺库排障见 [运维手册](./docs/guides/operations.md)。
 
 ## 开发
+
 所有改动经 PR 提交，合入前本地 `pnpm check` 必须通过；涉及发布内容的改动随提交附
 changeset。规范见 [贡献指南](./.github/CONTRIBUTING.md) · [工程指南](./AGENTS.md) ·
-[开发指南](./docs/guides/development.md)。
+[开发指南](./docs/guides/development.md) · [安全策略](./.github/SECURITY.md) ·
+[Koishi 适配器](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto)。
 
-## 文档
-
-| 类别 | 链接 |
-| --- | --- |
-| **总览** | [文档首页](./docs/README.md) · [架构总览](./docs/architecture/overview.md) · [运行链路](./docs/architecture/runtime.md) · [ADR](./docs/architecture/decisions.md) |
-| **使用/开发** | [配置](./docs/guides/configuration.md) · [运维](./docs/guides/operations.md) · [Docker](./docs/guides/docker.md) · [开发](./docs/guides/development.md) |
-| **协议** | [Milky](./docs/protocols/milky.md) · [OneBot 11](./docs/protocols/onebot11.md) · [Satori](./docs/protocols/satori.md) · [KuroBot](./docs/protocols/kurobot.md) |
-| **生态/治理** | [Koishi 适配器](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto) · [贡献](./.github/CONTRIBUTING.md) · [安全](./.github/SECURITY.md) · [MIT](./LICENSE) |
 
 ## English
-**NapukettoQQ** is a self-hosted bot framework built on the QQ NT native module
-(`wrapper.node`). It runs a standard Node.js process with a stub `QQNT.dll`, loads the native
-module directly, and exposes **Milky**, **OneBot 11**, **Satori**, and **KuroBot** interfaces —
-with no QQ client, no process injection, and no disk patching. Each account runs in its own
-isolated host process supervised by the CLI, with all configuration in a single
-`napuketto.toml` at the project root.
 
-*Not affiliated with Tencent. Entirely original implementation with no third-party GPL code.
-Released under the [MIT License](./LICENSE).*
+**NapukettoQQ** is a self-hosted bot framework built on the QQ NT native module (`wrapper.node`).
+It runs a standard Node.js process with a stub `QQNT.dll`, loads the native module directly, and
+exposes **Milky**, **OneBot 11**, **Satori**, and **KuroBot** interfaces — no QQ client, no
+injection, no disk patching; one account = one supervised host process, all config in one
+`napuketto.toml`. *Not affiliated with Tencent; original implementation, no GPL code, [MIT](./LICENSE).*

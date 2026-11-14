@@ -127,7 +127,7 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 
 入站 pic 的本地路径（picPath / sourcePath）指向 nt_data 下「自动下载完成后才出现」的
 文件——无头宿主原生补丁（loader 私有 native/）放行下载后，事件仍先于落盘到达；补丁
-降级时文件永远不出现。两层防御（2026-11-14）：
+降级时文件永远不出现。两层防御：
 
 1. **桥层落盘宽限**（`bridge/pic-path-grace.ts`）：MsgBridge 发射 `Msg/onRecvMsg` 与
    `Msg/onMsgInfoListUpdate` 前，对本批消息全部 pic 本地路径候选做有界并行等待（任一
