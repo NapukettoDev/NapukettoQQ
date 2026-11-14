@@ -1,15 +1,18 @@
 /**
- * get_image / get_record 动作：获取图片/语音文件（P2-14；2026-09-08 T5 接主动下载；
- * 2026-09-08 B1 语音接原生 downloadRichMedia）
+ * 消息媒体域动作（2026-11-14 自 get-media / fetch-ptt-text 合并）
  *
- * message_id 反查 → fetchMsgsByMsgId → 找 PIC/PTT 元素：
- *  - 本地文件解析：NT 相对路径（sourcePath/filePath）按 mediaBaseDir（QQ NT
- *    global 目录）解析为绝对路径，命中磁盘即返回 file
- *  - 图片主动下载：本地未命中且有 picUrl → @napuketto/media downloadUrl 落
- *    cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name
- *  - 语音主动下载（B1）：本地未命中 → kernel MsgApi.downloadPtt（原生
- *    downloadRichMedia + 轮询元素回查）→ filePath 落盘后返回绝对路径；
- *    失败回退原始 filePath（NT 相对/绝对）+ 元数据，不抛错
+ * - get_image / get_record：获取图片/语音文件（P2-14；2026-09-08 T5 接主动下载；
+ *   2026-09-08 B1 语音接原生 downloadRichMedia）。message_id 反查 → fetchMsgsByMsgId
+ *   → 找 PIC/PTT 元素：
+ *     - 本地文件解析：NT 相对路径（sourcePath/filePath）按 mediaBaseDir（QQ NT
+ *       global 目录）解析为绝对路径，命中磁盘即返回 file
+ *     - 图片主动下载：本地未命中且有 picUrl → @napuketto/media downloadUrl 落
+ *       cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name
+ *     - 语音主动下载（B1）：本地未命中 → kernel MsgApi.downloadPtt（原生
+ *       downloadRichMedia + 轮询元素回查）→ filePath 落盘后返回绝对路径；
+ *       失败回退原始 filePath（NT 相对/绝对）+ 元数据，不抛错
+ * - fetch_ptt_text：message_id → MsgApi.fetchPttText（内部：拉消息 → 找 PTT 元素
+ *   → translatePtt2Text → 再拉取读 pttElement.text）
  */
 
 import { randomUUID } from "node:crypto";
@@ -232,4 +235,38 @@ export class GetRecordAction extends BaseAction<GetMediaPayload, MediaInfoResult
         }
         return { ...meta(), file: ptt.filePath };
     }
+}
+
+const fetchPttTextSchema = z.object({
+    message_id: z.union([z.number(), z.string()]),
+});
+
+type FetchPttTextPayload = z.infer<typeof fetchPttTextSchema>;
+
+/** 语音转文字依赖（OneBotApi 视图，由装配方注入）。 */
+export type FetchPttTextDeps = Pick<OneBotApi, "msgApi" | "messageUnique">;
+
+/** 获取语音转文字结果（P2-10 接 kernel fetchPttText）。 */
+export class FetchPttTextAction extends BaseAction<FetchPttTextPayload, { text: string }> {
+    readonly name = "fetch_ptt_text";
+    readonly schema = fetchPttTextSchema;
+    protected readonly errorCodeMap = ob11ErrorCodeMap;
+
+    private readonly deps: FetchPttTextDeps;
+
+    constructor(deps: FetchPttTextDeps) {
+        super();
+        this.deps = deps;
+    }
+
+    protected async _handle(payload: FetchPttTextPayload): Promise<{ text: string }> {
+        const { msgId, peer } = resolveMsgIdAndPeer(payload.message_id, this.deps.messageUnique);
+        const text = await this.deps.msgApi.fetchPttText(msgId, peer);
+        return { text };
+    }
+}
+
+/** 消息媒体域动作工厂（get_image / get_record / fetch_ptt_text）。 */
+export function createMediaActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+    return [new GetImageAction(api), new GetRecordAction(api), new FetchPttTextAction(api)];
 }

@@ -8,11 +8,13 @@
 import { NTGroupMemberRole } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { makeMember, stubConverters } from "../../__tests__/test-support.js";
-import { GetGroupAtAllRemainAction } from "../get-group-at-all-remain.js";
-import { GetGroupInfoAction } from "../get-group-info.js";
-import { GetGroupListAction } from "../get-group-list.js";
-import { GetGroupMemberInfoAction } from "../get-group-member-info.js";
-import { GetGroupMemberListAction } from "../get-group-member-list.js";
+import {
+    GetGroupAtAllRemainAction,
+    GetGroupInfoAction,
+    GetGroupListAction,
+    GetGroupMemberInfoAction,
+    GetGroupMemberListAction,
+} from "../query.js";
 
 /** GroupDetailInfo 桩（getGroupInfo 返回）。 */
 function groupDetail() {

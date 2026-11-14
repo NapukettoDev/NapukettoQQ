@@ -9,15 +9,19 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { stubConverters } from "../../__tests__/test-support.js";
-import { DeleteFriendAction } from "../delete-friend.js";
-import { GetDoubtFriendsAddRequestAction } from "../get-doubt-friends-add-request.js";
-import { GetFriendListAction } from "../get-friend-list.js";
-import { GetFriendsWithCategoryAction } from "../get-friends-with-category.js";
-import { GetStrangerInfoAction } from "../get-stranger-info.js";
-import { SendLikeAction } from "../send-like.js";
-import { SetDoubtFriendsAddRequestAction } from "../set-doubt-friends-add-request.js";
-import { SetFriendAddRequestAction } from "../set-friend-add-request.js";
-import { SetFriendRemarkAction } from "../set-friend-remark.js";
+import {
+    DeleteFriendAction,
+    SendLikeAction,
+    SetDoubtFriendsAddRequestAction,
+    SetFriendAddRequestAction,
+    SetFriendRemarkAction,
+} from "../manage.js";
+import {
+    GetDoubtFriendsAddRequestAction,
+    GetFriendListAction,
+    GetFriendsWithCategoryAction,
+    GetStrangerInfoAction,
+} from "../query.js";
 
 describe("get_friend_list", () => {
     it("Friend[] → FriendInfo[]（remark 非空才含）", async () => {

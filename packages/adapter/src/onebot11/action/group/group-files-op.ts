@@ -5,6 +5,7 @@
 import type { RichMediaApi } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
+import type { OneBotApi } from "../../api/one-bot-api.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
 import { MAX_FILE_IDS } from "../limits.js";
 
@@ -184,4 +185,16 @@ export class TransGroupFileAction extends BaseAction<TransGroupFilePayload, null
         await this.richMediaApi.transGroupFile(String(payload.group_id), payload.file_id);
         return null;
     }
+}
+
+/** 群文件操作域动作工厂（create/delete folder、delete/rename/move/trans file）。 */
+export function createGroupFileOpActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+    return [
+        new CreateGroupFileFolderAction(api.richMediaApi),
+        new DeleteGroupFileAction(api.richMediaApi),
+        new DeleteGroupFolderAction(api.richMediaApi),
+        new RenameGroupFileAction(api.richMediaApi),
+        new MoveGroupFileAction(api.richMediaApi),
+        new TransGroupFileAction(api.richMediaApi),
+    ];
 }

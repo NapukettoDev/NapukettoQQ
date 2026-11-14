@@ -9,12 +9,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { DownloadFileAction } from "../download-file.js";
-import {
-    SetQQAvatarAction,
-    SetQQProfileAction,
-    SetSelfLongnickAction,
-} from "../profile-actions.js";
+import { SetQQAvatarAction, SetQQProfileAction, SetSelfLongnickAction } from "../account.js";
+import { DownloadFileAction } from "../file.js";
 
 let tmpRoot = "";
 afterAll(() => {

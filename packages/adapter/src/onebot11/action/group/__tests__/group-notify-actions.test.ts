@@ -12,9 +12,9 @@ import { makeNotify, stubUidToUin } from "../../__tests__/test-support.js";
 import {
     GetGroupAddRequestAction,
     GetGroupIgnoredNotifiesAction,
-} from "../get-group-add-request.js";
-import { GetGroupShutListAction } from "../get-group-shut-list.js";
-import { SetGroupAddRequestAction } from "../set-group-add-request.js";
+    GetGroupShutListAction,
+    SetGroupAddRequestAction,
+} from "../notify.js";
 
 describe("get_group_add_request / get_group_ignored_notifies", () => {
     it("未处理列表（doubt=false）→ GroupAddRequestItem 映射", async () => {
