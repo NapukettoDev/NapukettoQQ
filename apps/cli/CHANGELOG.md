@@ -1,5 +1,12 @@
 # @napuketto/cli
 
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [4a380d7]
+  - @napuketto/adapter@0.15.4
+
 ## 0.6.5
 
 ### Patch Changes
