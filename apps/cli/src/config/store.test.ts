@@ -57,6 +57,7 @@ describe("defaultCliConfig", () => {
             dataDir: tmp,
             autoRestart: true,
             restartDelayMs: 2000,
+            nativeMediaPatch: true,
             accounts: [],
         });
     });
@@ -78,6 +79,7 @@ describe("CliConfigStore", () => {
             dataDir: tmp,
             autoRestart: false,
             restartDelayMs: 4000,
+            nativeMediaPatch: false,
             accounts: [{ qq: "10086" }],
         });
         const loaded = await store.load();

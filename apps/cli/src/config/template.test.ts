@@ -22,6 +22,7 @@ describe("configTemplate 模板内容", () => {
         const parsed = parseToml(configTemplate()) as {
             autoRestart?: unknown;
             restartDelayMs?: unknown;
+            nativeMediaPatch?: unknown;
             accounts?: Record<string, unknown>[];
         };
         expect(parsed.autoRestart).toBe(true);
