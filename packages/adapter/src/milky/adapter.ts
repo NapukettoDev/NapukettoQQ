@@ -21,8 +21,15 @@ import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "..
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
+import { MilkyEnrichment } from "./enrichment.js";
 import { MilkyEventPipeline } from "./event-pipeline.js";
 import { MessageSeqIndex } from "./helper/state/seq-index.js";
+import { MilkyInboundEssence } from "./inbound/essence.js";
+import { MilkyInboundFileNotice } from "./inbound/file-notice.js";
+import { MilkyInboundMessage } from "./inbound/message.js";
+import { MilkyInboundPin } from "./inbound/pin.js";
+import { MilkyInboundRequest } from "./inbound/request.js";
+import { MilkyInboundSysMsg } from "./inbound/sysmsg.js";
 import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
 
 /** 适配器构造参数（api 相关字段继承 MilkyApiOptions）。 */
@@ -69,11 +76,16 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         });
         this.calibLogger = opts.logger;
         this.api = new MilkyApi(opts, this.seqIndex);
-        this.pipeline = new MilkyEventPipeline({
+        // 领域处理器装配归 adapter；pipeline 接线板只做频道 → 处理器路由
+        const base = {
             api: this.api,
             seqIndex: this.seqIndex,
-            broadcast: (event) => this.broadcastEvent(event),
-            ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+            broadcast: (event: unknown) => this.broadcastEvent(event),
+            logger: opts.logger,
+        };
+        const enrich = new MilkyEnrichment({ api: this.api });
+        const essence = new MilkyInboundEssence(base);
+        this.pipeline = new MilkyEventPipeline({
             msgChannel: opts.msgChannel,
             ...(opts.groupChannel !== undefined ? { groupChannel: opts.groupChannel } : {}),
             ...(opts.buddyChannel !== undefined ? { buddyChannel: opts.buddyChannel } : {}),
@@ -81,6 +93,12 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
                 ? { recentContactChannel: opts.recentContactChannel }
                 : {}),
             ...(opts.loginChannel !== undefined ? { loginChannel: opts.loginChannel } : {}),
+            essence,
+            message: new MilkyInboundMessage({ ...base, enrich }),
+            sysMsg: new MilkyInboundSysMsg({ ...base, essence }),
+            request: new MilkyInboundRequest({ ...base, enrich }),
+            fileNotice: new MilkyInboundFileNotice(base),
+            pin: new MilkyInboundPin(base),
         });
         this.registry = createMilkyActionRegistry({ api: this.api });
     }

@@ -38,12 +38,16 @@
   log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
   面）；协议目录只留形状差异（事件翻译、识别表、错误口径——NOT_FOUND 抛错类型与
   消息归调用方）。
-- adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为三块——
+- adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
-  `subscribeOnly` / `unsubscribeOnly` 公共面）；`event-pipeline.ts` 接管事件通道
-  订阅/退订、自消息过滤、去重缓存（fileKeys / essenceKeys / pinWatch）与广播派发；
-  `enrichment.ts` 接管翻译前的异步查询（批量 uidToUin、群实体回填、msgId 反查、
-  精华 diff 触发），翻译函数保持纯函数（ADR-008）。
+  `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与
+  query/status 公共面）；`event-pipeline.ts` 是纯订阅接线板（管理 unsubscribes
+  与 applyConfig 开关，频道 → 域处理器路由，<100 行）；事件域处理在各协议
+  `inbound/`（message / sysmsg / essence / request / file-notice 等，单文件
+  ≤110 行；kurobot 双向流另有 session.ts 共享状态）；`enrichment.ts` 接管翻译
+  前的异步查询（批量 uidToUin、群实体回填、msgId 反查），翻译函数保持纯函数
+  （ADR-008）。sysmsg 单条字节块的解码 → 信封 → 识别 → 分流管线收拢
+  `core/shared/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
 
 ### OneBot 11 事件链
 
@@ -143,6 +147,9 @@
   （表命中且 extract 成功）/ `observed_unnamed` / `unknown`；后两者只打结构化校准日志，
   不广播半成品。识别表键 = 原生分发键 `msgType:subType`：OB11 现含 732:21 群名片，
   Milky 现含 732:16 表情回应与 732:1 精华；528:349/381/382 为已观测未命名。
+- 通用管线：`processSysMsgBlob`（单条字节块：解码 → 信封 → 识别 → onNotice 分流 →
+  未识别 debug 校准日志）为 OB11 / Milky 共用流程；协议差异只在识别表、命中处理
+  与解码失败日志级别（OB11 warn / Milky debug，既有口径刻意不统一）。
 - 字节布局、样本清单与字段号依据见 [evidence](./evidence.md#msgonrecvsysmsg-字节布局)。
 
 ### 文件投递：闪传语义降级
