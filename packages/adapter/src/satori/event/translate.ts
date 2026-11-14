@@ -12,7 +12,8 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { collectGrayTipUids } from "../../shared/gray-tip.js";
-import { toUinString } from "../../shared/uid-uin.js";
+import { toUnixSeconds } from "../../shared/raw-message.js";
+import { MS_TO_SEC, toUinString } from "../../shared/uid-uin.js";
 import { type SatoriTranslateDeps, toSatoriMessage, toUser } from "../helper/index.js";
 import type { Channel, Guild, GuildMember, Message, User } from "../types/resource.js";
 
@@ -39,7 +40,8 @@ export async function toSatoriMessageEvent(
     const message = await toSatoriMessage(raw, deps);
     const content: SatoriEventContent = {
         type: "message-created",
-        timestamp: Number(raw.msgTime),
+        // Satori 规范 timestamp 为毫秒级（msgTime 先归一 Unix 秒再换算）
+        timestamp: toUnixSeconds(raw.msgTime) * MS_TO_SEC,
     };
     if (message.channel !== undefined) {
         content.channel = message.channel;
@@ -115,14 +117,15 @@ function toRevokeEvent(
 ): SatoriEventContent | null {
     for (const el of raw.elements) {
         const revoke = el.grayTipElement?.revokeElement;
-        if (revoke === undefined) {
+        // Linux 原生对象变体字段显式置 null（== null 判据）
+        if (revoke == null) {
             continue;
         }
         const operatorUin = toUinString(revoke.operatorUid, uidToUinMap);
         const peerUin = String(raw.peerUin ?? "");
         const content: SatoriEventContent = {
             type: "message-deleted",
-            timestamp: Number(raw.msgTime),
+            timestamp: toUnixSeconds(raw.msgTime) * MS_TO_SEC,
         };
         content.channel = {
             id: peerUin,
@@ -146,7 +149,8 @@ function toMemberChangeEvent(
 ): SatoriEventContent | null {
     for (const el of raw.elements) {
         const grp = el.grayTipElement?.groupElement;
-        if (grp === undefined || grp.type === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+        if (grp == null || grp.type === undefined) {
             continue;
         }
         const type = memberChangeType(grp.type);
@@ -158,7 +162,7 @@ function toMemberChangeEvent(
         const peerUin = String(raw.peerUin ?? "");
         const content: SatoriEventContent = {
             type,
-            timestamp: Number(raw.msgTime),
+            timestamp: toUnixSeconds(raw.msgTime) * MS_TO_SEC,
             guild: toGroupGuild(peerUin, raw.peerName),
             channel: { id: peerUin, type: 0 },
             member: toMember(memberUid, grp.memberNick, grp.memberRemark, uidToUinMap),

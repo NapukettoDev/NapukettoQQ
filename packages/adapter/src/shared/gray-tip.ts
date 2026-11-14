@@ -29,12 +29,14 @@ export function collectGrayTipUids(msg: RawMessage): string[] {
     const uids = new Set<string>();
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        if (g === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据，读字段前先挡）
+        if (g == null) {
             continue;
         }
         collectUids(uids, g.revokeElement?.operatorUid, g.aioOpGrayTipElement?.peerUid);
         const grp = g.groupElement;
-        if (grp === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+        if (grp == null) {
             continue;
         }
         collectUids(
@@ -56,7 +58,8 @@ export function collectGrayTipUids(msg: RawMessage): string[] {
 export function firstUntranslatedGrayTip(msg: RawMessage): GrayTipElement | undefined {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        if (g !== undefined && g.revokeElement === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null：g/revokeElement 都按空值判
+        if (g != null && g.revokeElement == null) {
             return g;
         }
     }

@@ -6,6 +6,7 @@
 import type { GroupDetailInfo, GroupMember, Peer, RawMessage } from "@napuketto/kernel";
 import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { z } from "zod";
+import { toUnixSeconds } from "../../shared/raw-message.js";
 import type { MilkyApi } from "../api.js";
 import { type ReceiveTranslateContext, toMessageReceiveEvent } from "../helper/event/translate.js";
 import { toGroupEntity, toGroupMemberEntity } from "../helper/message/entities.js";
@@ -124,7 +125,7 @@ export function createMessageQueryActions(api: MilkyApi): MilkyAction[] {
                         message_seq: Number(m.msgSeq),
                         sender_name: await senderNameOf(api, m),
                         avatar_url: avatarUrlOf(m.senderUin),
-                        time: Math.floor(Number(m.msgTime) / 1000),
+                        time: toUnixSeconds(m.msgTime),
                         segments: receiveSegmentsOf(m, uidToUin),
                     });
                 }

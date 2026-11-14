@@ -5,10 +5,13 @@
  *  - 只收 grayTipElement 内非空的 uid 字段（revoke/group/shutUp 四类）
  *  - 空字符串 / undefined 一律跳过
  *  - 结果去重、顺序按出现次序
+ *  - Linux 原生空值形状：grayTipElement / 变体字段（revokeElement、groupElement）
+ *    显式置 null 时不抛错、按缺失处理（== null 判据回归）
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../gray-tip.js";
+import { stub } from "./stub.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */
 function makeMsg(elements: RawMessage["elements"]): RawMessage {
@@ -160,5 +163,58 @@ describe("hasGrayTip（OB11 / Milky 收链路分流判据，core 收拢版）", 
             false,
         );
         expect(hasGrayTip(makeMsg([]))).toBe(false);
+    });
+});
+
+describe("Linux 原生空值形状（变体字段显式 null，== null 判据回归）", () => {
+    /** 构造带任意元素数组的消息（元素形状绕过类型，模拟 Linux 运行时）。 */
+    function msgWithRawElements(elements: unknown[]): RawMessage {
+        return stub<RawMessage>({
+            ...makeMsg([]),
+            elements: elements as RawMessage["elements"],
+        });
+    }
+
+    it("collectGrayTipUids：grayTipElement 为 null → 跳过不抛错", () => {
+        // 回归：`g === undefined` 判据遇显式 null 直读字段抛 TypeError，
+        // Satori broadcastGrayTip 的 uid 收集路径整批失败
+        const msg = msgWithRawElements([
+            { elementType: 1, textElement: { content: "hi" }, grayTipElement: null },
+        ]);
+        expect(() => collectGrayTipUids(msg)).not.toThrow();
+        expect(collectGrayTipUids(msg)).toEqual([]);
+    });
+
+    it("collectGrayTipUids：groupElement 显式 null → 跳过不抛错", () => {
+        const msg = msgWithRawElements([
+            {
+                elementType: 8,
+                grayTipElement: { subElementType: 2, groupElement: null },
+            },
+        ]);
+        expect(() => collectGrayTipUids(msg)).not.toThrow();
+        expect(collectGrayTipUids(msg)).toEqual([]);
+    });
+
+    it("firstUntranslatedGrayTip：grayTipElement 为 null → 跳过不抛错", () => {
+        // 回归：`g !== undefined` 遇显式 null 为 true，直读 g.revokeElement 抛错
+        const msg = msgWithRawElements([
+            { elementType: 8, grayTipElement: null, fileElement: null },
+        ]);
+        expect(() => firstUntranslatedGrayTip(msg)).not.toThrow();
+        expect(firstUntranslatedGrayTip(msg)).toBeUndefined();
+    });
+
+    it("firstUntranslatedGrayTip：revokeElement 显式 null → 视为未翻译返回该 grayTip", () => {
+        // Linux 非 REVOKE grayTip 的 revokeElement 变体置 null：
+        // `=== undefined` 判据漏判（返回 undefined），翻译层丢校准日志入口
+        const msg = msgWithRawElements([
+            {
+                elementType: 8,
+                grayTipElement: { subElementType: 4, revokeElement: null, groupElement: null },
+            },
+        ]);
+        const found = firstUntranslatedGrayTip(msg);
+        expect(found?.subElementType).toBe(4);
     });
 });

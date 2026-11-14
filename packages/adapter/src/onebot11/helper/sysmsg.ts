@@ -1,6 +1,6 @@
 /**
  * OB11 sysmsg 识别表（自 helper/sysmsg.ts 瘦身——解码层上移
- * core/sysmsg.ts 共享，milky.md §0.8.3/§0.8.6）
+ * shared/sysmsg.ts 共享，milky.md §0.8.3/§0.8.6）
  *
  * 本模块只保留 OB11 侧内容：
  *  - SysMsgNoticeKind：sysmsg 可映射的 OB11 notice 种类（event/notice.ts 既有类型）
@@ -9,7 +9,7 @@
  *  - recognizeSysMsg：绑定 OB11 表的识别入口
  *
  * 解码原语（decodeProtoTree / extractSysMsgEnvelope / narrowSysMsgBlobs 等）
- * 从 `core/shared/sysmsg.js` 导入使用。
+ * 从 `shared/sysmsg.js` 导入使用。
  */
 
 import {

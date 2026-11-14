@@ -2,7 +2,9 @@
  * core/framework/base-protocol-adapter.test.ts：适配器骨架生命周期单测。
  *
  * 锁定：start（校验配置 → onStart → started）/ stop（onStop）幂等语义、
- * reload 走 onReload、broadcastEvent 无 broadcaster 不抛错、getBroadcaster 透出。
+ * 并发 start/stop 去重（共享同一次初始化/清理）、stop 等待进行中的 start、
+ * reload 走 onReload（未 start 时 no-op 防状态不一致）、broadcastEvent 无
+ * broadcaster 不抛错、getBroadcaster 透出。
  */
 
 import type { ConfigBase } from "@napuketto/kernel";
@@ -93,6 +95,68 @@ describe("BaseProtocolAdapter 生命周期", () => {
         // reload 后仍处于 started：stop 正常执行
         await adapter.stop();
         expect(adapter.calls).toEqual(["start:true", "reload:true", "stop"]);
+    });
+});
+
+describe("BaseProtocolAdapter 并发与状态一致性", () => {
+    it("并发 start ×3：onStart 只执行一次（共享进行中的初始化）", async () => {
+        const load = vi.fn(async () => ({ enabled: true }));
+        const adapter = new TestAdapter(stubConfig(load));
+        await Promise.all([adapter.start(), adapter.start(), adapter.start()]);
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(adapter.calls).toEqual(["start:true"]);
+    });
+
+    it("并发 stop ×2：onStop 只执行一次", async () => {
+        const adapter = new TestAdapter(stubConfig(async () => ({ enabled: true })));
+        await adapter.start();
+        await Promise.all([adapter.stop(), adapter.stop()]);
+        expect(adapter.calls).toEqual(["start:true", "stop"]);
+    });
+
+    it("stop 在 start 进行中调用：等 start 落地后再清理（不空转）", async () => {
+        let release!: () => void;
+        const gated = new Promise<{ enabled: boolean }>((resolve) => {
+            release = () => resolve({ enabled: true });
+        });
+        const load = vi.fn(() => gated);
+        const adapter = new TestAdapter(stubConfig(load));
+        const startPromise = adapter.start();
+        // start 尚未落地（load 挂起）：stop 等待而非直接跳过
+        const stopPromise = adapter.stop();
+        release();
+        await Promise.all([startPromise, stopPromise]);
+        expect(adapter.calls).toEqual(["start:true", "stop"]);
+    });
+
+    it("reload 未 start：no-op（onReload 不执行、不 load），后续 stop 不空转", async () => {
+        // 回归：reload 在未启动实例上执行 onReload（停旧传输 + 重建）会留下
+        // 「传输已启动但 started=false、后续 stop() 空转」的状态不一致
+        const load = vi.fn(async () => ({ enabled: true }));
+        const adapter = new TestAdapter(stubConfig(load));
+        await adapter.reload();
+        expect(adapter.calls).toEqual([]);
+        expect(load).toHaveBeenCalledTimes(0);
+        await adapter.stop();
+        expect(adapter.calls).toEqual([]);
+    });
+
+    it("start 失败 → started 保持 false：stop 不调 onStop，可重试 start", async () => {
+        let attempt = 0;
+        const load = vi.fn(async () => {
+            attempt += 1;
+            if (attempt === 1) {
+                throw new Error("配置读取失败");
+            }
+            return { enabled: true };
+        });
+        const adapter = new TestAdapter(stubConfig(load));
+        await expect(adapter.start()).rejects.toThrow("配置读取失败");
+        expect(adapter.calls).toEqual([]);
+        await adapter.stop();
+        expect(adapter.calls).toEqual([]);
+        await adapter.start();
+        expect(adapter.calls).toEqual(["start:true"]);
     });
 });
 

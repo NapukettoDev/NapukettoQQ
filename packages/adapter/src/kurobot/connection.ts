@@ -225,7 +225,19 @@ export class KurobotConnection {
             return;
         }
         this.state = "connecting";
-        const ws = new WebSocket(this.opts.url, WS_SUBPROTOCOL);
+        // 构造期异常（非法 URL / 协议头）同步抛出：修正配置前必然复现，不可重试
+        let ws: WebSocket;
+        try {
+            ws = new WebSocket(this.opts.url, WS_SUBPROTOCOL);
+        } catch (err: unknown) {
+            const detail = err instanceof Error ? err.message : String(err);
+            this.log.error(
+                { err: detail, url: this.opts.url },
+                "kurobot: WebSocket 构造失败（非法 URL），永久停止",
+            );
+            this.reject(`WebSocket 构造失败: ${detail}`);
+            return;
+        }
         this.ws = ws;
         ws.addEventListener("open", () => {
             this.onOpen();

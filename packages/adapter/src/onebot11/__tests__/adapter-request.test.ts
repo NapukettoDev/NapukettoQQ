@@ -115,6 +115,30 @@ describe("handleRequest（请求分发）", () => {
         expect((responses[0] as { message: string }).message).toBe("未知动作: no_such_action");
     });
 
+    it("缺 action 带 echo → 404 响应透传 echo（WS 客户端按 echo 关联请求）", async () => {
+        const { adapter } = makeAdapter();
+        const responses: unknown[] = [];
+        await adapter.handleRequest({ params: {}, echo: "echo-missing" }, (res) =>
+            responses.push(res),
+        );
+        expect(responses[0]).toMatchObject({
+            retcode: 404,
+            status: "failed",
+            echo: "echo-missing",
+        });
+    });
+
+    it("未知 action 带 echo → 404 响应透传 echo；无 echo 不写 echo 字段", async () => {
+        const { adapter } = makeAdapter();
+        const responses: unknown[] = [];
+        await adapter.handleRequest({ action: "nope", echo: 42 }, (res) => responses.push(res));
+        expect(responses[0]).toMatchObject({ retcode: 404, echo: 42 });
+        responses.length = 0;
+        await adapter.handleRequest({ action: "nope" }, (res) => responses.push(res));
+        expect(responses[0]).toMatchObject({ retcode: 404 });
+        expect("echo" in (responses[0] as object)).toBe(false);
+    });
+
     it("已知动作无 echo → HTTP 入口 handle（参数校验失败 retcode 400）", async () => {
         const { adapter } = makeAdapter();
         const responses: unknown[] = [];

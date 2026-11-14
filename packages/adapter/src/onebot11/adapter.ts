@@ -119,7 +119,14 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                         if (err instanceof Error) {
                             message = err.message;
                         }
-                        respond({ status: "failed", retcode: 999, data: null, message });
+                        // 兜底响应同样透传 echo（WS 客户端按 echo 关联请求）
+                        respond({
+                            status: "failed",
+                            retcode: 999,
+                            data: null,
+                            message,
+                            ...echoFieldOf(req),
+                        });
                     });
                 },
             });
@@ -137,10 +144,13 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         this.startHeartbeat(config.heartbeatInterval);
     }
 
-    /** 心跳 meta 事件（interval 毫秒，0 关闭）。 */
+    /** 心跳 meta 事件（interval 毫秒，0 关闭；启动前清理残留定时器防重复）。 */
     private startHeartbeat(intervalMs: number): void {
         if (intervalMs <= 0) {
             return;
+        }
+        if (this.heartbeatTimer !== null) {
+            clearInterval(this.heartbeatTimer);
         }
         this.heartbeatTimer = setInterval(() => {
             this.broadcastEvent({
@@ -195,13 +205,26 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         if (typeof rawAction === "string") {
             action = rawAction;
         }
+        // 错误响应同样透传 echo（WS 客户端按 echo 关联请求/响应）
         if (action === "") {
-            respond({ status: "failed", retcode: 404, data: null, message: "请求缺少 action" });
+            respond({
+                status: "failed",
+                retcode: 404,
+                data: null,
+                message: "请求缺少 action",
+                ...(echo !== undefined ? { echo } : {}),
+            });
             return;
         }
         const act = this.registry.get(action);
         if (act === undefined) {
-            respond({ status: "failed", retcode: 404, data: null, message: `未知动作: ${action}` });
+            respond({
+                status: "failed",
+                retcode: 404,
+                data: null,
+                message: `未知动作: ${action}`,
+                ...(echo !== undefined ? { echo } : {}),
+            });
             return;
         }
         let result: ActionResult<unknown>;
@@ -212,4 +235,15 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }
         respond(result);
     }
+}
+
+/** 请求体 echo 字段提取（透传用；非对象 / 缺省 / undefined 返回空对象）。 */
+function echoFieldOf(req: unknown): { echo: unknown } | Record<string, never> {
+    if (req !== null && typeof req === "object") {
+        const echo = (req as { echo?: unknown }).echo;
+        if (echo !== undefined) {
+            return { echo };
+        }
+    }
+    return {};
 }

@@ -3,12 +3,11 @@
  * 与 bot_offline（Login 桥，载荷零样本，reason 固定值）。置顶翻转在 pin.ts。
  */
 import { sliceRaw } from "../../shared/log.js";
-import { forEachRawMessage } from "../../shared/raw-message.js";
+import { forEachRawMessage, toUnixSeconds } from "../../shared/raw-message.js";
 import type { MilkyInboundBase } from "../api.js";
 import { toFriendFileUploadData } from "../helper/event/file-upload.js";
 import { RecentKeyCache } from "../helper/state/recent-keys.js";
 import type { BotOfflineData } from "../types.js";
-import { secondsOf } from "./pin.js";
 
 /** 轻量通知域装配参数 = 管道依赖全集（api / broadcast / logger 按需取用）。 */
 export type MilkyInboundFileNoticeDeps = MilkyInboundBase;
@@ -42,7 +41,7 @@ export class MilkyInboundFileNotice {
                 return;
             }
             this.deps.broadcast({
-                time: secondsOf(msg.msgTime),
+                time: toUnixSeconds(msg.msgTime),
                 self_id: Number(this.deps.api.self.uin),
                 event_type: "friend_file_upload",
                 data,

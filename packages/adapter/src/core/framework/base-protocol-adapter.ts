@@ -34,6 +34,10 @@ export abstract class BaseProtocolAdapter<TConfig> {
     protected readonly hooks: ProtocolHooks<TConfig>;
     private readonly broadcaster: EventBroadcaster | undefined;
     private started = false;
+    /** 进行中的 start（并发调用去重，复用同一次初始化）。 */
+    private startPromise: Promise<void> | null = null;
+    /** 进行中的 stop（并发调用去重）。 */
+    private stopPromise: Promise<void> | null = null;
 
     constructor(opts: {
         config: ConfigBase<TConfig>;
@@ -45,27 +49,67 @@ export abstract class BaseProtocolAdapter<TConfig> {
         this.broadcaster = opts.broadcaster;
     }
 
-    /** 启动：加载配置 → 校验 → 协议层初始化。 */
+    /** 启动：加载配置 → 校验 → 协议层初始化（幂等；并发调用共享同一次初始化）。 */
     async start(): Promise<void> {
+        if (this.stopPromise !== null) {
+            // stop 进行中：等清理落地（重启动语义，避免与 stop 交错）
+            await this.stopPromise;
+        }
         if (this.started) {
             return;
         }
-        const config = await this.config.load();
-        await this.hooks.onStart(config);
-        this.started = true;
+        if (this.startPromise !== null) {
+            await this.startPromise;
+            return;
+        }
+        const run = (async () => {
+            const config = await this.config.load();
+            await this.hooks.onStart(config);
+            this.started = true;
+        })();
+        this.startPromise = run;
+        try {
+            await run;
+        } finally {
+            this.startPromise = null;
+        }
     }
 
-    /** 停止：协议层清理资源。 */
+    /** 停止：协议层清理资源（幂等；并发调用共享同一次清理；start 进行中先等其落地）。 */
     async stop(): Promise<void> {
+        if (this.startPromise !== null) {
+            // start 进行中：等它落地（失败 = 无资源需清理，走下方 started 判断）
+            await this.startPromise.catch(() => undefined);
+        }
         if (!this.started) {
             return;
         }
-        await this.hooks.onStop();
-        this.started = false;
+        if (this.stopPromise !== null) {
+            await this.stopPromise;
+            return;
+        }
+        const run = (async () => {
+            await this.hooks.onStop();
+            this.started = false;
+        })();
+        this.stopPromise = run;
+        try {
+            await run;
+        } finally {
+            this.stopPromise = null;
+        }
     }
 
-    /** 配置热更新：重新加载 → 校验 → 协议层处理。 */
+    /**
+     * 配置热更新：重新加载 → 校验 → 协议层处理。
+     * 未 start 时 no-op：onReload 的实现假定实例已在运行（先停旧传输再按新配置
+     * 重建），对未启动实例执行会留下「传输已启动但 started=false、后续 stop() 空转」
+     * 的状态不一致——热更新语义只对运行中实例成立。
+     */
     async reload(): Promise<void> {
+        if (!this.started) {
+            return;
+        }
         // ConfigBase.reload() 原为 load() 的别名（已在 kernel 侧作为死代码删除），
         // 热更新语义即重新 load，行为不变。
         const config = await this.config.load();

@@ -5,6 +5,8 @@
  * uidToUin 批量转换（依赖注入，与 OB11 的 ReceiveTranslateContext 同思路）。
  */
 import { ChatType, type RawMessage, toCanonicalElements } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../shared/raw-message.js";
+import { MS_TO_SEC } from "../../shared/uid-uin.js";
 import type { Channel, Message } from "../types/resource.js";
 import { canonicalToSatoriElements } from "./element/canonical.js";
 import { renderElements } from "./element/element.js";
@@ -52,8 +54,10 @@ export async function toSatoriMessage(
         message.channel = toDirectChannel(peerId, nickname);
         message.user = toUser(peerId, nickname);
     }
-    const created = Number(raw.msgTime);
-    if (Number.isFinite(created) && created > 0) {
+    // Satori 规范 created_at 为毫秒级时间戳；msgTime 单位随平台不一致，
+    // 先归一成 Unix 秒再换算毫秒（Windows 毫秒 / Linux 秒）
+    const created = toUnixSeconds(raw.msgTime) * MS_TO_SEC;
+    if (created > 0) {
         message.created_at = created;
     }
     return message;

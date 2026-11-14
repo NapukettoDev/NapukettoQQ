@@ -23,6 +23,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
+import { toUnixSeconds } from "../shared/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 
@@ -212,7 +213,7 @@ export class MilkyApi {
         this.seqIndex.record(sent);
         return {
             message_seq: Number(sent.msgSeq),
-            time: Math.floor(Number(sent.msgTime) / 1000),
+            time: toUnixSeconds(sent.msgTime),
         };
     }
 }

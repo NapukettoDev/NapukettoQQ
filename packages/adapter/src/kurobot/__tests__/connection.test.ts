@@ -7,7 +7,7 @@
  * 重连节奏用测试快值（retryBaseDelayMs=20ms），不拖慢用例。
  */
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import type {
     ConnectionEndedReason,
@@ -350,5 +350,28 @@ describe("KurobotConnection 重连与停止", () => {
         const handshakesBefore = s.handshakes.length;
         await new Promise((r) => setTimeout(r, 80));
         expect(s.handshakes.length).toBe(handshakesBefore);
+    });
+});
+
+describe("KurobotConnection 非法 URL（构造期异常）", () => {
+    it("WebSocket 构造同步抛错 → error 日志 + onEnded({permanent:true})，不重试", async () => {
+        // 回归：非法 URL 在 new WebSocket 同步抛 TypeError，未捕获会打断装配方启动链
+        const error = vi.fn();
+        const { conn, established, ended } = makeConnection("not-a-valid-url", {
+            logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error },
+        });
+        expect(() => conn.start()).not.toThrow();
+        // error 日志留痕（非法 URL）
+        expect(error).toHaveBeenCalledTimes(1);
+        expect(error.mock.calls[0]?.[0]).toMatchObject({ url: "not-a-valid-url" });
+        // onEnded 同步触发：永久停止（无 close code——构造期异常没有连接可关）
+        expect(ended).toHaveLength(1);
+        expect(ended[0]).toMatchObject({ permanent: true });
+        expect(ended[0]?.detail).toContain("WebSocket 构造失败");
+        expect(ended[0]?.code).toBeUndefined();
+        expect(established).toHaveLength(0);
+        // 永久停止后重试 start 仍无效果（rejected 守卫）
+        conn.start();
+        expect(ended).toHaveLength(1);
     });
 });

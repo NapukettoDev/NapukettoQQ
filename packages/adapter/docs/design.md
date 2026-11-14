@@ -205,16 +205,16 @@
 
 - 翻译层纯函数（ADR-008）：只读入参；uid→uin、msgId 反查、缓存查询都在协议边界的
   enrichment 完成，结果经 ctx 注入。改翻译不得新增 API 调用或缓存读取。
-- 缓存只读（ADR-008）：diff / baseline / 首帧抑制属于 kernel 缓存层；adapter 不写缓存。
-  精华列表拉取用串行链（并发回写会把新列表覆盖成旧列表）。
-- 元素存在性一律 `!= null`：Linux 原生对象把未命中的变体显式置 null；`!== undefined`
-  会让普通消息误入 grayTip 分支。
+- 缓存只读（ADR-008）：diff / baseline / 首帧抑制属 kernel 缓存层，adapter 不写缓存；精华列表拉取用串行链（并发回写会把新列表覆盖成旧列表）。
+- 元素存在性一律 `!= null`：Linux 原生对象把未命中的变体显式置 null，`!== undefined` 会误判（直读字段抛错或普通消息误入分支）。
 - 时间统一经 `toUnixSeconds`：兼容 Windows 毫秒与 Linux 秒，禁止在翻译里直接 `/1000`。
-- 自身消息默认不广播（OB11 / Milky 一致）；无法表达的段/元素静默跳过；未知 CQ 码保留
-  原文，保证往返不丢数据。
+- 自身消息默认不广播（OB11 / Milky 一致）；无法表达的段/元素静默跳过；未知 CQ 码保留原文，保证往返不丢数据。
 - 协议隔离：一协议一 broadcaster；adapter 不跨协议共享事件、不向别的协议端口写数据。
 - 文件投递语义降级是明示契约，不得改回「假 fileUuid」实现（静默假成功）。
-- 热更新：OB11 IPC 桥模式无传输，只刷新上报开关；其余协议 stop → 按新配置重建。
+- 热更新：OB11 IPC 桥模式无传输，只刷新上报开关；其余协议 stop → 按新配置重建；
+  `reload()` 只对已启动实例生效（未 start 时 no-op，防「传输已运行但 started=false」的不一致）。
+- 生命周期守卫：骨架 start/stop 并发去重（stop 等待进行中的 start）；Satori 非登录事件
+  `login.sn` 固定 0（登录序号≠事件 sn）；OB11 错误响应（404 / 异常兜底）同样透传 `echo`。
 - 依赖面：不新增运行时依赖；KuroBot 客户端用 Node 内置 `WebSocket`，`ws` 仅 devDependency。
 - 历史决策见 [decisions](../../../docs/architecture/decisions.md)；实测样本见
   [evidence](./evidence.md)。
