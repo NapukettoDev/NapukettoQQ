@@ -8,7 +8,9 @@
  *
  * 只发布版本有变化的包：本地版本已存在于 registry → 跳过（changeset
  * 未 bump 的包版本不变，不应重复发布，否则 npm 报
- * "cannot publish over the previously published versions"）。
+ * "cannot publish over the previously published versions"）；本地版本低于
+ * registry 最高版本 → 跳过（两个 release 运行前后脚、更高版本已先上
+ * registry 时，npm 拒绝隐式 latest 降级）。
  *
  * 背景：pnpm -r publish 在部分环境存在上游 bug（用户侧无法修复），
  * 发布链的发布环节改用 `npm publish` 逐个执行。npm 不认识
@@ -108,8 +110,119 @@ export interface PublishPlan {
 }
 
 /**
+ * 比较 semver 版本号：a < b → -1，a > b → 1，相等 → 0。
+ * 只支持 `x.y.z[-prerelease][+build]`（发布链产出的形态）；build metadata 不参与
+ * 比较。registry 版本格式异常 → 抛错：npm 上的版本不该长这样，静默按小版本处理
+ * 更危险。
+ */
+export function compareSemver(a: string, b: string): number {
+    return compareSemverParts(parseSemver(a), parseSemver(b));
+}
+
+/** semver prerelease 的纯数值标识（数值标识按数值比较且低于字母数字标识）。 */
+const SEMVER_NUMERIC_RE = /^\d+$/;
+
+/** 解析后的 semver 版本（core 三段 + prerelease 标识串，build metadata 已剥掉）。 */
+interface SemverParts {
+    core: readonly [number, number, number];
+    pre: string;
+}
+
+/** 解析 `x.y.z[-prerelease][+build]`；不合法 → 抛错。 */
+function parseSemver(v: string): SemverParts {
+    const plus = v.indexOf("+");
+    const withoutBuild = plus === -1 ? v : v.slice(0, plus);
+    const dash = withoutBuild.indexOf("-");
+    const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
+    const pre = dash === -1 ? "" : withoutBuild.slice(dash + 1);
+    const parts = core.split(".");
+    if (parts.length !== 3 || parts.some((p) => !SEMVER_NUMERIC_RE.test(p))) {
+        throw new Error(`非 semver 版本号 "${v}"（发布链只支持 x.y.z[-prerelease][+build]）`);
+    }
+    return {
+        core: [Number(parts[0]), Number(parts[1]), Number(parts[2])],
+        pre,
+    };
+}
+
+/** 主次补丁位逐段比较（parseSemver 已保证 core 恰三段，越界分支不可达）。 */
+function compareSemverParts(a: SemverParts, b: SemverParts): number {
+    for (let i = 0; i < 3; i += 1) {
+        const diff = (a.core[i] ?? 0) - (b.core[i] ?? 0);
+        if (diff !== 0) {
+            return diff < 0 ? -1 : 1;
+        }
+    }
+    return comparePrerelease(a.pre, b.pre);
+}
+
+/** 按 semver 规则比较 prerelease：空 = 正式版，高于一切 prerelease。 */
+function comparePrerelease(a: string, b: string): number {
+    if (a === b) {
+        return 0;
+    }
+    if (a === "") {
+        return 1;
+    }
+    if (b === "") {
+        return -1;
+    }
+    return compareIdentifierLists(a.split("."), b.split("."));
+}
+
+/** 逐标识比较：前缀相同时标识多者高（semver 规则），命中不同标识即分胜负。 */
+function compareIdentifierLists(aIds: readonly string[], bIds: readonly string[]): number {
+    for (let i = 0; i < Math.max(aIds.length, bIds.length); i += 1) {
+        const av = aIds[i];
+        const bv = bIds[i];
+        if (av === undefined) {
+            return -1;
+        }
+        if (bv === undefined) {
+            return 1;
+        }
+        if (av !== bv) {
+            return compareIdentifier(av, bv);
+        }
+    }
+    return 0;
+}
+
+/** 比较单个 prerelease 标识：数值标识按数值且低于字母数字标识，其余按 ASCII 序。 */
+function compareIdentifier(av: string, bv: string): number {
+    const aNum = SEMVER_NUMERIC_RE.test(av);
+    const bNum = SEMVER_NUMERIC_RE.test(bv);
+    if (aNum && bNum) {
+        return Number(av) < Number(bv) ? -1 : 1;
+    }
+    if (aNum !== bNum) {
+        return aNum ? -1 : 1;
+    }
+    return av < bv ? -1 : 1;
+}
+
+/**
+ * 版本集合中的最高版本（semver 序）；空集 → undefined。
+ *
+ * 用最高版本近似 npm 的 `dist-tags.latest`：发布链从不打非 latest tag，两者只在
+ * 有人手发带自定义 tag 的更高版本时分叉，届时偏保守——多跳过一个本可发布的
+ * 降级版本，无害。
+ */
+export function latestPublishedVersion(versions: ReadonlySet<string>): string | undefined {
+    let latest: string | undefined;
+    for (const version of versions) {
+        if (latest === undefined || compareSemver(version, latest) > 0) {
+            latest = version;
+        }
+    }
+    return latest;
+}
+
+/**
  * 计算需要发布的包：本地版本不在 registry 已发布版本集合中 → 发布；
- * 否则跳过。registry 首次发布（404 → 空集）→ 全部发布。
+ * 已存在 → 跳过；低于 registry 最高版本 → 跳过（npm 11 起 publish 隐式打
+ * latest，降级会被 "Cannot implicitly apply the latest tag" 拒绝）。registry
+ * 首次发布（404 → 空集）→ 全部发布。
  *
  * @param pkgs 工作区全部可发布包
  * @param published 包名 → 该包在 registry 的所有已发布版本集合
@@ -127,6 +240,19 @@ export function planPublish(
         }
         if (versions.has(pkg.version)) {
             skipped.push({ pkg, reason: `版本 ${pkg.version} 已在 registry` });
+            continue;
+        }
+        // 只在两个 release 运行前后脚时触发：前一批 publish 还卡在 environment
+        // 审批，后一批已把更高版本发上 registry——2026-11-14 cli@0.6.1 即此形态
+        //（其 publish 轮到执行时 0.6.2 已在 registry，npm 拒绝 latest 降级导致
+        // 发布中断）。被更高版本取代的包无事可做（显式 --tag 降级只会污染
+        // latest），直接跳过。
+        const latest = latestPublishedVersion(versions);
+        if (latest !== undefined && compareSemver(pkg.version, latest) < 0) {
+            skipped.push({
+                pkg,
+                reason: `已被 registry 更高版本 ${latest} 取代（publish 会拒 latest 降级）`,
+            });
         } else {
             toPublish.push(pkg);
         }

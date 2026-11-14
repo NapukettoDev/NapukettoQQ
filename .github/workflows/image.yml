@@ -4,6 +4,12 @@
 # 用 tag 而不是 workflow_run：release.yml 的 publish 需要 environment 审批，workflow_run
 # 要等审批完成才拿到 completed 事件；tag 在 prepare 阶段就推送，镜像构建与 npm 发布并行。
 #
+# 并行的代价（2026-11-14 两次 ETARGET，run 43574438141 / 43577318303）：构建可能先于
+# npm publish 执行——publish 卡在 environment 审批，registry 还没有该版本，npm install
+# 层直接 ETARGET。故构建前先轮询 registry 等 `@napuketto/cli@<版本>` 就绪（上限 40
+# 分钟，覆盖正常审批延迟；cli 在发布批里拓扑序靠后，它在 = 其 @napuketto 依赖都在）。
+# publish 失败或审批迟迟不来 → 超时失败，审批发布完成后手动 workflow_dispatch 补建。
+#
 # 只构建 linux/amd64：arm64 的 stub / 清单条目尚未交付（见
 # docs/architecture/linux-native-host.md 附录 E.2），不发布未验证的平台。
 #
@@ -38,7 +44,8 @@ jobs:
     image:
         name: build & push (linux/amd64)
         runs-on: ubuntu-24.04
-        timeout-minutes: 45
+        # 45 分钟等包 + 两个变体构建（冷缓存约 10 分钟）
+        timeout-minutes: 60
         steps:
             - name: Checkout
               uses: actions/checkout@v7
@@ -53,6 +60,26 @@ jobs:
                   fi
                   echo "version=${version}" >> "${GITHUB_OUTPUT}"
                   echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/napukettoqq" >> "${GITHUB_OUTPUT}"
+
+            # tag 在 prepare 阶段推送，npm publish 还要等 environment 审批——不 等
+            # 就构建，npm install 层必然 ETARGET（2026-11-14 两次事故）。带 cachebust
+            # 查询参数绕开 CDN 对 404 的短缓存；cli 版本级端点 200 = 已发布。
+            - name: 等待 npm 包就绪（publish 等 environment 审批中）
+              timeout-minutes: 45
+              env:
+                  NAPUKETTO_VERSION: ${{ steps.ver.outputs.version }}
+              run: |
+                  url="https://registry.npmjs.org/@napuketto%2Fcli/${NAPUKETTO_VERSION}"
+                  deadline=$(( $(date +%s) + 40 * 60 ))
+                  while ! curl -fsS --max-time 20 "${url}?cb=$(date +%s)" > /dev/null 2>&1; do
+                      if [ "$(date +%s)" -ge "${deadline}" ]; then
+                          echo "::error::等了 40 分钟 npm 仍没有 @napuketto/cli@${NAPUKETTO_VERSION}——publish 多半卡在 environment 审批或已失败；审批通过发布成功后手动 workflow_dispatch 本 workflow 补建镜像"
+                          exit 1
+                      fi
+                      echo "npm 尚无 @napuketto/cli@${NAPUKETTO_VERSION}（publish 等审批/发布中），30 秒后重试"
+                      sleep 30
+                  done
+                  echo "@napuketto/cli@${NAPUKETTO_VERSION} 已在 npm 上，开始构建"
 
             - name: Set up Buildx
               uses: docker/setup-buildx-action@v3

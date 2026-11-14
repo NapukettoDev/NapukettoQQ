@@ -11,7 +11,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     assertNoProtocolLeftovers,
+    compareSemver,
     discoverPackages,
+    latestPublishedVersion,
     parseCatalogSpecs,
     planPublish,
     rewriteDependencyProtocols,
@@ -189,6 +191,83 @@ describe("planPublish", () => {
     it("缺少 registry 版本信息 → 抛错（发布前必须查询）", () => {
         const pkgs = [mk("a", "0.0.1")];
         expect(() => planPublish(pkgs, new Map())).toThrow(/registry 版本信息/);
+    });
+
+    it("待发版本低于 registry 最高版本 → 跳过（npm 拒 latest 降级，2026-11-14 cli@0.6.1 事故）", () => {
+        const pkgs = [mk("@napuketto/cli", "0.6.1")];
+        const { toPublish, skipped } = planPublish(
+            pkgs,
+            new Map([["@napuketto/cli", new Set(["0.6.0", "0.6.2"])]]),
+        );
+        expect(toPublish).toEqual([]);
+        expect(skipped).toHaveLength(1);
+        expect(skipped[0]?.reason).toContain("0.6.2");
+        expect(skipped[0]?.reason).toContain("取代");
+    });
+
+    it("待发版本高于 registry 最高版本 → 照常发布", () => {
+        const pkgs = [mk("@napuketto/cli", "0.6.3")];
+        const { toPublish, skipped } = planPublish(
+            pkgs,
+            new Map([["@napuketto/cli", new Set(["0.6.0", "0.6.2"])]]),
+        );
+        expect(toPublish.map((p) => p.name)).toEqual(["@napuketto/cli"]);
+        expect(skipped).toEqual([]);
+    });
+
+    it("prerelease 比较生效：0.7.0-next.1 低于已发的 0.7.0-next.2 → 跳过", () => {
+        const pkgs = [mk("@napuketto/cli", "0.7.0-next.1")];
+        const { toPublish, skipped } = planPublish(
+            pkgs,
+            new Map([["@napuketto/cli", new Set(["0.7.0-next.2"])]]),
+        );
+        expect(toPublish).toEqual([]);
+        expect(skipped).toHaveLength(1);
+    });
+});
+
+describe("compareSemver", () => {
+    it("相等 → 0；主 / 次 / 补丁位逐段比较", () => {
+        expect(compareSemver("1.2.3", "1.2.3")).toBe(0);
+        expect(compareSemver("1.2.3", "1.2.4")).toBe(-1);
+        expect(compareSemver("1.3.0", "1.2.9")).toBe(1);
+        expect(compareSemver("2.0.0", "1.99.99")).toBe(1);
+    });
+
+    it("正式版高于同号 prerelease；prerelease 数值标识按数值比较", () => {
+        expect(compareSemver("0.6.2", "0.6.2-rc.0")).toBe(1);
+        expect(compareSemver("0.7.0-next.2", "0.7.0-next.10")).toBe(-1);
+        expect(compareSemver("0.7.0-next.2", "0.7.0-next.2")).toBe(0);
+    });
+
+    it("数值标识低于字母数字标识；前缀相同时标识多者高", () => {
+        expect(compareSemver("1.0.0-1", "1.0.0-alpha")).toBe(-1);
+        expect(compareSemver("1.0.0-alpha.1", "1.0.0-alpha")).toBe(1);
+        expect(compareSemver("1.0.0-alpha", "1.0.0-alpha.1")).toBe(-1);
+        expect(compareSemver("1.0.0-alpha", "1.0.0-beta")).toBe(-1);
+    });
+
+    it("build metadata（+…）不参与比较", () => {
+        expect(compareSemver("1.0.0+build.1", "1.0.0+build.2")).toBe(0);
+        expect(compareSemver("1.0.0-rc.1+build.5", "1.0.0-rc.1")).toBe(0);
+    });
+
+    it("非 semver 版本号 → 抛错（registry 数据异常不该静默放行）", () => {
+        expect(() => compareSemver("abc", "1.0.0")).toThrow(/semver/);
+        expect(() => compareSemver("1.2", "1.0.0")).toThrow(/semver/);
+        expect(() => compareSemver("1.2.x", "1.0.0")).toThrow(/semver/);
+    });
+});
+
+describe("latestPublishedVersion", () => {
+    it("空集 → undefined", () => {
+        expect(latestPublishedVersion(new Set())).toBeUndefined();
+    });
+
+    it("乱序集合取 semver 最高；prerelease 低于正式版", () => {
+        expect(latestPublishedVersion(new Set(["0.5.9", "0.6.0", "0.5.10"]))).toBe("0.6.0");
+        expect(latestPublishedVersion(new Set(["0.6.2-rc.1", "0.6.1"]))).toBe("0.6.2-rc.1");
+        expect(latestPublishedVersion(new Set(["0.6.2-rc.1", "0.6.1", "0.6.2"]))).toBe("0.6.2");
     });
 });
 

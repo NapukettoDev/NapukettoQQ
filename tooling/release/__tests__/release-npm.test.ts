@@ -37,6 +37,7 @@ import {
     parseArgs,
     publishedDespiteFailure,
     publishPkg,
+    supersededInRegistry,
 } from "../release-npm.ts";
 
 let tmp = "";
@@ -338,6 +339,38 @@ describe("main 全流程", () => {
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("已发布: @napuketto/cli"));
     });
 
+    it("publish 拒 latest 降级且 registry 已有更高版本 → 按跳过继续（2026-11-14 事故回归）", async () => {
+        const kernel = makePkg("@napuketto/kernel", "0.0.9");
+        const cli = makePkg("@napuketto/cli", "0.1.0", { "@napuketto/kernel": "workspace:*" });
+        mocks.discoverPackages.mockResolvedValue([cli, kernel]);
+        // planPublish 时 cli@0.1.0 计划发布；cli publish 失败后的复核读到 0.2.0
+        // 已上 registry（另一批 release 抢先发出）→ 取代关系成立
+        const counts = new Map<string, number>();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((input: unknown) => {
+                const name = decodeURIComponent(
+                    String(input).replace("https://registry.npmjs.org/", ""),
+                );
+                const seen = (counts.get(name) ?? 0) + 1;
+                counts.set(name, seen);
+                const versions = name === "@napuketto/cli" && seen >= 2 ? { "0.2.0": {} } : {};
+                return Promise.resolve(new Response(JSON.stringify({ versions }), { status: 200 }));
+            }),
+        );
+        mocks.spawnSync
+            .mockReturnValueOnce({ status: 0, error: undefined }) // kernel 成功
+            .mockReturnValueOnce({ status: 1, error: undefined }); // cli 被 npm 拒
+        const code = await main([]);
+        expect(code).toBe(0);
+        expect(mocks.spawnSync).toHaveBeenCalledTimes(2);
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("已被 registry 更高版本取代"));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("按跳过继续"));
+        // 被取代的包不得打 "已发布"
+        const logs: unknown[][] = logSpy.mock.calls;
+        expect(logs.some((line) => String(line[0]).includes("已发布: @napuketto/cli"))).toBe(false);
+    });
+
     it("OIDC 模式 + 已有包缺信任配置 → 预检拦截，一个包都不发", async () => {
         vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_URL", "https://token.actions.example/");
         vi.stubEnv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "request-token");
@@ -437,6 +470,42 @@ describe("publishedDespiteFailure（并发发布 / 缓存滞后幂等）", () =>
             publishedDespiteFailure(pkg, { fetchVersions, attempts: 3, delayMs: 0 }),
         ).resolves.toBe(true);
         expect(fetchVersions).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe("supersededInRegistry（被更高版本取代）", () => {
+    it("registry 最高版本高于待发版本 → true（立即命中，不重试）", async () => {
+        const pkg = makePkg("@napuketto/cli", "0.6.1");
+        const fetchVersions = vi.fn(async () => new Set(["0.6.0", "0.6.2"]));
+        await expect(supersededInRegistry(pkg, { fetchVersions, delayMs: 0 })).resolves.toBe(true);
+        expect(fetchVersions).toHaveBeenCalledTimes(1);
+    });
+
+    it("registry 最高版本低于待发版本 → false（用满 attempts 次）", async () => {
+        const pkg = makePkg("@napuketto/cli", "0.6.3");
+        const fetchVersions = vi.fn(async () => new Set(["0.6.2"]));
+        await expect(
+            supersededInRegistry(pkg, { fetchVersions, attempts: 2, delayMs: 0 }),
+        ).resolves.toBe(false);
+        expect(fetchVersions).toHaveBeenCalledTimes(2);
+    });
+
+    it("传播延迟：首次最高版本还低、重试后更高版本可见 → true", async () => {
+        const pkg = makePkg("@napuketto/cli", "0.6.1");
+        const fetchVersions = vi
+            .fn()
+            .mockResolvedValueOnce(new Set(["0.6.0"]))
+            .mockResolvedValueOnce(new Set(["0.6.0", "0.6.2"]));
+        await expect(
+            supersededInRegistry(pkg, { fetchVersions, attempts: 3, delayMs: 0 }),
+        ).resolves.toBe(true);
+        expect(fetchVersions).toHaveBeenCalledTimes(2);
+    });
+
+    it("包从未发布（空 registry）→ false", async () => {
+        const pkg = makePkg("@napuketto/brand-new", "0.1.0");
+        const fetchVersions = vi.fn(async () => new Set<string>());
+        await expect(supersededInRegistry(pkg, { fetchVersions, delayMs: 0 })).resolves.toBe(false);
     });
 });
 

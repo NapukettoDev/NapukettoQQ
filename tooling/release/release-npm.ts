@@ -31,10 +31,13 @@
  *     里能生成溯源，否则直接 EUSAGE 拒发。
  *
  * 行为：
- *   - 发布前查询 registry：本地版本已存在（changeset 未 bump 的包）→ 跳过
+ *   - 发布前查询 registry：本地版本已存在（changeset 未 bump 的包）→ 跳过；
+ *     本地版本低于 registry 最高版本（更高版本已先上 registry）→ 跳过
  *   - 仅对需要发布的包做拓扑排序（被依赖者在前）并逐个 npm publish
  *   - OIDC 模式下发布前预检每个包的信任配置，404 = 没配 / claim 不符 / 已过期
- *   - 任一包失败 → 立即中断，退出码非 0（避免后续包依赖残缺上游）
+ *   - 任一包失败 → 复核 registry：版本已在（并发/缓存滞后）按成功继续，已被
+ *     更高版本取代（npm 拒 latest 降级）按跳过继续，其余立即中断退出码非 0
+ *     （避免后续包依赖残缺上游）
  *   - npm 7+ git-checks：发布前工作区必须已提交（dirty 会被拒绝）
  *
  * 纯逻辑在 ./release-npm-core.ts（可单测），本文件只做参数解析 + 进程执行。
@@ -46,7 +49,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { SkippedPkg, WorkspacePkg } from "./release-npm-core.ts";
 import {
     assertNoProtocolLeftovers,
+    compareSemver,
     discoverPackages,
+    latestPublishedVersion,
     parseCatalogSpecs,
     planPublish,
     rewriteDependencyProtocols,
@@ -138,6 +143,35 @@ export async function publishedDespiteFailure(
     const delayMs = options.delayMs ?? confirmDelayMs();
     for (let attempt = 0; attempt < attempts; attempt += 1) {
         if ((await fetchVersions(pkg.name)).has(pkg.version)) {
+            return true;
+        }
+        if (attempt < attempts - 1) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+    }
+    return false;
+}
+
+/**
+ * 发布失败后检查：registry 最高版本已高于待发版本 → 该版本已被更高版本取代。
+ *
+ * 与 publishedDespiteFailure 同一重试形态（覆盖 npm CDN 传播延迟）：publish 挂掉
+ * 到复核之间，把本包顶掉的更高版本可能刚上 registry 还没传播到 CDN。
+ *
+ * 2026-11-14 事故：cli@0.6.1 的 publish 等 environment 审批 45 分钟，轮到执行时
+ * cli@0.6.2 已先发上 npm → npm 11 拒绝隐式 latest 降级（"Cannot implicitly apply
+ * the latest tag"）→ 发布中断。取代关系成立时按跳过继续，不算失败。
+ */
+export async function supersededInRegistry(
+    pkg: WorkspacePkg,
+    options: ConfirmPublishedOptions = {},
+): Promise<boolean> {
+    const fetchVersions = options.fetchVersions ?? fetchPublishedVersions;
+    const attempts = options.attempts ?? PUBLISH_CONFIRM_ATTEMPTS;
+    const delayMs = options.delayMs ?? confirmDelayMs();
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const latest = latestPublishedVersion(await fetchVersions(pkg.name));
+        if (latest !== undefined && compareSemver(pkg.version, latest) < 0) {
             return true;
         }
         if (attempt < attempts - 1) {
@@ -381,7 +415,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     const { toPublish, skipped } = planPublish(pkgs, published);
     printSkipped(skipped);
     if (toPublish.length === 0) {
-        console.log("[release-npm] 无需发布，全部版本已在 registry");
+        console.log("[release-npm] 无需发布，全部版本已在 registry 或被更高版本取代");
         return 0;
     }
 
@@ -398,6 +432,38 @@ export async function main(argv: readonly string[]): Promise<number> {
         `[release-npm] 📚 catalog 条目 ${catalog.size} 个（发布前把 catalog: 解析为真实范围）`,
     );
     return await publishOrdered(ordered, workspaceVersions, catalog, dryRun, otp);
+}
+
+/** 单个包发布失败的处置结论。 */
+type FailureDisposition = { kind: "recover" } | { kind: "skip" } | { kind: "abort"; code: number };
+
+/**
+ * 发布失败后的复核与处置（幂等三态）：
+ *   - recover：版本其实已在 registry（并发发布 / 缓存滞后）→ 按成功继续
+ *   - skip：已被 registry 更高版本取代（npm 拒隐式 latest 降级，2026-11-14
+ *     cli@0.6.1 事故：其 publish 等 environment 审批 45 分钟，轮到时 0.6.2 已先上）
+ *     → 按跳过继续，不算失败（该版本已无事可做）
+ *   - abort：真失败 → 按退出码中断（后续包依赖残缺上游）
+ */
+async function disposePublishFailure(
+    pkg: WorkspacePkg,
+    dryRun: boolean,
+    code: number,
+): Promise<FailureDisposition> {
+    if (!dryRun && (await publishedDespiteFailure(pkg))) {
+        console.log(
+            `[release-npm] ℹ️ ${pkg.name}@${pkg.version} 已在 registry（并发发布或缓存滞后），按成功继续`,
+        );
+        return { kind: "recover" };
+    }
+    if (!dryRun && (await supersededInRegistry(pkg))) {
+        console.log(
+            `[release-npm] ⏭ ${pkg.name}@${pkg.version} 已被 registry 更高版本取代（npm 拒 latest 降级），按跳过继续`,
+        );
+        return { kind: "skip" };
+    }
+    console.log(`[release-npm] ❌ 发布失败: ${pkg.name}@${pkg.version}（退出码 ${code}），已中断`);
+    return { kind: "abort", code };
 }
 
 /**
@@ -432,16 +498,12 @@ async function publishOrdered(
         try {
             const code = publishPkg(pkg, dryRun, otp);
             if (code !== 0) {
-                // 并发发布 / registry 缓存滞后：版本其实已在 registry → 按成功继续
-                if (!dryRun && (await publishedDespiteFailure(pkg))) {
-                    console.log(
-                        `[release-npm] ℹ️ ${pkg.name}@${pkg.version} 已在 registry（并发发布或缓存滞后），按成功继续`,
-                    );
-                } else {
-                    console.log(
-                        `[release-npm] ❌ 发布失败: ${pkg.name}@${pkg.version}（退出码 ${code}），已中断`,
-                    );
-                    return code;
+                const disposition = await disposePublishFailure(pkg, dryRun, code);
+                if (disposition.kind === "abort") {
+                    return disposition.code;
+                }
+                if (disposition.kind === "skip") {
+                    continue;
                 }
             }
             console.log(`[release-npm] ✅ 已发布: ${pkg.name}@${pkg.version}`);
