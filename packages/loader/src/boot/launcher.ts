@@ -45,7 +45,7 @@ export interface LaunchOptions {
     selfHost?: boolean;
     /** stub QQNT.dll 目录（PATH 前置，转发 napi_*、uv_* 符号到 node.exe）。 */
     stubDir?: string;
-    /** Linux 原生 stub `.so` 路径（缺省 native/build/linux-<arch>/libnapuketto_stub.so）。 */
+    /** Linux 原生 stub `.so` 路径（缺省 native/prebuilt/linux-x64/libnapuketto_stub.so）。 */
     linuxStubPath?: string;
     /** 强制指定快速登录账号（注入 NAPUTO_QUICK_UIN；cli `-q <uin>` 透传，2026-08-07）。 */
     quickUin?: string;
@@ -127,8 +127,8 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     }
 
     // stub QQNT.dll 校验（自建宿主必需：PATH 前置 stub 转发 napi_* 到 node.exe，
-    // 否则 wrapper.node dlopen 失败）。默认 loader 包内闭源 submodule native/stub-test-env，
-    // 缺失时提示 --stub-dir / NAPUTO_STUB_DIR 指定。
+    // 否则 wrapper.node dlopen 失败）。默认 loader 包内闭源 submodule
+    // native/prebuilt/win32-x64，缺失时提示 --stub-dir / NAPUTO_STUB_DIR 指定。
     const stub = options.stubDir ?? defaultStubDir();
     if (!existsSync(join(stub, "QQNT.dll"))) {
         throw new Error(
@@ -188,7 +188,7 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
         options.linuxStubPath ?? process.env["NAPUTO_LINUX_STUB"] ?? defaultLinuxStubPath();
     if (!existsSync(stub)) {
         throw new Error(
-            `Linux stub 未找到: ${stub}（应随 @napuketto/loader 的 native/build/linux-<arch>/ 发布；` +
+            `Linux stub 未找到: ${stub}（应随 @napuketto/loader 的 native/prebuilt/linux-x64/ 发布；` +
                 "可用 --stub-dir 之外的 NAPUTO_LINUX_STUB 指定）",
         );
     }
@@ -357,11 +357,11 @@ function applyPathEnv(
 }
 
 /**
- * 默认 stub QQNT.dll 目录（loader 包内闭源 native/build/stub-test-env，开发机默认）。
+ * 默认 stub QQNT.dll 目录（loader 包内闭源 native/prebuilt/win32-x64）。
  * src 与 native 同层，构建后 dist 与 native 同层——`../native` 恒正确。
  */
 export function defaultStubDir(): string {
-    return join(packageRoot(), "native", "build", "stub-test-env");
+    return join(packageRoot(), "native", "prebuilt", "win32-x64");
 }
 
 /** 装配自建宿主环境变量。 */

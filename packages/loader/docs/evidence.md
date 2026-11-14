@@ -11,7 +11,7 @@
 Windows：PATH 必须先 stub 目录、再 `wrapper.node` 同目录（后者放 `*.dll` 依赖）。
 
 ```powershell
-$stub = "packages/loader/native/build/stub-test-env"
+$stub = "packages/loader/native/prebuilt/win32-x64"
 $app  = "$env:LOCALAPPDATA\Programs\Tencent\QQNT\versions\9.9.33-52230\resources\app"
 $env:PATH = "$stub;$app;$env:PATH"
 $env:NAPUTO_STUB_DIR = $stub
@@ -28,7 +28,7 @@ W=$PWD/qq/root/opt/QQ/resources/app/wrapper.node
 LD_PRELOAD=$PWD/libnapuketto_stub.so:/usr/lib/x86_64-linux-gnu/libgnutls.so.30 \
   node -e 'const m={exports:{}};process.dlopen(m,process.env.W);console.log(Object.keys(m.exports).length)'
 ldconfig -p | grep libgnutls.so.30; readelf -d wrapper.node | grep NEEDED
-readelf --dyn-syms --wide packages/loader/native/build/linux-x64/libnapuketto_stub.so | grep -v UND
+readelf --dyn-syms --wide packages/loader/native/prebuilt/linux-x64/libnapuketto_stub.so | grep -v UND
 ```
 
 不同发行版的 gnutls 落点（`ldd` 看不出该隐藏依赖；`$LIBDIR` = `/usr/lib/<arch>-linux-gnu`）：
@@ -181,7 +181,7 @@ Content-Length: 330446512
 
 ```text
 <MMKV> … ｜ loadSymbolFromShell: dlsym failed PerfTrace ｜ [1105/213001.123:ERROR:quic_session.cc(88)] …
-stub QQNT.dll 就绪：…\native\build\stub-test-env
+stub QQNT.dll 就绪：…\native\prebuilt\win32-x64
 当前宿主非 node（bun.exe），解析 Windows 版 node.exe…
 下载 QQ 官方安装包 3.2.35-54395（约 180MB）…
 QQ 原生文件就绪：缓存版本 3.2.35-54395

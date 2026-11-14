@@ -4,7 +4,7 @@
  * 与 Windows 分支的区别：
  *  - 宿主是 Linux 原生 `node`（不是 Wine 里的 Windows node.exe——Wine 已退役）
  *  - `wrapper.node` 是 ELF，宿主符号由官方 node 直接导出；只 preload 最小 stub
- *  - stub 是 `libnapuketto_stub.so`（native/build/linux-<arch>/），不再是 QQNT.dll 目录
+ *  - stub 是 `libnapuketto_stub.so`（native/prebuilt/linux-x64/），不再是 QQNT.dll 目录
  *  - `libbugly` 的 gnutls 是无 DT_NEEDED 的隐藏依赖，必须与 stub 一起 preload
  *  - `HOME`/`XDG_*` 收敛到数据根（Stage 3c）：Bugly 的 NativeCrashHandler 不受
  *    `desktopGlobalPath` 控制，总是写 `$HOME/.config/QQ/crash_files/`
@@ -24,14 +24,12 @@ const LINE_SPLIT = /\r?\n/;
 /** 数据根下受管 HOME 的目录名（Linux 原生宿主专用）。 */
 export const LINUX_HOME_DIRNAME = "home";
 
-/** 当前架构对应的 stub 目录名（x64 → linux-x64，arm64 → linux-arm64）。 */
-export function linuxStubArchDir(arch: string = process.arch): string {
-    return `linux-${arch}`;
-}
-
-/** loader 包内 Linux stub 路径（native/build/linux-<arch>/libnapuketto_stub.so）。 */
+/**
+ * loader 包内 Linux stub 路径（native/prebuilt/linux-x64/libnapuketto_stub.so）。
+ * 只入库 x64（经真机验证）；arm64 等其他架构用 `NAPUTO_LINUX_STUB` 显式指定。
+ */
 export function defaultLinuxStubPath(): string {
-    return join(packageRoot(), "native", "build", linuxStubArchDir(), "libnapuketto_stub.so");
+    return join(packageRoot(), "native", "prebuilt", "linux-x64", "libnapuketto_stub.so");
 }
 
 /** 按架构给 gnutls 候选路径（Ubuntu/Debian 多架构目录）。 */

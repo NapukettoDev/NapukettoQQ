@@ -9,16 +9,13 @@ import {
     LINUX_HOME_DIRNAME,
     linuxHomeEnv,
     linuxPreload,
-    linuxStubArchDir,
     resolveLinuxHome,
 } from "../linux-native.js";
 
-describe("linuxStubArchDir / defaultLinuxStubPath", () => {
-    it("按架构映射目录，产物名为 libnapuketto_stub.so", () => {
-        expect(linuxStubArchDir("x64")).toBe("linux-x64");
-        expect(linuxStubArchDir("arm64")).toBe("linux-arm64");
+describe("defaultLinuxStubPath", () => {
+    it("指向包内 prebuilt/linux-x64，产物名为 libnapuketto_stub.so", () => {
         const p = defaultLinuxStubPath();
-        expect(p).toContain(`linux-${process.arch}`);
+        expect(p).toContain(join("native", "prebuilt", "linux-x64"));
         expect(p.endsWith("libnapuketto_stub.so")).toBe(true);
     });
 });
