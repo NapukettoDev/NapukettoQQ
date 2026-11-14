@@ -8,7 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { collectGrayTipUids, firstUntranslatedGrayTip } from "../shared/gray-tip.js";
+import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../shared/gray-tip.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */
 function makeMsg(elements: RawMessage["elements"]): RawMessage {
@@ -138,5 +138,27 @@ describe("firstUntranslatedGrayTip", () => {
             ),
         ).toBeUndefined();
         expect(firstUntranslatedGrayTip(makeMsg([]))).toBeUndefined();
+    });
+});
+
+describe("hasGrayTip（OB11 / Milky 收链路分流判据，core 收拢版）", () => {
+    it("含 grayTipElement → true", () => {
+        const msg = makeMsg([
+            { elementType: 1, textElement: { content: "文本" } },
+            { elementType: 8, grayTipElement: { revokeElement: { operatorUid: "op" } } },
+        ]);
+        expect(hasGrayTip(msg)).toBe(true);
+    });
+
+    it("grayTipElement 缺省 → false（`!= null` 空值判定：undefined 与 Linux 运行时的显式 null 同路径）", () => {
+        const msg = makeMsg([{ elementType: 8 }]);
+        expect(hasGrayTip(msg)).toBe(false);
+    });
+
+    it("无 grayTipElement / 空元素列表 → false", () => {
+        expect(hasGrayTip(makeMsg([{ elementType: 1, textElement: { content: "文本" } }]))).toBe(
+            false,
+        );
+        expect(hasGrayTip(makeMsg([]))).toBe(false);
     });
 });

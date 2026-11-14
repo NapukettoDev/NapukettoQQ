@@ -6,6 +6,15 @@
  */
 import type { GrayTipElement, RawMessage } from "@napuketto/kernel";
 
+/**
+ * 消息是否含 grayTip 元素（OB11 / Milky 收链路分流判据，2026-11-14 收拢）。
+ * `!= null` 空值判定：Linux 原生宿主把未命中的变体字段显式置 null，
+ * `!== undefined` 会把普通消息误判成 grayTip 消息（见 OB11 hasFileElement 注）。
+ */
+export function hasGrayTip(msg: RawMessage): boolean {
+    return msg.elements.some((el) => el.grayTipElement != null);
+}
+
 /** 非空 uid 才加入集合。 */
 function collectUids(uids: Set<string>, ...candidates: Array<string | undefined>): void {
     for (const uid of candidates) {

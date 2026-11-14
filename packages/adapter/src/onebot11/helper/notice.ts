@@ -28,8 +28,9 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { toUnixSeconds } from "../../core/shared/time.js";
+import { toUin } from "../../core/shared/uid-uin.js";
 
-export { collectGrayTipUids } from "../../core/shared/gray-tip.js";
+export { collectGrayTipUids, hasGrayTip } from "../../core/shared/gray-tip.js";
 
 import { firstUntranslatedGrayTip } from "../../core/shared/gray-tip.js";
 
@@ -71,17 +72,6 @@ export interface NoticeTranslateContext {
     uidToUin: Map<string, string>;
     /** 校准日志（可选：未知 grayTip 子类型/poke raw JSON；缺省静默）。 */
     logger?: { warn(obj: unknown, msg?: string): void };
-}
-
-/** 检查消息是否含可翻译的 grayTip 元素（空值判定同 hasFileElement）。 */
-export function hasGrayTip(msg: RawMessage): boolean {
-    return msg.elements.some((el) => el.grayTipElement != null);
-}
-
-/** uid → uin（上下文映射缺省退化为 uid）。 */
-function toUin(uid: string, ctx: NoticeTranslateContext): number {
-    const uin = ctx.uidToUin.get(uid);
-    return Number(uin ?? uid);
 }
 
 /** 基础字段（time/self_id/post_type）。 */

@@ -20,16 +20,11 @@ import {
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
 } from "@napuketto/kernel";
-import { MS_TO_SEC, type RequestTranslateContext, resolveUin } from "../../core/shared/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../core/shared/uid-uin.js";
 
 export type { RequestTranslateContext } from "../../core/shared/uid-uin.js";
 
 import type { OB11FriendRequestEvent, OB11GroupRequestEvent } from "../event/index.js";
-
-/** uid → uin（core 共享解析；ctx 携带映射）。 */
-function toUin(uid: string | undefined, ctx: RequestTranslateContext): number {
-    return resolveUin(uid, ctx.uidToUin);
-}
 
 /**
  * GroupNotify → OB11 群请求事件（group_add / group_invite）。

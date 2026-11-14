@@ -23,7 +23,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { firstUntranslatedGrayTip } from "../../../core/shared/gray-tip.js";
-import { resolveUin } from "../../../core/shared/uid-uin.js";
+import { toUin } from "../../../core/shared/uid-uin.js";
 import type {
     FriendNudgeData,
     GroupDisbandData,
@@ -45,11 +45,6 @@ export interface NoticeTranslateContext {
     uidToUin: Map<string, string>;
     /** 校准日志（可选：未知子类型 / aioOp raw JSON；缺省静默）。 */
     logger?: { warn(obj: unknown, msg?: string): void };
-}
-
-/** uid → uin（core 共享解析；ctx 携带映射）。 */
-function toUin(uid: string | undefined, ctx: NoticeTranslateContext): number {
-    return resolveUin(uid, ctx.uidToUin);
 }
 
 /** 事件信封公共字段。 */

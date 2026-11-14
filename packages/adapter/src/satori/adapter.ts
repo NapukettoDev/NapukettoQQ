@@ -54,9 +54,9 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
             config: opts.config,
             broadcaster: opts.broadcaster,
             hooks: {
-                onStart: (config) => this.startTransports(config as SatoriConfig),
+                onStart: (config) => this.startTransports(config),
                 onStop: () => this.stopAll(),
-                onReload: (config) => this.reloadTransports(config as SatoriConfig),
+                onReload: (config) => this.reloadTransports(config),
             },
         });
         this.msgChannel = opts.msgChannel;

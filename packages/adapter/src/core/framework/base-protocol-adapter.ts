@@ -8,14 +8,18 @@
 import type { EventBroadcaster } from "@napuketto/network";
 import type { ProtocolConfig } from "./config.js";
 
-/** 适配器生命周期钩子：由协议层实现（配置校验、初始化、资源清理）。 */
-export interface ProtocolHooks {
+/**
+ * 适配器生命周期钩子：由协议层实现（配置校验、初始化、资源清理）。
+ * @typeParam TConfig - 协议配置类型（与 BaseProtocolAdapter 的 TConfig 对齐，
+ * onStart/onReload 强类型透传，协议层不再手动收窄）
+ */
+export interface ProtocolHooks<TConfig = unknown> {
     /** 配置校验通过后初始化（如建立 kernel 事件订阅）。 */
-    onStart: (config: unknown) => Promise<void>;
+    onStart: (config: TConfig) => Promise<void>;
     /** 停止时清理资源（退订、关闭传输等）。 */
     onStop: () => Promise<void>;
     /** 配置热更新。 */
-    onReload: (config: unknown) => Promise<void>;
+    onReload: (config: TConfig) => Promise<void>;
 }
 
 /**
@@ -26,13 +30,13 @@ export abstract class BaseProtocolAdapter<TConfig> {
     abstract readonly protocol: string;
 
     protected readonly config: ProtocolConfig<TConfig>;
-    protected readonly hooks: ProtocolHooks;
+    protected readonly hooks: ProtocolHooks<TConfig>;
     private readonly broadcaster: EventBroadcaster | undefined;
     private started = false;
 
     constructor(opts: {
         config: ProtocolConfig<TConfig>;
-        hooks: ProtocolHooks;
+        hooks: ProtocolHooks<TConfig>;
         broadcaster?: EventBroadcaster;
     }) {
         this.config = opts.config;

@@ -16,7 +16,6 @@
 import type {
     BuddyEventChannel,
     CanonicalElement,
-    EssenceMsgItem,
     GroupEventChannel,
     GroupNotify,
     LoginEventChannel,
@@ -30,9 +29,9 @@ import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
 import { narrowBuddyReqs } from "../core/shared/buddy-req.js";
-import type { EssenceCacheEntry } from "../core/shared/essence.js";
-import { diffEssenceList, narrowEssenceGroupArg } from "../core/shared/essence.js";
-import { collectGrayTipUids } from "../core/shared/gray-tip.js";
+import type { EssenceAddedItem } from "../core/shared/essence.js";
+import { EssenceListSync, narrowEssenceGroupArg } from "../core/shared/essence.js";
+import { collectGrayTipUids, hasGrayTip } from "../core/shared/gray-tip.js";
 import { forEachRawMessage, subscribeRawMessages } from "../core/shared/raw-message.js";
 import {
     decodeProtoTree,
@@ -108,10 +107,8 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     private readonly fileKeys = new RecentKeyCache(10 * 60 * 1000);
     /** essence 双路径去重（732:1 快路径 vs 列表 diff，键 群:seq:方向）。 */
     private readonly essenceKeys = new RecentKeyCache(5 * 60 * 1000);
-    /** 精华列表缓存（群号 → seq → 条目{操作者/发送者}）。 */
-    private readonly essenceCaches = new Map<string, Map<number, EssenceCacheEntry>>();
-    /** 精华列表拉取串行链（并发回写乱序会把新列表覆盖成旧列表）。 */
-    private essenceChain: Promise<void> = Promise.resolve();
+    /** 精华列表串行同步（core 共享组件：缓存 + 串行链 + diff）。 */
+    private readonly essenceSync: EssenceListSync;
     private readonly calibLogger: MilkyLoggerLike | undefined;
     private readonly api: MilkyApi;
     private readonly seqIndex = new MessageSeqIndex();
@@ -121,10 +118,10 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     private stopTransports: (() => Promise<void>) | null = null;
 
     constructor(opts: MilkyAdapterOptions) {
-        const hooks: ProtocolHooks = {
-            onStart: (config) => this.startTransports(config as MilkyConfig),
+        const hooks: ProtocolHooks<MilkyConfig> = {
+            onStart: (config) => this.startTransports(config),
             onStop: () => this.stopAll(),
-            onReload: (config) => this.reloadTransports(config as MilkyConfig),
+            onReload: (config) => this.reloadTransports(config),
         };
         super({
             config: opts.config,
@@ -138,6 +135,17 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         this.loginChannel = opts.loginChannel;
         this.calibLogger = opts.logger;
         this.api = new MilkyApi(opts, this.seqIndex);
+        this.essenceSync = new EssenceListSync({
+            fetchList: (groupCode) => this.api.webApi.getEssenceMsgList(groupCode),
+            onAdded: (groupCode, added) => this.broadcastEssenceAdded(groupCode, added),
+            onRemoved: (groupCode, removed) => this.broadcastEssenceRemoved(groupCode, removed),
+            onFetchError: (groupCode, err) => {
+                this.calibLogger?.warn(
+                    { group: groupCode, err: String(err) },
+                    "milky: 精华列表拉取失败（diff 跳过）",
+                );
+            },
+        });
         this.registry = createMilkyActionRegistry({ api: this.api });
     }
 
@@ -569,43 +577,13 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             );
             return;
         }
-        this.essenceChain = this.essenceChain.then(
-            () => this.syncEssenceList(groupCode),
-            () => undefined,
-        );
-    }
-
-    /** 单群精华列表同步：拉取 → diff → 广播 → 更新缓存（基线未建立只建基线）。 */
-    private async syncEssenceList(groupCode: string): Promise<void> {
-        let items: EssenceMsgItem[];
-        try {
-            items = await this.api.webApi.getEssenceMsgList(groupCode);
-        } catch (e) {
-            this.calibLogger?.warn(
-                { group: groupCode, err: String(e) },
-                "milky: 精华列表拉取失败（diff 跳过）",
-            );
-            return;
-        }
-        const prev = this.essenceCaches.get(groupCode);
-        const { cache, added, removed } = diffEssenceList(prev, items);
-        this.essenceCaches.set(groupCode, cache);
-        if (prev === undefined) {
-            return;
-        }
-        const selfId = Number(this.api.self.uin);
-        const now = Math.floor(Date.now() / 1000);
-        this.broadcastEssenceAdded(groupCode, added, now, selfId);
-        this.broadcastEssenceRemoved(groupCode, removed, now, selfId);
+        this.essenceSync.enqueue(groupCode);
     }
 
     /** diff 新增项广播（is_set=true；operator = add_digest_uin；快路径已发则跳过）。 */
-    private broadcastEssenceAdded(
-        groupCode: string,
-        added: ReadonlyArray<{ messageSeq: number; operatorUin: string | null }>,
-        now: number,
-        selfId: number,
-    ): void {
+    private broadcastEssenceAdded(groupCode: string, added: readonly EssenceAddedItem[]): void {
+        const now = Math.floor(Date.now() / 1000);
+        const selfId = Number(this.api.self.uin);
         for (const item of added) {
             // 732:1 快路径已广播过则跳过（去重窗口内）
             if (!this.essenceKeys.claim(`${groupCode}:${item.messageSeq}:1`)) {
@@ -622,12 +600,9 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     }
 
     /** diff 移除项广播（is_set=false；取消无 sysmsg，operator 不可得省略）。 */
-    private broadcastEssenceRemoved(
-        groupCode: string,
-        removed: readonly number[],
-        now: number,
-        selfId: number,
-    ): void {
+    private broadcastEssenceRemoved(groupCode: string, removed: readonly number[]): void {
+        const now = Math.floor(Date.now() / 1000);
+        const selfId = Number(this.api.self.uin);
         for (const seq of removed) {
             if (!this.essenceKeys.claim(`${groupCode}:${seq}:0`)) {
                 continue;
@@ -705,11 +680,6 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
         }
         return this.api.uidToUin(unique).catch(() => undefined);
     }
-}
-
-/** 是否含 grayTip 元素（与 OB11 收链路同判据）。 */
-function hasGrayTip(msg: RawMessage): boolean {
-    return msg.elements.some((el) => el.grayTipElement != null);
 }
 
 /** 撤回 grayTip 元素（非撤回消息返回 undefined）。 */

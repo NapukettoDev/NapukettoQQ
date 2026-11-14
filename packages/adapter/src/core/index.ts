@@ -2,10 +2,10 @@
  * adapter core 框架入口（ADR-013，可被第三方复用）
  */
 
+export type { ActionKernelSpec, ActionOutcome, ErrorCodeMap } from "./framework/action-kernel.js";
+export { runAction } from "./framework/action-kernel.js";
 export { ActionRegistry } from "./framework/action-registry.js";
-export type { ProtocolAdapterLike } from "./framework/adapter-registry.js";
-export { AdapterRegistry } from "./framework/adapter-registry.js";
-export type { ActionResult, ErrorCodeMap } from "./framework/base-action.js";
+export type { ActionResult } from "./framework/base-action.js";
 export { BaseAction } from "./framework/base-action.js";
 export type { ProtocolHooks } from "./framework/base-protocol-adapter.js";
 export { BaseProtocolAdapter } from "./framework/base-protocol-adapter.js";

@@ -6,9 +6,12 @@
  */
 
 import type { EssenceMsgItem } from "@napuketto/kernel";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     diffEssenceList,
+    type EssenceAddedItem,
+    type EssenceCacheEntry,
+    EssenceListSync,
     extractEssenceSetSysMsg,
     narrowEssenceGroupArg,
 } from "../shared/essence.js";
@@ -145,5 +148,121 @@ describe("extractEssenceSetSysMsg：732:1 路径提取", () => {
             throw new Error("decode failed");
         }
         expect(extractEssenceSetSysMsg(tree)).toBeNull();
+    });
+});
+
+describe("EssenceListSync：串行同步器（OB11 / Milky adapter 共用）", () => {
+    const item = (seq: number, adder = "10001", sender = "10002"): EssenceMsgItem =>
+        ({
+            msg_seq: seq,
+            msg_random: seq,
+            sender_uin: sender,
+            sender_nick: "s",
+            add_digest_uin: adder,
+            add_digest_nick: "op",
+            add_digest_time: 1,
+            msg_content: [],
+        }) as EssenceMsgItem;
+
+    function makeSync(items: EssenceMsgItem[][], fetchError: unknown = null) {
+        let call = 0;
+        const fetchList = vi.fn(async (): Promise<EssenceMsgItem[]> => {
+            if (fetchError !== null) {
+                throw fetchError;
+            }
+            const next = items[call];
+            call += 1;
+            return next ?? [];
+        });
+        const onAdded = vi.fn(
+            async (_groupCode: string, _added: readonly EssenceAddedItem[]): Promise<void> =>
+                undefined,
+        );
+        const onRemoved = vi.fn(
+            async (
+                _groupCode: string,
+                _removed: readonly number[],
+                _prev: ReadonlyMap<number, EssenceCacheEntry>,
+            ): Promise<void> => undefined,
+        );
+        const onFetchError = vi.fn();
+        const sync = new EssenceListSync({ fetchList, onAdded, onRemoved, onFetchError });
+        return { sync, fetchList, onAdded, onRemoved, onFetchError };
+    }
+
+    it("基线未建立：首次 sync 只建缓存，不触发广播回调", async () => {
+        const { sync, onAdded, onRemoved } = makeSync([[item(1)]]);
+        sync.enqueue("g1");
+        await Promise.resolve();
+        await new Promise((r) => setTimeout(r, 0));
+        expect(onAdded).not.toHaveBeenCalled();
+        expect(onRemoved).not.toHaveBeenCalled();
+    });
+
+    it("基线已建立：added / removed 按 diff 结果回调（prev 供 sender 回填）", async () => {
+        const { sync, onAdded, onRemoved } = makeSync([[item(1), item(2)], [item(2)]]);
+        sync.enqueue("g1"); // 建基线
+        await new Promise((r) => setTimeout(r, 0));
+        sync.enqueue("g1"); // 移除 seq=1
+        await new Promise((r) => setTimeout(r, 0));
+        // 与原 adapter 行为一致：回调无条件触发，空 added 由广播侧 no-op
+        expect(onAdded).toHaveBeenCalledTimes(1);
+        expect(onAdded.mock.calls[0]?.[1]).toEqual([]);
+        expect(onRemoved).toHaveBeenCalledTimes(1);
+        const removedCall = onRemoved.mock.calls[0];
+        expect(removedCall?.[0]).toBe("g1");
+        expect(removedCall?.[1]).toEqual([1]);
+        expect(removedCall?.[2]?.get(1)?.senderUin).toBe("10002");
+    });
+
+    it("串行链：前一 sync 未完成不启动下一 sync（并发回写乱序防线）", async () => {
+        let release: (() => void) | undefined;
+        const gate = new Promise<void>((r) => {
+            release = r;
+        });
+        const order: string[] = [];
+        const sync = new EssenceListSync({
+            fetchList: async () => {
+                order.push("fetch-start");
+                await gate;
+                order.push("fetch-done");
+                return [];
+            },
+            onAdded: async () => undefined,
+            onRemoved: async () => undefined,
+        });
+        sync.enqueue("g1");
+        sync.enqueue("g1");
+        await new Promise((r) => setTimeout(r, 0));
+        expect(order).toEqual(["fetch-start"]); // 第二次未并行启动
+        release?.();
+        await new Promise((r) => setTimeout(r, 0));
+        expect(order).toEqual(["fetch-start", "fetch-done", "fetch-start", "fetch-done"]);
+    });
+
+    it("fetch 失败：onFetchError 回调 + 链不中断（后续触发器继续）", async () => {
+        let call = 0;
+        const fetchList = vi.fn(async () => {
+            call += 1;
+            if (call === 1) {
+                throw new Error("网络错误");
+            }
+            return [item(1)];
+        });
+        const onFetchError = vi.fn();
+        const onAdded = vi.fn(async () => undefined);
+        const sync = new EssenceListSync({
+            fetchList,
+            onAdded,
+            onRemoved: async () => undefined,
+            onFetchError,
+        });
+        sync.enqueue("g1"); // 失败
+        await new Promise((r) => setTimeout(r, 0));
+        expect(onFetchError).toHaveBeenCalledTimes(1);
+        expect(String(onFetchError.mock.calls[0]?.[1])).toContain("网络错误");
+        sync.enqueue("g1"); // 链未中断，继续
+        await new Promise((r) => setTimeout(r, 0));
+        expect(fetchList).toHaveBeenCalledTimes(2);
     });
 });

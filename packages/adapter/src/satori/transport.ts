@@ -18,7 +18,7 @@ import type {
 } from "@napuketto/network";
 import { HttpServer, WsServer } from "@napuketto/network";
 import { SatoriActionError } from "./action/base-action.js";
-import type { SatoriActionRegistry } from "./action/registry.js";
+import type { SatoriActionRegistry } from "./action/index.js";
 import { HTTP_STATUS, type SatoriConfig } from "./helper/index.js";
 import { type Event, type IdentifyBody, type Login, Opcode } from "./types/index.js";
 
