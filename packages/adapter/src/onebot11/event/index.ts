@@ -1,7 +1,7 @@
 /**
  * OneBot 11 事件模型：message / notice / request / meta 四类可判别联合
  *
- * adapter.ts（P2）订阅 kernel 事件后按此模型产出 OB11 事件广播；
+ * adapter.ts订阅 kernel 事件后按此模型产出 OB11 事件广播；
  * 第三方框架消费时按 post_type 收窄。
  */
 

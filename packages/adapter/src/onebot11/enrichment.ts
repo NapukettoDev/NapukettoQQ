@@ -1,5 +1,5 @@
 /**
- * OB11 收链路边界异步回填（ADR-008，2026-11-14 自 adapter.ts 拆分）
+ * OB11 收链路边界异步回填（自 adapter.ts 拆分）
  *
  * 翻译函数保持纯函数：uid→uin 批量转换、群发送者角色查询、sysmsg uid 解析、
  * 精华 message_id 反查等翻译前的异步查询在此完成，结果经 ctx 注入翻译。
@@ -7,7 +7,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "../core/shared/log.js";
+import type { AdapterLoggerLike } from "../shared/log.js";
 import type { OneBotApi } from "./api/one-bot-api.js";
 import { collectReceiveNeeds, type ReceiveTranslateContext } from "./helper/index.js";
 import type { SysMsgEnvelope, SysMsgField, SysMsgKindRuleOB11 } from "./helper/sysmsg.js";
@@ -56,7 +56,7 @@ export class Ob11Enrichment {
     }
 
     /**
-     * 消息事件翻译上下文（P2-19：接收方向 ID 转换）。
+     * 消息事件翻译上下文（接收方向 ID 转换）。
      * at uid → 一次批量 uidToUin；群消息另查发送者角色（GroupCache 缓存优先，
      * 失败回退缺省 member）；msgId → OB11 id 经 messageUnique 反查。
      */

@@ -1,5 +1,5 @@
 /**
- * MessageSeqIndex 基线测试（Milky seq↔msgId 双向映射，2026-10-28）
+ * MessageSeqIndex 基线测试（Milky seq↔msgId 双向映射）
  *
  * 锁定：双向登记/反查、FIFO 容量淘汰、collectReplyMeta 批量回填
  * （未命中不进表）。

@@ -1,11 +1,11 @@
 /**
- * NapukettoOneBot11Adapter：OneBot 11 协议适配器（P2-3：收发闭环）
+ * NapukettoOneBot11Adapter：OneBot 11 协议适配器（收发闭环）
  *
  * 收链路：订阅 kernel 消息事件通道 → RawMessage 翻译 OB11 事件 → network 广播；
  * 发链路：handleRequest（{ action, params, echo }）→ 动作注册表 → kernel apis。
  * 生命周期走 BaseProtocolAdapter 骨架。本类只做协调（构造装配 / 传输启停 /
  * 心跳 / 请求分发）：事件订阅与派发在 event-pipeline.ts，翻译前异步回填在
- * enrichment.ts（ADR-008）。
+ * enrichment.ts。
  */
 import type {
     BuddyCacheEventChannel,
@@ -14,14 +14,10 @@ import type {
     MsgEventChannel,
 } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import {
-    type ActionRegistry,
-    type ActionResult,
-    BaseProtocolAdapter,
-    type ProtocolConfig,
-} from "../core/index.js";
-import type { AdapterLoggerLike } from "../core/shared/log.js";
-import { MS_TO_SEC } from "../core/shared/uid-uin.js";
+import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
+import type { AdapterLoggerLike } from "../shared/log.js";
+import { MS_TO_SEC } from "../shared/uid-uin.js";
+import type { ActionResult } from "./action/base-action.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/one-bot-api.js";
 import { OneBotApi } from "./api/one-bot-api.js";
@@ -30,12 +26,12 @@ import type { OB11Config } from "./helper/index.js";
 import type { Ob11TransportSet } from "./transport.js";
 import { assembleOb11Transports } from "./transport.js";
 
-export type { AdapterLoggerLike } from "../core/shared/log.js";
+export type { AdapterLoggerLike } from "../shared/log.js";
 
-/** 适配器构造参数（api 相关字段继承 OneBotApiOptions，P2-16 聚合）。 */
+/** 适配器构造参数（api 相关字段继承 OneBotApiOptions， 聚合）。 */
 export interface OneBot11AdapterOptions extends OneBotApiOptions {
     /** 协议配置（zod 校验 + JSON 读写）。 */
-    config: ProtocolConfig<OB11Config>;
+    config: ConfigBase<OB11Config>;
     /** network 事件广播（注册传输适配器后 emit 推给第三方）。 */
     broadcaster: EventBroadcaster;
     /** kernel 消息事件通道（消息收链路入口）。 */
@@ -44,7 +40,7 @@ export interface OneBot11AdapterOptions extends OneBotApiOptions {
     groupChannel?: GroupEventChannel;
     /** kernel 好友事件通道（可选：Buddy/onBuddyReqChange → OB11 request 源）。 */
     friendChannel?: BuddyEventChannel;
-    /** 好友缓存 diff 通道（可选：BuddyCache/onBuddyAdded → OB11 friend_add 源，B2）。 */
+    /** 好友缓存 diff 通道（可选：BuddyCache/onBuddyAdded → OB11 friend_add 源，）。 */
     buddyCacheEvents?: BuddyCacheEventChannel;
     /** 校准日志（可选：未知事件形状 raw JSON；IPC 模式传 loader pino 实例）。 */
     logger?: AdapterLoggerLike;
@@ -57,8 +53,8 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     private readonly selfUin: string;
     private readonly oneBotApi: OneBotApi;
     /** 动作注册表（公共只读：IPC 桥等装配方枚举动作名直接挂载）。 */
-    readonly registry: ActionRegistry;
-    /** 收链路事件管道（订阅 / 过滤 / 翻译派发，2026-11-14 拆出）。 */
+    readonly registry: ReturnType<typeof createOb11ActionRegistry>;
+    /** 收链路事件管道（订阅 / 过滤 / 翻译派发，拆出）。 */
     private readonly pipeline: Ob11EventPipeline;
     private transports: Ob11TransportSet | null = null;
     private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -93,7 +89,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     }
 
     /**
-     * 配置热更新（P2-6，2026-09-08 实现）：stop 旧传输/心跳/退订 → 按新配置重建。
+     * 配置热更新（实现）：stop 旧传输/心跳/退订 → 按新配置重建。
      * IPC 桥模式（subscribeOnly，无传输）只刷新上报开关字段，不重建。
      */
     private async reloadTransports(config: OB11Config): Promise<void> {
@@ -172,7 +168,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     }
 
     /**
-     * 仅启动接收链路（IPC 桥模式，2026-08-27）：订阅消息通道维护 messageUnique +
+     * 仅启动接收链路（IPC 桥模式）：订阅消息通道维护 messageUnique +
      * 灰色通知翻译；与 start() 的差别仅在传输层（无 HTTP/WS、无心跳、无 lifecycle）。
      * 配置经 seed 装配（load() 返回内存初值）。
      */

@@ -1,5 +1,5 @@
 /**
- * OB11 传输装配（P2-5，2026-08-05）
+ * OB11 传输装配
  *
  * 按 OB11Config 创建/装配 network 传输适配器：
  *  - HTTP 反向（http.enabled）：HttpServer 接收第三方调用 → handleRequest → 响应
@@ -26,8 +26,8 @@ import type { OB11Config } from "./helper/index.js";
 const BEARER_PREFIX = "Bearer ";
 
 /** 校验 URL 查询参数里的 access_token（WS client 连接 URL 可能带）。
- * ⚠️ req.url 是纯路径（无 origin），new URL(相对路径) 必抛——2026-09-08
- * T10 E2E 实测抓到的 bug（查询参数鉴权从未生效，WS 全被 4401 关闭），
+ * ⚠️ req.url 是纯路径（无 origin），new URL(相对路径) 必抛——
+ *  E2E 实测抓到的 bug（查询参数鉴权从未生效，WS 全被 4401 关闭），
  * 用 dummy base 解析。 */
 function hasAccessTokenQuery(url: string, token: string): boolean {
     try {
@@ -110,7 +110,7 @@ export function assembleOb11Transports(opts: AssembleOb11TransportsOptions): Ob1
     for (const t of transports) {
         broadcaster.register(t);
     }
-    // 反向 server 也注册（2026-08-07 修复）：反向 WS 客户端（koishi 等）连入后
+    // 反向 server 也注册（修复）：反向 WS 客户端（koishi 等）连入后
     // 必须能收到事件广播（lifecycle/heartbeat/消息事件）。此前只注册正向传输，
     // 反向 WsServer 未注册 → 客户端连上后收不到任何事件（NapCat 语义：反向连接
     // 同样收广播）。HttpServer.send 为 no-op（HTTP 无推送），注册无害。

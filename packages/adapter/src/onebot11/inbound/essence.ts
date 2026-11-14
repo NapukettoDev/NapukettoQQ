@@ -3,15 +3,15 @@
  * EssenceListSync），sysmsg 732:1 作加速触发器；operator 仅 add 回填。
  */
 
-import type { EssenceAddedItem } from "../../core/shared/essence.js";
+import type { EssenceAddedItem } from "../../shared/essence.js";
 import {
     EssenceListSync,
     extractEssenceSetSysMsg,
     narrowEssenceGroupArg,
-} from "../../core/shared/essence.js";
-import { truncRaw } from "../../core/shared/log.js";
-import type { SysMsgField } from "../../core/shared/sysmsg.js";
-import { MS_TO_SEC, numericUin } from "../../core/shared/uid-uin.js";
+} from "../../shared/essence.js";
+import { truncRaw } from "../../shared/log.js";
+import type { SysMsgField } from "../../shared/sysmsg.js";
+import { MS_TO_SEC, numericUin } from "../../shared/uid-uin.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 

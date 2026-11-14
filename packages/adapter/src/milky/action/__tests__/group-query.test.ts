@@ -1,5 +1,5 @@
 /**
- * Milky 群查询域动作测试（group-query.ts，2026-11-14 域对齐重组）
+ * Milky 群查询域动作测试（group-query.ts，域对齐重组）
  *
  * 锁定：群信息/成员查询（GroupCache 与直查双路径）、成员单查 uin→uid 解析与
  * 兜底、群公告列表 bulletin 宽松映射（senderUid→uin / pic url / 无源兜底）。
@@ -159,7 +159,7 @@ describe("get_group_announcements", () => {
         });
     });
 
-    it("bulletin 宽松映射（P2 批次二补测：publishTime 数值 + 无图 null）", async () => {
+    it("bulletin 宽松映射（补测：publishTime 数值 + 无图 null）", async () => {
         const registry = groupRegistry({
             groupApi: {
                 getGroupAnnouncements: vi.fn(async () => [

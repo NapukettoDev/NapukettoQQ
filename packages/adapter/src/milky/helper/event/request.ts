@@ -1,18 +1,18 @@
 /**
- * Milky request 事件翻译（通道系，P1 2026-10-30）
+ * Milky request 事件翻译（通道系）
  *
  * 事件源（kernel 事件通道，与 OB11 helper/request.ts 同源）：
  *  - Buddy/onBuddyReqChange → friend_request
  *  - Group/onGroupNotifiesUpdated → group_join_request / group_invited_join_request /
  *    group_invitation（type 1=邀请自身 / 5=成员邀请他人 / 7=入群申请，仅未处理状态）
  *
- * 纯函数（ADR-008）：uid→uin 由调用方批量转换后传入。
+ * 纯函数：uid→uin 由调用方批量转换后传入。
  * onBuddyReqChange 回调参数形状未经真实事件校准——narrowBuddyReqs 防御性收窄
  * （core/buddy-req.ts，OB11 同源），未知形状返回 null 由调用方打 raw 日志。
  */
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
-import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../core/shared/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../shared/uid-uin.js";
 import type {
     FriendRequestData,
     GroupInvitationData,

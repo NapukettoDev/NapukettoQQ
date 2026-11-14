@@ -5,10 +5,10 @@
  * 删他人表态）、校验失败 400。
  */
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import type { ReactionActionDeps } from "../reaction.js";
-import { ReactionCreateAction, ReactionDeleteAction } from "../reaction.js";
-import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
+import { createReactionActions } from "../reaction.js";
+import { type StubSatoriApi, satoriActionOf, stubSatoriApi } from "./test-support.js";
 
 function makeDeps(api: StubSatoriApi): ReactionActionDeps {
     return stub<ReactionActionDeps>({
@@ -17,10 +17,15 @@ function makeDeps(api: StubSatoriApi): ReactionActionDeps {
     });
 }
 
-describe("ReactionCreateAction", () => {
+/** 构造指定表态动作（工厂产物按名取出）。 */
+function actionOf<R>(api: StubSatoriApi, name: string) {
+    return satoriActionOf<R>(createReactionActions(makeDeps(api)), name);
+}
+
+describe("reaction.create", () => {
     it("resolvePeer → setMsgEmojiLike（like=true，emojiType=1）", async () => {
         const api = stubSatoriApi();
-        const action = new ReactionCreateAction(makeDeps(api));
+        const action = actionOf<void>(api, "reaction.create");
         await expect(
             action.run({ channel_id: "10001", message_id: "seq-9", emoji_id: "178" }),
         ).resolves.toBeUndefined();
@@ -31,17 +36,17 @@ describe("ReactionCreateAction", () => {
     });
 
     it("缺 emoji_id → 400", async () => {
-        const action = new ReactionCreateAction(makeDeps(stubSatoriApi()));
+        const action = actionOf<void>(stubSatoriApi(), "reaction.create");
         await expect(
             action.run({ channel_id: "10001", message_id: "seq-9" }),
         ).rejects.toMatchObject({ status: 400 });
     });
 });
 
-describe("ReactionDeleteAction", () => {
+describe("reaction.delete", () => {
     it("不带 user_id：删除自己的表态（like=false）", async () => {
         const api = stubSatoriApi();
-        const action = new ReactionDeleteAction(makeDeps(api));
+        const action = actionOf<void>(api, "reaction.delete");
         await expect(
             action.run({ channel_id: "10001", message_id: "seq-9", emoji_id: "178" }),
         ).resolves.toBeUndefined();
@@ -53,7 +58,7 @@ describe("ReactionDeleteAction", () => {
 
     it("带 user_id：抛「暂不支持删除他人表态」（500）", async () => {
         const api = stubSatoriApi();
-        const action = new ReactionDeleteAction(makeDeps(api));
+        const action = actionOf<void>(api, "reaction.delete");
         await expect(
             action.run({
                 channel_id: "10001",

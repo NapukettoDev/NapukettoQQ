@@ -1,5 +1,5 @@
 /**
- * OB11 segment 单元素转换（从 data.ts 拆分，2026-08-08 FTA 优化）
+ * OB11 segment 单元素转换（从 data.ts 拆分，FTA 优化）
  *
  * - canonicalToSegment / segmentToCanonical：单元素 ↔ 单 segment（null = 无法表达跳过）
  * - CQ_SEGMENT_BUILDERS / cqCodeToSegment：CQ 码 → segment（未知类型保留原文为文本段）
@@ -88,7 +88,7 @@ const CANONICAL_TO_SEGMENT: Record<string, (el: never) => OB11MessageSegment> = 
         type: "video" as const,
         data: mediaData(el.path, el.url),
     }),
-    // 群/私聊文件（B4，2026-09-08）：data.file 取文件名（缺省路径）——go-cqhttp
+    // 群/私聊文件（）：data.file 取文件名（缺省路径）——go-cqhttp
     // 兼容形状;此前 file 元素被静默丢弃（转换表无此键）
     file: (el: Extract<CanonicalElement, { type: "file" }>) => ({
         type: "file" as const,

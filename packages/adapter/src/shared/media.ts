@@ -1,5 +1,5 @@
 /**
- * adapter core 媒体辅助：语音归一化 + 视频缩略图（ADR-011 media 严格解耦的协议层落点）
+ * adapter core 媒体辅助：语音归一化 + 视频缩略图（media 严格解耦的协议层落点）
  *
  * 协议层（onebot11 / satori）发送媒体前统一走这里：
  * - `ensureSilk`：非 silk 音频转 QQ 语音格式（silk v3）；

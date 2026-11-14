@@ -4,21 +4,24 @@
  * 锁定：resolveUidFromUin（命中 / 空串 / 抛错 → INVALID_PARAM）、resolvePeer
  * 三场景（group 直作 peerUid；friend/temp uin→uid，失败退 uin）、
  * resolveMsgIdBySeq（索引优先 / 近段扫描兜底并回写索引 / 双层未命中 / 拉取失败）、
- * resolveSentOutput（回查 + 索引回写 / 未命中 UNKNOWN）、构造字段透传；
+ * resolveSentOutput（回查 + 索引回写 / 未命中 UNKNOWN）、findGroupNotify 屏序
+ * 惰性查找、构造字段透传；
  * milkyConfigSchema 缺省值与校验；index.ts re-export 面。
  */
 import {
     ChatType,
     type FriendApi,
     type GroupApi,
+    type GroupNotify,
+    type GroupNotifyApi,
     type MsgApi,
     type ProfileApi,
     type RawMessage,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
-import { MilkyApi } from "../api.js";
+import { findGroupNotify, MilkyApi } from "../api.js";
 import { milkyConfigSchema } from "../config.js";
 import { MessageSeqIndex } from "../helper/state/seq-index.js";
 import * as milkyIndex from "../index.js";
@@ -291,5 +294,55 @@ describe("milky 子路径入口（index.ts）", () => {
         const cfg: import("../index.js").MilkyConfig | undefined = undefined;
         expect(opts).toBeUndefined();
         expect(cfg).toBeUndefined();
+    });
+});
+
+describe("findGroupNotify 屏序查找", () => {
+    /** 构造带群通知桩的 MilkyApi（记录 getSingleScreenNotifies 调用序）。 */
+    function notifyApi(
+        normal: GroupNotify[],
+        doubt: GroupNotify[],
+    ): { api: MilkyApi; getCalls: boolean[] } {
+        const getCalls: boolean[] = [];
+        const api = new MilkyApi(
+            stub<ConstructorParameters<typeof MilkyApi>[0]>({
+                msgApi: stub<MsgApi>({ fetchMessages: vi.fn(async () => []) }),
+                groupNotifyApi: stub<GroupNotifyApi>({
+                    getSingleScreenNotifies: vi.fn(async (doubtFlag: boolean) => {
+                        getCalls.push(doubtFlag);
+                        return doubtFlag ? doubt : normal;
+                    }),
+                }),
+            }),
+            new MessageSeqIndex(),
+        );
+        return { api, getCalls };
+    }
+
+    it("首屏（非可疑）命中：不拉可疑屏（群通知规范序）", async () => {
+        const { api, getCalls } = notifyApi(
+            [stub<GroupNotify>({ seq: "1" })],
+            [stub<GroupNotify>({ seq: "2" })],
+        );
+        const hit = await findGroupNotify(api, "1");
+        expect(hit.seq).toBe("1");
+        expect(getCalls).toEqual([false]);
+    });
+
+    it("首屏未命中：依序拉可疑屏", async () => {
+        const { api, getCalls } = notifyApi(
+            [stub<GroupNotify>({ seq: "1" })],
+            [stub<GroupNotify>({ seq: "9" })],
+        );
+        const hit = await findGroupNotify(api, "9");
+        expect(hit.seq).toBe("9");
+        expect(getCalls).toEqual([false, true]);
+    });
+
+    it("两屏均未命中：抛 NOT_FOUND", async () => {
+        const { api } = notifyApi([], []);
+        await expect(findGroupNotify(api, "404")).rejects.toMatchObject({
+            code: "NOT_FOUND",
+        });
     });
 });

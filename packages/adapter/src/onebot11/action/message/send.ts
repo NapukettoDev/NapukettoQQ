@@ -1,9 +1,9 @@
 /**
- * 消息发送域动作（2026-11-14 自 send-msg / send-private-msg / send-group-msg 合并）
+ * 消息发送域动作
  *
  * - send_msg：message（CQ 码字符串或 segment 数组）翻译为 canonical 元素 →
  *   MsgApi.sendMessage → 返回真实 message_id；共享发送核心 sendOb11Message
- * - send_private_msg / send_group_msg：复用 sendOb11Message（P2-10）
+ * - send_private_msg / send_group_msg：复用 sendOb11Message
  *
  * 群聊：group_id → Peer{ chatType: GROUP, peerUid: String(group_id) }（群消息 peerUid=群号）。
  * 私聊：user_id 经 uin→uid → Peer{ chatType: C2C, peerUid: uid }。
@@ -11,12 +11,12 @@
 
 import type { CanonicalElement } from "@napuketto/kernel";
 import { z } from "zod";
-import { BaseAction, ensureSilk, prepareVideoElements } from "../../../core/index.js";
-import type { AdapterLoggerLike } from "../../../core/shared/log.js";
+import type { AdapterLoggerLike } from "../../../shared/log.js";
+import { ensureSilk, prepareVideoElements } from "../../../shared/media.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
-import { ob11ErrorCodeMap } from "../error-map.js";
+import { defineOb11Action, type Ob11Action } from "../base-action.js";
 import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
 import { resolveTargetPeer } from "./resolve-peer.js";
 
@@ -29,7 +29,17 @@ const sendMsgSchema = z.object({
     auto_escape: z.boolean().optional(),
 });
 
-export type SendMsgPayload = z.infer<typeof sendMsgSchema>;
+type SendMsgPayload = z.infer<typeof sendMsgSchema>;
+
+/** send_private / send_group 共用的消息与转义字段（上界见 action/limits.ts）。 */
+const sendMsgBodyFields = {
+    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
+    auto_escape: z.boolean().optional(),
+} as const;
+
+const sendPrivateMsgSchema = z.object({ user_id: z.number(), ...sendMsgBodyFields });
+
+const sendGroupMsgSchema = z.object({ group_id: z.number(), ...sendMsgBodyFields });
 
 /** send_msg 依赖（OneBotApi 视图，由装配方注入）。 */
 export type SendMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid" | "logger">;
@@ -47,7 +57,7 @@ async function sendOb11Message(
     } else {
         canonical = cqMessageToCanonical(payload.message);
     }
-    // P2-19 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
+    // 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
     // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）
     const atUins: string[] = [];
     for (const el of canonical) {
@@ -93,81 +103,6 @@ async function sendOb11Message(
     }
 }
 
-/** 发送消息（P2-3 接 kernel apis/msg，返回真实 message_id）。 */
-export class SendMsgAction extends BaseAction<SendMsgPayload, { message_id: number }> {
-    readonly name = "send_msg";
-    readonly schema = sendMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: SendMsgDeps;
-
-    constructor(deps: SendMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected _handle(payload: SendMsgPayload): Promise<{ message_id: number }> {
-        return sendOb11Message(payload, this.deps);
-    }
-}
-
-const sendPrivateMsgSchema = z.object({
-    user_id: z.number(),
-    // 上界见 action/limits.ts
-    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
-    auto_escape: z.boolean().optional(),
-});
-
-type SendPrivateMsgPayload = z.infer<typeof sendPrivateMsgSchema>;
-
-/** 发送私聊消息（P2-10 复用 sendOb11Message）。 */
-export class SendPrivateMsgAction extends BaseAction<
-    SendPrivateMsgPayload,
-    { message_id: number }
-> {
-    readonly name = "send_private_msg";
-    readonly schema = sendPrivateMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: SendMsgDeps;
-
-    constructor(deps: SendMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected _handle(payload: SendPrivateMsgPayload): Promise<{ message_id: number }> {
-        return sendOb11Message(payload, this.deps);
-    }
-}
-
-const sendGroupMsgSchema = z.object({
-    group_id: z.number(),
-    // 上界见 action/limits.ts
-    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
-    auto_escape: z.boolean().optional(),
-});
-
-type SendGroupMsgPayload = z.infer<typeof sendGroupMsgSchema>;
-
-/** 发送群聊消息（P2-10 复用 sendOb11Message）。 */
-export class SendGroupMsgAction extends BaseAction<SendGroupMsgPayload, { message_id: number }> {
-    readonly name = "send_group_msg";
-    readonly schema = sendGroupMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: SendMsgDeps;
-
-    constructor(deps: SendMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected _handle(payload: SendGroupMsgPayload): Promise<{ message_id: number }> {
-        return sendOb11Message(payload, this.deps);
-    }
-}
-
 /** CQ 特殊字符转义（auto_escape，&、[、]、, 前置 &amp;）。 */
 function escapeText(text: string): string {
     return text
@@ -194,6 +129,23 @@ async function ensureVoiceSilk(
 }
 
 /** 消息发送域动作工厂（send_msg / send_private_msg / send_group_msg）。 */
-export function createSendActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
-    return [new SendMsgAction(api), new SendPrivateMsgAction(api), new SendGroupMsgAction(api)];
+export function createSendActions(api: OneBotApi): Ob11Action[] {
+    const deps: SendMsgDeps = api;
+    return [
+        defineOb11Action({
+            name: "send_msg",
+            schema: sendMsgSchema,
+            handle: (payload) => sendOb11Message(payload, deps),
+        }),
+        defineOb11Action({
+            name: "send_private_msg",
+            schema: sendPrivateMsgSchema,
+            handle: (payload) => sendOb11Message(payload, deps),
+        }),
+        defineOb11Action({
+            name: "send_group_msg",
+            schema: sendGroupMsgSchema,
+            handle: (payload) => sendOb11Message(payload, deps),
+        }),
+    ];
 }

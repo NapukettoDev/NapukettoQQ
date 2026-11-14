@@ -8,20 +8,23 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { GetMsgAction } from "../history.js";
-import { FetchPttTextAction } from "../media.js";
-import {
-    DeleteMsgAction,
-    MarkGroupMsgAsReadAction,
-    MarkMsgAsReadAction,
-    MarkPrivateMsgAsReadAction,
-    SetInputStatusAction,
-    SetMsgEmojiLikeAction,
-} from "../ops.js";
-
+import type { OB11MessageInfo } from "../../../types/index.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import type { Ob11Action } from "../../base-action.js";
+import { createHistoryActions } from "../history.js";
+import { createMediaActions } from "../media.js";
+import { createMsgOpsActions } from "../ops.js";
 import { fetchMsgById, resolveTargetPeer } from "../resolve-peer.js";
+
+/** 取 get_msg 动作（TReturn 断言为 OB11MessageInfo，保持 result.data 属性访问的编译期类型）。 */
+function getMsgActionOf(deps: unknown): Ob11Action<unknown, OB11MessageInfo> {
+    return ob11ActionOf(createHistoryActions(deps as never), "get_msg") as Ob11Action<
+        unknown,
+        OB11MessageInfo
+    >;
+}
 
 /** 群文本消息 RawMessage 桩。 */
 function rawMsg(overrides?: { atUid?: string; chatType?: ChatType; msgSeq?: string }): RawMessage {
@@ -132,7 +135,7 @@ describe("get_msg", () => {
         const deps = makeDeps({ msgs: [rawMsg({ atUid: "u90001" })] });
         (deps as { groupMemberRole: unknown }).groupMemberRole = vi.fn(async () => "admin");
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetMsgAction(deps as never);
+        const action = getMsgActionOf(deps);
         const result = await action.handle({ message_id: 1 });
         expect(result.status).toBe("ok");
         expect(result.data).toMatchObject({
@@ -159,7 +162,7 @@ describe("get_msg", () => {
             msgs: [rawMsg({ chatType: ChatType.C2C })],
         });
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.C2C, peerUid: "u90001" });
-        const action = new GetMsgAction(deps as never);
+        const action = getMsgActionOf(deps);
         const result = await action.handle({ message_id: 1 });
         expect(result.data).toMatchObject({ message_type: "private", user_id: 90002 });
         expect(deps.groupMemberRole).not.toHaveBeenCalled();
@@ -177,7 +180,7 @@ describe("get_msg", () => {
         const deps = makeDeps({ msgs: [msg] });
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
         deps.messageUnique.alloc("nt-src", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetMsgAction(deps as never);
+        const action = getMsgActionOf(deps);
         const result = await action.handle({ message_id: 1 });
         const segments = result.data?.message as Array<{ type: string; data: { id?: string } }>;
         expect(segments[0]).toEqual({ type: "reply", data: { id: "2" } });
@@ -186,7 +189,7 @@ describe("get_msg", () => {
 
     it("消息不存在（MessageUnique 未登记）→ retcode 102", async () => {
         const deps = makeDeps({ msgs: [] });
-        const action = new GetMsgAction(deps as never);
+        const action = getMsgActionOf(deps);
         expect((await action.handle({ message_id: 42 })).retcode).toBe(102);
     });
 });
@@ -195,7 +198,7 @@ describe("delete_msg", () => {
     it("message_id 反查 → recallMessage(peer, [msgId])", async () => {
         const deps = makeDeps();
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new DeleteMsgAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "delete_msg");
         const result = await action.handle({ message_id: "1" });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.recallMessage).toHaveBeenCalledWith(
@@ -205,7 +208,7 @@ describe("delete_msg", () => {
     });
 
     it("message_id 未登记 → retcode 102", async () => {
-        const action = new DeleteMsgAction(makeDeps() as never);
+        const action = ob11ActionOf(createMsgOpsActions(makeDeps() as never), "delete_msg");
         expect((await action.handle({ message_id: 999 })).retcode).toBe(102);
     });
 });
@@ -214,7 +217,7 @@ describe("fetch_ptt_text", () => {
     it("message_id 反查 → fetchPttText(msgId, peer) → { text }", async () => {
         const deps = makeDeps();
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.C2C, peerUid: "u90001" });
-        const action = new FetchPttTextAction(deps as never);
+        const action = ob11ActionOf(createMediaActions(deps as never), "fetch_ptt_text");
         const result = await action.handle({ message_id: 1 });
         expect(result.data).toEqual({ text: "转写文本" });
         expect(deps.msgApi.fetchPttText).toHaveBeenCalledWith("nt-1", {
@@ -228,7 +231,7 @@ describe("set_msg_emoji_like", () => {
     it("反查消息取 msgSeq → setMsgEmojiLike(peer, msgSeq/emojiId/type/like)", async () => {
         const deps = makeDeps({ msgs: [rawMsg()] });
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new SetMsgEmojiLikeAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "set_msg_emoji_like");
         const result = await action.handle({ message_id: 1, emoji_id: 105 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.setMsgEmojiLike).toHaveBeenCalledWith(
@@ -240,7 +243,7 @@ describe("set_msg_emoji_like", () => {
     it("emoji_type / like 显式传入透传", async () => {
         const deps = makeDeps({ msgs: [rawMsg()] });
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new SetMsgEmojiLikeAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "set_msg_emoji_like");
         await action.handle({ message_id: 1, emoji_id: 4, emoji_type: 2, like: false });
         expect(deps.msgApi.setMsgEmojiLike).toHaveBeenCalledWith(
             { chatType: ChatType.GROUP, peerUid: "808" },
@@ -252,7 +255,7 @@ describe("set_msg_emoji_like", () => {
 describe("set_input_status", () => {
     it("user_id → C2C peer；event_type 缺省 1（输入中）", async () => {
         const deps = makeDeps();
-        const action = new SetInputStatusAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "set_input_status");
         const result = await action.handle({ user_id: 90001 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.setInputStatus).toHaveBeenCalledWith(
@@ -263,7 +266,7 @@ describe("set_input_status", () => {
 
     it("event_type=0（停止输入）透传", async () => {
         const deps = makeDeps();
-        const action = new SetInputStatusAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "set_input_status");
         await action.handle({ user_id: 90001, event_type: 0 });
         expect(deps.msgApi.setInputStatus).toHaveBeenLastCalledWith(
             { chatType: ChatType.C2C, peerUid: "u90001" },
@@ -275,7 +278,7 @@ describe("set_input_status", () => {
 describe("mark_msg_as_read（含细分别名）", () => {
     it("只带 group_id（无 user_id）→ 仅 mark 群（C2C 分支跳过）", async () => {
         const deps = makeDeps();
-        const action = new MarkMsgAsReadAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "mark_msg_as_read");
         const result = await action.handle({ group_id: 808 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.markRead).toHaveBeenCalledTimes(1);
@@ -287,7 +290,7 @@ describe("mark_msg_as_read（含细分别名）", () => {
 
     it("group_id 优先 → markRead GROUP peer", async () => {
         const deps = makeDeps();
-        const action = new MarkMsgAsReadAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "mark_msg_as_read");
         const result = await action.handle({ group_id: 808, user_id: 90001 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.markRead).toHaveBeenCalledTimes(1);
@@ -299,7 +302,7 @@ describe("mark_msg_as_read（含细分别名）", () => {
 
     it("仅 user_id → uin→uid → markRead C2C peer", async () => {
         const deps = makeDeps();
-        const action = new MarkMsgAsReadAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "mark_msg_as_read");
         await action.handle({ user_id: 90001 });
         expect(deps.msgApi.markRead).toHaveBeenCalledWith({
             chatType: ChatType.C2C,
@@ -308,13 +311,13 @@ describe("mark_msg_as_read（含细分别名）", () => {
     });
 
     it("user_id 与 group_id 都缺 → retcode 400（refine 校验）", async () => {
-        const action = new MarkMsgAsReadAction(makeDeps() as never);
+        const action = ob11ActionOf(createMsgOpsActions(makeDeps() as never), "mark_msg_as_read");
         expect((await action.handle({})).retcode).toBe(400);
     });
 
     it("mark_private_msg_as_read 别名 → C2C markRead", async () => {
         const deps = makeDeps();
-        const action = new MarkPrivateMsgAsReadAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "mark_private_msg_as_read");
         const result = await action.handle({ user_id: 90001 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.markRead).toHaveBeenCalledWith({
@@ -325,7 +328,7 @@ describe("mark_msg_as_read（含细分别名）", () => {
 
     it("mark_group_msg_as_read 别名 → GROUP markRead", async () => {
         const deps = makeDeps();
-        const action = new MarkGroupMsgAsReadAction(deps as never);
+        const action = ob11ActionOf(createMsgOpsActions(deps as never), "mark_group_msg_as_read");
         const result = await action.handle({ group_id: 808 });
         expect(result.retcode).toBe(0);
         expect(deps.msgApi.markRead).toHaveBeenCalledWith({

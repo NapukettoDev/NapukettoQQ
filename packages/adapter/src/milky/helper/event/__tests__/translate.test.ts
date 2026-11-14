@@ -1,5 +1,5 @@
 /**
- * Milky 翻译层基线测试（2026-10-28 P0）
+ * Milky 翻译层基线测试
  *
  * 锁定 RawMessage → Milky 事件的映射行为与规范字段名（SSOT：Milky 1.3 JSON Schema）：
  *  - 三场景 IncomingMessage 形状（group 必需 group/group_member，friend 必需 friend）

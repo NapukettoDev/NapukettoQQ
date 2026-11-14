@@ -26,8 +26,8 @@ import {
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
-import { stub } from "../../core/__tests__/stub.js";
-import { type ActionRegistry, ProtocolConfig } from "../../core/index.js";
+import { type ActionRegistry, ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import type { MilkyAction } from "../action/base-action.js";
 import { createMilkyActionRegistry } from "../action/index.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
@@ -248,15 +248,15 @@ describe("Milky 事件推送（/event）", () => {
 });
 
 /**
- * 适配器级回归（2026-11-01 实机发现）：NapukettoMilkyAdapter.start() 必须自行
+ * 适配器级回归（实机发现）：NapukettoMilkyAdapter.start 必须自行
  * open 传输——此前 startTransports 只装配不监听，集成测试显式
- * `set.adapters[0]?.open()` 掩盖了该缺口（P0 起 milky HTTP 从未真正绑端口）。
+ * `set.adapters[0]?.open` 掩盖了该缺口（milky HTTP 从未真正绑端口）。
  */
 describe("Milky 适配器 start 即监听（回归）", () => {
     const AdapterPort = 36222;
     const adapter = new NapukettoMilkyAdapter(
         stub<ConstructorParameters<typeof NapukettoMilkyAdapter>[0]>({
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "milky-adapter-start-test.toml",
                 schema: milkyConfigSchema,
                 defaults: milkyConfigSchema.parse({}),

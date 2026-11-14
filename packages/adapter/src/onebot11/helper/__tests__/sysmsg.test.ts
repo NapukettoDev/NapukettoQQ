@@ -1,7 +1,7 @@
 /**
- * OB11 sysmsg 识别表单测（2026-11-01；解码层测试在 core/sysmsg.test.ts）
+ * OB11 sysmsg 识别表单测（解码层测试在 core/sysmsg.test.ts）
  *
- * 732:21 群名片变更规则用合成 wire bytes（按批次三轮录制实证的 strings 顺序
+ * 732:21 群名片变更规则用合成 wire bytes（按轮录制实证的 strings 顺序
  * [群号, 对象 uid, 新值, 旧值] 构造）覆盖：命中提取 / 判别式拒收 / uid 解析。
  */
 import { describe, expect, it } from "vitest";

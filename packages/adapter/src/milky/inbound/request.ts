@@ -4,16 +4,16 @@
  * （enrichment，fail-soft），翻译函数纯函数。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import { narrowBuddyReqs } from "../../core/shared/buddy-req.js";
-import { sliceRaw } from "../../core/shared/log.js";
-import type { RequestTranslateContext } from "../../core/shared/uid-uin.js";
+import { narrowBuddyReqs } from "../../shared/buddy-req.js";
+import { logEventFailure, sliceRaw } from "../../shared/log.js";
+import type { RequestTranslateContext } from "../../shared/uid-uin.js";
+import type { MilkyInboundBase } from "../api.js";
 import type { MilkyEnrichment } from "../enrichment.js";
 import {
     collectNotifyUids,
     toFriendRequestEvent,
     toGroupRequestEvent,
 } from "../helper/event/request.js";
-import type { MilkyInboundBase } from "./base.js";
 
 /** 请求域装配参数 = 管道依赖全集 + enrich（enrichment 共享实例）。 */
 export type MilkyInboundRequestDeps = MilkyInboundBase & { enrich: MilkyEnrichment };
@@ -39,7 +39,10 @@ export class MilkyInboundRequest {
 
     /** 好友请求通道：Buddy/onBuddyReqChange（防御收窄，未知形状 raw 日志）。 */
     buddyReqs(arg: unknown): void {
-        void this.broadcastBuddyReqs(arg);
+        // 回填/翻译失败只丢本批事件，不打断收链路
+        this.broadcastBuddyReqs(arg).catch((err: unknown) =>
+            logEventFailure(this.deps.logger, "milky: friend request 翻译失败（整批丢弃）", err),
+        );
     }
 
     private async broadcastBuddyReqs(arg: unknown): Promise<void> {

@@ -10,12 +10,13 @@
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
+import type { Channel, List, User } from "../../types/index.js";
 import type { ChannelActionDeps } from "../channel.js";
-import { ChannelGetAction, ChannelListAction } from "../channel.js";
+import { createChannelActions } from "../channel.js";
 import type { UserActionDeps } from "../user.js";
-import { UserChannelCreateAction, UserGetAction } from "../user.js";
-import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
+import { createUserActions } from "../user.js";
+import { type StubSatoriApi, satoriActionOf, stubSatoriApi } from "./test-support.js";
 
 function makeChannelDeps(
     api: StubSatoriApi,
@@ -38,13 +39,18 @@ function makeUserDeps(api: StubSatoriApi, groupCache?: Record<string, never>): U
     });
 }
 
-describe("ChannelGetAction", () => {
+/** 构造指定频道动作（工厂产物按名取出）。 */
+function channelActionOf<R>(api: StubSatoriApi, name: string, groupCache?: Record<string, never>) {
+    return satoriActionOf<R>(createChannelActions(makeChannelDeps(api, groupCache)), name);
+}
+
+describe("channel.get", () => {
     it("群聊频道：setChannelType(true) + 缓存群名补 name", async () => {
         const api = stubSatoriApi();
         const groupCache = {
             getGroupDetail: async () => ({ groupCode: "10001", groupName: "缓存群名" }),
         };
-        const action = new ChannelGetAction(makeChannelDeps(api, groupCache as never));
+        const action = channelActionOf<Channel>(api, "channel.get", groupCache as never);
         await expect(action.run({ channel_id: "10001" })).resolves.toEqual({
             id: "10001",
             type: 0,
@@ -56,7 +62,7 @@ describe("ChannelGetAction", () => {
 
     it("群聊但缓存缺失 → 不写 name", async () => {
         const api = stubSatoriApi();
-        const action = new ChannelGetAction(makeChannelDeps(api));
+        const action = channelActionOf<Channel>(api, "channel.get");
         await expect(action.run({ channel_id: "10001" })).resolves.toEqual({
             id: "10001",
             type: 0,
@@ -70,7 +76,7 @@ describe("ChannelGetAction", () => {
             peerUid: "uid_90001",
         } as never);
         const groupCache = { getGroupDetail: async () => ({ groupName: "不该查" }) };
-        const action = new ChannelGetAction(makeChannelDeps(api, groupCache as never));
+        const action = channelActionOf<Channel>(api, "channel.get", groupCache as never);
         await expect(action.run({ channel_id: "90001" })).resolves.toEqual({
             id: "90001",
             type: 1,
@@ -79,13 +85,13 @@ describe("ChannelGetAction", () => {
     });
 });
 
-describe("ChannelListAction", () => {
+describe("channel.list", () => {
     it("guild_id → 单元素群聊频道列表（缓存群名兜底）", async () => {
         const api = stubSatoriApi();
         const groupCache = {
             getGroupDetail: async () => ({ groupCode: "10001", groupName: "群名" }),
         };
-        const action = new ChannelListAction(makeChannelDeps(api, groupCache as never));
+        const action = channelActionOf<List<Channel>>(api, "channel.list", groupCache as never);
         await expect(action.run({ guild_id: "10001" })).resolves.toEqual({
             data: [{ id: "10001", type: 0, name: "群名" }],
         });
@@ -93,7 +99,7 @@ describe("ChannelListAction", () => {
 
     it("缓存缺失 → 无 name 的单元素列表", async () => {
         const api = stubSatoriApi();
-        const action = new ChannelListAction(makeChannelDeps(api));
+        const action = channelActionOf<List<Channel>>(api, "channel.list");
         await expect(action.run({ guild_id: "10001" })).resolves.toEqual({
             data: [{ id: "10001", type: 0 }],
         });
@@ -101,17 +107,22 @@ describe("ChannelListAction", () => {
 
     it("next 参数允许但不影响结果（QQ 单频道）", async () => {
         const api = stubSatoriApi();
-        const action = new ChannelListAction(makeChannelDeps(api));
+        const action = channelActionOf<List<Channel>>(api, "channel.list");
         const result = await action.run({ guild_id: "10001", next: "cursor" });
         expect(result.data).toHaveLength(1);
         expect(result.next).toBeUndefined();
     });
 });
 
-describe("UserGetAction", () => {
+/** 构造指定用户动作（工厂产物按名取出）。 */
+function userActionOf<R>(api: StubSatoriApi, name: string, groupCache?: Record<string, never>) {
+    return satoriActionOf<R>(createUserActions(makeUserDeps(api, groupCache)), name);
+}
+
+describe("user.get", () => {
     it("getStrangerInfo 命中：nickname 优先于 long_nick", async () => {
         const api = stubSatoriApi();
-        const action = new UserGetAction(makeUserDeps(api));
+        const action = userActionOf<User>(api, "user.get");
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({
             id: "90001",
             name: "陌生人",
@@ -125,7 +136,7 @@ describe("UserGetAction", () => {
             nickname: undefined,
             long_nick: "个性签名",
         } as never);
-        const action = new UserGetAction(makeUserDeps(api));
+        const action = userActionOf<User>(api, "user.get");
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({
             id: "90001",
             name: "个性签名",
@@ -138,21 +149,21 @@ describe("UserGetAction", () => {
             nickname: "",
             long_nick: "不会用到的签名",
         } as never);
-        const action = new UserGetAction(makeUserDeps(api));
+        const action = userActionOf<User>(api, "user.get");
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({ id: "90001" });
     });
 
     it("陌生人信息查询失败：退化为仅 ID（不抛错）", async () => {
         const api = stubSatoriApi();
         vi.mocked(api.profileApi.getStrangerInfo).mockRejectedValueOnce(new Error("非好友"));
-        const action = new UserGetAction(makeUserDeps(api));
+        const action = userActionOf<User>(api, "user.get");
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({ id: "90001" });
     });
 });
 
-describe("UserChannelCreateAction", () => {
+describe("user.channel.create", () => {
     it("user_id → 私聊频道（type=1，无实际创建）", async () => {
-        const action = new UserChannelCreateAction();
+        const action = userActionOf<Channel>(stubSatoriApi(), "user.channel.create");
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({
             id: "90001",
             type: 1,
@@ -160,7 +171,7 @@ describe("UserChannelCreateAction", () => {
     });
 
     it("guild_id 可选透传但不参与结果", async () => {
-        const action = new UserChannelCreateAction();
+        const action = userActionOf<Channel>(stubSatoriApi(), "user.channel.create");
         await expect(action.run({ user_id: "90001", guild_id: "10001" })).resolves.toEqual({
             id: "90001",
             type: 1,
@@ -168,7 +179,7 @@ describe("UserChannelCreateAction", () => {
     });
 
     it("缺 user_id → 400", async () => {
-        const action = new UserChannelCreateAction();
+        const action = userActionOf<Channel>(stubSatoriApi(), "user.channel.create");
         await expect(action.run({})).rejects.toMatchObject({ status: 400 });
     });
 });

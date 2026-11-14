@@ -5,7 +5,7 @@
  * toUin（ctx 便捷形）与 toUinString（satori string 口径）同规则。
  */
 import { describe, expect, it } from "vitest";
-import { MS_TO_SEC, resolveUin, toUin, toUinString } from "../shared/uid-uin.js";
+import { MS_TO_SEC, resolveUin, toUin, toUinString } from "../uid-uin.js";
 
 describe("resolveUin", () => {
     const map = new Map([

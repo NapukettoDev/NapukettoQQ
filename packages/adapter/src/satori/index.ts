@@ -1,5 +1,5 @@
 /**
- * Satori 协议适配器（P5，2026-08-08）
+ * Satori 协议适配器
  * 公共面：类型 + 动作注册表 + 配置 schema + 传输装配 + 适配器。
  */
 
@@ -13,13 +13,13 @@ export { SatoriApi } from "./api/satori-api.js";
 export type { SatoriEventContent, SatoriEventDeps } from "./event/translate.js";
 export type { CanonicalToSatoriDeps } from "./helper/element/canonical.js";
 export { canonicalToSatoriElements } from "./helper/element/canonical.js";
-export type { SatoriToCanonicalDeps } from "./helper/element/deps.js";
 export type { SatoriElement } from "./helper/element/element.js";
 export { parseElements, renderElements } from "./helper/element/element.js";
 export {
     parseContentToCanonical,
     satoriToCanonicalElements,
 } from "./helper/element/element-convert.js";
+export type { SatoriToCanonicalDeps } from "./helper/element/media-convert.js";
 export type { SatoriConfig } from "./helper/index.js";
 export { HTTP_STATUS, satoriConfigSchema, satoriHttpStatusMap } from "./helper/index.js";
 export type { AssembleSatoriTransportsOptions, SatoriTransportSet } from "./transport.js";

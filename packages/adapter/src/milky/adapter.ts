@@ -1,13 +1,13 @@
 /**
- * NapukettoMilkyAdapter：Milky 协议适配器（P0 2026-10-28，P1 2026-10-30）
+ * NapukettoMilkyAdapter：Milky 协议适配器
  *
  * 第四个协议适配器（与 OB11/Satori/KuroBot 并行）：单端口 HTTP（/api + /event）
- * + WebHook。收链路三源（消息通道 / 群通知 / 好友申请，批次三再加 sysmsg、
+ * + WebHook。收链路三源（消息通道 / 群通知 / 好友申请，再加 sysmsg、
  * 私聊文件、精华 diff、置顶翻转、登录掉线），发链路 /api 动作 → kernel apis。
  *
  * 生命周期走 BaseProtocolAdapter 骨架；config.enabled=false 时空转（不订阅、
  * 不起传输）。本类只做协调（构造装配 / 传输启停）：事件订阅与派发在
- * event-pipeline.ts，翻译前异步回填在 enrichment.ts（ADR-008）。
+ * event-pipeline.ts，翻译前异步回填在 enrichment.ts。
  */
 import type {
     BuddyEventChannel,
@@ -17,7 +17,7 @@ import type {
     RecentContactEventChannel,
 } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ProtocolConfig, type ProtocolHooks } from "../core/index.js";
+import { BaseProtocolAdapter, type ConfigBase, type ProtocolHooks } from "../core/index.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import type { MilkyConfig } from "./config.js";
@@ -34,17 +34,17 @@ import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
 
 /** 适配器构造参数（api 相关字段继承 MilkyApiOptions）。 */
 export interface MilkyAdapterOptions extends MilkyApiOptions {
-    config: ProtocolConfig<MilkyConfig>;
+    config: ConfigBase<MilkyConfig>;
     broadcaster: EventBroadcaster;
     /** kernel 消息事件通道（收链路入口）。 */
     msgChannel: MsgEventChannel;
-    /** kernel 群事件通道（P1：群请求/邀请推送；缺省不订阅）。 */
+    /** kernel 群事件通道（群请求/邀请推送；缺省不订阅）。 */
     groupChannel?: GroupEventChannel;
-    /** kernel 好友事件通道（P1：好友申请推送；缺省不订阅）。 */
+    /** kernel 好友事件通道（好友申请推送；缺省不订阅）。 */
     buddyChannel?: BuddyEventChannel;
-    /** kernel 会话列表事件通道（批次三：peer_pin_change；缺省不订阅）。 */
+    /** kernel 会话列表事件通道（peer_pin_change；缺省不订阅）。 */
     recentContactChannel?: RecentContactEventChannel;
-    /** kernel 登录状态事件通道（批次三：bot_offline；缺省不订阅）。 */
+    /** kernel 登录状态事件通道（bot_offline；缺省不订阅）。 */
     loginChannel?: LoginEventChannel;
     /** 校准日志（webhook 失败 / 启停提示 / 未知事件形状；IPC 模式传 loader pino 实例）。 */
     logger?: MilkyLoggerLike;
@@ -59,7 +59,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
     private readonly seqIndex = new MessageSeqIndex();
     /** 动作注册表（公共只读：装配方/测试枚举）。 */
     readonly registry: ReturnType<typeof createMilkyActionRegistry>;
-    /** 收链路事件管道（订阅 / 过滤 / 去重 / 翻译派发，2026-11-14 拆出）。 */
+    /** 收链路事件管道（订阅 / 过滤 / 去重 / 翻译派发，拆出）。 */
     private readonly pipeline: MilkyEventPipeline;
     private stopTransports: (() => Promise<void>) | null = null;
 
@@ -99,6 +99,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             request: new MilkyInboundRequest({ ...base, enrich }),
             fileNotice: new MilkyInboundFileNotice(base),
             pin: new MilkyInboundPin(base),
+            logger: opts.logger,
         });
         this.registry = createMilkyActionRegistry({ api: this.api });
     }
@@ -119,8 +120,8 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             });
             this.stopTransports = set.close;
             // 启动监听（satori/OB11 startTransports 同款）：server.open 实绑端口，
-            // hub / webhook client 的 open 均为 no-op。2026-11-01 实机发现：缺此步
-            // milky HTTP 从未监听（P0 起；集成测试一直显式 open 掩盖了该缺口）。
+            // hub / webhook client 的 open 均为 no-op。实机发现：缺此步
+            // milky HTTP 从未监听（集成测试一直显式 open 掩盖了该缺口）。
             await Promise.all(set.adapters.map((a) => a.open()));
         }
         this.pipeline.subscribe();

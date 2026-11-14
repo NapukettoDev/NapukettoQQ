@@ -1,5 +1,5 @@
 /**
- * NapukettoSatoriAdapter：Satori 协议适配器（P5，2026-08-08）
+ * NapukettoSatoriAdapter：Satori 协议适配器
  *
  * - 收链路：订阅 kernel 消息事件通道 → 翻译 Satori 事件（message-created /
  *   message-deleted / guild-member-added / guild-member-removed）→ WS EVENT 信令广播
@@ -10,8 +10,8 @@
  */
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ProtocolConfig } from "../core/index.js";
-import { forEachRawMessage } from "../core/shared/raw-message.js";
+import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
+import { forEachRawMessage } from "../shared/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
 import type { SatoriApiOptions } from "./api/satori-api.js";
 import { SatoriApi } from "./api/satori-api.js";
@@ -31,7 +31,7 @@ import type { Event, Login } from "./types/index.js";
 /** 适配器构造参数。 */
 export interface SatoriAdapterOptions extends SatoriApiOptions {
     /** 协议配置（zod 校验 + seed 装配）。 */
-    config: ProtocolConfig<SatoriConfig>;
+    config: ConfigBase<SatoriConfig>;
     /** network 事件广播（注册传输后 emit 推给第三方）。 */
     broadcaster: EventBroadcaster;
     /** kernel 消息事件通道（消息收链路入口）。 */
@@ -89,7 +89,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
     }
 
     /**
-     * 配置热更新（2026-09-08 实现）：stop 旧传输/退订（广播 login-updated 离线）→
+     * 配置热更新（实现）：stop 旧传输/退订（广播 login-updated 离线）→
      * 按新配置重建（广播在线）。Satori 无 IPC 桥模式，无传输时同样走重建路径。
      */
     private async reloadTransports(config: SatoriConfig): Promise<void> {
@@ -134,7 +134,9 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
                     });
                     return;
                 }
-                void this.broadcastMessageCreated(msg);
+                this.broadcastMessageCreated(msg).catch(() => {
+                    // 消息翻译失败静默（同 grayTip：结构探测期宽容，不打断收链路）
+                });
             });
         });
     }

@@ -1,13 +1,11 @@
 /**
- * Satori 动作基类（响应形态与 OB11 不同：直接返回资源对象，错误用 HTTP 状态码）
+ * Satori 动作运行时：声明式动作工厂 + HTTP 状态码错误。
  *
- * - `run(payload)`：zod 校验失败 → SatoriActionError(400)；_handle 抛的
- *   KernelError → satoriHttpStatusMap 映射 HTTP 状态码（ADR-017）
- * - `SatoriActionError`：带 HTTP 状态码的动作错误（transport 层直接透传状态码）
- *
- * 执行骨架走 core action-kernel（runAction，passthrough 保 SatoriActionError
- * 原样透传）；本类只补「失败抛错 / 成功裸返资源」的 Satori 风格。
+ * 响应形态与 OB11 / Milky 不同：成功直接返回资源对象（或数组/分页列表），
+ * 失败抛 SatoriActionError（带 HTTP 状态码，transport 层透传）。执行骨架走
+ * core runAction（passthrough 保 SatoriActionError 原样透传，不做二次映射）。
  */
+
 import type { ZodType } from "zod";
 import { runAction } from "../../core/index.js";
 import { satoriHttpStatusMap } from "../helper/index.js";
@@ -22,37 +20,42 @@ export class SatoriActionError extends Error {
     }
 }
 
+/** Satori 动作对象（工厂产出；HTTP / WS 入口共用）。 */
+export interface SatoriAction<TPayload = unknown, TReturn = unknown> {
+    /** 动作名（resource.method，如 "message.create"）。 */
+    readonly name: string;
+    readonly schema: ZodType<TPayload>;
+    /** 校验并执行：成功返回资源对象，失败抛 SatoriActionError。 */
+    run(payload: unknown): Promise<TReturn>;
+}
+
 /** 校验失败默认状态码。 */
 const INVALID_PARAM_STATUS = 400;
 
-/**
- * Satori 动作基类：校验 + 执行 + 错误映射。
- * 成功返回资源对象（或数组/分页列表），失败抛 SatoriActionError。
- */
-export abstract class BaseSatoriAction<TPayload, TReturn> {
-    /** 动作名（resource.method，如 "message.create"）。 */
-    abstract readonly name: string;
-    /** 参数校验 schema。 */
-    abstract readonly schema: ZodType<TPayload>;
-
-    /** 校验并执行（HTTP/WS 共用）。 */
-    async run(payload: unknown): Promise<TReturn> {
-        const outcome = await runAction(
-            {
-                schema: this.schema,
-                handle: (parsed) => this._handle(parsed),
-                errorCodeMap: satoriHttpStatusMap,
-                invalidRetcode: INVALID_PARAM_STATUS,
-                passthrough: (err) => err instanceof SatoriActionError,
-            },
-            payload,
-        );
-        if (!outcome.ok) {
-            throw new SatoriActionError(outcome.retcode, outcome.message);
-        }
-        return outcome.data;
-    }
-
-    /** 动作实现（只抛错或返回资源；不包装响应）。 */
-    protected abstract _handle(payload: TPayload): Promise<TReturn>;
+/** 声明式动作工厂：闭包依赖 + 统一校验与错误映射。 */
+export function defineSatoriAction<TPayload, TReturn>(spec: {
+    name: string;
+    schema: ZodType<TPayload>;
+    handle: (payload: TPayload) => Promise<TReturn>;
+}): SatoriAction<TPayload, TReturn> {
+    return {
+        name: spec.name,
+        schema: spec.schema,
+        run: async (payload) => {
+            const outcome = await runAction(
+                {
+                    schema: spec.schema,
+                    handle: spec.handle,
+                    errorCodeMap: satoriHttpStatusMap,
+                    invalidRetcode: INVALID_PARAM_STATUS,
+                    passthrough: (err) => err instanceof SatoriActionError,
+                },
+                payload,
+            );
+            if (!outcome.ok) {
+                throw new SatoriActionError(outcome.retcode, outcome.message);
+            }
+            return outcome.data;
+        },
+    };
 }

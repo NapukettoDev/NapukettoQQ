@@ -1,5 +1,5 @@
 /**
- * 动作执行内核（三协议 BaseAction 共用骨架，2026-11-14 收拢）
+ * 动作执行内核（三协议 BaseAction 共用骨架，收拢）
  *
  * zod safeParse → 执行 → `isKernelError` 统一映射 → 协议信封组装。三协议差异
  * 全部参数化：
@@ -7,7 +7,7 @@
  *  - 校验失败消息（缺省「参数校验失败」；Milky 附 zod 摘要）；
  *  - 结果包装（OB11/Milky 组信封，Satori 抛 SatoriActionError，见各自 base-action）；
  *  - 协议自有错误透传（SatoriActionError 不走映射表）。
- * 错误判别统一 kernel `isKernelError`（ADR-017）：不再手写 `"code" in err`。
+ * 错误判别统一 kernel `isKernelError`：不再手写 `"code" in err`。
  */
 import { isKernelError, type KernelErrorCode } from "@napuketto/kernel";
 import type { ZodError, ZodType } from "zod";

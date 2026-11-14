@@ -1,9 +1,9 @@
 /**
- * Milky notice 事件翻译（grayTip 系，P1 2026-10-30）
+ * Milky notice 事件翻译（grayTip 系）
  *
  * NT QQ 中群成员变动/禁言/戳一戳等系统事件通过消息的灰色提示元素（grayTip）
  * 广播。本模块把 RawMessage 里的 grayTip 翻译为 Milky notice 事件（纯函数，
- * ADR-008），判据与 OB11 helper/notice.ts 同源（同一 wrapper 事实）：
+ *），判据与 OB11 helper/notice.ts 同源（同一 wrapper 事实）：
  *  - group_member_increase / group_member_decrease（subType=GROUP + type MEMBER_ADD/QUIT）
  *  - group_mute / group_whole_mute（SHUT_UP；member uid 空 = 全员禁言口径）
  *  - group_nudge / friend_nudge（aioOpGrayTipElement；形状待真实事件校准，
@@ -22,8 +22,8 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { firstUntranslatedGrayTip } from "../../../core/shared/gray-tip.js";
-import { toUin } from "../../../core/shared/uid-uin.js";
+import { firstUntranslatedGrayTip } from "../../../shared/gray-tip.js";
+import { toUin } from "../../../shared/uid-uin.js";
 import type {
     FriendNudgeData,
     GroupDisbandData,

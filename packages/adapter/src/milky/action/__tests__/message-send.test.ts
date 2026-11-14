@@ -1,5 +1,5 @@
 /**
- * Milky 消息发送域动作测试（message-send.ts，2026-11-14 域对齐重组，自
+ * Milky 消息发送域动作测试（message-send.ts，域对齐重组，自
  * message.test.ts / p2-forward-send.test.ts / p3-message.test.ts 发送用例归并）
  *
  * 锁定：sendMilkyMessage（OutgoingSegment → canonical：mention uin→uid、
@@ -26,7 +26,7 @@ import {
     type WebApi,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "../../transport.js";
@@ -218,7 +218,7 @@ function makeApi(): {
     return { api, sends, forwardCalls, recallCalls, warns, recallMock };
 }
 
-describe("sendMilkyMessage forward 组装链（P2 批次一）", () => {
+describe("sendMilkyMessage forward 组装链", () => {
     it("两条节点：临时发送 ×2 → 组装转发 → 撤回临时 → 回查输出", async () => {
         const { api, sends, forwardCalls, recallCalls } = makeApi();
         const out = await sendMilkyMessage(

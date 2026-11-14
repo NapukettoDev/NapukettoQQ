@@ -1,5 +1,5 @@
 /**
- * Satori 标签读取（元素名 / 属性解析，从 element.ts 拆分，2026-08-08 FTA 优化）
+ * Satori 标签读取（元素名 / 属性解析，从 element.ts 拆分，FTA 优化）
  *
  * - decodeEntity/decodeEntities：命名/十进制/十六进制实体解码（属性值用）
  * - readTagName：读取元素名（小写字母/数字/连字符，以字母开头）

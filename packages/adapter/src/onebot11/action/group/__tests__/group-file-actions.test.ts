@@ -7,19 +7,34 @@
  * 超限 file_ids → retcode 400。
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-    CreateGroupFileFolderAction,
-    DeleteGroupFileAction,
-    DeleteGroupFolderAction,
-    MoveGroupFileAction,
-    RenameGroupFileAction,
-    TransGroupFileAction,
-} from "../group-files-op.js";
-import {
-    GetGroupFileSystemInfoAction,
-    GetGroupFilesByFolderAction,
-    GetGroupRootFilesAction,
-} from "../group-files-query.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import { createGroupFileOpActions } from "../group-files-op.js";
+import { createGroupFileQueryActions } from "../group-files-query.js";
+
+/**
+ * 与 group-files-query.ts 的 GroupFileInfo / GroupFolderInfo / GroupFilesResult
+ * 同构（生产侧未导出，仅供断言类型标注）。
+ */
+interface GroupFileInfo {
+    file_id: string;
+    file_name: string;
+    file_size: string;
+    uploader?: number;
+    upload_time?: number;
+    modify_time?: number;
+}
+
+/** 同构 GroupFolderInfo。 */
+interface GroupFolderInfo {
+    folder_id: string;
+    folder_name: string;
+}
+
+/** 同构 GroupFilesResult。 */
+interface GroupFilesResult {
+    files: GroupFileInfo[];
+    folders: GroupFolderInfo[];
+}
 
 describe("get_group_root_files / get_group_files_by_folder", () => {
     it("fileInfo/folderInfo 混合列表 → files/folders 拆分（可选字段映射）", async () => {
@@ -39,8 +54,10 @@ describe("get_group_root_files / get_group_files_by_folder", () => {
                 {},
             ]),
         };
-        const action = new GetGroupRootFilesAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupFileQueryActions({ richMediaApi } as never),
+            "get_group_root_files",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(result.data).toEqual({
             files: [
@@ -60,11 +77,16 @@ describe("get_group_root_files / get_group_files_by_folder", () => {
 
     it("file_count 覆盖默认值；by_folder 传 folder_id", async () => {
         const richMediaApi = { getGroupFileList: vi.fn(async () => []) };
-        const byRoot = new GetGroupRootFilesAction(richMediaApi as never);
-        await byRoot.handle({ group_id: 808, file_count: 5 });
+        const actions = createGroupFileQueryActions({ richMediaApi } as never);
+        await ob11ActionOf(actions, "get_group_root_files").handle({
+            group_id: 808,
+            file_count: 5,
+        });
         expect(richMediaApi.getGroupFileList).toHaveBeenLastCalledWith("808", "", 5);
-        const byFolder = new GetGroupFilesByFolderAction(richMediaApi as never);
-        await byFolder.handle({ group_id: 808, folder_id: "d9" });
+        await ob11ActionOf(actions, "get_group_files_by_folder").handle({
+            group_id: 808,
+            folder_id: "d9",
+        });
         expect(richMediaApi.getGroupFileList).toHaveBeenLastCalledWith("808", "d9", 50);
     });
 
@@ -74,11 +96,21 @@ describe("get_group_root_files / get_group_files_by_folder", () => {
                 { fileInfo: { fileId: "f2", fileName: "b.txt", fileSize: "1" } },
             ]),
         };
-        const action = new GetGroupRootFilesAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const actions = createGroupFileQueryActions({ richMediaApi } as never);
+        const result = await ob11ActionOf<GroupFilesResult>(actions, "get_group_root_files").handle(
+            {
+                group_id: 808,
+            },
+        );
         expect(result.data?.files).toEqual([{ file_id: "f2", file_name: "b.txt", file_size: "1" }]);
-        const bad = new GetGroupRootFilesAction(richMediaApi as never);
-        expect((await bad.handle({ group_id: 808, file_count: "x" })).retcode).toBe(400);
+        expect(
+            (
+                await ob11ActionOf(actions, "get_group_root_files").handle({
+                    group_id: 808,
+                    file_count: "x",
+                })
+            ).retcode,
+        ).toBe(400);
     });
 });
 
@@ -92,8 +124,10 @@ describe("get_group_file_system_info", () => {
                 totalSpace: 4096,
             })),
         };
-        const action = new GetGroupFileSystemInfoAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupFileQueryActions({ richMediaApi } as never),
+            "get_group_file_system_info",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual({
             file_count: 3,
             limit_count: 1000,
@@ -106,16 +140,20 @@ describe("get_group_file_system_info", () => {
 describe("create_group_file_folder", () => {
     it("createGroupFolder 返回 folder_id", async () => {
         const richMediaApi = { createGroupFolder: vi.fn(async () => "new-folder-id") };
-        const action = new CreateGroupFileFolderAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, folder_name: "相册" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "create_group_file_folder",
+        ).handle({ group_id: 808, folder_name: "相册" });
         expect(result.data).toEqual({ folder_id: "new-folder-id" });
         expect(richMediaApi.createGroupFolder).toHaveBeenCalledWith("808", "相册");
     });
 
     it("空 folder_name（schema 仅 string，无 min(1)）→ 原样透传", async () => {
         const richMediaApi = { createGroupFolder: vi.fn(async () => "id") };
-        const action = new CreateGroupFileFolderAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, folder_name: "" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "create_group_file_folder",
+        ).handle({ group_id: 808, folder_name: "" });
         expect(result.retcode).toBe(0);
         expect(richMediaApi.createGroupFolder).toHaveBeenCalledWith("808", "");
     });
@@ -124,32 +162,40 @@ describe("create_group_file_folder", () => {
 describe("delete_group_file / delete_group_folder", () => {
     it("file_id 单数 → ids=[file_id]", async () => {
         const richMediaApi = { deleteGroupFile: vi.fn(async () => undefined) };
-        const action = new DeleteGroupFileAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, file_id: "f1" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "delete_group_file",
+        ).handle({ group_id: 808, file_id: "f1" });
         expect(result.retcode).toBe(0);
         expect(richMediaApi.deleteGroupFile).toHaveBeenCalledWith("808", ["f1"]);
     });
 
     it("file_ids 数组优先于 file_id（取数组整体）", async () => {
         const richMediaApi = { deleteGroupFile: vi.fn(async () => undefined) };
-        const action = new DeleteGroupFileAction(richMediaApi as never);
-        await action.handle({ group_id: 808, file_id: "f1", file_ids: ["a", "b"] });
+        await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "delete_group_file",
+        ).handle({ group_id: 808, file_id: "f1", file_ids: ["a", "b"] });
         expect(richMediaApi.deleteGroupFile).toHaveBeenCalledWith("808", ["a", "b"]);
     });
 
     it("file_ids 超上限（100）→ retcode 400", async () => {
         const richMediaApi = { deleteGroupFile: vi.fn(async () => undefined) };
-        const action = new DeleteGroupFileAction(richMediaApi as never);
         const ids = Array.from({ length: 101 }, (_, i) => `id${i}`);
-        const result = await action.handle({ group_id: 808, file_id: "f1", file_ids: ids });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "delete_group_file",
+        ).handle({ group_id: 808, file_id: "f1", file_ids: ids });
         expect(result.retcode).toBe(400);
         expect(richMediaApi.deleteGroupFile).not.toHaveBeenCalled();
     });
 
     it("delete_group_folder → deleteGroupFolder(group, folder_id)", async () => {
         const richMediaApi = { deleteGroupFolder: vi.fn(async () => undefined) };
-        const action = new DeleteGroupFolderAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, folder_id: "d1" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "delete_group_folder",
+        ).handle({ group_id: 808, folder_id: "d1" });
         expect(result.retcode).toBe(0);
         expect(richMediaApi.deleteGroupFolder).toHaveBeenCalledWith("808", "d1");
     });
@@ -158,25 +204,37 @@ describe("delete_group_file / delete_group_folder", () => {
 describe("rename_group_file / move_group_file / trans_group_file", () => {
     it("rename → renameGroupFile(group, file_id, new_name)", async () => {
         const richMediaApi = { renameGroupFile: vi.fn(async () => undefined) };
-        const action = new RenameGroupFileAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, file_id: "f1", new_name: "新名.zip" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "rename_group_file",
+        ).handle({ group_id: 808, file_id: "f1", new_name: "新名.zip" });
         expect(result.retcode).toBe(0);
         expect(richMediaApi.renameGroupFile).toHaveBeenCalledWith("808", "f1", "新名.zip");
     });
 
     it("move → moveGroupFile(group, ids, folder_id)；folder_id 缺省根目录空串", async () => {
         const richMediaApi = { moveGroupFile: vi.fn(async () => undefined) };
-        const action = new MoveGroupFileAction(richMediaApi as never);
-        await action.handle({ group_id: 808, file_id: "f1", folder_id: "d2" });
+        const actions = createGroupFileOpActions({ richMediaApi } as never);
+        await ob11ActionOf(actions, "move_group_file").handle({
+            group_id: 808,
+            file_id: "f1",
+            folder_id: "d2",
+        });
         expect(richMediaApi.moveGroupFile).toHaveBeenLastCalledWith("808", ["f1"], "d2");
-        await action.handle({ group_id: 808, file_id: "f1", file_ids: ["x", "y"] });
+        await ob11ActionOf(actions, "move_group_file").handle({
+            group_id: 808,
+            file_id: "f1",
+            file_ids: ["x", "y"],
+        });
         expect(richMediaApi.moveGroupFile).toHaveBeenLastCalledWith("808", ["x", "y"], "");
     });
 
     it("trans → transGroupFile(group, file_id)", async () => {
         const richMediaApi = { transGroupFile: vi.fn(async () => undefined) };
-        const action = new TransGroupFileAction(richMediaApi as never);
-        const result = await action.handle({ group_id: 808, file_id: "f9" });
+        const result = await ob11ActionOf(
+            createGroupFileOpActions({ richMediaApi } as never),
+            "trans_group_file",
+        ).handle({ group_id: 808, file_id: "f9" });
         expect(result.retcode).toBe(0);
         expect(richMediaApi.transGroupFile).toHaveBeenCalledWith("808", "f9");
     });

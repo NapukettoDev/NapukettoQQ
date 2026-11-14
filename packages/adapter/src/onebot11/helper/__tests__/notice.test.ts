@@ -1,5 +1,5 @@
 /**
- * notice.test.ts：OB11 notice 翻译单测（2026-09-08 T4 补全；本轮补 group_decrease /
+ * notice.test.ts：OB11 notice 翻译单测（ 补全；本轮补 group_decrease /
  * group_admin / group_ban / 防御分支）。
  *
  * 覆盖：group_recall（既有）、friend_recall（C2C 撤回，新）、notify.poke
@@ -8,7 +8,7 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import {
     hasFileElement,
     hasGrayTip,
@@ -57,7 +57,7 @@ describe("toOb11NoticeEvent：撤回", () => {
         });
     });
 
-    it("好友撤回（C2C REVOKE）→ friend_recall（2026-09-08 新增）", () => {
+    it("好友撤回（C2C REVOKE）→ friend_recall（新增）", () => {
         const msg = groupMsg({
             subElementType: GrayTipSubType.REVOKE,
             revokeElement: { operatorUid: "u9" },
@@ -300,7 +300,7 @@ describe("toOb11NoticeEvent：多元素扫描", () => {
     });
 });
 
-describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
+describe("hasFileElement / toGroupUpload（group_upload）", () => {
     /** 群文件消息桩。 */
     function fileMsg(): RawMessage {
         return stub<RawMessage>({
@@ -327,7 +327,7 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
 
     it("Linux 原生空值形状：元素变体为 null 时不得误判存在", () => {
         // Linux 3.2.x wrapper 把未命中的元素变体显式置 null（Windows 省略字段）。
-        // 回归 2026-11-10：`!== undefined` 会把每条普通消息判成 grayTip/file，
+        // 回归 `!== undefined` 会把每条普通消息判成 grayTip/file，
         // 导致 OB11 入站消息全部被静默丢弃。
         const linuxText = stub<RawMessage>({
             ...fileMsg(),
@@ -379,7 +379,7 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
     });
 });
 
-describe("toFriendAdd（B2，快照 diff 源）", () => {
+describe("toFriendAdd（快照 diff 源）", () => {
     it("coreInfo.uin 优先 → friend_add(user_id)", () => {
         const event = toFriendAdd(
             { uid: "u1", uin: "1", coreInfo: { uid: "u1", uin: "10086", nick: "n" } },

@@ -1,7 +1,7 @@
 /**
- * MilkyApi：Milky 动作统一依赖聚合（对齐 OneBotApi 模式，P2-16）
+ * MilkyApi：Milky 动作统一依赖聚合（对齐 OneBotApi 模式）
  *
- * 持有 P1 动作面所需 kernel apis + 协议层共享状态（seq 双向映射 / 转发索引 /
+ * 持有 动作面所需 kernel apis + 协议层共享状态（seq 双向映射 / 转发索引 /
  * 版本 / 发送媒体缓存目录）；动作经 Pick 视图取依赖，装配方只构造一次本对象。
  */
 import type {
@@ -23,7 +23,6 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
-import { findFirstMatch } from "../core/shared/lookup.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 
@@ -33,7 +32,7 @@ export interface MilkyApiOptions {
     groupApi: GroupApi;
     friendApi: FriendApi;
     profileApi: ProfileApi;
-    /** P1 扩面依赖（表态度 / 票据 / 精华列表 / 群通知 / 群文件）。 */
+    /** 扩面依赖（表态度 / 票据 / 精华列表 / 群通知 / 群文件）。 */
     profileLikeApi: ProfileLikeApi;
     ticketApi: TicketApi;
     webApi: WebApi;
@@ -41,7 +40,7 @@ export interface MilkyApiOptions {
     richMediaApi: RichMediaApi;
     /** kernel 闪传 API（upload_group_file / upload_private_file 的投递通道）。 */
     flashTransferApi: FlashTransferApi;
-    /** P2 批次二：会话列表（get_peer_pins 数据源）。 */
+    /** ：会话列表（get_peer_pins 数据源）。 */
     recentContactApi: RecentContactApi;
     /** 登录身份（get_login_info / self_id / target_user_uid 用）。 */
     self: { uin: string; nickname: string; uid?: string };
@@ -55,6 +54,17 @@ export interface MilkyApiOptions {
     mediaDir?: string;
     /** 动作层可观测出口（降级分支 warn/debug 留痕 + forward 临时消息撤回失败；缺省静默）。 */
     logger?: MilkyLoggerLike;
+}
+
+/**
+ * Milky inbound 领域处理器共享装配参数（adapter 注入；各域 deps 按需取用，
+ * 经类型别名追加 enrich / essence 等共享实例）。处理器装配归 adapter。
+ */
+export interface MilkyInboundBase {
+    api: MilkyApi;
+    seqIndex: MessageSeqIndex;
+    broadcast: (event: unknown) => void;
+    logger?: MilkyLoggerLike | undefined;
 }
 
 export class MilkyApi {
@@ -211,29 +221,28 @@ export class MilkyApi {
 const NOTIFY_SEARCH_COUNT = 100;
 
 /**
- * 按通知 seq 查找群通知（先非可疑后可疑，OB11 set_group_add_request 同路径；
- * 屏序骨架走 core findFirstMatch）。
+ * 按通知 seq 查找群通知（先非可疑后可疑两屏依序，OB11 set_group_add_request
+ * 同路径）。屏序惰性拉取：前一屏命中则不拉后续屏（群通知规范序）。
  * 未找到抛 NOT_FOUND（应答动作的 seq 无效或已过期）。
  * 模块级函数（非类成员）：应答动作的公共入口，OB11 同路径。
  */
 export async function findGroupNotify(api: MilkyApi, seq: string): Promise<GroupNotify> {
-    const hit = await findFirstMatch(
-        [
-            () => api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT),
-            () => api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT),
-        ],
-        (item) => item.seq === seq,
-    );
-    if (hit === undefined) {
-        throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
+    const screens = [
+        () => api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT),
+        () => api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT),
+    ];
+    for (const fetchScreen of screens) {
+        const hit = (await fetchScreen()).find((item) => item.seq === seq);
+        if (hit !== undefined) {
+            return hit;
+        }
     }
-    return hit;
+    throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
 }
 
 /** 按发起者 uid 查找好友申请（getBuddyReqList 匹配 friendUid）；未找到抛 NOT_FOUND。 */
 export async function findBuddyReq(api: MilkyApi, initiatorUid: string): Promise<BuddyReq> {
-    const hit = await findFirstMatch(
-        [() => api.friendApi.getBuddyReqList()],
+    const hit = (await api.friendApi.getBuddyReqList()).find(
         (req) => req.friendUid === initiatorUid,
     );
     if (hit === undefined) {

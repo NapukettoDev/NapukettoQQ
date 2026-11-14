@@ -1,5 +1,5 @@
 /**
- * Satori 发方向资源处理（从 element-convert.ts 拆分，2026-08-08 FTA 优化）
+ * Satori 发方向资源处理（从 element-convert.ts 拆分，FTA 优化）
  *
  * - resolveAsset：internal: 路径 / http(s) 下载 / 本地路径原样
  * - ensureSilk 已上移到 adapter core（core/media.ts，onebot11/satori 共用）

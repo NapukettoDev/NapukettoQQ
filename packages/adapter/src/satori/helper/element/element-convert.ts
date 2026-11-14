@@ -1,5 +1,5 @@
 /**
- * 发方向转换：Satori 元素 → kernel canonical（从 element.ts 拆分，2026-08-08 FTA 优化）
+ * 发方向转换：Satori 元素 → kernel canonical（从 element.ts 拆分，FTA 优化）
  *
  * - satoriToCanonicalElements：Satori 元素树 → kernel canonical（at uin→uid + 资源下载/转码）
  * - parseContentToCanonical：消息 content 字符串 → canonical（message.create 用）
@@ -10,12 +10,12 @@
  * 本文件只做发方向元素映射。
  */
 import type { CanonicalElement } from "@napuketto/kernel";
-import type { SatoriToCanonicalDeps } from "./deps.js";
 import type { SatoriElement } from "./element.js";
 import { parseElements } from "./element.js";
+import type { SatoriToCanonicalDeps } from "./media-convert.js";
 import { MEDIA_CONVERTERS } from "./media-convert.js";
 
-export type { SatoriToCanonicalDeps } from "./deps.js";
+export type { SatoriToCanonicalDeps } from "./media-convert.js";
 
 /** 发方向：Satori 元素树 → kernel canonical（at uin→uid + 资源下载/转码）。 */
 export async function satoriToCanonicalElements(

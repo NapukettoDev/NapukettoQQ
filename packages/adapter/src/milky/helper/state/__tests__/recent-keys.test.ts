@@ -1,5 +1,5 @@
 /**
- * RecentKeyCache 单测（自 essence.test.ts 拆出——essence 翻译层 2026-11-03 上移 core）
+ * RecentKeyCache 单测（自 essence.test.ts 拆出——essence 翻译层 上移 core）
  */
 
 import { describe, expect, it } from "vitest";

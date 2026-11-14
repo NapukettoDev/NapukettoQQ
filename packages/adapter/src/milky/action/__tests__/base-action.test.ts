@@ -1,5 +1,5 @@
 /**
- * MilkyAction.handle 契约测试（base-action.ts + error-map.ts）
+ * MilkyAction.handle 契约测试（base-action.ts）
  *
  * 锁定：zod 校验失败恒 -400（摘要取前 3 条 issue）、KernelError 经错误码映射表
  * 转 retcode、映射缺失回退 UNKNOWN、非 KernelError 与非 Error 抛出的兜底路径。
@@ -7,37 +7,26 @@
 import { KERNEL_ERROR_CODES, kernelError } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { MilkyApiAction } from "../base-action.js";
-import { milkyErrorCodeMap } from "../error-map.js";
-import { buildMilkyApi } from "./test-support.js";
+import { defineMilkyAction, milkyErrorCodeMap } from "../base-action.js";
 
-/** 可注入行为的最小具体动作（schema / run 由用例给定）。 */
-class ProbeAction extends MilkyApiAction<Record<string, never>, string> {
-    readonly name = "probe";
-    readonly schema: z.ZodType<Record<string, never>>;
-    private readonly run: () => Promise<string>;
-
-    constructor(schema: z.ZodType<Record<string, never>>, run: () => Promise<string>) {
-        super(buildMilkyApi());
-        this.schema = schema;
-        this.run = run;
-    }
-
-    protected async _handle(): Promise<string> {
-        return await this.run();
-    }
+/** 可注入行为的最小测试动作（schema / handle 由用例给定）。 */
+function probeAction(
+    schema: z.ZodType<Record<string, never>>,
+    run: () => Promise<string>,
+): ReturnType<typeof defineMilkyAction<Record<string, never>, string>> {
+    return defineMilkyAction({ name: "probe", schema, handle: run });
 }
 
-/** 失败动作快捷构造（_handle 直接抛给定错误）。 */
-function failingAction(err: unknown, schema = z.object({}).strict()): ProbeAction {
-    return new ProbeAction(schema, async () => {
+/** 失败动作快捷构造（handle 直接抛给定错误）。 */
+function failingAction(err: unknown, schema = z.object({}).strict()) {
+    return probeAction(schema as never, async () => {
         throw err;
     });
 }
 
 describe("MilkyAction.handle：校验失败路径", () => {
     it("zod 失败 → -400，摘要含字段路径与文案", async () => {
-        const act = new ProbeAction(
+        const act = probeAction(
             z.object({ a: z.string(), b: z.number() }) as never,
             async () => "x",
         );
@@ -57,7 +46,7 @@ describe("MilkyAction.handle：校验失败路径", () => {
             c: z.boolean(),
             d: z.array(z.string()),
         });
-        const act = new ProbeAction(schema as never, async () => "x");
+        const act = probeAction(schema as never, async () => "x");
         const res = await act.handle({});
         const summary = res.message.replace("参数解析失败: ", "");
         expect(summary.split("; ")).toHaveLength(3);
@@ -103,16 +92,16 @@ describe("MilkyAction.handle：非类型化错误兜底", () => {
 
 describe("MilkyAction.handle：成功路径", () => {
     it("ok 信封：retcode 0 + data 透传 + message 空串", async () => {
-        const act = new ProbeAction(z.object({}).strict(), async () => "payload");
+        const act = probeAction(z.object({}).strict(), async () => "payload");
         const res = await act.handle({});
         expect(res).toEqual({ status: "ok", retcode: 0, data: "payload", message: "" });
     });
 
-    it("_handle 抛出的同步异常同样被捕获（async fn 包装）", async () => {
+    it("handle 抛出的同步异常同样被捕获（async fn 包装）", async () => {
         const boom = vi.fn(() => {
             throw kernelError("sync", "INVALID_STATE");
         });
-        const act = new ProbeAction(z.object({}).strict(), async () => {
+        const act = probeAction(z.object({}).strict(), async () => {
             boom();
             return "";
         });

@@ -9,12 +9,22 @@
 import { ChatType, WebHonorType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import {
-    DeleteEssenceMsgAction,
-    GetEssenceMsgListAction,
-    GetGroupHonorInfoAction,
-    SetEssenceMsgAction,
-} from "../essence.js";
+import type { OB11MessageSegment } from "../../../types/index.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import { createGroupEssenceActions } from "../essence.js";
+
+/** 与 essence.ts 的 EssenceMsgInfo 同构（生产侧未导出，仅供断言类型标注）。 */
+interface EssenceMsgInfo {
+    msg_seq: number;
+    msg_random: number;
+    sender_id: number;
+    sender_nick: string;
+    operator_id: number;
+    operator_nick: string;
+    operator_time: number;
+    message_id: number;
+    content: OB11MessageSegment[];
+}
 
 describe("get_essence_msg_list", () => {
     it("EssenceMsgItem → OB11 结构（text/image 段映射）", async () => {
@@ -36,8 +46,10 @@ describe("get_essence_msg_list", () => {
                 },
             ]),
         };
-        const action = new GetEssenceMsgListAction(webApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf<EssenceMsgInfo[]>(
+            createGroupEssenceActions({ webApi } as never),
+            "get_essence_msg_list",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(webApi.getEssenceMsgList).toHaveBeenCalledWith("808");
         expect(result.data?.[0]).toMatchObject({
@@ -71,8 +83,10 @@ describe("get_essence_msg_list", () => {
                 },
             ]),
         };
-        const action = new GetEssenceMsgListAction(webApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf<EssenceMsgInfo[]>(
+            createGroupEssenceActions({ webApi } as never),
+            "get_essence_msg_list",
+        ).handle({ group_id: 808 });
         expect(result.data?.[0]?.content).toEqual([
             { type: "text", data: { text: "" } },
             { type: "image", data: { file: "" } },
@@ -93,8 +107,10 @@ describe("get_essence_msg_list", () => {
                 },
             ]),
         };
-        const action = new GetEssenceMsgListAction(webApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf<EssenceMsgInfo[]>(
+            createGroupEssenceActions({ webApi } as never),
+            "get_essence_msg_list",
+        ).handle({ group_id: 808 });
         expect(result.data?.[0]?.content).toEqual([]);
     });
 });
@@ -109,32 +125,38 @@ describe("set_essence_msg / delete_essence_msg", () => {
 
     it("群消息 message_id → addGroupEssence(group, msgId)", async () => {
         const groupApi = { addGroupEssence: vi.fn(async () => undefined) };
-        const action = new SetEssenceMsgAction({
-            groupApi,
-            messageUnique: uniqueWithGroupMsg(),
-        } as never);
-        const result = await action.handle({ message_id: 1 });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({
+                groupApi,
+                messageUnique: uniqueWithGroupMsg(),
+            } as never),
+            "set_essence_msg",
+        ).handle({ message_id: 1 });
         expect(result.retcode).toBe(0);
         expect(groupApi.addGroupEssence).toHaveBeenCalledWith("808", "nt-1");
     });
 
     it("字符串 message_id 同样反查 → removeGroupEssence", async () => {
         const groupApi = { removeGroupEssence: vi.fn(async () => undefined) };
-        const action = new DeleteEssenceMsgAction({
-            groupApi,
-            messageUnique: uniqueWithGroupMsg(),
-        } as never);
-        const result = await action.handle({ message_id: "1" });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({
+                groupApi,
+                messageUnique: uniqueWithGroupMsg(),
+            } as never),
+            "delete_essence_msg",
+        ).handle({ message_id: "1" });
         expect(result.retcode).toBe(0);
         expect(groupApi.removeGroupEssence).toHaveBeenCalledWith("808", "nt-1");
     });
 
     it("message_id 未登记 → retcode 102 NOT_FOUND", async () => {
-        const action = new SetEssenceMsgAction({
-            groupApi: {},
-            messageUnique: new MessageUnique(),
-        } as never);
-        const result = await action.handle({ message_id: 999 });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({
+                groupApi: {},
+                messageUnique: new MessageUnique(),
+            } as never),
+            "set_essence_msg",
+        ).handle({ message_id: 999 });
         expect(result.retcode).toBe(102);
     });
 
@@ -142,8 +164,10 @@ describe("set_essence_msg / delete_essence_msg", () => {
         const unique = new MessageUnique();
         unique.alloc("nt-c2c", { chatType: ChatType.C2C, peerUid: "u90001" });
         const groupApi = { addGroupEssence: vi.fn(async () => undefined) };
-        const action = new SetEssenceMsgAction({ groupApi, messageUnique: unique } as never);
-        const result = await action.handle({ message_id: 1 });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({ groupApi, messageUnique: unique } as never),
+            "set_essence_msg",
+        ).handle({ message_id: 1 });
         expect(result.retcode).toBe(105);
         expect(groupApi.addGroupEssence).not.toHaveBeenCalled();
     });
@@ -151,8 +175,10 @@ describe("set_essence_msg / delete_essence_msg", () => {
     it("alloc 未记录 peer → retcode 102（无会话记录）", async () => {
         const unique = new MessageUnique();
         unique.alloc("nt-no-peer");
-        const action = new SetEssenceMsgAction({ groupApi: {}, messageUnique: unique } as never);
-        const result = await action.handle({ message_id: 1 });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({ groupApi: {}, messageUnique: unique } as never),
+            "set_essence_msg",
+        ).handle({ message_id: 1 });
         expect(result.retcode).toBe(102);
     });
 });
@@ -161,8 +187,10 @@ describe("get_group_honor_info", () => {
     it("type 缺省 → WebHonorType.ALL 透传返回值", async () => {
         const honor = { gid: 808 };
         const webApi = { getGroupHonorInfo: vi.fn(async () => honor) };
-        const action = new GetGroupHonorInfoAction(webApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupEssenceActions({ webApi } as never),
+            "get_group_honor_info",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(result.data).toBe(honor);
         expect(webApi.getGroupHonorInfo).toHaveBeenCalledWith("808", WebHonorType.ALL);
@@ -170,7 +198,8 @@ describe("get_group_honor_info", () => {
 
     it("type 四个合法值逐一映射", async () => {
         const webApi = { getGroupHonorInfo: vi.fn(async () => ({})) };
-        const action = new GetGroupHonorInfoAction(webApi as never);
+        const actions = createGroupEssenceActions({ webApi } as never);
+        const action = ob11ActionOf(actions, "get_group_honor_info");
         await action.handle({ group_id: 808, type: "talkative" });
         expect(webApi.getGroupHonorInfo).toHaveBeenLastCalledWith("808", WebHonorType.TALKATIVE);
         await action.handle({ group_id: 808, type: "performer" });
@@ -183,8 +212,10 @@ describe("get_group_honor_info", () => {
 
     it("未知 type 字符串 → 回退 ALL（表驱动宽容）", async () => {
         const webApi = { getGroupHonorInfo: vi.fn(async () => ({})) };
-        const action = new GetGroupHonorInfoAction(webApi as never);
-        await action.handle({ group_id: 808, type: "bogus" });
+        await ob11ActionOf(
+            createGroupEssenceActions({ webApi } as never),
+            "get_group_honor_info",
+        ).handle({ group_id: 808, type: "bogus" });
         expect(webApi.getGroupHonorInfo).toHaveBeenLastCalledWith("808", WebHonorType.ALL);
     });
 });

@@ -1,5 +1,5 @@
 /**
- * 消息翻译 sender.role 传播测试（群缓存角色判定，2026-10-28）
+ * 消息翻译 sender.role 传播测试（群缓存角色判定）
  *
  * 锁定 ctx 注入行为：
  *  - toOb11MessageEvent：群消息 role 缺省 member，ctx.senderRole 透传；私聊无 role

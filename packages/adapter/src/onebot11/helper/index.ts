@@ -1,5 +1,5 @@
 /**
- * OneBot 11 helper：配置 schema（ADR-012）+ 翻译层（canonical ↔ OB11，ADR-008）
+ * OneBot 11 helper：配置 schema+ 翻译层（canonical ↔ OB11）
  */
 
 export type { CqCode } from "./codec/cqcode.js";

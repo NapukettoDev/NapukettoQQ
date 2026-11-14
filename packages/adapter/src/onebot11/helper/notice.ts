@@ -1,16 +1,16 @@
 /**
- * OB11 notice 事件翻译（P2-7，2026-08-05；2026-09-08 T4 补全）
+ * OB11 notice 事件翻译（ 补全）
  *
  * NT QQ 中群成员变动/撤回等系统事件通过**消息的灰色提示元素（grayTip）**广播。
- * 本模块把 RawMessage 里的 grayTip 翻译为 OB11 notice 事件（纯函数，ADR-008）。
+ * 本模块把 RawMessage 里的 grayTip 翻译为 OB11 notice 事件（纯函数）。
  *
  * 支持：
  *  - group_recall（群撤回，grayTip.subElementType=REVOKE + chatType=GROUP）
- *  - friend_recall（好友撤回，REVOKE + chatType=C2C，2026-09-08）
+ * - friend_recall（好友撤回，REVOKE + chatType=C2C）
  *  - group_increase / group_decrease（群成员变动，subElementType=GROUP + TipGroupElement.type）
  *  - group_admin（管理员变更，TipGroupElement.type=BLOCK/UNBLOCK 的 role 语义）
  *  - group_ban（禁言，TipGroupElement.type=SHUT_UP）
- *  - notify.poke（戳一戳，aioOpGrayTipElement；⚠️ 待真实 poke 事件验证，2026-09-08）
+ * - notify.poke（戳一戳，aioOpGrayTipElement；⚠️ 待真实 poke 事件验证）
  *
  * 未知/未翻译的 grayTip 子类型（JSON/BUDDY/ESSENCE/GROUP_NOTIFY 等）打 raw JSON
  * 日志（ctx.logger 可选）——为后续真实事件校准积累数据。
@@ -27,12 +27,12 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { toUnixSeconds } from "../../core/shared/time.js";
-import { toUin } from "../../core/shared/uid-uin.js";
+import { toUnixSeconds } from "../../shared/raw-message.js";
+import { toUin } from "../../shared/uid-uin.js";
 
-export { collectGrayTipUids, hasGrayTip } from "../../core/shared/gray-tip.js";
+export { collectGrayTipUids, hasGrayTip } from "../../shared/gray-tip.js";
 
-import { firstUntranslatedGrayTip } from "../../core/shared/gray-tip.js";
+import { firstUntranslatedGrayTip } from "../../shared/gray-tip.js";
 
 import type {
     OB11Event,
@@ -56,7 +56,7 @@ const GROUP_FILE_BUS_ID = 102;
 /**
  * 检查消息是否含文件元素（group_upload 开关分支判定）。
  *
- * ⚠️ 用空值判定（`!= null`）而非 `!== undefined`（2026-11-10，Linux 原生宿主）：
+ * ⚠️ 用空值判定（`!= null`）而非 `!== undefined`（Linux 原生宿主）：
  * Windows 原生对象省略未命中的元素变体字段，Linux 3.2.x 原生对象则把**全部**
  * 变体字段显式置 `null`（`"grayTipElement":null` 等）。用 `!== undefined`
  * 会把每条普通消息都判成「含该元素」——OB11 入站消息因此全部被误路由到
@@ -92,7 +92,7 @@ function base(
     };
 }
 
-/** 撤回事件（chatType 分流：GROUP→group_recall / C2C→friend_recall，2026-09-08）。 */
+/** 撤回事件（chatType 分流：GROUP→group_recall / C2C→friend_recall）。 */
 function toRecall(
     msg: RawMessage,
     g: GrayTipElement,
@@ -123,7 +123,7 @@ function toRecall(
 }
 
 /**
- * 戳一戳（notify.poke，aioOpGrayTipElement，2026-09-08）。
+ * 戳一戳（notify.poke，aioOpGrayTipElement）。
  *
  * ⚠️ 待真实 poke 事件验证：aioOp 载荷的完整字段形状未经实测（实体类型仅有
  * operateType/peerUid 两个已证字段）。当前口径：user_id = 消息发送者，
@@ -292,7 +292,7 @@ function toBan(
 }
 
 /**
- * 好友添加（friend_add，B2，2026-09-08）。
+ * 好友添加（friend_add，）。
  * 数据源 = kernel BuddyCache 快照 diff（Buddy/onBuddyListChange 全量快照对比，
  * 首帧 baseline 不发）——非 grayTip 路径。user_id 取 coreInfo.uin（顶层 uin 兜底）。
  */
@@ -308,7 +308,7 @@ export function toFriendAdd(entry: BuddyListEntry, selfUin: string): OB11FriendA
 }
 
 /**
- * 群文件上传（group_upload，B4，2026-09-08）。
+ * 群文件上传（group_upload，）。
  * 数据源 = 含 fileElement 的群消息（开关 groupUploadAsNotice=true 时替代
  * message 事件报出）。file.id 取 fileUuid（缺省文件名）、size 取 fileSize、
  * busid 固定 102（群文件业务类型，与 kernel GROUP_FILE_BIZ_TYPE 同源语义）。
@@ -374,7 +374,7 @@ function logUntranslatedGrayTip(msg: RawMessage, ctx: NoticeTranslateContext): v
 }
 
 /** RawMessage → OB11 notice 事件（无 grayTip 返回 null）。
- * 未知/未翻译子类型打 raw JSON 日志（校准数据积累，2026-09-08）。 */
+ * 未知/未翻译子类型打 raw JSON 日志（校准数据积累）。 */
 export function toOb11NoticeEvent(msg: RawMessage, ctx: NoticeTranslateContext): OB11Event | null {
     for (const el of msg.elements) {
         const g = el.grayTipElement;

@@ -2,7 +2,7 @@
  * adapter.test.ts：OB11 适配器单测（IPC 桥面 + 消息/notice/sysmsg/群请求/精华
  * 事件链分支 + 传输装配跳过分支）。
  *
- * subscribeOnly（2026-08-27，IPC 桥模式）与 start() 的差别仅在传输层：
+ * subscribeOnly（IPC 桥模式）与 start 的差别仅在传输层：
  * 只订阅消息通道（维护 messageUnique + 灰色通知），不装配 HTTP/WS。
  * kernel apis 以宽松桩对象注入（动作注册表构造期只持有引用，不调用）。
  * 自 adapter-branches / adapter-extra 并入：私聊与 role 注入、grayTip/sysmsg
@@ -33,8 +33,8 @@ import {
 } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import {
     type AdapterLoggerLike,
     NapukettoOneBot11Adapter,
@@ -67,7 +67,7 @@ function stubOptions(
 function makeAdapter(channel: MsgEventChannel): NapukettoOneBot11Adapter {
     return new NapukettoOneBot11Adapter({
         ...stubOptions(),
-        config: new ProtocolConfig({
+        config: new ConfigBase({
             path: "ob11-test.toml",
             schema: ob11ConfigSchema,
             defaults: ob11ConfigSchema.parse({}),
@@ -107,7 +107,7 @@ describe("NapukettoOneBot11Adapter（IPC 桥面）", () => {
         const { channel, off } = fakeChannel();
         const adapter = makeAdapter(channel);
         await adapter.subscribeOnly();
-        // msgChannel 订阅集：onRecvMsg + offline_file/sys msg/在线文件（c3，2026-09-10）
+        // msgChannel 订阅集：onRecvMsg + offline_file/sys msg/在线文件（c3）
         const msgSubs = 4;
         expect(channel.on).toHaveBeenCalledTimes(msgSubs);
         expect(channel.on).toHaveBeenCalledWith("Msg/onRecvMsg", expect.any(Function));
@@ -158,7 +158,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         const broadcaster = stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) });
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -224,7 +224,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         expect(events).toHaveLength(0);
     });
 
-    it("buddyCacheEvents onBuddyAdded → friend_add 事件（B2）", async () => {
+    it("buddyCacheEvents onBuddyAdded → friend_add 事件（）", async () => {
         const { adapter, buddyCache, events } = makeWithRequestChannels();
         await adapter.subscribeOnly();
         expect(buddyCache.handlers.has("BuddyCache/onBuddyAdded")).toBe(true);
@@ -255,7 +255,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
     });
 });
 
-describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () => {
+describe("NapukettoOneBot11Adapter（reload 热更新）", () => {
     let tmpRoot = "";
     afterAll(() => {
         if (tmpRoot !== "") {
@@ -282,7 +282,7 @@ describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () =>
         const onCalls = vi.fn(() => () => undefined);
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: cfgPath,
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -321,7 +321,7 @@ describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () =>
     });
 });
 
-describe("NapukettoOneBot11Adapter（group_upload 报形式开关，B4）", () => {
+describe("NapukettoOneBot11Adapter（group_upload 报形式开关）", () => {
     /** 群文件消息（chatType=GROUP + fileElement）。 */
     function fileMsg(): Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1] {
         return stub<Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1]>({
@@ -356,7 +356,7 @@ describe("NapukettoOneBot11Adapter（group_upload 报形式开关，B4）", () =
         const broadcaster = stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) });
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -460,7 +460,7 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
         const debug = vi.fn();
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -480,7 +480,7 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(events).toHaveLength(0);
         expect(warn).not.toHaveBeenCalled();
-        // 2026-10-25 级别重分配：校准遥测 info → debug（info 级不再出现）
+        // 级别重分配：校准遥测 info → debug（info 级不再出现）
         expect(info).not.toHaveBeenCalled();
         expect(debug).toHaveBeenCalledTimes(1);
         const payload = debug.mock.calls[0]?.[0] as { verdict?: string; msgType?: number };
@@ -589,7 +589,7 @@ describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）"
         });
         const adapter = new NapukettoOneBot11Adapter({
             ...options,
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -825,7 +825,7 @@ function makeEventAdapter(options?: {
     }
     const adapter = new NapukettoOneBot11Adapter({
         ...stubOptions(options?.overrides),
-        config: new ProtocolConfig({
+        config: new ConfigBase({
             path: "ob11-test.toml",
             schema: ob11ConfigSchema,
             defaults: ob11ConfigSchema.parse({}),
@@ -1210,7 +1210,7 @@ describe("精华链补充分支", () => {
         };
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(overrides),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),
@@ -1323,7 +1323,7 @@ describe("精华串行链 rejection 恢复", () => {
                     ]),
                 },
             }),
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
                 defaults: ob11ConfigSchema.parse({}),

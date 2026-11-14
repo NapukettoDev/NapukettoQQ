@@ -1,5 +1,5 @@
 /**
- * Milky 社交类动作测试（social.ts，2026-11-14 域对齐重组，自 p3-social.test.ts
+ * Milky 社交类动作测试（social.ts，域对齐重组，自 p3-social.test.ts
  * + p2-batch2 / p1-actions 社交用例归并）
  *
  * 锁定：好友/群列表（缓存与直查双路径）、send_profile_like count 缺省、
@@ -272,14 +272,14 @@ describe("send_friend_nudge", () => {
         expect(sendNudge).not.toHaveBeenCalled();
     });
 
-    it("is_self：receiver = 自己 uid（P2 批次二补测）", async () => {
+    it("is_self：receiver = 自己 uid（补测）", async () => {
         const sendNudge = vi.fn(async () => null);
         const registry = socialRegistry({ msgApi: { sendNudge } });
         await actionOf(registry, "send_friend_nudge").handle({ user_id: 20002, is_self: true });
         expect(sendNudge).toHaveBeenCalledTimes(1);
     });
 
-    it("self.uid 缺失 → -400（P2 批次二补测）", async () => {
+    it("self.uid 缺失 → -400（补测）", async () => {
         const registry = socialRegistry({ selfUid: "" });
         const res = await actionOf(registry, "send_friend_nudge").handle({ user_id: 20002 });
         expect(res.retcode).toBe(-400);
@@ -374,7 +374,7 @@ describe("get_peer_pins / set_peer_pin", () => {
         expect(res.retcode).toBe(-400);
     });
 
-    it("get_peer_pins：置顶过滤 + 实体套用 + 未命中跳过（P2 批次二补测）", async () => {
+    it("get_peer_pins：置顶过滤 + 实体套用 + 未命中跳过（补测）", async () => {
         const registry = socialRegistry({
             recentContactApi: {
                 getPinnedContacts: vi.fn(async () => [
@@ -423,7 +423,7 @@ describe("get_peer_pins / set_peer_pin", () => {
         });
     });
 
-    it("set_peer_pin：is_pinned 缺省 true + 场景透传（P2 批次二补测）", async () => {
+    it("set_peer_pin：is_pinned 缺省 true + 场景透传（补测）", async () => {
         const setContactTop = vi.fn(async () => null);
         const registry = socialRegistry({ msgApi: { setContactTop } });
         await actionOf(registry, "set_peer_pin").handle({

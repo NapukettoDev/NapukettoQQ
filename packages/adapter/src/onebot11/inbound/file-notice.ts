@@ -1,13 +1,13 @@
 /**
- * OB11 inbound 轻量通知域（2026-11-14 自 event-pipeline.ts 拆出）
+ * OB11 inbound 轻量通知域（自 event-pipeline.ts 拆出）
  *
  * 离线文件（c3）→ offline_file notice；在线文件无对应 OB11 通知类型 → raw
- * debug 校准日志；好友列表变化（Buddy/onBuddyListChange*，T10 实证 =
- * BuddyCategory[] 全量快照）→ raw info 校准日志；好友缓存 diff 新增（B2）→
+ * debug 校准日志；好友列表变化（Buddy/onBuddyListChange*， 实证 =
+ * BuddyCategory[] 全量快照）→ raw info 校准日志；好友缓存 diff 新增（）→
  * friend_add notice（diff/baseline 在 kernel BuddyCache，翻译纯函数）。
  */
 import type { BuddyListEntry } from "@napuketto/kernel";
-import { sliceRaw, truncRaw } from "../../core/shared/log.js";
+import { sliceRaw, truncRaw } from "../../shared/log.js";
 import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 import { toFriendAdd } from "../helper/notice.js";
 import { narrowOfflineFiles, toOfflineFileNotice } from "../helper/notice-extra.js";
@@ -24,7 +24,7 @@ export class Ob11InboundFileNotice {
     }
 
     /**
-     * 离线文件（c3，2026-09-10）：Msg/onRecvOfflineFileMsg → OB11 offline_file
+     * 离线文件（c3）：Msg/onRecvOfflineFileMsg → OB11 offline_file
      * notice（payload 形状待校准：防御性收窄，未知形状 raw 日志积累）。
      */
     offlineFile(arg: unknown): void {
@@ -41,7 +41,7 @@ export class Ob11InboundFileNotice {
         }
     }
 
-    /** 在线文件：OB11 无对应通知类型；debug 级 raw 校准日志（2026-10-25）。 */
+    /** 在线文件：OB11 无对应通知类型；debug 级 raw 校准日志。 */
     onlineFile(arg: unknown): void {
         this.deps.logger?.debug(
             { raw: sliceRaw(JSON.stringify(arg)) },
@@ -57,7 +57,7 @@ export class Ob11InboundFileNotice {
         );
     }
 
-    /** 好友缓存 diff 新增（B2，2026-09-08）→ friend_add notice（翻译纯函数）。 */
+    /** 好友缓存 diff 新增（）→ friend_add notice（翻译纯函数）。 */
     friendAdd(entry: BuddyListEntry): void {
         this.deps.broadcast(toFriendAdd(entry, this.deps.selfUin));
     }

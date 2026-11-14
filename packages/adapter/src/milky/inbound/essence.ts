@@ -2,13 +2,13 @@
  * Milky inbound 精华域：双路径发射——732:1 快路径（sysmsg 域 claim 后即时广播）
  * 与列表 diff（remove 路径 + operator 回填），essenceKeys 按 群:seq:方向 去重。
  */
-import type { EssenceAddedItem } from "../../core/shared/essence.js";
-import { EssenceListSync, narrowEssenceGroupArg } from "../../core/shared/essence.js";
-import { sliceRaw } from "../../core/shared/log.js";
-import { numericUin } from "../../core/shared/uid-uin.js";
+import type { EssenceAddedItem } from "../../shared/essence.js";
+import { EssenceListSync, narrowEssenceGroupArg } from "../../shared/essence.js";
+import { sliceRaw } from "../../shared/log.js";
+import { numericUin } from "../../shared/uid-uin.js";
+import type { MilkyInboundBase } from "../api.js";
 import { RecentKeyCache } from "../helper/state/recent-keys.js";
 import type { GroupEssenceMessageChangeData } from "../types.js";
-import type { MilkyInboundBase } from "./base.js";
 
 /** 精华域装配参数 = 管道依赖全集（api / broadcast / logger 按需取用）。 */
 export type MilkyInboundEssenceDeps = MilkyInboundBase;

@@ -11,7 +11,7 @@
 import { type KernelErrorCode, kernelError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { stub } from "../../__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { type ActionKernelSpec, type ErrorCodeMap, runAction } from "../action-kernel.js";
 
 /** OB11 风格映射表（与 onebot11 error-map 同构的最小子集）。 */

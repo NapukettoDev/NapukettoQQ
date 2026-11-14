@@ -1,5 +1,5 @@
 /**
- * OneBotApi：OneBot 11 动作的统一依赖聚合（P2-16，基础设施第一项）
+ * OneBotApi：OneBot 11 动作的统一依赖聚合（基础设施第一项）
  *
  * 单类持有 9 个 kernel apis + 协议层共享状态（messageUnique / self / system 回调），
  * 动作只依赖一个聚合对象（或 Pick 视图），boot.cjs 装配面只出现一个聚合对象。
@@ -21,7 +21,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { GroupApi } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "../../core/shared/log.js";
+import type { AdapterLoggerLike } from "../../shared/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
 
@@ -33,7 +33,7 @@ export interface OneBotSystemOptions {
     cleanCache?: () => Promise<void>;
     /** 缓存目录（download_file 保存路径 / get_image 主动下载落盘）。 */
     cacheDir?: string;
-    /** QQ NT global 目录（get_image/get_record 解析 NT 相对路径用，2026-09-08 T5）。 */
+    /** QQ NT global 目录（get_image/get_record 解析 NT 相对路径用，）。 */
     mediaBaseDir?: string;
     /** 进程退出回调（bot_exit 用）。 */
     exit?: () => Promise<void>;
@@ -58,14 +58,14 @@ export interface OneBotApiOptions {
     self: { uin: string; nickname: string };
     /** 系统类本地信息。 */
     system: OneBotSystemOptions;
-    /** 群/成员缓存（ADR-008，读缓存动作用；未装配时动作直查 api）。 */
+    /** 群/成员缓存（读缓存动作用；未装配时动作直查 api）。 */
     groupCache?: GroupCache;
     /** 降级分支可观测出口（缓存/转换失败 warn/debug 留痕；缺省静默）。 */
     logger?: AdapterLoggerLike;
 }
 
 /**
- * OneBot 11 动作统一依赖聚合（P2-16）。
+ * OneBot 11 动作统一依赖聚合。
  * 各动作经 `Pick<OneBotApi, ...>` 取所需成员；注册处只构造一次本对象。
  */
 export class OneBotApi {
@@ -89,7 +89,7 @@ export class OneBotApi {
     readonly profileLikeApi: ProfileLikeApi;
     /** kernel 群空间 web API（精华/荣誉用）。 */
     readonly webApi: WebApi;
-    /** 群/成员缓存（ADR-008；翻译层只读消费，缺失惰性回填）。 */
+    /** 群/成员缓存（翻译层只读消费，缺失惰性回填）。 */
     readonly groupCache: GroupCache | undefined;
     /** OB11 message_id ↔ NT msgId 双向映射（收链路与动作共用同一映射空间）。 */
     readonly messageUnique: MessageUnique;

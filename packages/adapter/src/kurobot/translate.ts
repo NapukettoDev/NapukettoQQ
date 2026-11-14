@@ -1,5 +1,5 @@
 /**
- * 消息映射纯函数（任务书 KUROBOT-PROMPT §1.2 QQ↔MC 映射；翻译层无副作用，ADR-008）
+ * 消息映射纯函数（任务书 KUROBOT-PROMPT §1.2 QQ↔MC 映射；翻译层无副作用）
  *
  * QQ → MC：canonical elements 富文本降级为单行文本（无法表达的类型静默跳过，
  * 对齐 OB11 收向「无法表达静默跳过」惯例）。

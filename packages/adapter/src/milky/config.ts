@@ -1,5 +1,5 @@
 /**
- * Milky 协议配置（zod schema，归属本包，ADR-012）
+ * Milky 协议配置（zod schema，归属本包）
  *
  * 单一 TOML 的 `[accounts.milky]` 账号段（docs/protocols/milky.md §4）：
  * 单端口 HTTP 模型（/api + /event 同端口），`enabled` 缺省 false = 不启用。

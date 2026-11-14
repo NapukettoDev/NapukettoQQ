@@ -1,5 +1,5 @@
 /**
- * SatoriApi：Satori 动作的统一依赖聚合（对齐 OB11 的 OneBotApi，P2-16 模式）
+ * SatoriApi：Satori 动作的统一依赖聚合（对齐 OB11 的 OneBotApi， 模式）
  *
  * 单类持有 kernel apis + 协议层共享状态（self / cacheDir / 元素转换依赖），
  * 动作只依赖一个聚合对象（或 Pick 视图），装配面只出现一个聚合对象。
@@ -16,7 +16,7 @@ import type {
     ProfileApi,
 } from "@napuketto/kernel";
 import { ChatType, type Peer } from "@napuketto/kernel";
-import type { SatoriToCanonicalDeps } from "../helper/element/deps.js";
+import type { SatoriToCanonicalDeps } from "../helper/element/media-convert.js";
 
 /** SatoriApi 构造参数。 */
 export interface SatoriApiOptions {
@@ -29,7 +29,7 @@ export interface SatoriApiOptions {
     self: { uin: string; nickname: string };
     /** 媒体资源下载缓存目录（发方向 img/audio/video/file 的 http(s) src）。 */
     cacheDir: string;
-    /** 群/成员缓存（ADR-008；guild.member.get / user.get 读缓存用）。 */
+    /** 群/成员缓存（guild.member.get / user.get 读缓存用）。 */
     groupCache?: GroupCache;
 }
 

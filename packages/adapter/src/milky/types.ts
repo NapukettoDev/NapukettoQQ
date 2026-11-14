@@ -1,10 +1,10 @@
 /**
- * Milky 协议类型（P0 2026-10-28，P1 2026-10-30）
+ * Milky 协议类型
  *
  * SSOT：Milky 1.3.0 官方 JSON Schema（https://milky.ntqqrev.org/raw/json-schema/schema.json，
- * MIT 许可），本文件为 P1 用到子集的自研描述（逐字段对照 schema 手写，未参考任何
+ * MIT 许可），本文件为 用到子集的自研描述（逐字段对照 schema 手写，未参考任何
  * GPL 实现源码）；与 schema 的对齐由测试锁字段（helper/*.test.ts）。
- * P2 扩面时按 schema 补齐（或切 @saltify/milky-protocol 生成）。
+ * 扩面时按 schema 补齐（或切 @saltify/milky-protocol 生成）。
  */
 
 /** 消息场景（规范三值）。 */
@@ -54,7 +54,7 @@ export interface GroupMemberEntity {
     shut_up_end_time: number | null;
 }
 
-/** 接收消息段（14 种，P0 全量建模；与规范 IncomingSegment 一一对应）。 */
+/** 接收消息段（14 种， 全量建模；与规范 IncomingSegment 一一对应）。 */
 export type IncomingSegment =
     | { type: "text"; data: { text: string } }
     | { type: "mention"; data: { user_id: number; name: string } }
@@ -127,8 +127,8 @@ export interface OutgoingForwardedMessage {
     segments: OutgoingSegment[];
 }
 
-/** 发送消息段（10 种，P0 全量建模；与规范 OutgoingSegment 一一对应）。
- *  forward 段 P2 批次一补全（messages + title/preview/summary/prompt，见 milky.md §0.6）。 */
+/** 发送消息段（10 种， 全量建模；与规范 OutgoingSegment 一一对应）。
+ * forward 段 补全（messages + title/preview/summary/prompt，见 milky.md §0.6）。 */
 export type OutgoingSegment =
     | { type: "text"; data: { text: string } }
     | { type: "mention"; data: { user_id: number } }
@@ -202,7 +202,7 @@ export interface MessageRecallData {
     display_suffix: string;
 }
 
-/** ---------- P0 API 输入/输出 ---------- */
+/** ----------  API 输入/输出 ---------- */
 
 /** get_login_info 响应。 */
 export interface GetLoginInfoOutput {
@@ -364,7 +364,7 @@ export interface GetGroupListOutput {
     groups: GroupEntity[];
 }
 
-/** ---------- P1 实体 ---------- */
+/** ----------  实体 ---------- */
 
 /** 好友请求实体（get_friend_requests 项）。 */
 export interface FriendRequestEntity {
@@ -469,7 +469,7 @@ export interface IncomingForwardedMessage {
     segments: IncomingSegment[];
 }
 
-/** ---------- P1 事件载荷 ---------- */
+/** ----------  事件载荷 ---------- */
 
 /** friend_request 事件载荷。 */
 export interface FriendRequestData {
@@ -576,7 +576,7 @@ export interface GroupDisbandData {
     operator_id: number;
 }
 
-/** group_message_reaction 事件载荷（批次三，732:16）。 */
+/** group_message_reaction 事件载荷（732:16）。 */
 export interface GroupMessageReactionData {
     group_id: number;
     /** 操作者 uin——原生 push 不携带（732:16 实证，milky.md §0.8.6），不可得时省略。 */
@@ -588,14 +588,14 @@ export interface GroupMessageReactionData {
     is_add: boolean;
 }
 
-/** peer_pin_change 事件载荷（批次三，RecentContact topFlag 翻转）。 */
+/** peer_pin_change 事件载荷（RecentContact topFlag 翻转）。 */
 export interface PeerPinChangeData {
     message_scene: "friend" | "group";
     peer_id: number;
     is_pinned: boolean;
 }
 
-/** group_essence_message_change 事件载荷（批次三，732:1 快路径 + 列表 diff）。 */
+/** group_essence_message_change 事件载荷（732:1 快路径 + 列表 diff）。 */
 export interface GroupEssenceMessageChangeData {
     group_id: number;
     message_seq: number;
@@ -604,7 +604,7 @@ export interface GroupEssenceMessageChangeData {
     is_set: boolean;
 }
 
-/** friend_file_upload 事件载荷（批次三，onRecvOfflineFileMsg / onFileMsgCome）。 */
+/** friend_file_upload 事件载荷（onRecvOfflineFileMsg / onFileMsgCome）。 */
 export interface FriendFileUploadData {
     user_id: number;
     file_id: string;
@@ -615,7 +615,7 @@ export interface FriendFileUploadData {
     is_self: boolean;
 }
 
-/** bot_offline 事件载荷（批次三，Login 桥；reason 真实来源待野捕校准）。 */
+/** bot_offline 事件载荷（Login 桥；reason 真实来源待野捕校准）。 */
 export interface BotOfflineData {
     reason: string;
 }

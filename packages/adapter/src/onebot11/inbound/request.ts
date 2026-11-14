@@ -1,5 +1,5 @@
 /**
- * OB11 inbound 请求域（2026-11-14 自 event-pipeline.ts 拆出）
+ * OB11 inbound 请求域（自 event-pipeline.ts 拆出）
  *
  * 群系统通知 → group request（type 1/5=invite、7=add，只推未处理 KUNHANDLE，
  * doubt 可疑通知跳过）；好友申请 → friend request（flag=reqTime）。uid→uin 在
@@ -7,9 +7,9 @@
  * kernel GroupNotify 类型消费（原 unknown + 属性断言已消除）。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import { narrowBuddyReqs } from "../../core/shared/buddy-req.js";
-import { truncRaw } from "../../core/shared/log.js";
-import type { RequestTranslateContext } from "../../core/shared/uid-uin.js";
+import { narrowBuddyReqs } from "../../shared/buddy-req.js";
+import { logEventFailure, truncRaw } from "../../shared/log.js";
+import type { RequestTranslateContext } from "../../shared/uid-uin.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 import { toOb11FriendRequestEvent, toOb11GroupRequestEvent } from "../helper/request.js";
@@ -42,14 +42,17 @@ export class Ob11InboundRequest {
 
     /** 好友申请 → friend request 事件（防御收窄；未知形状 raw warn 校准）。 */
     buddyReqs(arg: unknown): void {
-        void this.broadcastBuddyReqs(arg);
+        // 回填/翻译失败只丢本批事件，不打断收链路
+        this.broadcastBuddyReqs(arg).catch((err: unknown) =>
+            logEventFailure(this.deps.logger, "ob11: friend request 翻译失败（整批丢弃）", err),
+        );
     }
 
     /** 好友申请翻译派发（flag=reqTime；uid→uin 批量失败退空 Map）。 */
     private async broadcastBuddyReqs(arg: unknown): Promise<void> {
         const reqs = narrowBuddyReqs(arg);
         if (reqs === null) {
-            // 未知形状：raw 日志积累校准数据（T10 实测后回填 narrowBuddyReqs）
+            // 未知形状：raw 日志积累校准数据（ 实测后回填 narrowBuddyReqs）
             this.deps.logger?.warn(
                 { raw: truncRaw(JSON.stringify(arg)) },
                 "ob11: onBuddyReqChange 未知参数形状",

@@ -3,9 +3,8 @@
  * resolveUid（uin→uid 解析与失败抛 INVALID_PARAM）、ob11ErrorCodeMap 全量映射。
  */
 import { describe, expect, it } from "vitest";
-import { ob11ErrorCodeMap } from "../error-map.js";
+import { ob11ErrorCodeMap, resolveUid } from "../base-action.js";
 import { createOb11ActionRegistry } from "../index.js";
-import { resolveUid } from "../resolve-uid.js";
 import { stubConverters } from "./test-support.js";
 
 /** 81 个动作名（与 action/index.ts 注册面一一对应，按域分组）。 */

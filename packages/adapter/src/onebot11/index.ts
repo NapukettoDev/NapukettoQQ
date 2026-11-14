@@ -1,6 +1,6 @@
 /**
  * OneBot 11 协议适配器（当前主战场）
- * 公共面：类型 + 动作注册表 + 配置 schema + 翻译层（adapter.ts 于 P2 打通 kernel 事件后接入）。
+ * 公共面：类型 + 动作注册表 + 配置 schema + 翻译层（adapter.ts 于 打通 kernel 事件后接入）。
  */
 
 export type { AtAllRemainInfo, Ob11ActionDeps } from "./action/index.js";

@@ -1,11 +1,11 @@
 /**
- * Milky sysmsg 识别表单测（批次三，2026-11-01）
+ * Milky sysmsg 识别表单测
  *
  * 732:16 / 732:1 fixture 为按识别表（milky.md §0.8.6）合成的 protobuf 字节——
  * 路径与判别值来自三轮录制 wire bytes 解码；真实样本回归待重录窗口补充。
  */
 import { describe, expect, it } from "vitest";
-import { decodeProtoTree, extractSysMsgEnvelope } from "../../../../core/shared/sysmsg.js";
+import { decodeProtoTree, extractSysMsgEnvelope } from "../../../../shared/sysmsg.js";
 import { recognizeMilkySysMsg } from "../sysmsg.js";
 
 /** varint 编码。 */

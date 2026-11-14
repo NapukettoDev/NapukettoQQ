@@ -1,5 +1,5 @@
 /**
- * Milky 群管理域动作测试（group-manage.ts，2026-11-14 域对齐重组）
+ * Milky 群管理域动作测试（group-manage.ts，域对齐重组）
  *
  * 锁定：群管动作的 uin→uid 与参数换算（admin role 3/2、禁言 duration 缺省、
  * kick reject_add_request）、群公告发布/删除（image_uri 落盘）、群头像/专属
@@ -129,7 +129,7 @@ describe("set_group_avatar / set_group_member_special_title", () => {
         expect(setGroupAvatar).toHaveBeenCalledWith("10001", join("some", "avatar.png"));
     });
 
-    it("set_group_avatar：image_uri 展开 + 群号字符串（P2 批次二补测）", async () => {
+    it("set_group_avatar：image_uri 展开 + 群号字符串（补测）", async () => {
         const setGroupAvatar = vi.fn(async () => undefined);
         const registry = groupRegistry({ groupApi: { setGroupAvatar } });
         await actionOf(registry, "set_group_avatar").handle({
@@ -150,7 +150,7 @@ describe("set_group_avatar / set_group_member_special_title", () => {
         expect(setMemberSpecialTitle).toHaveBeenCalledWith("10001", "uid-20002", "头衔");
     });
 
-    it("set_group_member_special_title：uin→uid 透传（P2 批次二补测）", async () => {
+    it("set_group_member_special_title：uin→uid 透传（补测）", async () => {
         const setMemberSpecialTitle = vi.fn(async () => undefined);
         const registry = groupRegistry({ groupApi: { setMemberSpecialTitle } });
         await actionOf(registry, "set_group_member_special_title").handle({
@@ -187,7 +187,7 @@ describe("send_group_nudge", () => {
         expect(res.message).toContain("登录身份缺 uid");
     });
 
-    it("uin→uid + confId=群号 + callerUid=self.uid（P2 批次二补测）", async () => {
+    it("uin→uid + confId=群号 + callerUid=self.uid（补测）", async () => {
         const sendNudge = vi.fn(async () => null);
         const registry = groupRegistry({ msgApi: { sendNudge } });
         const res = await actionOf(registry, "send_group_nudge").handle({
@@ -246,7 +246,7 @@ describe("send_group_announcement / delete_group_announcement", () => {
         expect(publishGroupAnnouncement).toHaveBeenCalledWith("10001", "正文", undefined);
     });
 
-    it("send_group_announcement：file:// image_uri 展开后进 kernel（P2 批次二补测）", async () => {
+    it("send_group_announcement：file:// image_uri 展开后进 kernel（补测）", async () => {
         const publishGroupAnnouncement = vi.fn(
             async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
         );

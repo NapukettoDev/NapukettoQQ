@@ -1,5 +1,5 @@
 /**
- * NapukettoKurobotAdapter：kurobridge-ws 协议适配器（KuroBot MVP-3，2026-09-13）
+ * NapukettoKurobotAdapter：kurobridge-ws 协议适配器（KuroBot MVP-3）
  *
  * 出链路：kernel 群消息 → 降级 → 绑定过滤 → chat/command 帧；入链路：服务端帧
  * → 模板渲染 → kernel 群文本发送。本类只做协调（构造装配 / 连接建立与启停 /
@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type { CanonicalElement, MsgEventChannel, Peer } from "@napuketto/kernel";
-import { BaseProtocolAdapter, type ProtocolConfig } from "../core/index.js";
+import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
 import type { KurobotConfig } from "./config.js";
 import type { KurobotConnectionOptions } from "./connection.js";
 import { KurobotConnection } from "./connection.js";
@@ -38,12 +38,12 @@ export interface KurobotConnFace {
 
 /** 适配器构造参数。 */
 export interface KurobotAdapterOptions {
-    config: ProtocolConfig<KurobotConfig>;
+    config: ConfigBase<KurobotConfig>;
     msgChannel: MsgEventChannel;
     msgApi: KurobotMsgApi;
     self: { uin: string; nickname: string };
     /**
-     * 接收行绑定过滤 holder（2026-10-25 P1-7）：握手/绑定表更新时填充 current
+     * 接收行绑定过滤 holder：握手/绑定表更新时填充 current
      * （群频道按绑定表判定，私聊恒放行），停止/终止时清空；与 loader msg-log
      * 的 ReceiveLogFilter 结构契约（adapter 包不依赖 loader，自研同构描述）。
      */

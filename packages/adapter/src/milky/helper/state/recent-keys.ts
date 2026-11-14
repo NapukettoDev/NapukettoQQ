@@ -1,5 +1,5 @@
 /**
- * 带过期去重键缓存（Milky 批次三）
+ * 带过期去重键缓存（Milky）
  *
  * 两个场景共用：friend_file_upload 双回调（onRecvOfflineFileMsg / onFileMsgCome
  * 同载荷，按 msgId 去重）与 group_essence_message_change 双路径（732:1 快路径

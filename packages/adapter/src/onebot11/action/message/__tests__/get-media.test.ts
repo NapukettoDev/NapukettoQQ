@@ -1,6 +1,5 @@
 /**
- * get-media.test.ts：get_image / get_record 单测（2026-09-08 T5 主动下载接入；
- * 2026-09-08 B1 语音接原生下载）。
+ * get-media.test.ts：get_image / get_record 单测（图片主动下载接入；语音接原生下载）。
  *
  * 覆盖：NT 相对路径本地解析（mediaBaseDir 命中/未命中）、图片 URL 主动下载
  * （fetch 桩 + cacheDir 落盘）、下载失败回退 url-only、语音本地命中 /
@@ -11,9 +10,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgApi, RawMessage } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { GetImageAction, GetRecordAction, resolveLocalMediaFile } from "../media.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import type { Ob11Action } from "../../base-action.js";
+import {
+    createMediaActions,
+    type GetMediaDeps,
+    type MediaInfoResult,
+    resolveLocalMediaFile,
+} from "../media.js";
+
+/** 取媒体域动作（TReturn 断言为 MediaInfoResult，保持 result.data 属性访问的编译期类型）。 */
+function mediaActionOf(
+    deps: GetMediaDeps,
+    name: "get_image" | "get_record",
+): Ob11Action<unknown, MediaInfoResult> {
+    return ob11ActionOf(createMediaActions(deps as never), name) as Ob11Action<
+        unknown,
+        MediaInfoResult
+    >;
+}
 
 /** 桩依赖（msgApi.fetchMsgsByMsgId / downloadPtt 可控返回）。 */
 function makeDeps(
@@ -26,7 +43,7 @@ function makeDeps(
 ) {
     const messageUnique = new MessageUnique();
     messageUnique.alloc(msg?.msgId ?? "m1", { chatType: 1, peerUid: "u1" });
-    return stub<ConstructorParameters<typeof GetImageAction>[0]>({
+    return stub<GetMediaDeps>({
         messageUnique,
         cacheDir: extra.cacheDir,
         mediaBaseDir: extra.mediaBaseDir,
@@ -108,7 +125,7 @@ describe("GetImageAction", () => {
             picMsg({ sourcePath: "nt_data/Pic/x.jpg", fileName: "x.jpg", fileSize: "1" }),
             { mediaBaseDir: base },
         );
-        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
         expect(result?.file?.replaceAll("\\", "/")).toBe(file);
         expect(result?.file_name).toBe("x.jpg");
     });
@@ -123,7 +140,7 @@ describe("GetImageAction", () => {
             picMsg({ sourcePath: "nt_data/Pic/remote.jpg", picUrl: "https://x/img.jpg" }),
             { mediaBaseDir: tempDir("base2"), cacheDir: cache },
         );
-        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeDefined();
         expect(existsSync(result?.file as string)).toBe(true);
@@ -137,35 +154,35 @@ describe("GetImageAction", () => {
         const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {
             cacheDir: tempDir("cache2"),
         });
-        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeUndefined();
     });
 
     it("未注入 cacheDir + picUrl → 跳过主动下载，仅返回 url", async () => {
         const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {});
-        const result = (await new GetImageAction(deps).handle({ message_id: 1 })).data;
+        const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeUndefined();
     });
 
     it("消息无 pic 元素 → retcode 102「不包含图片」", async () => {
         const deps = makeDeps(pttMsg({ filePath: "nt_data/Ptt/1.silk" }), {});
-        const result = await new GetImageAction(deps).handle({ message_id: 1 });
+        const result = await mediaActionOf(deps, "get_image").handle({ message_id: 1 });
         expect(result.retcode).toBe(102);
         expect(result.message).toContain("不包含图片");
     });
 
     it("message_id 与 file 都缺 → retcode 105「需要 message_id 或 file」", async () => {
         const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {});
-        const result = await new GetImageAction(deps).handle({});
+        const result = await mediaActionOf(deps, "get_image").handle({});
         expect(result.retcode).toBe(105);
         expect(result.message).toContain("get_image 需要 message_id 或 file");
     });
 
     it("消息已登记但 fetch 为空 → retcode 102「不存在或已被撤回」", async () => {
         const deps = makeDeps(null, {});
-        const result = await new GetImageAction(deps).handle({ message_id: 1 });
+        const result = await mediaActionOf(deps, "get_image").handle({ message_id: 1 });
         expect(result.retcode).toBe(102);
         expect(result.message).toContain("不存在或已被撤回");
     });
@@ -178,7 +195,7 @@ describe("GetImageAction", () => {
         const deps = makeDeps(picMsg({ sourcePath: "nt_data/Pic/y.jpg", fileName: "y.jpg" }), {
             mediaBaseDir: base,
         });
-        const result = (await new GetImageAction(deps).handle({ file: "1" })).data;
+        const result = (await mediaActionOf(deps, "get_image").handle({ file: "1" })).data;
         expect(result?.file?.replaceAll("\\", "/")).toBe(file);
     });
 });
@@ -197,20 +214,21 @@ describe("GetRecordAction", () => {
         mkdirSync(join(base, "nt_data", "Ptt"), { recursive: true });
         writeFileSync(join(base, "nt_data/Ptt/1.silk").replaceAll("\\", "/"), "silk");
         const hit = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(pttMsg({ filePath: "nt_data/Ptt/1.silk" }), { mediaBaseDir: base }),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(hit?.file).toContain("1.silk");
     });
 
-    it("本地未命中 + 原生下载落盘 → file 绝对路径（B1）", async () => {
+    it("本地未命中 + 原生下载落盘 → file 绝对路径", async () => {
         const base = tempDir("voice-dl");
         mkdirSync(join(base, "nt_data", "Ptt"), { recursive: true });
         const downloaded = join(base, "nt_data/Ptt/gone.silk").replaceAll("\\", "/");
         writeFileSync(downloaded, "silk");
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -227,6 +245,7 @@ describe("GetRecordAction", () => {
                         }),
                     },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file?.replaceAll("\\", "/")).toBe(downloaded);
@@ -240,11 +259,12 @@ describe("GetRecordAction", () => {
         writeFileSync(downloaded, "silk");
         // 返回值只有 filePath → file_size/file_name 省略（?? 判定右支）
         const bare = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(pttMsg({ filePath: "nt_data/Ptt/bare.silk" }), {
                     mediaBaseDir: base,
                     downloadPtt: async () => ({ filePath: downloaded }),
                 }),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(bare?.file?.replaceAll("\\", "/")).toBe(downloaded);
@@ -252,7 +272,7 @@ describe("GetRecordAction", () => {
         expect("file_name" in (bare as object)).toBe(false);
         // 连 filePath 都没有 → 走回退（原始路径）
         const fallback = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -261,6 +281,7 @@ describe("GetRecordAction", () => {
                     }),
                     { mediaBaseDir: tempDir("voice-none"), downloadPtt: async () => ({}) },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(fallback?.file).toBe("nt_data/Ptt/gone.silk");
@@ -273,11 +294,12 @@ describe("GetRecordAction", () => {
         const landed = join(base, "nt_data/Ptt/landed.silk").replaceAll("\\", "/");
         writeFileSync(landed, "silk");
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(pttMsg({ filePath: "nt_data/Ptt/gone.silk" }), {
                     mediaBaseDir: base,
                     downloadPtt: async () => ({ filePath: "nt_data/Ptt/landed.silk" }),
                 }),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file?.replaceAll("\\", "/")).toBe(landed);
@@ -287,7 +309,7 @@ describe("GetRecordAction", () => {
 
     it("下载返回的 filePath 本地仍不可解析 → 回退原始 filePath（transferStatus=2 空转场景）", async () => {
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -303,6 +325,7 @@ describe("GetRecordAction", () => {
                         }),
                     },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file).toBe("nt_data/Ptt/gone.silk");
@@ -312,7 +335,7 @@ describe("GetRecordAction", () => {
 
     it("本地未命中 + 下载失败/未落盘 → 回退原始 filePath + 元数据（不抛错）", async () => {
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -326,6 +349,7 @@ describe("GetRecordAction", () => {
                         },
                     },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file).toBe("nt_data/Ptt/gone.silk");
@@ -335,18 +359,18 @@ describe("GetRecordAction", () => {
 
     it("消息已登记但 fetch 为空 → retcode 102（record 同口径）", async () => {
         const deps = makeDeps(null, {});
-        const result = await new GetRecordAction(deps).handle({ message_id: 1 });
+        const result = await mediaActionOf(deps, "get_record").handle({ message_id: 1 });
         expect(result.retcode).toBe(102);
         expect(result.message).toContain("不存在或已被撤回");
     });
 
-    it("原生下载落到 mediaBaseDir 外的绝对路径 → 返回下载后路径（B1 成功分支）", async () => {
+    it("原生下载落到 mediaBaseDir 外的绝对路径 → 返回下载后路径（成功分支）", async () => {
         const base = tempDir("voice-dl-abs");
         const out = tempDir("voice-dl-abs-out");
         const downloaded = join(out, "gone.silk");
         writeFileSync(downloaded, "silk");
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -362,6 +386,7 @@ describe("GetRecordAction", () => {
                         }),
                     },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file?.replaceAll("\\", "/")).toBe(downloaded.replaceAll("\\", "/"));
@@ -369,7 +394,7 @@ describe("GetRecordAction", () => {
 
     it("原生下载成功但未落盘（无 filePath）→ 回退原始路径", async () => {
         const result = (
-            await new GetRecordAction(
+            await mediaActionOf(
                 makeDeps(
                     pttMsg({
                         filePath: "nt_data/Ptt/gone.silk",
@@ -381,14 +406,16 @@ describe("GetRecordAction", () => {
                         downloadPtt: async () => ({ fileName: "gone.silk", fileSize: "10" }),
                     },
                 ),
+                "get_record",
             ).handle({ message_id: 1 })
         ).data;
         expect(result?.file).toBe("nt_data/Ptt/gone.silk");
     });
 
     it("消息无 ptt → NOT_FOUND", async () => {
-        const result = await new GetRecordAction(
+        const result = await mediaActionOf(
             makeDeps(picMsg({}), { mediaBaseDir: tempDir("voice-nop") }),
+            "get_record",
         ).handle({ message_id: 1 });
         expect(result.status).toBe("failed");
         expect(result.message).toContain("不包含语音");

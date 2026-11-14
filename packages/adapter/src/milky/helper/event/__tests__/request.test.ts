@@ -1,5 +1,5 @@
 /**
- * Milky request 事件翻译测试（P1 通道系）
+ * Milky request 事件翻译测试（通道系）
  *
  * 锁定：好友申请事件（words → comment）/ 入群申请（type 7）/ 成员邀请他人
  * （type 5）/ 邀请自身（type 1）/ 已处理状态过滤 / 非请求类返回 null。
@@ -7,7 +7,7 @@
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import { toFriendRequestEvent, toGroupRequestEvent } from "../request.js";
 
 const UID_TO_UIN = new Map([

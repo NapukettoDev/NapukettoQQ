@@ -10,8 +10,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { FlashTransferUploadOptions, Peer } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { UploadGroupFileAction, UploadPrivateFileAction } from "../system/file.js";
-import { stubConverters } from "./test-support.js";
+import { createSystemFileActions } from "../system/file.js";
+import { ob11ActionOf, stubConverters } from "./test-support.js";
 
 function makeDeps(
     sendFile = vi.fn(
@@ -23,13 +23,14 @@ function makeDeps(
     ),
 ) {
     const { uinToUid } = stubConverters();
-    return { deps: { flashTransferApi: { sendFile } as never, uinToUid }, sendFile };
+    // 局部桩缺 OneBotApi 其余成员，整体 as never（与其他域测试桩约定一致）
+    return { deps: { flashTransferApi: { sendFile } as never, uinToUid } as never, sendFile };
 }
 
 describe("upload_group_file（闪传）", () => {
     it("群号直通作为 destUid，file:// 展开后传路径，file_id = fileSetId", async () => {
         const { deps, sendFile } = makeDeps();
-        const res = await new UploadGroupFileAction(deps).handle({
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
             file: pathToFileURL(join("tmp", "up.bin")).href,
             name: "up.bin",
@@ -45,7 +46,7 @@ describe("upload_group_file（闪传）", () => {
 
     it("name 缺省 → 取路径末段；folder 忽略（闪传无目录）", async () => {
         const { deps, sendFile } = makeDeps();
-        const res = await new UploadGroupFileAction(deps).handle({
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
             file: "/data/report.pdf",
             folder: "/docs",
@@ -58,7 +59,7 @@ describe("upload_group_file（闪传）", () => {
 
     it("远程 URI → -400（仅本地路径 / file://）", async () => {
         const { deps, sendFile } = makeDeps();
-        const res = await new UploadGroupFileAction(deps).handle({
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
             file: "https://example.com/a.zip",
         });
@@ -69,7 +70,7 @@ describe("upload_group_file（闪传）", () => {
 
     it("base64:// → 105", async () => {
         const { deps } = makeDeps();
-        const res = await new UploadGroupFileAction(deps).handle({
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
             file: "base64://QUJD",
         });
@@ -81,7 +82,7 @@ describe("upload_group_file（闪传）", () => {
             throw new Error("闪传上传超时（10000ms，已完成 0/1）");
         });
         const { deps } = makeDeps(sendFile);
-        const res = await new UploadGroupFileAction(deps).handle({
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
             file: "/data/a.bin",
         });
@@ -92,11 +93,13 @@ describe("upload_group_file（闪传）", () => {
 describe("upload_private_file（闪传）", () => {
     it("user_id 经 uin→uid 转成 destUid，file_id = fileSetId", async () => {
         const { deps, sendFile } = makeDeps();
-        const res = await new UploadPrivateFileAction(deps).handle({
-            user_id: 90001,
-            file: "/data/a.zip",
-            name: "a.zip",
-        });
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_private_file").handle(
+            {
+                user_id: 90001,
+                file: "/data/a.zip",
+                name: "a.zip",
+            },
+        );
         expect(res.status).toBe("ok");
         expect(res.data).toEqual({ file_id: "fs-1" });
         const [peer, paths, opts] = sendFile.mock.calls[0] ?? [];
@@ -107,10 +110,12 @@ describe("upload_private_file（闪传）", () => {
 
     it("uid 解析失败 → 105（不猜目标）", async () => {
         const { deps, sendFile } = makeDeps();
-        const res = await new UploadPrivateFileAction(deps).handle({
-            user_id: 123456,
-            file: "/data/a.zip",
-        });
+        const res = await ob11ActionOf(createSystemFileActions(deps), "upload_private_file").handle(
+            {
+                user_id: 123456,
+                file: "/data/a.zip",
+            },
+        );
         expect(res.retcode).toBe(105);
         expect(sendFile).not.toHaveBeenCalled();
     });

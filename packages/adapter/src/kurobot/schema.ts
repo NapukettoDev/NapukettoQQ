@@ -2,7 +2,7 @@
  * kurobridge-ws 协议 schema（镜像实现，任务书 KUROBOT-PROMPT §1.2 决策一）
  *
  * **SSOT: KuroBridge bridge/protocol**（`C:\Dev\MC-Ecosystem\KuroAdapter\bridge\protocol\src\`），
- * 镜像基线 **0.4.x**（KuroAdapter ADR-030 品牌改名：kurobot-ws.v1 → kurobridge-ws.v1，
+ * 镜像基线 **0.4.x**（KuroAdapter 品牌改名：kurobot-ws.v1 → kurobridge-ws.v1，
  * PROTOCOL_VERSION 0.4.0；帧形状与 0.3.1 逐字段一致，仅品牌字符串与版本号变更）。
  * `@kuro-bridge/protocol` 已发 npm，本仓暂维持镜像（golden 帧对表测试锁漂移：
  * connection.test.ts / schema.test.ts），将来可切换为真依赖。
@@ -18,7 +18,7 @@ import { z } from "zod";
 
 export const PROTOCOL_NAME = "kurobridge-ws" as const;
 
-/** 语义化版本（主版本相同即兼容，ADR-026：0.2.x/0.3.0 服务端均接受 0.3.1 hello）。 */
+/** 语义化版本（主版本相同即兼容：0.2.x/0.3.0 服务端均接受 0.3.1 hello）。 */
 export const PROTOCOL_VERSION = "0.4.0" as const;
 
 /** WS 子协议（握手期校验，服务端 handleProtocols 不带即拒连）。 */

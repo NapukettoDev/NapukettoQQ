@@ -1,5 +1,5 @@
 /**
- * Milky sysmsg 识别表（批次三，2026-11-01；识别机制共享自 core/sysmsg.ts）
+ * Milky sysmsg 识别表（识别机制共享自 core/sysmsg.ts）
  *
  * 键 = 原生分发键 "msgType:subType"，规则产出事件 data 体（信封 time/self_id/
  * event_type 由适配器统一包装）。路径依据 = 三轮录制 wire bytes 全量解码
@@ -13,7 +13,7 @@
  *    （remove 走 onGroupEssenceListChange 列表 diff，core/shared/essence.ts）。
  *  - 528:349/381/382 多端设备同步族：不广播。
  */
-import { extractEssenceSetSysMsg } from "../../../core/shared/essence.js";
+import { extractEssenceSetSysMsg } from "../../../shared/essence.js";
 import {
     nodeAt,
     recognizeSysMsg as recognizeSysMsgCore,
@@ -23,13 +23,13 @@ import {
     textOf,
     varintAt,
     varintOf,
-} from "../../../core/shared/sysmsg.js";
+} from "../../../shared/sysmsg.js";
 import type { GroupEssenceMessageChangeData, GroupMessageReactionData } from "../../types.js";
 
 /** 数字串判别（faceId 实证为数字字符串）。 */
 const NUMERIC_RE = /^\d+$/;
 
-export type { SysMsgKindRule, SysMsgRecognition } from "../../../core/shared/sysmsg.js";
+export type { SysMsgKindRule, SysMsgRecognition } from "../../../shared/sysmsg.js";
 
 /** Milky 识别规则：data 体类型为各事件载荷联合（信封由适配器包装）。 */
 export type SysMsgKindRuleMilky = SysMsgKindRule<unknown>;

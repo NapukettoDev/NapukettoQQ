@@ -1,11 +1,11 @@
 /**
- * core sysmsg 解码层单测（2026-11-01 自 onebot11/helper/sysmsg.test.ts 上移随迁；
+ * core sysmsg 解码层单测（自 onebot11/helper/sysmsg.test.ts 上移随迁；
  * 识别层测试归各协议 helper，见 onebot11/helper/sysmsg.test.ts /
  * milky/helper/sysmsg.test.ts）。
  *
  * 双路样本：
  *  - 合成字节（测试内手工构造 varint/嵌套/畸形输入）覆盖解码器边界行为；
- *  - 脱敏真实样本 fixture（c3 观测窗 2026-09-09 实触 2 条，各 151 字节）覆盖
+ * - 脱敏真实样本 fixture（ 观测窗 实触 2 条，各 151 字节）覆盖
  *    真实 wire 字节端到端。
  *
  * ⚠️ 脱敏说明：原始样本含本机登录账号 uin / uid / 群标识 / base64 尾部，
@@ -27,7 +27,7 @@ import {
     varintAt,
     varintOf,
     varintToNumber,
-} from "../shared/sysmsg.js";
+} from "../sysmsg.js";
 
 /** hex → Uint8Array。 */
 function hexToBytes(hex: string): Uint8Array {
@@ -82,7 +82,7 @@ function deepestChildren(tree: readonly SysMsgField[]): readonly SysMsgField[] |
 }
 
 // ---------------------------------------------------------------------------
-// 脱敏真实样本 fixture（c3 观测窗 2026-09-09 实触，脱敏说明见文件头）
+// 脱敏真实样本 fixture（ 观测窗 实触，脱敏说明见文件头）
 // ---------------------------------------------------------------------------
 
 const SAMPLE_1_HEX =

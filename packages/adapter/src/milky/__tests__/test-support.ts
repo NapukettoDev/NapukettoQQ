@@ -33,8 +33,8 @@ import {
 import type { TransportAdapter } from "@napuketto/network";
 import { EventBroadcaster } from "@napuketto/network";
 import { vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
 import { MilkyApi } from "../api.js";
 import type { MilkyConfig } from "../config.js";
@@ -83,7 +83,7 @@ export interface AdapterEnv {
         warn: ReturnType<typeof vi.fn>;
         info: ReturnType<typeof vi.fn>;
     };
-    config: ProtocolConfig<MilkyConfig>;
+    config: ConfigBase<MilkyConfig>;
 }
 
 /** 环境选项（通道装配开关 / api 桩覆写 / 配置覆写）。 */
@@ -198,7 +198,7 @@ export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
         port: ADAPTER_TEST_PORT,
         ...opts.config,
     });
-    const config = new ProtocolConfig({
+    const config = new ConfigBase({
         ...(opts.configFile === true
             ? { path: await mkdtempConfigPath() }
             : { path: "milky-adapter-test.toml", seed: defaults }),

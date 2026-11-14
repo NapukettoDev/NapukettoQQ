@@ -1,10 +1,8 @@
 /**
  * 动作注册表：按动作名索引（构建后只读）。
- * 泛型化（2026-08-08 克隆合并）：OB11 与 Satori 共用同一注册表实现。
+ * 协议中立泛型——各协议以自己的动作形状实例化（OB11 / Milky / Satori）。
  */
-import type { BaseAction } from "./base-action.js";
-
-export class ActionRegistry<TAction extends { name: string } = BaseAction<unknown, unknown>> {
+export class ActionRegistry<TAction extends { name: string } = { name: string }> {
     private readonly actions = new Map<string, TAction>();
 
     register(action: TAction): void {

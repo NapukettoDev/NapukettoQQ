@@ -1,5 +1,5 @@
 /**
- * Milky 消息段转换测试（helper/message/segments.ts，纯函数 ADR-008）
+ * Milky 消息段转换测试（helper/message/segments.ts，纯函数）
  *
  * 锁定：接收方向 canonical → IncomingSegment 全 10 类映射（at 失败跳过 /
  * reply 元信息回填 / 媒体 resource_id 的 path 优先 url 兜底 / json app 解析 /
@@ -10,7 +10,7 @@
 import { pathToFileURL } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import type { OutgoingSegment } from "../../../types.js";
 import {
     canonicalToIncomingSegments,

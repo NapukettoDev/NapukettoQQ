@@ -1,5 +1,5 @@
 /**
- * OneBotApi 群成员角色查询测试（sender.role 判定，2026-10-28）
+ * OneBotApi 群成员角色查询测试（sender.role 判定）
  *
  * 锁定 GroupCache 消费语义：缓存优先、失败软回退 undefined（调用方回退缺省 member）。
  */
@@ -18,7 +18,7 @@ import {
     type WebApi,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { OneBotApi } from "../one-bot-api.js";
 
 /** 构造 GroupMember（缺省最小合法值，overrides 覆盖）。 */

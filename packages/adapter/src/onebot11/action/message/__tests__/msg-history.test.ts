@@ -8,14 +8,24 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import type { GroupSenderRole } from "../../../helper/data.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import {
-    GetFriendMsgHistoryAction,
-    GetGroupMsgHistoryAction,
-    type MsgHistoryDeps,
-} from "../history.js";
+import type { OB11MessageInfo } from "../../../types/index.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import type { Ob11Action } from "../../base-action.js";
+import { createHistoryActions, type MsgHistoryDeps } from "../history.js";
+
+/** 取消息读取域动作（TReturn 断言为 { messages }，保持 result.data 属性访问的编译期类型）。 */
+function historyActionOf(
+    deps: MsgHistoryDeps,
+    name: "get_group_msg_history" | "get_friend_msg_history",
+): Ob11Action<unknown, { messages: OB11MessageInfo[] }> {
+    return ob11ActionOf(createHistoryActions(deps as never), name) as Ob11Action<
+        unknown,
+        { messages: OB11MessageInfo[] }
+    >;
+}
 
 /** 文本消息 RawMessage 桩（可带 at 元素）。 */
 function rawMsg(overrides: {
@@ -99,7 +109,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
         const { deps, fetchMessages } = makeDeps({
             msgs: [rawMsg({ msgId: "nt-a", msgSeq: "5" })],
         });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(fetchMessages).toHaveBeenCalledWith(
@@ -121,7 +131,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
             msgs: [rawMsg({ msgId: "nt-b", msgSeq: "6" })],
         });
         deps.messageUnique.alloc("nt-anchor", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         await action.handle({ group_id: 808, count: 5, message_seq: 1 });
         expect(fetchMessages).toHaveBeenCalledWith(
             { chatType: ChatType.GROUP, peerUid: "808" },
@@ -133,7 +143,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
         const { deps, fetchMessages } = makeDeps({
             msgs: [rawMsg({ msgId: "nt-c", msgSeq: "7" })],
         });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         await action.handle({ group_id: 808, message_seq: "raw-nt-id" });
         expect(fetchMessages).toHaveBeenCalledWith(
             { chatType: ChatType.GROUP, peerUid: "808" },
@@ -143,7 +153,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
 
     it("message_seq 为数值但未登记 → 反查 undefined 回退数值串原文", async () => {
         const { deps, fetchMessages } = makeDeps();
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         await action.handle({ group_id: 808, message_seq: 987654 });
         // 987654 未登记 → 反查 undefined → 回退数值串原文作 msgId 锚点
         expect(fetchMessages).toHaveBeenCalledWith(
@@ -154,7 +164,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
 
     it("拉取结果为空 → retcode 102 NOT_FOUND", async () => {
         const { deps } = makeDeps({ msgs: [] });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         expect(result.retcode).toBe(102);
         expect(result.message).toBe("消息 0 不存在");
@@ -165,7 +175,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
             msgs: [rawMsg({ msgId: "nt-d", msgSeq: "8", senderUid: "u90001" })],
             roles: new Map([["u90001", "owner"]]),
         });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         expect(result.data?.messages[0]?.sender).toMatchObject({ role: "owner" });
     });
@@ -177,7 +187,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
                 rawMsg({ msgId: "nt-f", msgSeq: "10", atUid: "u90002" }),
             ],
         });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         expect(uidToUin).toHaveBeenCalledTimes(1);
         expect(uidToUin).toHaveBeenCalledWith(["u90002"]);
@@ -197,7 +207,7 @@ describe("fetchAndTranslateHistory（get_group_msg_history）", () => {
             msgs: [rawMsg({ msgId: "nt-g", msgSeq: "11", atUid: "u90002" })],
             uidToUinFail: true,
         });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         expect(result.retcode).toBe(0);
         expect(uidToUin).toHaveBeenCalledTimes(1);
@@ -223,7 +233,7 @@ describe("历史消息 reply / 群名片映射", () => {
             ],
         });
         deps.messageUnique.alloc("nt-anchor2", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetGroupMsgHistoryAction(deps);
+        const action = historyActionOf(deps, "get_group_msg_history");
         const result = await action.handle({ group_id: 808 });
         const [msg] = result.data?.messages ?? [];
         const segments = msg?.message as Array<{ type: string; data: Record<string, unknown> }>;
@@ -252,9 +262,7 @@ describe("get_friend_msg_history", () => {
         (deps as unknown as { uinToUid: unknown }).uinToUid = vi.fn(
             async () => new Map([["90001", "u90001"]]),
         );
-        const action = new GetFriendMsgHistoryAction(
-            deps as MsgHistoryDeps & { uinToUid: (uins: string[]) => Promise<Map<string, string>> },
-        );
+        const action = historyActionOf(deps, "get_friend_msg_history");
         const result = await action.handle({ user_id: 90001 });
         expect(result.retcode).toBe(0);
         expect(fetchMessages).toHaveBeenCalledWith(
@@ -268,9 +276,7 @@ describe("get_friend_msg_history", () => {
 
     it("user_id 解析失败 → retcode 105", async () => {
         const { deps } = makeDeps({ msgs: [] });
-        const action = new GetFriendMsgHistoryAction(
-            deps as MsgHistoryDeps & { uinToUid: (uins: string[]) => Promise<Map<string, string>> },
-        );
+        const action = historyActionOf(deps, "get_friend_msg_history");
         (deps as unknown as { uinToUid: unknown }).uinToUid = vi.fn(
             async () => new Map<string, string>(),
         );

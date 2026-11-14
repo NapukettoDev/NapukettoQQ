@@ -1,7 +1,7 @@
 /**
- * OB11 notice 事件翻译·扩展源（c3，2026-09-10）
+ * OB11 notice 事件翻译·扩展源（c3）
  *
- * 数据源 = kernel 桥 2026-09-10 新接线回调（notice.ts 的 grayTip 路径之外）：
+ * 数据源 = kernel 桥 新接线回调（notice.ts 的 grayTip 路径之外）：
  *  - Msg/onRecvOfflineFileMsg → OB11 offline_file notice（翻译）
  *  - Msg/onRecvSysMsg / Msg/onRecvOnlineFileMsg / Group/onGroupEssenceListChange
  *    → 暂不翻译（adapter 侧 raw 校准日志；sys msg 为群名片/头衔/精华等系统
@@ -9,7 +9,7 @@
  *
  * ⚠️ payload 形状未经真实事件校准（方法名证据 = wrapper.node 字符串，见 kernel
  * listeners 注释）——防御性收窄：未知形状返回 null，调用方打 raw 日志积累校准
- * 数据（与 narrowBuddyReqs 同模式）。翻译纯函数（ADR-008）。
+ * 数据（与 narrowBuddyReqs 同模式）。翻译纯函数。
  */
 
 import type { OB11OfflineFileNoticeEvent } from "../event/index.js";

@@ -1,5 +1,5 @@
 /**
- * 精华共享翻译层单测（2026-11-03 自 milky/helper/essence.test.ts 迁移扩展）
+ * 精华共享翻译层单测（自 milky/helper/essence.test.ts 迁移扩展）
  *
  * 732:1 fixture 为按识别表（milky.md §0.8.6）合成的 protobuf 字节——路径来自
  * 三轮录制 wire bytes 解码；真实样本回归待重录窗口补充。
@@ -14,8 +14,8 @@ import {
     EssenceListSync,
     extractEssenceSetSysMsg,
     narrowEssenceGroupArg,
-} from "../shared/essence.js";
-import { decodeProtoTree } from "../shared/sysmsg.js";
+} from "../essence.js";
+import { decodeProtoTree } from "../sysmsg.js";
 
 describe("narrowEssenceGroupArg：回调参数 → 群号", () => {
     it("录制实证形状（参数数组首项字符串）", () => {

@@ -1,5 +1,5 @@
 /**
- * friend_file_upload 翻译单测（批次三；形状依据 2026-11-01 二轮录制定型）
+ * friend_file_upload 翻译单测（形状依据 二轮录制定型）
  */
 
 import type { RawMessage } from "@napuketto/kernel";

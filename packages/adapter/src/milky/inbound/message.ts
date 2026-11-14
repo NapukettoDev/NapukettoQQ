@@ -1,11 +1,12 @@
 /**
  * Milky inbound 消息域：Msg/onRecvMsg 单条消息——seq 双向登记（含自消息，发送
  * 回查用）与转发 resId 登记 → grayTip（notice / message_recall）→ 群文件上传
- * 事件 → 自消息过滤 → message_receive 组装（ADR-008 回填走 MilkyEnrichment）。
+ * 事件 → 自消息过滤 → message_receive 组装（回填走 MilkyEnrichment）。
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { toCanonicalElements } from "@napuketto/kernel";
-import { collectGrayTipUids, findRevokeElement, hasGrayTip } from "../../core/shared/gray-tip.js";
+import { collectGrayTipUids, findRevokeElement, hasGrayTip } from "../../shared/gray-tip.js";
+import type { MilkyInboundBase } from "../api.js";
 import type { MilkyEnrichment } from "../enrichment.js";
 import { toMilkyNoticeEvent } from "../helper/event/notice.js";
 import {
@@ -15,7 +16,6 @@ import {
     toMessageReceiveEvent,
 } from "../helper/event/translate.js";
 import { incomingForwardSegment } from "../helper/message/segments.js";
-import type { MilkyInboundBase } from "./base.js";
 
 /** 消息域装配参数 = 管道依赖全集 + enrich（enrichment 共享实例）。 */
 export type MilkyInboundMessageDeps = MilkyInboundBase & { enrich: MilkyEnrichment };

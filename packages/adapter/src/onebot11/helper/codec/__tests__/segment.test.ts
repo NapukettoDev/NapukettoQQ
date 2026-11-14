@@ -81,7 +81,7 @@ describe("canonicalToSegment", () => {
         });
     });
 
-    it("file → file 段（name 优先，缺省 path；B4 透出）", () => {
+    it("file → file 段（name 优先，缺省 path；透出）", () => {
         expect(canonicalToSegment({ type: "file", path: "/a.bin", name: "a.bin" })).toEqual({
             type: "file",
             data: { file: "a.bin" },

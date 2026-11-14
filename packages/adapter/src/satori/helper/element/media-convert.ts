@@ -1,18 +1,26 @@
 /**
- * Satori 媒体元素 → canonical 转换器（从 element-convert.ts 拆分，2026-08-08）
+ * Satori 媒体元素 → canonical 转换器
  *
  * img / audio / video / file 四个媒体类型：src → 本地路径（internal: 路径 /
  * http 下载 / 本地原样），audio 额外 silk 转码（非 silk 失败原样返回），
- * video 非 mp4 输入经 ffmpeg 归一化（2026-09-08 T6；ffmpeg 缺失/失败原样）。
+ * video 非 mp4 输入经 ffmpeg 归一化（ffmpeg 缺失/失败原样）。
  *
- * deps 类型来自 deps.js（独立契约文件，避免与 element-convert 循环引用）。
+ * 发方向依赖契约（SatoriToCanonicalDeps）也收在本文件：element-convert 与
+ * 本文件都消费它，放这里可避免 element-convert ↔ media-convert 循环引用。
  */
 import type { CanonicalElement } from "@napuketto/kernel";
 import { transcodeVideo } from "@napuketto/media";
-import { ensureSilk } from "../../../core/shared/media.js";
+import { ensureSilk } from "../../../shared/media.js";
 import { resolveAsset } from "./asset.js";
-import type { SatoriToCanonicalDeps } from "./deps.js";
 import type { SatoriElement } from "./element.js";
+
+/** 发方向依赖（at uin 转换 + 资源下载目录）。 */
+export interface SatoriToCanonicalDeps {
+    /** uin → uid（at 目标转换）。 */
+    uinToUid: (uins: string[]) => Promise<Map<string, string>>;
+    /** 资源（img/audio/video/file）下载缓存目录。 */
+    cacheDir: string;
+}
 
 /** 解析元素媒体 src（空 → null 忽略），返回本地路径。 */
 async function resolveMediaSrc(
