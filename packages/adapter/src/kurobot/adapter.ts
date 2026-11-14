@@ -94,9 +94,9 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         super({
             config: opts.config,
             hooks: {
-                onStart: (config) => this.startKurobot(config as KurobotConfig),
+                onStart: (config) => this.startKurobot(config),
                 onStop: () => this.stopAll(),
-                onReload: (config) => this.reloadKurobot(config as KurobotConfig),
+                onReload: (config) => this.reloadKurobot(config),
             },
         });
         this.msgChannel = opts.msgChannel;

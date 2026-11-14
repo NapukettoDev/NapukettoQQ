@@ -12,7 +12,6 @@ import type {
     BuddyCacheEventChannel,
     BuddyEventChannel,
     BuddyReq,
-    EssenceMsgItem,
     GroupEventChannel,
     GroupNotify,
     MsgEventChannel,
@@ -28,7 +27,7 @@ import {
 } from "../core/index.js";
 import type { EssenceAddedItem, EssenceCacheEntry } from "../core/shared/essence.js";
 import {
-    diffEssenceList,
+    EssenceListSync,
     extractEssenceSetSysMsg,
     narrowEssenceGroupArg,
 } from "../core/shared/essence.js";
@@ -141,19 +140,17 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     private groupUploadAsNotice = false;
     /** IPC 桥模式标记（subscribeOnly 启动；reload 时跳过传输重建）。 */
     private subscribedOnly = false;
-    /** 精华列表缓存（群号 → seq → 条目{操作者/发送者/加精时间}；group_essence diff 路径）。 */
-    private readonly essenceCaches = new Map<string, Map<number, EssenceCacheEntry>>();
-    /** 精华列表拉取串行链（并发回写乱序会把新列表覆盖成旧列表；732:1 触发器与列表回调共用）。 */
-    private essenceChain: Promise<void> = Promise.resolve();
+    /** 精华列表串行同步（core 共享组件：缓存 + 串行链 + diff；732:1 触发器与列表回调共用）。 */
+    private readonly essenceSync: EssenceListSync;
 
     constructor(opts: OneBot11AdapterOptions) {
         super({
             config: opts.config,
             broadcaster: opts.broadcaster,
             hooks: {
-                onStart: (config) => this.startTransports(config as OB11Config),
+                onStart: (config) => this.startTransports(config),
                 onStop: () => this.stopAll(),
-                onReload: (config) => this.reloadTransports(config as OB11Config),
+                onReload: (config) => this.reloadTransports(config),
             },
         });
         this.msgChannel = opts.msgChannel;
@@ -163,6 +160,18 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         this.calibLogger = opts.logger;
         this.selfUin = opts.self.uin;
         this.oneBotApi = new OneBotApi(opts);
+        this.essenceSync = new EssenceListSync({
+            fetchList: (groupCode) => this.oneBotApi.webApi.getEssenceMsgList(groupCode),
+            onAdded: (groupCode, added) => this.broadcastEssenceAdded(groupCode, added),
+            onRemoved: (groupCode, removed, prev) =>
+                this.broadcastEssenceRemoved(groupCode, removed, prev),
+            onFetchError: (groupCode, err) => {
+                this.calibLogger?.warn(
+                    { group: groupCode, err: String(err) },
+                    "ob11: 精华列表拉取失败（diff 跳过）",
+                );
+            },
+        });
         this.registry = createOb11ActionRegistry({ api: this.oneBotApi });
     }
 
@@ -506,7 +515,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         if (hit === null) {
             return false;
         }
-        this.enqueueEssenceSync(String(hit.groupCode));
+        this.essenceSync.enqueue(String(hit.groupCode));
         return true;
     }
 
@@ -520,37 +529,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             );
             return;
         }
-        this.enqueueEssenceSync(groupCode);
-    }
-
-    /** 精华 sync 入队（串行防乱序：并发回写会把新列表覆盖成旧列表）。 */
-    private enqueueEssenceSync(groupCode: string): void {
-        this.essenceChain = this.essenceChain.then(
-            () => this.syncEssenceList(groupCode),
-            () => undefined,
-        );
-    }
-
-    /** 单群精华列表同步：拉取 → diff → 广播 → 更新缓存（基线未建立只建基线）。 */
-    private async syncEssenceList(groupCode: string): Promise<void> {
-        let items: EssenceMsgItem[];
-        try {
-            items = await this.oneBotApi.webApi.getEssenceMsgList(groupCode);
-        } catch (e) {
-            this.calibLogger?.warn(
-                { group: groupCode, err: String(e) },
-                "ob11: 精华列表拉取失败（diff 跳过）",
-            );
-            return;
-        }
-        const prev = this.essenceCaches.get(groupCode);
-        const { cache, added, removed } = diffEssenceList(prev, items);
-        this.essenceCaches.set(groupCode, cache);
-        if (prev === undefined) {
-            return;
-        }
-        await this.broadcastEssenceAdded(groupCode, added);
-        await this.broadcastEssenceRemoved(groupCode, removed, prev);
+        this.essenceSync.enqueue(groupCode);
     }
 
     /** diff 新增项 → group_essence add（sender 必填，operator 回填，message_id 反查）。 */

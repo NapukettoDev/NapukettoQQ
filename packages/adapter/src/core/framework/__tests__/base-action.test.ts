@@ -97,16 +97,18 @@ describe("BaseAction.handle", () => {
         expect(result.message).toBe("意外失败");
     });
 
-    it("带 code 的普通 Error（非 KernelError）：按 code 映射", async () => {
+    it("带 code 的普通 Error（非 KernelError）：不按 code 映射，兜底 UNKNOWN", async () => {
+        // 2026-11-14 起错误判别统一 isKernelError（instanceof）：
+        // 形状兼容的第三方错误不再走映射表，只落 UNKNOWN 兜底。
         const action = new TestAction(FULL_MAP, async () => {
-            // 形状与 KernelError 兼容的第三方错误（isKernelError 之外也命中 code 分支）
             const err: Error & { code: KernelErrorCode } = Object.assign(new Error("带码错误"), {
                 code: "PERMISSION_DENIED" as KernelErrorCode,
             });
             throw err;
         });
         const result = await action.handle({ value: "x" });
-        expect(result.retcode).toBe(1300);
+        expect(result.retcode).toBe(FULL_MAP.UNKNOWN);
+        expect(result.message).toBe("带码错误");
     });
 
     it("非 Error 抛出物：message=未知错误", async () => {

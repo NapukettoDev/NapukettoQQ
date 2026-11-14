@@ -1,5 +1,5 @@
 /**
- * satori/action/registry.test.ts：createSatoriActionRegistry 与登录/未实现动作单测。
+ * satori/action 注册表单测：createSatoriActionRegistry 与登录/未实现动作。
  *
  * 锁定：
  *  - 注册表完整性：22 个已实现动作 + 13 个 501 动作，全部可 get 到
@@ -10,10 +10,9 @@
 import { describe, expect, it } from "vitest";
 import { ActionRegistry } from "../../../core/framework/action-registry.js";
 import { SatoriActionError } from "../base-action.js";
-import { createSatoriActionRegistry } from "../index.js";
+import { createSatoriActionRegistry, type SatoriActionRegistry } from "../index.js";
 import { LoginGetAction } from "../login.js";
 import { NotImplementedAction } from "../not-implemented.js";
-import type { SatoriActionRegistry } from "../registry.js";
 import { stubSatoriApi } from "./test-support.js";
 
 /** 22 个已实现动作（与 docs/protocols/satori.md §3 对表）。 */

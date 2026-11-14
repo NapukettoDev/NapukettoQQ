@@ -6,6 +6,7 @@
 import type { GroupMember, GroupNotify } from "@napuketto/kernel";
 import { NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { z } from "zod";
+import { findFirstMatch } from "../../core/shared/lookup.js";
 import type { SatoriApi } from "../api/index.js";
 import { toGuild, toUser } from "../helper/index.js";
 import type { Guild, GuildMember, List } from "../types/index.js";
@@ -278,10 +279,12 @@ export class GuildMemberApproveAction extends GroupRequestApproveBase {
     override readonly schema = guildMemberApproveSchema;
 }
 
-/** 按 message_id（通知 seq）查找群通知。 */
+/** 按 message_id（通知 seq）查找群通知（单屏非可疑；骨架走 core findFirstMatch）。 */
 async function findGroupNotify(deps: GuildActionDeps, messageId: string): Promise<GroupNotify> {
-    const notifies = await deps.groupNotifyApi.getSingleScreenNotifies(false, 50);
-    const found = notifies.find((n) => n.seq === messageId);
+    const found = await findFirstMatch(
+        [() => deps.groupNotifyApi.getSingleScreenNotifies(false, 50)],
+        (item) => item.seq === messageId,
+    );
     if (found === undefined) {
         throw new Error("群通知不存在");
     }

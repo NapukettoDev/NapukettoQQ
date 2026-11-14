@@ -23,6 +23,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, kernelError } from "@napuketto/kernel";
+import { findFirstMatch } from "../core/shared/lookup.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 
@@ -191,28 +192,31 @@ export class MilkyApi {
 const NOTIFY_SEARCH_COUNT = 100;
 
 /**
- * 按通知 seq 查找群通知（先非可疑后可疑，OB11 set_group_add_request 同路径）。
+ * 按通知 seq 查找群通知（先非可疑后可疑，OB11 set_group_add_request 同路径；
+ * 屏序骨架走 core findFirstMatch）。
  * 未找到抛 NOT_FOUND（应答动作的 seq 无效或已过期）。
  * 模块级函数（非类成员）：应答动作的公共入口，OB11 同路径。
  */
 export async function findGroupNotify(api: MilkyApi, seq: string): Promise<GroupNotify> {
-    const normal = await api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT);
-    const hit = normal.find((item) => item.seq === seq);
-    if (hit !== undefined) {
-        return hit;
+    const hit = await findFirstMatch(
+        [
+            () => api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT),
+            () => api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT),
+        ],
+        (item) => item.seq === seq,
+    );
+    if (hit === undefined) {
+        throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
     }
-    const doubt = await api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT);
-    const doubtHit = doubt.find((item) => item.seq === seq);
-    if (doubtHit !== undefined) {
-        return doubtHit;
-    }
-    throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
+    return hit;
 }
 
 /** 按发起者 uid 查找好友申请（getBuddyReqList 匹配 friendUid）；未找到抛 NOT_FOUND。 */
 export async function findBuddyReq(api: MilkyApi, initiatorUid: string): Promise<BuddyReq> {
-    const reqs = await api.friendApi.getBuddyReqList();
-    const hit = reqs.find((req) => req.friendUid === initiatorUid);
+    const hit = await findFirstMatch(
+        [() => api.friendApi.getBuddyReqList()],
+        (req) => req.friendUid === initiatorUid,
+    );
     if (hit === undefined) {
         throw kernelError(`未找到来自 ${initiatorUid} 的好友申请`, "NOT_FOUND");
     }

@@ -3,6 +3,7 @@
  */
 import type { BuddyReq } from "@napuketto/kernel";
 import { z } from "zod";
+import { findFirstMatch } from "../../core/shared/lookup.js";
 import type { SatoriApi } from "../api/index.js";
 import { toUser } from "../helper/index.js";
 import type { Friend, List } from "../types/index.js";
@@ -96,16 +97,18 @@ export class FriendApproveAction extends BaseSatoriAction<
     }
 }
 
-/** 按 message_id（申请方 uin）查找好友申请。 */
+/** 按 message_id（申请方 uin）查找好友申请（骨架走 core findFirstMatch）。 */
 async function findBuddyReq(deps: FriendActionDeps, messageId: string): Promise<BuddyReq> {
     const reqs = await deps.friendApi.getBuddyReqList();
     if (reqs.length === 0) {
         throw new Error("好友申请不存在");
     }
     // 批量 uid → uin（friendUid 为 uid，message_id 为 uin）
-    const uids = reqs.map((r) => r.friendUid);
-    const uinMap = await deps.uidToUin(uids);
-    const found = reqs.find((r) => uinMap.get(r.friendUid) === messageId);
+    const uinMap = await deps.uidToUin(reqs.map((r) => r.friendUid));
+    const found = await findFirstMatch(
+        [async () => reqs],
+        (req) => uinMap.get(req.friendUid) === messageId,
+    );
     if (found === undefined) {
         throw new Error("好友申请不存在");
     }

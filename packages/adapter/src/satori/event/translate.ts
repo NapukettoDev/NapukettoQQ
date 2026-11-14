@@ -12,6 +12,7 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { collectGrayTipUids } from "../../core/shared/gray-tip.js";
+import { toUinString } from "../../core/shared/uid-uin.js";
 import { type SatoriTranslateDeps, toSatoriMessage, toUser } from "../helper/index.js";
 import type { Channel, Guild, GuildMember, Message, User } from "../types/resource.js";
 
@@ -107,11 +108,6 @@ export async function toSatoriGrayTipEvent(
     return null;
 }
 
-/** uid → uin（映射缺省退化为 uid）。 */
-function toUin(uid: string, uidToUinMap: Map<string, string>): string {
-    return uidToUinMap.get(uid) ?? uid;
-}
-
 /** 撤回 → message-deleted 事件。 */
 function toRevokeEvent(
     raw: RawMessage,
@@ -122,7 +118,7 @@ function toRevokeEvent(
         if (revoke === undefined) {
             continue;
         }
-        const operatorUin = toUin(revoke.operatorUid, uidToUinMap);
+        const operatorUin = toUinString(revoke.operatorUid, uidToUinMap);
         const peerUin = String(raw.peerUin ?? "");
         const content: SatoriEventContent = {
             type: "message-deleted",
@@ -166,10 +162,10 @@ function toMemberChangeEvent(
             guild: toGroupGuild(peerUin, raw.peerName),
             channel: { id: peerUin, type: 0 },
             member: toMember(memberUid, grp.memberNick, grp.memberRemark, uidToUinMap),
-            user: toUser(toUin(memberUid, uidToUinMap), grp.memberNick),
+            user: toUser(toUinString(memberUid, uidToUinMap), grp.memberNick),
         };
         if (adminUid !== "" && adminUid !== memberUid) {
-            content.operator = toUser(toUin(adminUid, uidToUinMap), grp.adminNick);
+            content.operator = toUser(toUinString(adminUid, uidToUinMap), grp.adminNick);
         }
         return content;
     }
@@ -205,7 +201,7 @@ function toMember(
     remark: string | undefined,
     uidToUinMap: Map<string, string>,
 ): GuildMember {
-    const member: GuildMember = { user: toUser(toUin(uid, uidToUinMap), nick) };
+    const member: GuildMember = { user: toUser(toUinString(uid, uidToUinMap), nick) };
     if (remark !== undefined && remark !== "" && remark !== nick) {
         member.nick = remark;
     }

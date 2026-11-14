@@ -36,7 +36,6 @@ import {
 } from "./message.js";
 import { NotImplementedAction } from "./not-implemented.js";
 import { type ReactionActionDeps, ReactionCreateAction, ReactionDeleteAction } from "./reaction.js";
-import type { SatoriActionRegistry } from "./registry.js";
 import type { UserActionDeps } from "./user.js";
 import { UserChannelCreateAction, UserGetAction } from "./user.js";
 
@@ -61,6 +60,9 @@ const NOT_IMPLEMENTED = [
     "reaction.clear",
     "reaction.list",
 ] as const;
+
+/** Satori 动作注册表（core 泛型注册表按 BaseSatoriAction 实例化）。 */
+export type SatoriActionRegistry = ActionRegistry<BaseSatoriAction<unknown, unknown>>;
 
 /** 创建 Satori 动作注册表。 */
 export function createSatoriActionRegistry(deps: SatoriActionDeps): SatoriActionRegistry {

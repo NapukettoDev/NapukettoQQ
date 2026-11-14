@@ -14,17 +14,28 @@
 - `BaseProtocolAdapter<TConfig>`（`src/core/framework/base-protocol-adapter.ts`）：
   `start()` = `config.load()` → `hooks.onStart`；`stop()` → `onStop`；
   `reload()` = 重新 `load()` → `hooks.onReload`。start/stop 幂等（started 标记），
-  事件出口 `broadcastEvent` 只写构造时注入的 broadcaster。
+  事件出口 `broadcastEvent` 只写构造时注入的 broadcaster。钩子面
+  `ProtocolHooks<TConfig>` 与适配器同参数化：onStart/onReload 强类型透传协议配置，
+  协议层不再手动收窄。
 - `ProtocolConfig`（`src/core/framework/config.ts`）复用 kernel `ConfigBase`：TOML/JSON
   读写 + zod 校验 + `seed` 内存初值；协议 schema 归各协议目录（ADR-012）。装配层按账号段
   注入 seed，adapter 不读独立协议配置文件。
+- 动作执行内核 `runAction`（`src/core/framework/action-kernel.ts`，三协议共用）：
+  safeParse → 执行 → `isKernelError` 统一判别映射（ADR-017）。差异全部参数化——
+  校验失败 retcode（OB11 400/1400、Milky -400、Satori 400）、校验失败消息、
+  结果包装（OB11/Milky 组信封、Satori 抛 `SatoriActionError`）与协议自有错误透传
+  （`passthrough`）。非 KernelError 一律落映射表 UNKNOWN 兜底，不做形状嗅探。
 - `BaseAction`：`name` + zod `schema` + `errorCodeMap`；HTTP `handle` 校验失败 400、
   WS `websocketHandle` 失败 1400 并回传 echo；`KernelError.code` 经映射表转协议 retcode
-  （ADR-017）。`ActionRegistry` 按名分发，未知动作 404。
-- `AdapterRegistry` 提供按 `protocol` 注册与批量 start/stop 的公共面（装配方可选，
-  当前 cli/loader 直接持有各协议适配器）。
+  （ADR-017）。`ActionRegistry` 按名分发，未知动作 404。装配方直接持有各协议适配器
+  （不设 AdapterRegistry 中间层）。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
+- 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`（number /
+  string 两种口径）、gray-tip 的 `hasGrayTip`、essence 的 `EssenceListSync`（列表缓存 +
+  串行链 + diff，OB11 / Milky adapter 共用）、lookup 的 `findFirstMatch`（候选屏依序
+  查找骨架，milky api 与 satori action 共用）；协议目录只留形状差异（事件翻译、识别表、
+  错误口径——NOT_FOUND 抛错类型与消息归调用方）。
 
 ### OneBot 11 事件链
 

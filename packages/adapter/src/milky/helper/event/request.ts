@@ -12,11 +12,7 @@
  */
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
-import {
-    MS_TO_SEC,
-    type RequestTranslateContext,
-    resolveUin,
-} from "../../../core/shared/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../core/shared/uid-uin.js";
 import type {
     FriendRequestData,
     GroupInvitationData,
@@ -24,11 +20,6 @@ import type {
     GroupJoinRequestData,
     MilkyEvent,
 } from "../../types.js";
-
-/** uid → uin（core 共享解析；ctx 携带映射）。 */
-function toUin(uid: string | undefined, ctx: RequestTranslateContext): number {
-    return resolveUin(uid, ctx.uidToUin);
-}
 
 /** BuddyReq → friend_request 事件（comment 取 words 字段，形状待校准，缺省空串）。 */
 export function toFriendRequestEvent(
