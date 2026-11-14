@@ -9,10 +9,12 @@
 import { ChatType, WebHonorType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { DeleteEssenceMsgAction } from "../delete-essence-msg.js";
-import { GetEssenceMsgListAction } from "../get-essence-msg-list.js";
-import { GetGroupHonorInfoAction } from "../get-group-honor-info.js";
-import { SetEssenceMsgAction } from "../set-essence-msg.js";
+import {
+    DeleteEssenceMsgAction,
+    GetEssenceMsgListAction,
+    GetGroupHonorInfoAction,
+    SetEssenceMsgAction,
+} from "../essence.js";
 
 describe("get_essence_msg_list", () => {
     it("EssenceMsgItem → OB11 结构（text/image 段映射）", async () => {

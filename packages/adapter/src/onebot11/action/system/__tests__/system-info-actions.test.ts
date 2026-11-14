@@ -9,17 +9,22 @@
  * 翻译词条透传与上限校验。
  */
 import { describe, expect, it, vi } from "vitest";
-import { CanSendImageAction } from "../can-send-image.js";
-import { CanSendRecordAction } from "../can-send-record.js";
-import { CleanCacheAction } from "../clean-cache.js";
-import { GetLoginInfoAction } from "../get-login-info.js";
-import { GetRobotUinRangeAction } from "../get-robot-uin-range.js";
-import { GetStatusAction } from "../get-status.js";
-import { GetVersionInfoAction } from "../get-version-info.js";
-import { BotExitAction, SetRestartAction } from "../process-control.js";
-import { SetDiyOnlineStatusAction } from "../set-diy-online-status.js";
-import { SetOnlineStatusAction } from "../set-online-status.js";
-import { TranslateEn2ZhAction } from "../translate-en2zh.js";
+import {
+    GetLoginInfoAction,
+    GetRobotUinRangeAction,
+    GetStatusAction,
+    GetVersionInfoAction,
+    TranslateEn2ZhAction,
+} from "../info.js";
+import {
+    BotExitAction,
+    CanSendImageAction,
+    CanSendRecordAction,
+    CleanCacheAction,
+    SetDiyOnlineStatusAction,
+    SetOnlineStatusAction,
+    SetRestartAction,
+} from "../status.js";
 
 describe("本地组装类动作", () => {
     it("get_status → { online: true, good: true }", async () => {

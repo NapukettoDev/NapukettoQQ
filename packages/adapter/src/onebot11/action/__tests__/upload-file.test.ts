@@ -8,7 +8,7 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { UploadGroupFileAction, UploadPrivateFileAction } from "../upload-file.js";
+import { UploadGroupFileAction, UploadPrivateFileAction } from "../system/file.js";
 import { stubConverters } from "./test-support.js";
 
 function makeDeps(

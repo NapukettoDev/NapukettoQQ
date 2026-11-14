@@ -10,9 +10,11 @@ import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import type { GroupSenderRole } from "../../../helper/data.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { GetFriendMsgHistoryAction } from "../get-friend-msg-history.js";
-import { GetGroupMsgHistoryAction } from "../get-group-msg-history.js";
-import type { MsgHistoryDeps } from "../msg-history.js";
+import {
+    GetFriendMsgHistoryAction,
+    GetGroupMsgHistoryAction,
+    type MsgHistoryDeps,
+} from "../history.js";
 
 /** 文本消息 RawMessage 桩（可带 at 元素）。 */
 function rawMsg(overrides: {

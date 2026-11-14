@@ -29,6 +29,12 @@
   WS `websocketHandle` 失败 1400 并回传 echo；`KernelError.code` 经映射表转协议 retcode
   （ADR-017）。`ActionRegistry` 按名分发，未知动作 404。装配方直接持有各协议适配器
   （不设 AdapterRegistry 中间层）。
+- OB11 动作文件按领域组织：`action/` 下 message（send / history / ops / media /
+  forward）/ group（manage / query / essence / notify，另有群系统消息与群文件两域）/
+  friend / system（info / status / account / file）领域文件，动作类与
+  `create*Actions(api)` 工厂同文件（领域文件 ≤300 行，共享 helper `resolve-peer` /
+  `limits` / `error-map` / `resolve-uid` 保留独立文件）；`action/index.ts` 只遍历工厂
+  注册——新增动作在领域文件登记即可，注册表零样板。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
 - 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`/`numericUin`

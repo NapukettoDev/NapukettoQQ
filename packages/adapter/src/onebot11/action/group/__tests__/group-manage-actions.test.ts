@@ -8,13 +8,15 @@
 import { NTGroupMemberRole } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stubConverters } from "../../__tests__/test-support.js";
-import { SetGroupAdminAction } from "../set-group-admin.js";
-import { SetGroupBanAction } from "../set-group-ban.js";
-import { SetGroupCardAction } from "../set-group-card.js";
-import { SetGroupKickAction } from "../set-group-kick.js";
-import { SetGroupLeaveAction } from "../set-group-leave.js";
-import { SetGroupNameAction } from "../set-group-name.js";
-import { SetGroupWholeBanAction } from "../set-group-whole-ban.js";
+import {
+    SetGroupAdminAction,
+    SetGroupBanAction,
+    SetGroupCardAction,
+    SetGroupKickAction,
+    SetGroupLeaveAction,
+    SetGroupNameAction,
+    SetGroupWholeBanAction,
+} from "../manage.js";
 
 describe("set_group_ban", () => {
     it("duration 缺省 30 → setMemberShutUp({uid, duration:30})", async () => {

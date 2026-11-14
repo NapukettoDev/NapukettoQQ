@@ -152,3 +152,8 @@ function toMessageInfo(notify: GroupNotify, uinMap: Map<string, string>): GroupS
         requester_nick: invitorNick,
     };
 }
+
+/** 群系统消息动作工厂（get_group_system_msg）。 */
+export function createGroupSystemMsgActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+    return [new GetGroupSystemMsgAction(api)];
+}

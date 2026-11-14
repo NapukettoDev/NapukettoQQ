@@ -12,9 +12,10 @@ import { MessageUnique } from "../../../helper/message-unique.js";
 import {
     ForwardFriendSingleMsgAction,
     ForwardGroupSingleMsgAction,
-} from "../forward-single-msg.js";
-import { GetForwardMsgAction } from "../get-forward-msg.js";
-import { SendGroupForwardMsgAction, SendPrivateForwardMsgAction } from "../send-forward-msg.js";
+    GetForwardMsgAction,
+    SendGroupForwardMsgAction,
+    SendPrivateForwardMsgAction,
+} from "../forward.js";
 
 /** 构造转发依赖桩（真实 MessageUnique + 可控 sendForwardMessage / fetchForwardMessage）。 */
 function makeDeps(options?: {

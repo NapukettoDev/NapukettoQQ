@@ -1,9 +1,9 @@
 /**
- * send_msg 动作：发送消息（群聊/私聊）+ 共享发送核心 sendOb11Message
+ * 消息发送域动作（2026-11-14 自 send-msg / send-private-msg / send-group-msg 合并）
  *
- * P2-3 真实化：注入 kernel MsgApi，message 参数（CQ 码字符串或 segment 数组）
- * 翻译为 canonical 元素 → MsgApi.sendMessage → 返回真实 message_id。
- * send_private_msg / send_group_msg 复用 sendOb11Message（P2-10）。
+ * - send_msg：message（CQ 码字符串或 segment 数组）翻译为 canonical 元素 →
+ *   MsgApi.sendMessage → 返回真实 message_id；共享发送核心 sendOb11Message
+ * - send_private_msg / send_group_msg：复用 sendOb11Message（P2-10）
  *
  * 群聊：group_id → Peer{ chatType: GROUP, peerUid: String(group_id) }（群消息 peerUid=群号）。
  * 私聊：user_id 经 uin→uid → Peer{ chatType: C2C, peerUid: uid }。
@@ -34,7 +34,7 @@ export type SendMsgPayload = z.infer<typeof sendMsgSchema>;
 export type SendMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid">;
 
 /** 共享发送核心：解析 Peer → canonical 翻译（含 auto_escape）→ sendMessage → 映射 message_id。 */
-export async function sendOb11Message(
+async function sendOb11Message(
     payload: SendMsgPayload,
     deps: SendMsgDeps,
 ): Promise<{ message_id: number }> {
@@ -106,6 +106,63 @@ export class SendMsgAction extends BaseAction<SendMsgPayload, { message_id: numb
     }
 }
 
+const sendPrivateMsgSchema = z.object({
+    user_id: z.number(),
+    // 上界见 action/limits.ts
+    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
+    auto_escape: z.boolean().optional(),
+});
+
+type SendPrivateMsgPayload = z.infer<typeof sendPrivateMsgSchema>;
+
+/** 发送私聊消息（P2-10 复用 sendOb11Message）。 */
+export class SendPrivateMsgAction extends BaseAction<
+    SendPrivateMsgPayload,
+    { message_id: number }
+> {
+    readonly name = "send_private_msg";
+    readonly schema = sendPrivateMsgSchema;
+    protected readonly errorCodeMap = ob11ErrorCodeMap;
+
+    private readonly deps: SendMsgDeps;
+
+    constructor(deps: SendMsgDeps) {
+        super();
+        this.deps = deps;
+    }
+
+    protected _handle(payload: SendPrivateMsgPayload): Promise<{ message_id: number }> {
+        return sendOb11Message(payload, this.deps);
+    }
+}
+
+const sendGroupMsgSchema = z.object({
+    group_id: z.number(),
+    // 上界见 action/limits.ts
+    message: z.union([z.string(), z.array(z.unknown()).max(MAX_MESSAGE_SEGMENTS)]),
+    auto_escape: z.boolean().optional(),
+});
+
+type SendGroupMsgPayload = z.infer<typeof sendGroupMsgSchema>;
+
+/** 发送群聊消息（P2-10 复用 sendOb11Message）。 */
+export class SendGroupMsgAction extends BaseAction<SendGroupMsgPayload, { message_id: number }> {
+    readonly name = "send_group_msg";
+    readonly schema = sendGroupMsgSchema;
+    protected readonly errorCodeMap = ob11ErrorCodeMap;
+
+    private readonly deps: SendMsgDeps;
+
+    constructor(deps: SendMsgDeps) {
+        super();
+        this.deps = deps;
+    }
+
+    protected _handle(payload: SendGroupMsgPayload): Promise<{ message_id: number }> {
+        return sendOb11Message(payload, this.deps);
+    }
+}
+
 /** CQ 特殊字符转义（auto_escape，&、[、]、, 前置 &amp;）。 */
 function escapeText(text: string): string {
     return text
@@ -126,4 +183,9 @@ async function ensureVoiceSilk(elements: CanonicalElement[]): Promise<CanonicalE
         }
     }
     return out;
+}
+
+/** 消息发送域动作工厂（send_msg / send_private_msg / send_group_msg）。 */
+export function createSendActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+    return [new SendMsgAction(api), new SendPrivateMsgAction(api), new SendGroupMsgAction(api)];
 }

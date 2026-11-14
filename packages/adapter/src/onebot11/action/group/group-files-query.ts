@@ -9,6 +9,7 @@ import type {
 } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
+import type { OneBotApi } from "../../api/one-bot-api.js";
 import { ob11ErrorCodeMap } from "../error-map.js";
 
 const getGroupRootFilesSchema = z.object({
@@ -187,4 +188,13 @@ function toGroupFolderInfo(folder: KernelFolderInfo): GroupFolderInfo {
         folder_id: folder.folderId,
         folder_name: folder.folderName,
     };
+}
+
+/** 群文件查询域动作工厂（root files / by folder / system info）。 */
+export function createGroupFileQueryActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+    return [
+        new GetGroupRootFilesAction(api.richMediaApi),
+        new GetGroupFilesByFolderAction(api.richMediaApi),
+        new GetGroupFileSystemInfoAction(api.richMediaApi),
+    ];
 }

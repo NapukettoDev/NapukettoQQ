@@ -6,9 +6,12 @@
  */
 import { TicketApi } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { GetClientkeyAction } from "../get-clientkey.js";
-import { GetCookiesAction } from "../get-cookies.js";
-import { GetCredentialsAction, GetCsrfTokenAction } from "../get-credentials.js";
+import {
+    GetClientkeyAction,
+    GetCookiesAction,
+    GetCredentialsAction,
+    GetCsrfTokenAction,
+} from "../account.js";
 
 /** 构造 ticket 依赖（selfUin=10001）。 */
 function ticketDeps(cookies: Record<string, string> = { skey: "@testSkey" }) {

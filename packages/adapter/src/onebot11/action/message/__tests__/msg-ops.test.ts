@@ -9,17 +9,17 @@
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { DeleteMsgAction } from "../delete-msg.js";
-import { FetchPttTextAction } from "../fetch-ptt-text.js";
-import { GetMsgAction } from "../get-msg.js";
-import { MarkMsgAsReadAction } from "../mark-msg-as-read.js";
+import { GetMsgAction } from "../history.js";
+import { FetchPttTextAction } from "../media.js";
 import {
+    DeleteMsgAction,
     MarkGroupMsgAsReadAction,
+    MarkMsgAsReadAction,
     MarkPrivateMsgAsReadAction,
-} from "../mark-msg-as-read-aliases.js";
+    SetInputStatusAction,
+    SetMsgEmojiLikeAction,
+} from "../ops.js";
 import { fetchMsgById, resolveTargetPeer } from "../resolve-peer.js";
-import { SetInputStatusAction } from "../set-input-status.js";
-import { SetMsgEmojiLikeAction } from "../set-msg-emoji-like.js";
 
 /** 群文本消息 RawMessage 桩。 */
 function rawMsg(overrides?: { atUid?: string; chatType?: number; msgSeq?: string }): RawMessage {

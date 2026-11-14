@@ -7,14 +7,15 @@
  * 路径原样）、消息段超上限 → 400、缺目标 → 400、message_id 经 MessageUnique 分配。
  */
 
-import type { Peer } from "@napuketto/kernel";
-import { ChatType } from "@napuketto/kernel";
+import { ChatType, type Peer } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import { SendGroupMsgAction } from "../send-group-msg.js";
-import type { SendMsgDeps } from "../send-msg.js";
-import { SendMsgAction } from "../send-msg.js";
-import { SendPrivateMsgAction } from "../send-private-msg.js";
+import {
+    SendGroupMsgAction,
+    SendMsgAction,
+    type SendMsgDeps,
+    SendPrivateMsgAction,
+} from "../send.js";
 
 /** 构造发送依赖桩（真实 MessageUnique + 可控 sendMessage / uinToUid）。 */
 function makeDeps(options?: { sendMessage?: ReturnType<typeof vi.fn>; uinToUidFail?: boolean }): {
