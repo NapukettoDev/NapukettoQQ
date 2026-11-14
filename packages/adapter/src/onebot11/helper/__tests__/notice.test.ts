@@ -3,10 +3,12 @@
  * group_admin / group_ban / 防御分支）。
  *
  * 覆盖：group_recall（既有）、friend_recall（C2C 撤回，新）、notify.poke
- * （aioOp，新——待真实事件验证）、未知 grayTip 子类型 raw 日志、群成员变动既有口径。
+ * （aioOp，新——待真实事件验证）、未知 grayTip 子类型 raw 日志、群成员变动既有
+ * 口径、offline_file（notice-extra 扩展源，payload 待真实事件校准）。
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import {
     hasFileElement,
     hasGrayTip,
@@ -15,11 +17,13 @@ import {
     toOb11NoticeEvent,
 } from "../notice.js";
 
+import { narrowOfflineFiles, toOfflineFileNotice } from "../notice-extra.js";
+
 const CTX = { selfUin: "10001", uidToUin: new Map([["u9", "90009"]]) };
 
 /** 群消息工厂（单 grayTip 元素）。 */
 function groupMsg(grayTip: Record<string, unknown>): RawMessage {
-    return {
+    return stub<RawMessage>({
         msgId: "6800",
         msgSeq: "42",
         msgTime: "1700000000000",
@@ -32,7 +36,7 @@ function groupMsg(grayTip: Record<string, unknown>): RawMessage {
         peerName: "群",
         sendNickName: "某人",
         elements: [{ elementType: 8, grayTipElement: grayTip }],
-    } as unknown as RawMessage;
+    });
 }
 
 describe("toOb11NoticeEvent：撤回", () => {
@@ -276,7 +280,7 @@ describe("toOb11NoticeEvent：群成员变动（既有口径回归）", () => {
 
 describe("toOb11NoticeEvent：多元素扫描", () => {
     it("非 grayTip 元素在前 → 跳过继续扫描（首个 grayTip 生效）", () => {
-        const msg = {
+        const msg = stub<RawMessage>({
             ...groupMsg({
                 subElementType: GrayTipSubType.REVOKE,
                 revokeElement: { operatorUid: "u9" },
@@ -291,7 +295,7 @@ describe("toOb11NoticeEvent：多元素扫描", () => {
                     },
                 },
             ],
-        } as unknown as RawMessage;
+        });
         expect(toOb11NoticeEvent(msg, CTX)).toMatchObject({ notice_type: "group_recall" });
     });
 });
@@ -299,7 +303,7 @@ describe("toOb11NoticeEvent：多元素扫描", () => {
 describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
     /** 群文件消息桩。 */
     function fileMsg(): RawMessage {
-        return {
+        return stub<RawMessage>({
             msgId: "9100",
             msgSeq: "9",
             msgTime: "1700000000000",
@@ -312,12 +316,12 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
                     fileElement: { fileName: "doc.pdf", fileSize: "1024", fileUuid: "uuid-1" },
                 },
             ],
-        } as unknown as RawMessage;
+        });
     }
 
     it("hasFileElement 判定 fileElement 存在性", () => {
         expect(hasFileElement(fileMsg())).toBe(true);
-        const plain = { ...fileMsg(), elements: [{ elementType: 1 }] } as unknown as RawMessage;
+        const plain = stub<RawMessage>({ ...fileMsg(), elements: [{ elementType: 1 }] });
         expect(hasFileElement(plain)).toBe(false);
     });
 
@@ -325,7 +329,7 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
         // Linux 3.2.x wrapper 把未命中的元素变体显式置 null（Windows 省略字段）。
         // 回归 2026-11-10：`!== undefined` 会把每条普通消息判成 grayTip/file，
         // 导致 OB11 入站消息全部被静默丢弃。
-        const linuxText = {
+        const linuxText = stub<RawMessage>({
             ...fileMsg(),
             elements: [
                 {
@@ -334,8 +338,8 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
                     grayTipElement: null,
                     fileElement: null,
                 },
-            ],
-        } as unknown as RawMessage;
+            ] as unknown as RawMessage["elements"],
+        });
         expect(hasGrayTip(linuxText)).toBe(false);
         expect(hasFileElement(linuxText)).toBe(false);
         // 真实 grayTip / file 元素（对象）仍正常命中
@@ -355,24 +359,22 @@ describe("hasFileElement / toGroupUpload（B4 group_upload）", () => {
     });
 
     it("无 fileElement → null；fileUuid 缺失回退文件名", () => {
-        expect(
-            toGroupUpload({ ...fileMsg(), elements: [] } as unknown as RawMessage, "10001"),
-        ).toBeNull();
+        expect(toGroupUpload(stub<RawMessage>({ ...fileMsg(), elements: [] }), "10001")).toBeNull();
         // fileUuid 与 fileName 都缺失 → id/name 空串兜底
-        const bare = {
+        const bare = stub<RawMessage>({
             ...fileMsg(),
             elements: [{ elementType: 3, fileElement: { fileSize: "5" } }],
-        } as unknown as RawMessage;
+        });
         expect(toGroupUpload(bare, "10001")?.file).toEqual({
             id: "",
             name: "",
             size: 5,
             busid: 102,
         });
-        const noUuid = {
+        const noUuid = stub<RawMessage>({
             ...fileMsg(),
             elements: [{ elementType: 3, fileElement: { fileName: "x.zip" } }],
-        } as unknown as RawMessage;
+        });
         expect(toGroupUpload(noUuid, "10001")?.file.id).toBe("x.zip");
     });
 });
@@ -394,5 +396,90 @@ describe("toFriendAdd（B2，快照 diff 源）", () => {
     it("coreInfo 缺失回退顶层 uin;全缺 user_id=NaN 容忍(不抛错)", () => {
         expect(toFriendAdd({ uid: "u1", uin: "10087" }, "10001").user_id).toBe(10087);
         expect(toFriendAdd({ uid: "u1" }, "10001").post_type).toBe("notice");
+    });
+});
+
+describe("narrowOfflineFiles：防御性收窄", () => {
+    it("RawMessage 数组型（elements[].fileElement）→ 归一化项", () => {
+        const arg = [
+            {
+                senderUin: "90009",
+                elements: [
+                    { elementType: 11, fileElement: { fileName: "a.exe", fileSize: "1024" } },
+                ],
+            },
+        ];
+        expect(narrowOfflineFiles(arg)).toEqual([
+            { senderUin: "90009", name: "a.exe", size: 1024, url: "" },
+        ]);
+    });
+
+    it("单个 RawMessage 型（非数组）→ 单项", () => {
+        const arg = {
+            senderUin: "90009",
+            elements: [
+                { fileElement: { fileName: "b.zip", fileSize: 2048, fileUrl: "https://x" } },
+            ],
+        };
+        expect(narrowOfflineFiles(arg)).toEqual([
+            { senderUin: "90009", name: "b.zip", size: 2048, url: "https://x" },
+        ]);
+    });
+
+    it("专用实体型（顶层 fileName）→ 归一化项（senderUin 优先于 fromUin）", () => {
+        const arg = [{ senderUin: "1", fromUin: "2", fileName: "c.pdf", fileSize: "9" }];
+        expect(narrowOfflineFiles(arg)).toEqual([
+            { senderUin: "1", name: "c.pdf", size: 9, url: "" },
+        ]);
+    });
+
+    it("专用实体型（fileInfo 嵌套）→ 归一化项", () => {
+        const arg = { fromUin: "2", fileInfo: { fileName: "d.txt", fileSize: 5, url: "u" } };
+        expect(narrowOfflineFiles(arg)).toEqual([
+            { senderUin: "2", name: "d.txt", size: 5, url: "u" },
+        ]);
+    });
+
+    it("sender uin 缺失 → 0 兜底（uid 串不硬转）", () => {
+        const arg = [{ senderUid: "u_xxx", fileName: "e.md", fileSize: 1 }];
+        expect(narrowOfflineFiles(arg)).toEqual([
+            { senderUin: "0", name: "e.md", size: 1, url: "" },
+        ]);
+    });
+
+    it("RawMessage 型 fileName 缺失 → 空串；fileSize 缺失 → 0 兜底", () => {
+        const noName = [{ senderUin: "90009", elements: [{ fileElement: { fileSize: "10" } }] }];
+        expect(narrowOfflineFiles(noName)).toEqual([
+            { senderUin: "90009", name: "", size: 10, url: "" },
+        ]);
+        const noSize = [{ senderUin: "90009", elements: [{ fileElement: { fileName: "x.bin" } }] }];
+        expect(narrowOfflineFiles(noSize)).toEqual([
+            { senderUin: "90009", name: "x.bin", size: 0, url: "" },
+        ]);
+    });
+
+    it("未知形状 / 无文件元素 / 空数组 → null（调用方打 raw 日志）", () => {
+        expect(narrowOfflineFiles({ foo: 1 })).toBeNull();
+        expect(narrowOfflineFiles([{ elements: [{ picElement: {} }] }])).toBeNull();
+        expect(narrowOfflineFiles([])).toBeNull();
+        expect(narrowOfflineFiles(null)).toBeNull();
+        expect(narrowOfflineFiles("str")).toBeNull();
+    });
+});
+
+describe("toOfflineFileNotice：字段映射", () => {
+    it("归一化项 → OB11 offline_file notice", () => {
+        const event = toOfflineFileNotice(
+            { senderUin: "90009", name: "a.exe", size: 1024, url: "https://x" },
+            "10001",
+        );
+        expect(event).toMatchObject({
+            post_type: "notice",
+            notice_type: "offline_file",
+            self_id: 10001,
+            user_id: 90009,
+            file: { name: "a.exe", size: 1024, url: "https://x" },
+        });
+        expect(event.time).toBeGreaterThan(0);
     });
 });

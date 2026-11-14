@@ -7,6 +7,7 @@
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import { toFriendRequestEvent, toGroupRequestEvent } from "../request.js";
 
 const UID_TO_UIN = new Map([
@@ -34,13 +35,13 @@ function notify(
 
 describe("toFriendRequestEvent", () => {
     it("friend_request：initiator_id 经 uid→uin，comment 取 words", () => {
-        const req = {
+        const req = stub<BuddyReq>({
             reqTime: "1760000000",
             friendUid: "uid-20002",
             friendNick: "甲",
             sourceName: "搜索",
             words: "加个好友",
-        } as unknown as BuddyReq;
+        });
         const event = toFriendRequestEvent(req, CTX);
         expect(event).toMatchObject({
             time: expect.any(Number),

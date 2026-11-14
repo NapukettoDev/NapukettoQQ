@@ -8,6 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { GetMsgAction } from "../history.js";
 import { FetchPttTextAction } from "../media.js";
@@ -19,11 +20,12 @@ import {
     SetInputStatusAction,
     SetMsgEmojiLikeAction,
 } from "../ops.js";
+
 import { fetchMsgById, resolveTargetPeer } from "../resolve-peer.js";
 
 /** 群文本消息 RawMessage 桩。 */
-function rawMsg(overrides?: { atUid?: string; chatType?: number; msgSeq?: string }): RawMessage {
-    return {
+function rawMsg(overrides?: { atUid?: string; chatType?: ChatType; msgSeq?: string }): RawMessage {
+    return stub<RawMessage>({
         msgId: "nt-1",
         msgSeq: overrides?.msgSeq ?? "42",
         msgTime: "1700000000000",
@@ -46,7 +48,7 @@ function rawMsg(overrides?: { atUid?: string; chatType?: number; msgSeq?: string
                 : []),
             { elementType: 1, textElement: { content: "正文" } },
         ],
-    } as unknown as RawMessage;
+    });
 }
 
 /** 构造消息操作依赖（真实 MessageUnique + 各 MsgApi 方法桩）。 */

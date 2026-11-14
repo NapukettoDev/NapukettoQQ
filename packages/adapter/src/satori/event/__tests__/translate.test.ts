@@ -11,6 +11,7 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import { makeMemberChangeMsg, makeRawMsg, makeRevokeMsg } from "../../__tests__/test-support.js";
 import {
     collectSatoriGrayTipUids,
@@ -89,7 +90,7 @@ describe("hasSatoriGrayTip", () => {
         // 回归 2026-11-10：`g === undefined` 判断在 Linux（变体显式 null）下不生效，
         // 直接读 null.subElementType 抛错 → 订阅回调被事件通道吞掉 → 整条消息
         // 事件不广播。
-        const msg = {
+        const msg = stub<RawMessage>({
             ...makeRawMsg(),
             elements: [
                 {
@@ -98,14 +99,14 @@ describe("hasSatoriGrayTip", () => {
                     grayTipElement: null,
                     fileElement: null,
                 },
-            ],
-        } as unknown as RawMessage;
+            ] as unknown as RawMessage["elements"],
+        });
         expect(() => hasSatoriGrayTip(msg)).not.toThrow();
         expect(hasSatoriGrayTip(msg)).toBe(false);
     });
 
     it("toSatoriGrayTipEvent：grayTipElement 全为 null → null（不抛错）", async () => {
-        const msg = {
+        const msg = stub<RawMessage>({
             ...makeRawMsg(),
             elements: [
                 {
@@ -113,8 +114,8 @@ describe("hasSatoriGrayTip", () => {
                     textElement: { content: "hi" },
                     grayTipElement: null,
                 },
-            ],
-        } as unknown as RawMessage;
+            ] as unknown as RawMessage["elements"],
+        });
         await expect(toSatoriGrayTipEvent(msg, UIN_MAP)).resolves.toBeNull();
     });
 });

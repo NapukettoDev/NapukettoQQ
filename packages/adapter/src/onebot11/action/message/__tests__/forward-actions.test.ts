@@ -8,6 +8,7 @@
  */
 import { ChatType, type Peer, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import {
     ForwardFriendSingleMsgAction,
@@ -205,7 +206,7 @@ describe("get_forward_msg", () => {
 
     it("fetchForwardMessage 返回消息 → 逐条翻译为 OB11 信息", async () => {
         const { deps, unique } = makeDeps();
-        const inner: RawMessage = {
+        const inner: RawMessage = stub<RawMessage>({
             msgId: "nt-inner",
             msgSeq: "3",
             msgTime: "1700000000000",
@@ -217,7 +218,7 @@ describe("get_forward_msg", () => {
             peerName: "群",
             sendNickName: "甲",
             elements: [{ elementType: 1, textElement: { content: "转发内文" } }],
-        } as unknown as RawMessage;
+        });
         (
             deps.msgApi as {
                 fetchForwardMessage: (peer: Peer, msgId: string) => Promise<RawMessage[]>;

@@ -1,36 +1,66 @@
 /**
- * adapter.test.ts：OB11 适配器 IPC 桥面单测（subscribeOnly/unsubscribeOnly/registry）。
+ * adapter.test.ts：OB11 适配器单测（IPC 桥面 + 消息/notice/sysmsg/群请求/精华
+ * 事件链分支 + 传输装配跳过分支）。
  *
  * subscribeOnly（2026-08-27，IPC 桥模式）与 start() 的差别仅在传输层：
  * 只订阅消息通道（维护 messageUnique + 灰色通知），不装配 HTTP/WS。
  * kernel apis 以宽松桩对象注入（动作注册表构造期只持有引用，不调用）。
+ * 自 adapter-branches / adapter-extra 并入：私聊与 role 注入、grayTip/sysmsg
+ * 校准日志、精华串行链 rejection 恢复、at/reply ID 转换、broadcaster 缺省等分支。
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GroupEventChannel, MsgEventChannel } from "@napuketto/kernel";
+import {
+    ChatType,
+    type EssenceMsgItem,
+    type FriendApi,
+    type GroupApi,
+    type GroupEventChannel,
+    type GroupNotify,
+    type GroupNotifyApi,
+    type MsgApi,
+    type MsgEventChannel,
+    NTGroupMemberRole,
+    type Peer,
+    type ProfileApi,
+    type ProfileLikeApi,
+    type RawMessage,
+    type RichMediaApi,
+    type TicketApi,
+    type WebApi,
+} from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
-import { NapukettoOneBot11Adapter, type OneBot11AdapterOptions } from "../adapter.js";
+import {
+    type AdapterLoggerLike,
+    NapukettoOneBot11Adapter,
+    type OneBot11AdapterOptions,
+} from "../adapter.js";
+
 import { ob11ConfigSchema } from "../helper/index.js";
 
-/** 桩 kernel apis（构造期只持引用）。 */
-function stubOptions(): Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel"> {
-    return {
-        msgApi: {},
-        groupApi: {},
-        groupNotifyApi: {},
-        friendApi: {},
-        ticketApi: {},
-        richMediaApi: {},
-        profileApi: {},
-        profileLikeApi: {},
-        webApi: {},
+/** 桩 kernel apis（构造期只持引用；可注入覆盖）。 */
+function stubOptions(
+    overrides?: Record<string, unknown>,
+): Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel"> {
+    return stub<Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel">>({
+        msgApi: stub<MsgApi>({}),
+        groupApi: stub<GroupApi>({}),
+        groupNotifyApi: stub<GroupNotifyApi>({}),
+        friendApi: stub<FriendApi>({}),
+        ticketApi: stub<TicketApi>({}),
+        richMediaApi: stub<RichMediaApi>({}),
+        profileApi: stub<ProfileApi>({}),
+        profileLikeApi: stub<ProfileLikeApi>({}),
+        webApi: stub<WebApi>({}),
         self: { uin: "10001", nickname: "测试号" },
         system: { appVersion: "test" },
-    } as unknown as Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel">;
+        ...overrides,
+    });
 }
 
 /** 构造适配器（seed 配置——load() 返回内存初值，不读文件）。 */
@@ -51,23 +81,25 @@ function makeAdapter(channel: MsgEventChannel): NapukettoOneBot11Adapter {
 /** 假消息通道（记录 on 调用，返回可控退订函数）。 */
 function fakeChannel(): { channel: MsgEventChannel; off: ReturnType<typeof vi.fn> } {
     const off = vi.fn();
-    const channel = { on: vi.fn(() => off) } as unknown as MsgEventChannel;
+    const channel = stub<MsgEventChannel>({ on: vi.fn(() => off) });
     return { channel, off };
 }
 
-/** 捕获 handler 的假通道（按事件名存取，测试手动触发）。 */
+/** 捕获 handler 的假通道（按事件名存取，测试手动触发；off 为退订计数桩）。 */
 function captureChannel(): {
     channel: MsgEventChannel;
     handlers: Map<string, (...args: unknown[]) => void>;
+    off: ReturnType<typeof vi.fn>;
 } {
     const handlers = new Map<string, (...args: unknown[]) => void>();
-    const channel = {
+    const off = vi.fn();
+    const channel = stub<MsgEventChannel>({
         on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
             handlers.set(event, handler);
-            return () => handlers.delete(event);
+            return off;
         }),
-    } as unknown as MsgEventChannel;
-    return { channel, handlers };
+    });
+    return { channel, handlers, off };
 }
 
 describe("NapukettoOneBot11Adapter（IPC 桥面）", () => {
@@ -123,7 +155,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         const friend = captureChannel();
         const buddyCache = captureChannel();
         const events: unknown[] = [];
-        const broadcaster = { emit: (e: unknown) => events.push(e) } as unknown as EventBroadcaster;
+        const broadcaster = stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) });
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
             config: new ProtocolConfig({
@@ -244,9 +276,9 @@ describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () =>
         const cfgPath = join(tmpRoot, "ob11.toml");
         writeFileSync(cfgPath, "", "utf8");
         const events: Array<{ post_type?: string; sub_type?: string }> = [];
-        const broadcaster = {
+        const broadcaster = stub<EventBroadcaster>({
             emit: (e: unknown) => events.push(e as { post_type?: string; sub_type?: string }),
-        } as unknown as EventBroadcaster;
+        });
         const onCalls = vi.fn(() => () => undefined);
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
@@ -256,7 +288,7 @@ describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () =>
                 defaults: ob11ConfigSchema.parse({}),
             }),
             broadcaster,
-            msgChannel: { on: onCalls } as unknown as MsgEventChannel,
+            msgChannel: stub<MsgEventChannel>({ on: onCalls }),
         });
         return { adapter, events, onCalls, cfgPath };
     }
@@ -292,7 +324,7 @@ describe("NapukettoOneBot11Adapter（reload 热更新，2026-09-08 T7）", () =>
 describe("NapukettoOneBot11Adapter（group_upload 报形式开关，B4）", () => {
     /** 群文件消息（chatType=GROUP + fileElement）。 */
     function fileMsg(): Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1] {
-        return {
+        return stub<Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1]>({
             msgId: "9100",
             msgSeq: "9",
             msgTime: "1700000000000",
@@ -315,13 +347,13 @@ describe("NapukettoOneBot11Adapter（group_upload 报形式开关，B4）", () =
                     },
                 },
             ],
-        } as unknown as Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1];
+        });
     }
 
     function makeAdapter(seed: Record<string, unknown>) {
         const msg = captureChannel();
         const events: unknown[] = [];
-        const broadcaster = { emit: (e: unknown) => events.push(e) } as unknown as EventBroadcaster;
+        const broadcaster = stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) });
         const adapter = new NapukettoOneBot11Adapter({
             ...stubOptions(),
             config: new ProtocolConfig({
@@ -434,7 +466,7 @@ describe("NapukettoOneBot11Adapter（sysmsg 解码链，design.md §7）", () =>
                 defaults: ob11ConfigSchema.parse({}),
                 seed: ob11ConfigSchema.parse({}),
             }),
-            broadcaster: { emit: (e: unknown) => events.push(e) } as unknown as EventBroadcaster,
+            broadcaster: stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) }),
             msgChannel: msg.channel,
             logger: { warn, info, debug },
         });
@@ -548,13 +580,13 @@ describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）"
         const warn = vi.fn();
         const info = vi.fn();
         const debug = vi.fn();
-        const getEssenceList = vi.fn(async (_group: string): Promise<unknown[]> => []);
-        const fetchMsgs = vi.fn(async (_peer: unknown, _opts: unknown): Promise<unknown[]> => []);
-        const options = {
+        const getEssenceList = vi.fn(async (_group: string): Promise<EssenceMsgItem[]> => []);
+        const fetchMsgs = vi.fn(async (_peer: Peer, _opts: unknown): Promise<RawMessage[]> => []);
+        const options = stub<ReturnType<typeof stubOptions>>({
             ...stubOptions(),
-            webApi: { getEssenceMsgList: getEssenceList },
-            msgApi: { fetchMessages: fetchMsgs },
-        } as unknown as ReturnType<typeof stubOptions>;
+            webApi: stub<WebApi>({ getEssenceMsgList: getEssenceList }),
+            msgApi: stub<MsgApi>({ fetchMessages: fetchMsgs }),
+        });
         const adapter = new NapukettoOneBot11Adapter({
             ...options,
             config: new ProtocolConfig({
@@ -563,9 +595,9 @@ describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）"
                 defaults: ob11ConfigSchema.parse({}),
                 seed: ob11ConfigSchema.parse({}),
             }),
-            broadcaster: {
+            broadcaster: stub<EventBroadcaster>({
                 emit: (e: unknown) => events.push(e as Record<string, unknown>),
-            } as unknown as EventBroadcaster,
+            }),
             msgChannel: msg.channel,
             groupChannel: group.channel as unknown as GroupEventChannel,
             logger: { warn, info, debug },
@@ -761,5 +793,686 @@ describe("NapukettoOneBot11Adapter（group_essence 事件链，design.md §1）"
         expect(debug).toHaveBeenCalledTimes(1);
         const payload = debug.mock.calls[0]?.[0] as { verdict?: string };
         expect(payload.verdict).toBe("unknown");
+    });
+});
+
+/** 构造适配器（seed 配置；broadcaster emit 捕获事件数组。broadcaster=null = 不传广播器）。 */
+function makeEventAdapter(options?: {
+    seed?: Record<string, unknown>;
+    overrides?: Record<string, unknown>;
+    logger?: AdapterLoggerLike;
+    broadcaster?: EventBroadcaster | null;
+    groupChannel?: GroupEventChannel;
+}): {
+    adapter: NapukettoOneBot11Adapter;
+    events: Record<string, unknown>[];
+    msg: ReturnType<typeof captureChannel>;
+} {
+    const msg = captureChannel();
+    const events: Record<string, unknown>[] = [];
+    // broadcaster：null = 显式缺省（BaseProtocolAdapter 允许 undefined）；缺省 = emit 捕获桩
+    let broadcaster: EventBroadcaster | undefined;
+    if (options?.broadcaster === null) {
+        broadcaster = undefined;
+    } else if (options?.broadcaster === undefined) {
+        broadcaster = stub<EventBroadcaster>({
+            emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            register: () => undefined,
+            unregister: () => undefined,
+        });
+    } else {
+        broadcaster = options.broadcaster;
+    }
+    const adapter = new NapukettoOneBot11Adapter({
+        ...stubOptions(options?.overrides),
+        config: new ProtocolConfig({
+            path: "ob11-test.toml",
+            schema: ob11ConfigSchema,
+            defaults: ob11ConfigSchema.parse({}),
+            seed: ob11ConfigSchema.parse(options?.seed ?? {}),
+        }),
+        broadcaster: broadcaster as EventBroadcaster, // null → 运行时 undefined（装配跳过分支）
+        msgChannel: msg.channel,
+        ...(options?.groupChannel !== undefined ? { groupChannel: options.groupChannel } : {}),
+        ...(options?.logger !== undefined ? { logger: options.logger } : {}),
+    });
+    return { adapter, events, msg };
+}
+
+/** 文本消息（chatType 可覆盖；元素 = 单 text）。 */
+function textMsg(chatType: number): Record<string, unknown> {
+    return {
+        msgId: "nt-text",
+        msgSeq: "5",
+        msgTime: "1700000000000",
+        chatType,
+        peerUid: "808",
+        senderUin: "90009",
+        senderUid: "u90009",
+        sendNickName: "某人",
+        elements: [{ elementType: 1, textElement: { content: "你好" } }],
+    };
+}
+
+describe("消息事件分支（broadcastMessageEvent）", () => {
+    it("C2C 私聊文本 → private 事件（sub_type=friend，sender 无 role 字段）", async () => {
+        const { adapter, msg, events } = makeEventAdapter();
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([textMsg(ChatType.C2C)]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        const event = events[0] as {
+            message_type?: string;
+            sub_type?: string;
+            sender?: Record<string, unknown>;
+        };
+        expect(event.message_type).toBe("private");
+        expect(event.sub_type).toBe("friend");
+        expect(event.sender).toMatchObject({ user_id: 90009, nickname: "某人" });
+        // 私聊 sender 不带 role（senderRole 仅群消息注入）
+        expect("role" in (event.sender as object)).toBe(false);
+        adapter.unsubscribeOnly();
+    });
+
+    it("groupCache 命中群主 → sender.role=owner 注入群消息事件", async () => {
+        const groupCache = {
+            getMember: vi.fn(async () => ({
+                uid: "u90009",
+                uin: "90009",
+                nick: "某人",
+                role: NTGroupMemberRole.OWNER,
+            })),
+        };
+        const { adapter, msg, events } = makeEventAdapter({ overrides: { groupCache } });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([textMsg(ChatType.GROUP)]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        expect(events[0]).toMatchObject({
+            message_type: "group",
+            sender: { user_id: 90009, role: "owner" },
+        });
+        expect(groupCache.getMember).toHaveBeenCalledWith("808", "u90009");
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("grayTip notice 分支（broadcastNotice）", () => {
+    it("校准 logger 注入翻译上下文：群撤回事件照常广播", async () => {
+        const warn = vi.fn();
+        const { adapter, msg, events } = makeEventAdapter({
+            overrides: {
+                groupApi: { uidToUin: vi.fn(async () => new Map([["u90009", "90009"]])) },
+            },
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([
+            {
+                ...textMsg(ChatType.GROUP),
+                msgId: "nt-revoke",
+                elements: [
+                    {
+                        elementType: 8,
+                        grayTipElement: {
+                            subElementType: 1,
+                            revokeElement: { operatorUid: "u90009" },
+                        },
+                    },
+                ],
+            },
+        ]);
+        await vi.waitFor(() => {
+            expect(events.some((e) => e["notice_type"] === "group_recall")).toBe(true);
+        });
+        // 翻译成功不走校准日志
+        expect(warn).not.toHaveBeenCalled();
+        adapter.unsubscribeOnly();
+    });
+
+    it("未知 grayTip 子类型（JSON）→ collectGrayTipUids 空 + 事件 null：不广播且 warn 校准", async () => {
+        const warn = vi.fn();
+        const uidToUin = vi.fn(async () => new Map<string, string>());
+        const { adapter, msg, events } = makeEventAdapter({
+            overrides: { groupApi: { uidToUin } },
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([
+            {
+                ...textMsg(ChatType.GROUP),
+                msgId: "nt-json-tip",
+                elements: [
+                    {
+                        elementType: 8,
+                        grayTipElement: { subElementType: 17, jsonGrayTipElement: {} },
+                    },
+                ],
+            },
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        // 无 uid 可转（collectGrayTipUids 短路分支）+ 翻译 null（不广播）
+        expect(uidToUin).not.toHaveBeenCalled();
+        expect(events).toHaveLength(0);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[1]).toContain("未翻译的 grayTip 子类型");
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("sysmsg 分支（truncRaw / uidToUin 兜底）", () => {
+    it("onRecvSysMsg(undefined) → JSON.stringify(undefined) → warn 的 raw 为空串", async () => {
+        const warn = vi.fn();
+        const { adapter, msg } = makeEventAdapter({
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvSysMsg")?.(undefined);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[0]).toEqual({ raw: "" });
+        expect(warn.mock.calls[0]?.[1]).toContain("onRecvSysMsg 未知参数形状");
+        adapter.unsubscribeOnly();
+    });
+
+    it("group_card：card_new/card_old 缺失 → 空串兜底", async () => {
+        const groupApi = {
+            uidToUin: vi.fn(async () => new Map([["u_90002", "90002"]])),
+        };
+        const { adapter, msg, events } = makeEventAdapter({ overrides: { groupApi } });
+        await adapter.subscribeOnly();
+        // 只有 [群号, uid] 两个串 → 新旧名片缺失
+        msg.handlers.get("Msg/onRecvSysMsg")?.([[...cardBlob2("1101729931", "u_90002")]]);
+        await vi.waitFor(() => {
+            expect(events.some((e) => e["notice_type"] === "group_card")).toBe(true);
+        });
+        expect(events.find((e) => e["notice_type"] === "group_card")).toMatchObject({
+            group_id: 1101729931,
+            user_id: 90002,
+            card_new: "",
+            card_old: "",
+        });
+        adapter.unsubscribeOnly();
+    });
+
+    it("group_card：uidToUin 返回的 Map 缺目标 uid → user_id=0 兜底", async () => {
+        const groupApi = {
+            // 转换表不含 u_90002 → map.get(uid) ?? 0 走兜底
+            uidToUin: vi.fn(async () => new Map([["u_other", "777"]])),
+        };
+        const { adapter, msg, events } = makeEventAdapter({ overrides: { groupApi } });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvSysMsg")?.([
+            [...cardBlob("1101729931", "u_90002", "新名片", "旧名片")],
+        ]);
+        await vi.waitFor(() => {
+            expect(events.some((e) => e["notice_type"] === "group_card")).toBe(true);
+        });
+        expect(
+            (events.find((e) => e["notice_type"] === "group_card") as Record<string, unknown>)[
+                "user_id"
+            ],
+        ).toBe(0);
+        adapter.unsubscribeOnly();
+    });
+});
+
+/** varint 编码（合成 sysmsg 用）。 */
+function encVarint(v: number): number[] {
+    const out: number[] = [];
+    let value = v;
+    while (true) {
+        const b = value & 0x7f;
+        value >>>= 7;
+        if (value === 0) {
+            out.push(b);
+            return out;
+        }
+        out.push(b | 0x80);
+    }
+}
+
+/** length-delimited 字段（tag + 长度 + 字节）。 */
+function bytesField(no: number, text: string): number[] {
+    const payload = [...new TextEncoder().encode(text)];
+    return [(no << 3) | 0x02, payload.length, ...payload];
+}
+
+/** 合成 732:21 群名片变更（只有前两个串，名片新旧缺失）。 */
+function cardBlob2(group: string, uid: string): number[] {
+    const f2 = [0x08, ...encVarint(732), 0x10, ...encVarint(21)];
+    return [0x12, f2.length, ...f2, ...bytesField(3, group), ...bytesField(4, uid)];
+}
+
+/** 合成 732:21 群名片变更（strings = [群号, 对象 uid, 新名片, 旧名片]）。 */
+function cardBlob(group: string, uid: string, cardNew: string, cardOld: string): number[] {
+    const f2 = [0x08, ...encVarint(732), 0x10, ...encVarint(21)];
+    return [
+        0x12,
+        f2.length,
+        ...f2,
+        ...bytesField(3, group),
+        ...bytesField(4, uid),
+        ...bytesField(5, cardNew),
+        ...bytesField(6, cardOld),
+    ];
+}
+
+describe("群请求分支（broadcastGroupRequests）", () => {
+    it("已处理状态（status ≠ KUNHANDLE）→ 事件 null 跳过不广播", async () => {
+        const groupHandlers = new Map<string, (...args: unknown[]) => void>();
+        const groupChannel = stub<GroupEventChannel>({
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+                groupHandlers.set(event, handler);
+                return () => undefined;
+            }),
+        });
+        const groupApi = { uidToUin: vi.fn(async () => new Map<string, string>()) };
+        const { adapter, events } = makeEventAdapter({ overrides: { groupApi }, groupChannel });
+        await adapter.subscribeOnly();
+        const handled = stub<GroupNotify>({ seq: "9", type: 7, status: 2 });
+        groupHandlers.get("Group/onGroupNotifiesUpdated")?.(false, [handled]);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("传输装配跳过与请求兜底（broadcaster 缺省 / 非 Error 异常）", () => {
+    it("broadcaster 缺省 → start 跳过传输装配（transports=null）且 stop 走 null 分支", async () => {
+        const { adapter, msg } = makeEventAdapter({
+            broadcaster: null, // 显式缺省：构造参数不传广播器（BaseProtocolAdapter 允许 undefined）
+        });
+        await adapter.start();
+        // 传输未装配（broadcaster === undefined 分支）；订阅链路照常
+        const transports = (adapter as unknown as { transports: unknown | null }).transports;
+        expect(transports).toBeNull();
+        expect(msg.channel.on).toHaveBeenCalledTimes(4);
+        await adapter.stop();
+        // stop → stopAll：transports=null 分支 + 全部退订
+        expect(msg.off).toHaveBeenCalledTimes(4);
+    });
+
+    it("请求包装层：非 Error 异常 → 兜底 respond message=String(err)", async () => {
+        const { adapter } = makeEventAdapter({
+            seed: {
+                httpServers: [{ enabled: true, host: "127.0.0.1", port: 0 }],
+                heartbeatInterval: 0,
+            },
+        });
+        await adapter.start();
+        try {
+            const wrapped = (
+                adapter as unknown as {
+                    transports: {
+                        servers: Array<{
+                            onRequest?: (req: unknown, respond: (res: unknown) => void) => void;
+                        }>;
+                    } | null;
+                }
+            ).transports?.servers[0]?.onRequest as (
+                req: unknown,
+                respond: (res: unknown) => void,
+            ) => void;
+            expect(wrapped).toBeTypeOf("function");
+            const responses: unknown[] = [];
+            let calls = 0;
+            wrapped({ action: "get_status" }, (res) => {
+                calls += 1;
+                responses.push(res);
+                if (calls === 1) {
+                    throw "响应失败"; // 非 Error（字符串）触发 instanceof 判定假分支
+                }
+            });
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(responses).toHaveLength(2);
+            expect(responses[1]).toMatchObject({ retcode: 999, message: "响应失败" });
+        } finally {
+            await adapter.stop();
+        }
+    });
+});
+
+describe("传输装配与请求链（start + 真传输）", () => {
+    it("start() 装配 HTTP server 并 open（含正向上报 client 的 open 循环）", async () => {
+        const seed = {
+            httpServers: [{ enabled: true, host: "127.0.0.1", port: 37240 }],
+            httpPostUrls: [{ enabled: true, url: "http://127.0.0.1:1/nowhere" }],
+            heartbeatInterval: 0,
+        };
+        const { adapter, events } = makeEventAdapter({ seed });
+        await adapter.start();
+        // lifecycle enable 已广播（传输打开成功）
+        expect(events[0]).toMatchObject({ meta_event_type: "lifecycle" });
+        await adapter.stop();
+    });
+
+    it("handleRequest 包装层兜底 catch：respond 首次抛错 → 999 兜底二次 respond", async () => {
+        const seed = {
+            httpServers: [{ enabled: true, host: "127.0.0.1", port: 37241 }],
+            heartbeatInterval: 0,
+        };
+        const { adapter } = makeEventAdapter({ seed });
+        await adapter.start();
+        try {
+            // 从装配的传输上取回包装后的 handleRequest（private 字段，测试窥视）
+            const transports = (
+                adapter as unknown as {
+                    transports: {
+                        servers: Array<{
+                            onRequest?: (req: unknown, respond: (res: unknown) => void) => void;
+                        }>;
+                    } | null;
+                }
+            ).transports;
+            const wrapped = transports?.servers[0]?.onRequest;
+            expect(wrapped).toBeTypeOf("function");
+            let calls = 0;
+            wrapped?.({ action: "get_status" }, () => {
+                calls += 1;
+                if (calls === 1) {
+                    throw new Error("respond 崩了");
+                }
+            });
+            // 兜底 catch 异步二次 respond（等一拍微任务）
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            expect(calls).toBe(2);
+        } finally {
+            await adapter.stop();
+        }
+    });
+});
+
+describe("精华链补充分支", () => {
+    /** 带 group 通道的 harness（webApi/msgApi 可控）。 */
+    function makeEssenceHarness(fetchBehavior: "ok" | "reject"): {
+        adapter: NapukettoOneBot11Adapter;
+        group: ReturnType<typeof captureChannel>;
+        events: Record<string, unknown>[];
+        warn: ReturnType<typeof vi.fn>;
+        getEssenceList: ReturnType<typeof vi.fn>;
+    } {
+        const group = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const warn = vi.fn();
+        const getEssenceList = vi.fn(async (_group: string): Promise<EssenceMsgItem[]> => []);
+        const fetchMsgs =
+            fetchBehavior === "reject"
+                ? vi.fn(async () => {
+                      throw new Error("fetchMessages 崩了");
+                  })
+                : vi.fn(async (_peer: Peer, _opts: unknown): Promise<RawMessage[]> => []);
+        const overrides = {
+            webApi: stub<WebApi>({ getEssenceMsgList: getEssenceList }),
+            msgApi: stub<MsgApi>({ fetchMessages: fetchMsgs }),
+        };
+        const adapter = new NapukettoOneBot11Adapter({
+            ...stubOptions(overrides),
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: stub<EventBroadcaster>({
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            }),
+            msgChannel: captureChannel().channel,
+            groupChannel: group.channel as unknown as GroupEventChannel,
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        return { adapter, group, events, warn, getEssenceList };
+    }
+
+    /** EssenceMsgItem 桩（sender 可空）。 */
+    const essenceItem = (seq: number, adder: string, sender = "10001") => ({
+        msg_seq: seq,
+        msg_random: seq,
+        sender_uin: sender,
+        sender_nick: "s",
+        add_digest_uin: adder,
+        add_digest_nick: "op",
+        add_digest_time: 1793540100,
+        msg_content: [],
+    });
+
+    it("列表变更参数未知形状 → warn 校准（不入串行链）", async () => {
+        const { adapter, group, warn, getEssenceList } = makeEssenceHarness("ok");
+        await adapter.subscribeOnly();
+        group.handlers.get("Group/onGroupEssenceListChange")?.({ bogus: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(getEssenceList).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[1]).toContain("onGroupEssenceListChange 未知参数形状");
+        adapter.unsubscribeOnly();
+    });
+
+    it("移除项 sender 不可得 → warn 跳过 delete 事件", async () => {
+        const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness("ok");
+        await adapter.subscribeOnly();
+        // 基线：含 seq 150（sender_uin 空串 → prev 缓存 sender 不可得）
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002", "")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        // 次轮：150 被移除 → delete 广播路径 sender 为 null → warn
+        getEssenceList.mockResolvedValue([]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(warn.mock.calls.some((c) => String(c[1]).includes("sender 不可得"))).toBe(true);
+        });
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+
+    it("移除项 message_id 反查未命中 → 跳过事件（delete 分支 continue）", async () => {
+        const { adapter, group, events, warn, getEssenceList } = makeEssenceHarness("ok");
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        // 次轮移除 150，fetchMsgs 默认返回空 → message_id 反查未命中
+        getEssenceList.mockResolvedValue([]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(
+                warn.mock.calls.some((c) => String(c[1]).includes("message_id 反查未命中")),
+            ).toBe(true);
+        });
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+
+    it("精华 message_id 反查 fetchMessages 抛错 → 按未命中处理（warn）", async () => {
+        const { adapter, group, warn, getEssenceList } = makeEssenceHarness("reject");
+        await adapter.subscribeOnly();
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        getEssenceList.mockResolvedValue([essenceItem(150, "10002"), essenceItem(151, "10003")]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(
+                warn.mock.calls.some((c) => String(c[1]).includes("message_id 反查未命中")),
+            ).toBe(true);
+        });
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("精华串行链 rejection 恢复", () => {
+    it("广播抛错 → 链吞掉 rejection；紧随其后的一次同步被恢复分支消费，再下一次恢复运行", async () => {
+        const group = captureChannel();
+        const events: Record<string, unknown>[] = [];
+        const warn = vi.fn();
+        let throwOnEssence = true;
+        const getEssenceList = vi.fn(async (_group: string): Promise<EssenceMsgItem[]> => []);
+        const adapter = new NapukettoOneBot11Adapter({
+            ...stubOptions({
+                webApi: { getEssenceMsgList: getEssenceList },
+                msgApi: {
+                    fetchMessages: vi.fn(async () => [
+                        stub<RawMessage>({ msgId: "nt-151", msgSeq: "151" }),
+                    ]),
+                },
+            }),
+            config: new ProtocolConfig({
+                path: "ob11-test.toml",
+                schema: ob11ConfigSchema,
+                defaults: ob11ConfigSchema.parse({}),
+                seed: ob11ConfigSchema.parse({}),
+            }),
+            broadcaster: stub<EventBroadcaster>({
+                emit: (e: unknown) => {
+                    const event = e as Record<string, unknown>;
+                    if (throwOnEssence && event["notice_type"] === "group_essence") {
+                        throwOnEssence = false;
+                        throw new Error("emit 崩了");
+                    }
+                    events.push(event);
+                },
+                register: () => undefined,
+                unregister: () => undefined,
+            }),
+            msgChannel: captureChannel().channel,
+            groupChannel: group.channel as unknown as GroupEventChannel,
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        await adapter.subscribeOnly();
+        const item = (seq: number) => ({
+            msg_seq: seq,
+            msg_random: seq,
+            sender_uin: "10001",
+            sender_nick: "s",
+            add_digest_uin: "10002",
+            add_digest_nick: "op",
+            add_digest_time: 1793540100,
+            msg_content: [],
+        });
+        // 基线
+        getEssenceList.mockResolvedValue([item(150)]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(1);
+        });
+        // 新增 → add 广播抛错（链 rejection 被吞）。then(sync, recover) 语义：
+        // 失败后紧随入队的那次同步被恢复分支消费（不执行），再下一次恢复运行——
+        // 三个触发同 tick 入队（恢复 handler 先于 rejection 事件挂上，
+        // 避免 unhandledRejection 窗口）。
+        getEssenceList.mockResolvedValue([item(150), item(151)]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            // 基线 1 次 + 失败的同步 1 次 + 恢复后重新运行 1 次 = 3
+            expect(getEssenceList).toHaveBeenCalledTimes(3);
+        });
+        // 再触发一次：链仍然活着（第四次同步照常执行，diff 空无事件）
+        group.handlers.get("Group/onGroupEssenceListChange")?.(["1101729931"]);
+        await vi.waitFor(() => {
+            expect(getEssenceList).toHaveBeenCalledTimes(4);
+        });
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("消息事件链（broadcastMessageEvent 分支）", () => {
+    /** 群 at 消息（可带 reply）。 */
+    function groupAtMsg(replyId?: string): unknown {
+        return {
+            msgId: "nt-at",
+            msgSeq: "77",
+            msgTime: "1700000000000",
+            chatType: 2,
+            peerUid: "808",
+            senderUin: "90009",
+            senderUid: "u90009",
+            sendNickName: "某人",
+            elements: [
+                ...(replyId !== undefined
+                    ? [{ elementType: 7, replyElement: { replayMsgId: replyId } }]
+                    : []),
+                { elementType: 1, textElement: { content: "@甲", atType: 2, atUid: "u90002" } },
+            ],
+        };
+    }
+
+    it("at uid 批量转换成功 → at 段 qq=uin；reply 反查 OB11 id", async () => {
+        const groupApi = {
+            uidToUin: vi.fn(
+                async (uids: string[]) => new Map(uids.map((u) => [u, u.replace("u", "")])),
+            ),
+        };
+        const { adapter, msg, events } = makeEventAdapter({ overrides: { groupApi } });
+        await adapter.subscribeOnly();
+        // 预登记被回复消息的 OB11 id（首个分配为 1，本消息为 2）
+        const unique = (
+            adapter as unknown as {
+                oneBotApi: { messageUnique: { alloc: (id: string, peer: unknown) => number } };
+            }
+        ).oneBotApi.messageUnique;
+        unique.alloc("nt-src", { chatType: 2, peerUid: "808" }); // id 1
+        msg.handlers.get("Msg/onRecvMsg")?.([groupAtMsg("nt-src")]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        const segments = events[0]?.["message"] as Array<{
+            type: string;
+            data: Record<string, unknown>;
+        }>;
+        expect(segments?.find((s) => s.type === "reply")?.data["id"]).toBe("1");
+        expect(segments.find((s) => s.type === "at")?.data["qq"]).toBe("90002");
+        adapter.unsubscribeOnly();
+    });
+
+    it("uidToUin 抛错 → at 段保留 uid（不阻塞上报）", async () => {
+        const groupApi = {
+            uidToUin: vi.fn(async () => {
+                throw new Error("转换服务不可用");
+            }),
+        };
+        const { adapter, msg, events } = makeEventAdapter({ overrides: { groupApi } });
+        await adapter.subscribeOnly();
+        msg.handlers.get("Msg/onRecvMsg")?.([groupAtMsg()]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        const segments = events[0]?.["message"] as Array<{
+            type: string;
+            data: Record<string, unknown>;
+        }>;
+        expect(segments?.find((s) => s.type === "at")?.data["qq"]).toBe("u90002");
+        adapter.unsubscribeOnly();
+    });
+});
+
+describe("群请求链补充分支", () => {
+    it("空通知数组 → uidToUinMap 短路（空 Map）且无事件", async () => {
+        const groupHandlers = new Map<string, (...args: unknown[]) => void>();
+        const groupChannel = stub<GroupEventChannel>({
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+                groupHandlers.set(event, handler);
+                return () => undefined;
+            }),
+        });
+        const groupApi = { uidToUin: vi.fn(async () => new Map<string, string>()) };
+        const { adapter, events } = makeEventAdapter({
+            overrides: { groupApi },
+            groupChannel,
+        });
+        await adapter.subscribeOnly();
+        groupHandlers.get("Group/onGroupNotifiesUpdated")?.(false, []);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(groupApi.uidToUin).not.toHaveBeenCalled();
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
     });
 });

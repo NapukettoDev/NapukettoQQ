@@ -6,23 +6,24 @@
  */
 
 import type { BuddyReq } from "@napuketto/kernel";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import type { FriendActionDeps } from "../friend.js";
 import { FriendApproveAction, FriendDeleteAction, FriendListAction } from "../friend.js";
 import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
 
 function makeDeps(api: StubSatoriApi): FriendActionDeps {
-    return {
+    return stub<FriendActionDeps>({
         friendApi: api.friendApi,
         uinToUid: api.uinToUid,
         uidToUin: api.uidToUin,
-    } as unknown as FriendActionDeps;
+    });
 }
 
 describe("FriendListAction", () => {
     it("getFriendList → List<Friend>（nickname 作 name）", async () => {
         const api = stubSatoriApi();
-        api.friendApi.getFriendList.mockResolvedValueOnce([
+        vi.mocked(api.friendApi.getFriendList).mockResolvedValueOnce([
             { uid: "uid_1", uin: "101", nickname: "好友A", remark: "" },
             { uid: "uid_2", uin: "102", nickname: "好友B", remark: "备注B" },
             { uid: "uid_3", uin: "103", nickname: "同名", remark: "同名" },
@@ -63,7 +64,7 @@ describe("FriendApproveAction", () => {
     it("message_id（申请方 uin）匹配申请 → handleFriendRequest(notify, true)", async () => {
         const api = stubSatoriApi();
         const req: BuddyReq = { reqTime: "1", friendUid: "uid_101" };
-        api.friendApi.getBuddyReqList.mockResolvedValueOnce([req] as never);
+        vi.mocked(api.friendApi.getBuddyReqList).mockResolvedValueOnce([req] as never);
         api.uidToUin.mockResolvedValueOnce(new Map([["uid_101", "101"]]));
         const action = new FriendApproveAction(makeDeps(api));
         await expect(action.run({ message_id: "101", approve: true })).resolves.toBeUndefined();
@@ -73,7 +74,7 @@ describe("FriendApproveAction", () => {
     it("approve=false → handleFriendRequest(notify, false)", async () => {
         const api = stubSatoriApi();
         const req: BuddyReq = { reqTime: "1", friendUid: "uid_101" };
-        api.friendApi.getBuddyReqList.mockResolvedValueOnce([req] as never);
+        vi.mocked(api.friendApi.getBuddyReqList).mockResolvedValueOnce([req] as never);
         api.uidToUin.mockResolvedValueOnce(new Map([["uid_101", "101"]]));
         const action = new FriendApproveAction(makeDeps(api));
         await action.run({ message_id: "101", approve: false, comment: "随意" });
@@ -91,7 +92,7 @@ describe("FriendApproveAction", () => {
 
     it("有申请但 uin 不匹配：抛「好友申请不存在」", async () => {
         const api = stubSatoriApi();
-        api.friendApi.getBuddyReqList.mockResolvedValueOnce([
+        vi.mocked(api.friendApi.getBuddyReqList).mockResolvedValueOnce([
             { reqTime: "1", friendUid: "uid_101" },
         ] as never);
         api.uidToUin.mockResolvedValueOnce(new Map([["uid_101", "101"]]));

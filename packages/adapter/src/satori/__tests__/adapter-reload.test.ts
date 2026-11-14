@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
 import { satoriConfigSchema } from "../helper/index.js";
@@ -47,7 +48,7 @@ function spyBroadcaster(): { broadcaster: EventBroadcaster; events: unknown[] } 
     const events: unknown[] = [];
     return {
         events,
-        broadcaster: { emit: (e: unknown) => events.push(e) } as unknown as EventBroadcaster,
+        broadcaster: stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) }),
     };
 }
 
@@ -58,18 +59,20 @@ describe("NapukettoSatoriAdapter.reload", () => {
         writeFileSync(cfgPath, 'path = ""\n', "utf8");
         const { broadcaster, events } = spyBroadcaster();
         const onCalls = vi.fn(() => () => undefined);
-        const adapter = new NapukettoSatoriAdapter({
-            ...(stubApiOptions() as object),
-            config: new ProtocolConfig({
-                path: cfgPath,
-                schema: satoriConfigSchema,
-                defaults: satoriConfigSchema.parse({}),
+        const adapter = new NapukettoSatoriAdapter(
+            stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
+                ...(stubApiOptions() as object),
+                config: new ProtocolConfig({
+                    path: cfgPath,
+                    schema: satoriConfigSchema,
+                    defaults: satoriConfigSchema.parse({}),
+                }),
+                broadcaster,
+                msgChannel: stub<
+                    ConstructorParameters<typeof NapukettoSatoriAdapter>[0]["msgChannel"]
+                >({ on: onCalls }),
             }),
-            broadcaster,
-            msgChannel: { on: onCalls } as unknown as ConstructorParameters<
-                typeof NapukettoSatoriAdapter
-            >[0]["msgChannel"],
-        } as unknown as ConstructorParameters<typeof NapukettoSatoriAdapter>[0]);
+        );
 
         await adapter.start();
         const afterStart = events.length;

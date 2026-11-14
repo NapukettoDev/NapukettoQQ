@@ -9,6 +9,7 @@
 import { isKernelError, type KernelErrorCode, kernelError } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { stub } from "../../__tests__/stub.js";
 import type { ErrorCodeMap } from "../base-action.js";
 import { BaseAction } from "../base-action.js";
 
@@ -80,7 +81,7 @@ describe("BaseAction.handle", () => {
 
     it("映射表缺项：回退 UNKNOWN 对应 retcode", async () => {
         // 仅登记 UNKNOWN（Record 类型要求全集，测试用断言收窄模拟漏登记）
-        const partial = { UNKNOWN: 1599 } as unknown as ErrorCodeMap;
+        const partial = stub<ErrorCodeMap>({ UNKNOWN: 1599 });
         const action = new TestAction(partial, async () => {
             throw kernelError("超时", "TIMEOUT");
         });

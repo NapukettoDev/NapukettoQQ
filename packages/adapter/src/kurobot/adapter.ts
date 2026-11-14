@@ -138,9 +138,9 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         const hello: KurobotConnectionOptions["hello"] = {
             peerId: this.selfUin,
             platform: "qq",
-            version: resolvePackageVersion() ?? "unknown",
+            version: resolvePackageVersion(this.log) ?? "unknown",
             protocolVersion: PROTOCOL_VERSION,
-            client: config.client ?? resolveDefaultClient(),
+            client: config.client ?? resolveDefaultClient(this.log),
         };
         if (config.token !== "") {
             hello.token = config.token;
@@ -198,8 +198,8 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
     }
 }
 
-/** best-effort 读取 adapter 包版本（dist 与 src 双布局相对包根一致）。 */
-function resolvePackageVersion(): string | null {
+/** best-effort 读取 adapter 包版本（dist 与 src 双布局相对包根一致；失败 debug 留痕）。 */
+function resolvePackageVersion(log?: KurobotLoggerAlias): string | null {
     try {
         const require = createRequire(import.meta.url);
         const pkg = require("../../package.json") as { version?: unknown };
@@ -207,13 +207,17 @@ function resolvePackageVersion(): string | null {
             return pkg.version;
         }
         return null;
-    } catch {
+    } catch (err) {
+        log?.debug(
+            { error: err instanceof Error ? err.message : String(err) },
+            "kurobot: package.json 版本探测失败，hello 降级 unknown/napukettoqq",
+        );
         return null;
     }
 }
 
 /** hello.client 缺省身份：napukettoqq/<版本>（取不到版本则 napukettoqq）。 */
-function resolveDefaultClient(): string {
-    const version = resolvePackageVersion();
+function resolveDefaultClient(log?: KurobotLoggerAlias): string {
+    const version = resolvePackageVersion(log);
     return version === null ? "napukettoqq" : `napukettoqq/${version}`;
 }

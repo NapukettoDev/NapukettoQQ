@@ -29,22 +29,23 @@
   WS `websocketHandle` 失败 1400 并回传 echo；`KernelError.code` 经映射表转协议 retcode
   （ADR-017）。`ActionRegistry` 按名分发，未知动作 404。装配方直接持有各协议适配器
   （不设 AdapterRegistry 中间层）。
-- OB11 动作文件按领域组织：`action/` 下 message（send / history / ops / media /
-  forward）/ group（manage / query / essence / notify，另有群系统消息与群文件两域）/
-  friend / system（info / status / account / file）领域文件，动作类与
-  `create*Actions(api)` 工厂同文件（领域文件 ≤300 行，共享 helper `resolve-peer` /
-  `limits` / `error-map` / `resolve-uid` 保留独立文件）；`action/index.ts` 只遍历工厂
-  注册——新增动作在领域文件登记即可，注册表零样板。
+- OB11 动作文件按领域组织：`action/` 下 message / group / friend / system 领域文件
+  （动作类与 `create*Actions(api)` 工厂同文件，≤300 行；共享 helper `resolve-peer` /
+  `limits` / `error-map` / `resolve-uid` 独立文件）；`index.ts` 只遍历工厂注册零样板。
 - Milky 动作文件按领域组织：`milky/action/` 下 group（query / manage / essence /
   notice，另有群文件 `group-file` 一域）/ message（send / query / ops）+ profile /
-  social / system，动作类同文件（每文件 150~300 行）；`index.ts` 仍按 P0 → P1 →
-  P2 批次二顺序逐个 register，动作类迁移不改变注册序与动作名。测试与源码域
-  一一对应（`__tests__/` 下 group-*.test.ts / message-*.test.ts / registry.test.ts
-  等，共享桩在 `test-support.ts`）。
+  social / system，动作类同文件（每文件 150~300 行）；`index.ts` 仍按 P0 → P1 → P2
+  的注册顺序逐个 register，动作类迁移不改变注册序与动作名。
 - 协议目录内不设转发 barrel：`index.ts` 只保留 `package.json` `exports` 声明的
-  6 个子路径入口（包根 / core / onebot11 / satori / kurobot / milky）与承载注册表、
-  类型聚合等实际聚合面的文件；单模块转发壳（如 `satori/api`、`onebot11/api`、
-  `satori/event`、`satori/helper/element`）一律直引目标模块。
+  6 个子路径入口与实际聚合面（注册表/类型聚合）；单模块转发壳一律直引目标模块。
+- fail-soft 降级分支必须留痕：kernel API 调用失败（uid↔uin、群缓存读、媒体下载）→
+  `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
+  注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
+  不引 logger；保留项：sysmsg `decodeText` 三态与 satori 翻译层（无 logger 基建）。
+- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `core/__tests__/stub.ts`
+  的 `stub<T>`/`stubList<T>` 与各协议 `test-support.ts` 强类型工厂。豁免：私有字段
+  窥视、故意畸形输入、私有 internals 断言；碎片测试（`*-branches`/`*-extra`）并入
+  主测试文件，不新增。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
 - 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`/`numericUin`

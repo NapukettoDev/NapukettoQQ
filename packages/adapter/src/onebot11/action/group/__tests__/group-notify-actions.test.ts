@@ -117,8 +117,7 @@ describe("set_group_add_request", () => {
         const result = await action.handle({ flag: "88001" });
         expect(result.retcode).toBe(0);
         expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledTimes(1);
-        const [doubt, hit, operate, reason] = groupNotifyApi.handleGroupRequest.mock
-            .calls[0] as unknown as [boolean, unknown, number, string];
+        const [doubt, hit, operate, reason] = groupNotifyApi.handleGroupRequest.mock.calls[0] ?? [];
         expect(doubt).toBe(false);
         expect(hit).toBe(notify);
         // KAGREE = 1

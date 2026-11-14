@@ -193,7 +193,12 @@ async function resolveAtUins(
     }
     try {
         return await api.uinToUid(atUins);
-    } catch {
+    } catch (err) {
+        // at 解析失败退 uin 原样（warn 留痕，消息照发）
+        api.logger?.warn(
+            { count: atUins.length, error: err instanceof Error ? err.message : String(err) },
+            "milky: at uin→uid 失败，at 段原样发送",
+        );
         return undefined;
     }
 }

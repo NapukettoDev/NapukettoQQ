@@ -7,8 +7,17 @@
  * get_forwarded_messages 转发索引定位与 mention uid→uin、嵌套转发段注入、
  * get_message 索引命中 + 群实体回填 / 两级 NOT_FOUND。
  */
-import { ChatType, type GroupCache, type RawMessage } from "@napuketto/kernel";
+import {
+    ChatType,
+    type FriendApi,
+    type GroupApi,
+    type GroupCache,
+    type MsgApi,
+    type ProfileApi,
+    type RawMessage,
+} from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../../types.js";
@@ -50,28 +59,28 @@ function makeApi(stubs: {
     const fetchForwardMessage = vi.fn(async () => stubs.forwarded ?? []);
     const markRead = vi.fn(async () => undefined);
     const api = new MilkyApi(
-        {
-            msgApi: {
+        stub<ConstructorParameters<typeof MilkyApi>[0]>({
+            msgApi: stub<MsgApi>({
                 fetchMessages,
                 fetchForwardMessage,
                 fetchMsgsByMsgId: vi.fn(async () => []),
                 markRead,
-            },
-            groupApi: {
+            }),
+            groupApi: stub<GroupApi>({
                 uinToUid: vi.fn(
                     async (uins: string[]) => new Map(uins.map((u) => [u, `uid-${u}`])),
                 ),
                 uidToUin: vi.fn(
                     async (uids: string[]) => new Map(uids.map((u) => [u, u.replace("uid-", "")])),
                 ),
-            },
-            friendApi: {},
-            profileApi: {},
+            }),
+            friendApi: stub<FriendApi>({}),
+            profileApi: stub<ProfileApi>({}),
             self: { uin: "10000", nickname: "机器人", uid: "uid-10000" },
             ...(stubs.groupCache !== undefined
-                ? { groupCache: stubs.groupCache as unknown as GroupCache }
+                ? { groupCache: stub<GroupCache>(stubs.groupCache) }
                 : {}),
-        } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+        }),
         new MessageSeqIndex(),
     );
     return {

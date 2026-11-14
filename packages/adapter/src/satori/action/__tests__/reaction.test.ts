@@ -5,15 +5,16 @@
  * 删他人表态）、校验失败 400。
  */
 import { describe, expect, it } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import type { ReactionActionDeps } from "../reaction.js";
 import { ReactionCreateAction, ReactionDeleteAction } from "../reaction.js";
 import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
 
 function makeDeps(api: StubSatoriApi): ReactionActionDeps {
-    return {
+    return stub<ReactionActionDeps>({
         msgApi: api.msgApi,
         resolvePeer: api.resolvePeer,
-    } as unknown as ReactionActionDeps;
+    });
 }
 
 describe("ReactionCreateAction", () => {

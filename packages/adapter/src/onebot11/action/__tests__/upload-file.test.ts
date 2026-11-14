@@ -5,14 +5,22 @@
  *  - 远程 URI → 105（仅本地路径 / file://）
  *  - 闪传抛错 → 动作失败（不静默假成功）
  */
+
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { FlashTransferUploadOptions, Peer } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { UploadGroupFileAction, UploadPrivateFileAction } from "../system/file.js";
 import { stubConverters } from "./test-support.js";
 
 function makeDeps(
-    sendFile = vi.fn(async () => ({ fileSetId: "fs-1", shareLink: "", fileCount: 1 })),
+    sendFile = vi.fn(
+        async (_target: Peer, _paths: string[], _options: FlashTransferUploadOptions) => ({
+            fileSetId: "fs-1",
+            shareLink: "",
+            fileCount: 1,
+        }),
+    ),
 ) {
     const { uinToUid } = stubConverters();
     return { deps: { flashTransferApi: { sendFile } as never, uinToUid }, sendFile };
@@ -28,15 +36,11 @@ describe("upload_group_file（闪传）", () => {
         });
         expect(res.status).toBe("ok");
         expect(res.data).toEqual({ file_id: "fs-1" });
-        const [peer, paths, opts] = sendFile.mock.calls[0] as unknown as [
-            { chatType: number; peerUid: string },
-            string[],
-            { name: string },
-        ];
+        const [peer, paths, opts] = sendFile.mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: 2, peerUid: "10001" });
         // pathToFileURL 把相对路径解析为绝对路径：断言 file:// 已剥离
-        expect(paths[0]?.endsWith(join("tmp", "up.bin"))).toBe(true);
-        expect(opts.name).toBe("up.bin");
+        expect(paths?.[0]?.endsWith(join("tmp", "up.bin"))).toBe(true);
+        expect(opts?.name).toBe("up.bin");
     });
 
     it("name 缺省 → 取路径末段；folder 忽略（闪传无目录）", async () => {
@@ -47,13 +51,9 @@ describe("upload_group_file（闪传）", () => {
             folder: "/docs",
         });
         expect(res.status).toBe("ok");
-        const [, paths, opts] = sendFile.mock.calls[0] as unknown as [
-            unknown,
-            string[],
-            { name: string },
-        ];
+        const [, paths, opts] = sendFile.mock.calls[0] ?? [];
         expect(paths).toEqual(["/data/report.pdf"]);
-        expect(opts.name).toBe("report.pdf");
+        expect(opts?.name).toBe("report.pdf");
     });
 
     it("远程 URI → -400（仅本地路径 / file://）", async () => {
@@ -99,14 +99,10 @@ describe("upload_private_file（闪传）", () => {
         });
         expect(res.status).toBe("ok");
         expect(res.data).toEqual({ file_id: "fs-1" });
-        const [peer, paths, opts] = sendFile.mock.calls[0] as unknown as [
-            { chatType: number; peerUid: string },
-            string[],
-            { name: string },
-        ];
+        const [peer, paths, opts] = sendFile.mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: 1, peerUid: "u90001" });
         expect(paths).toEqual(["/data/a.zip"]);
-        expect(opts.name).toBe("a.zip");
+        expect(opts?.name).toBe("a.zip");
     });
 
     it("uid 解析失败 → 105（不猜目标）", async () => {

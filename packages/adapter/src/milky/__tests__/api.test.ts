@@ -7,8 +7,16 @@
  * resolveSentOutput（回查 + 索引回写 / 未命中 UNKNOWN）、构造字段透传；
  * milkyConfigSchema 缺省值与校验；index.ts re-export 面。
  */
-import { ChatType } from "@napuketto/kernel";
+import {
+    ChatType,
+    type FriendApi,
+    type GroupApi,
+    type MsgApi,
+    type ProfileApi,
+    type RawMessage,
+} from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
 import { MilkyApi } from "../api.js";
 import { milkyConfigSchema } from "../config.js";
@@ -19,29 +27,29 @@ import * as milkyIndex from "../index.js";
 function stubApi(
     overrides: {
         uinToUid?: (uins: string[]) => Promise<Map<string, string>>;
-        fetchMessages?: (peer: unknown, opts: unknown) => Promise<unknown[]>;
+        fetchMessages?: MsgApi["fetchMessages"];
     } = {},
 ): MilkyApi {
     return new MilkyApi(
-        {
-            msgApi: {
+        stub<ConstructorParameters<typeof MilkyApi>[0]>({
+            msgApi: stub<MsgApi>({
                 fetchMessages: overrides.fetchMessages ?? vi.fn(async () => []),
                 fetchMsgsByMsgId: vi.fn(async () => []),
-            },
-            groupApi: {
+            }),
+            groupApi: stub<GroupApi>({
                 uinToUid:
                     overrides.uinToUid ??
                     vi.fn(async (uins: string[]) => new Map(uins.map((u) => [u, `uid-${u}`]))),
                 uidToUin: vi.fn(async () => new Map()),
-            },
-            friendApi: {},
-            profileApi: {},
+            }),
+            friendApi: stub<FriendApi>({}),
+            profileApi: stub<ProfileApi>({}),
             self: { uin: "10000", nickname: "机器人", uid: "uid-10000" },
             qqVersion: "9.9.9",
             implVersion: "1.2.3",
             mediaDir: "/media",
             logger: undefined,
-        } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+        }),
         new MessageSeqIndex(),
     );
 }
@@ -141,7 +149,7 @@ describe("MilkyApi.resolveMsgIdBySeq", () => {
             senderUid: "uid-20002",
             elements: [],
         };
-        const fetchMessages = vi.fn(async () => [msg]);
+        const fetchMessages = vi.fn(async () => [stub<RawMessage>(msg)]);
         const api = stubApi({ fetchMessages: () => fetchMessages() });
         await expect(api.resolveMsgIdBySeq(peer, 6, ChatType.GROUP)).resolves.toBe("m-scan");
         // 回写索引：再次反查不再触发扫描
@@ -208,16 +216,16 @@ describe("MilkyApi 构造透传", () => {
     it("版本 / self / mediaDir / seqIndex 字段原样持有", () => {
         const seqIndex = new MessageSeqIndex();
         const api = new MilkyApi(
-            {
-                msgApi: {},
-                groupApi: {},
-                friendApi: {},
-                profileApi: {},
+            stub<ConstructorParameters<typeof MilkyApi>[0]>({
+                msgApi: stub<MsgApi>({}),
+                groupApi: stub<GroupApi>({}),
+                friendApi: stub<FriendApi>({}),
+                profileApi: stub<ProfileApi>({}),
                 self: { uin: "1", nickname: "n" },
                 qqVersion: "qv",
                 implVersion: "iv",
                 mediaDir: "/d",
-            } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+            }),
             seqIndex,
         );
         expect(api.qqVersion).toBe("qv");

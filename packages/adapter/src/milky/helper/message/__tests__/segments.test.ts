@@ -10,6 +10,7 @@
 import { pathToFileURL } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import type { OutgoingSegment } from "../../../types.js";
 import {
     canonicalToIncomingSegments,
@@ -195,8 +196,8 @@ describe("canonicalToIncomingSegments：json / xml / 未知", () => {
 
     it("未知/未映射类型（unknown、forward）→ 跳过", () => {
         const out = canonicalToIncomingSegments([
-            { type: "unknown", raw: {} } as unknown as CanonicalElement,
-            { type: "forward", messageIds: ["a"] } as unknown as CanonicalElement,
+            stub<CanonicalElement>({ type: "unknown", raw: {} }),
+            stub<CanonicalElement>({ type: "forward", messageIds: ["a"] }),
             { type: "text", text: "keep" },
         ]);
         expect(out).toEqual([{ type: "text", data: { text: "keep" } }]);

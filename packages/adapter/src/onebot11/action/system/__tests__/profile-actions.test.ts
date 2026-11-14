@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import { SetQQAvatarAction, SetQQProfileAction, SetSelfLongnickAction } from "../account.js";
 import { DownloadFileAction } from "../file.js";
 
@@ -29,12 +30,12 @@ function ensureTmp(): string {
 
 /** 构造 Response 桩（fetch 全局桩用）。 */
 function makeResponse(ok: boolean, body: string, status = ok ? 200 : 500): Response {
-    return {
+    return stub<Response>({
         ok,
         status,
         statusText: ok ? "OK" : "Internal Server Error",
         arrayBuffer: async () => new TextEncoder().encode(body).buffer as ArrayBuffer,
-    } as unknown as Response;
+    });
 }
 
 describe("set_self_longnick / set_qq_profile", () => {

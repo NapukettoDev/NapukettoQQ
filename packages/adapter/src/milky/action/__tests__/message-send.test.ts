@@ -10,10 +10,26 @@
  */
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ChatType, type Peer, type RawMessage } from "@napuketto/kernel";
+import {
+    type CanonicalElement,
+    ChatType,
+    type FriendApi,
+    type GroupApi,
+    type GroupNotifyApi,
+    type MsgApi,
+    type Peer,
+    type ProfileApi,
+    type ProfileLikeApi,
+    type RawMessage,
+    type RichMediaApi,
+    type TicketApi,
+    type WebApi,
+} from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
+import type { MilkyLoggerLike } from "../../transport.js";
 import type { OutgoingSegment } from "../../types.js";
 import { sendMilkyMessage } from "../message-send.js";
 import { actionOf, indexableMsg, messageApi } from "./test-support.js";
@@ -39,29 +55,29 @@ function sentMsg(seq: string, time: string): RawMessage {
 }
 
 /** 构造 MilkyApi（kernel apis 桩：uinToUid 桩映射 + sendMessage 捕获）。 */
-function makeSendApi(): { api: MilkyApi; sentElements: () => RawMessage["elements"] } {
-    let captured: RawMessage["elements"] = [];
+function makeSendApi(): { api: MilkyApi; sentElements: () => CanonicalElement[] } {
+    let captured: CanonicalElement[] = [];
     const api = new MilkyApi(
-        {
-            msgApi: {
-                sendMessage: vi.fn(async (_peer: Peer, elements: RawMessage["elements"]) => {
+        stub<ConstructorParameters<typeof MilkyApi>[0]>({
+            msgApi: stub<MsgApi>({
+                sendMessage: vi.fn(async (_peer: Peer, elements: CanonicalElement[]) => {
                     captured = elements;
                     return { msgId: "sent-1" };
                 }),
                 fetchMsgsByMsgId: vi.fn(async () => [sentMsg("1300", "1760000000000")]),
                 fetchMessages: vi.fn(async () => []),
-            },
-            groupApi: {
+            }),
+            groupApi: stub<GroupApi>({
                 uinToUid: vi.fn(
                     async (uins: string[]) => new Map(uins.map((u) => [u, `uid-${u}`])),
                 ),
                 uidToUin: vi.fn(async () => new Map()),
-            },
-            friendApi: {},
-            profileApi: {},
+            }),
+            friendApi: stub<FriendApi>({}),
+            profileApi: stub<ProfileApi>({}),
             self: { uin: "10000", nickname: "机器人" },
             system: undefined,
-        } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+        }),
         new MessageSeqIndex(),
     );
     return { api, sentElements: () => captured };
@@ -146,13 +162,13 @@ function forwardSeg(data: Record<string, unknown>): OutgoingSegment {
 /** 构造 MilkyApi（组装链依赖桩 + 调用捕获）。 */
 function makeApi(): {
     api: MilkyApi;
-    sends: RawMessage["elements"][];
+    sends: CanonicalElement[][];
     forwardCalls: Array<{ target: Peer; source: Peer; srcMsgIds: string[] }>;
     recallCalls: string[][];
     warns: unknown[];
     recallMock: ReturnType<typeof vi.fn>;
 } {
-    const sends: RawMessage["elements"][] = [];
+    const sends: CanonicalElement[][] = [];
     const forwardCalls: Array<{ target: Peer; source: Peer; srcMsgIds: string[] }> = [];
     const recallCalls: string[][] = [];
     const warns: unknown[] = [];
@@ -161,9 +177,9 @@ function makeApi(): {
         recallCalls.push(msgIds);
     });
     const api = new MilkyApi(
-        {
-            msgApi: {
-                sendMessage: vi.fn(async (_peer: Peer, elements: RawMessage["elements"]) => {
+        stub<ConstructorParameters<typeof MilkyApi>[0]>({
+            msgApi: stub<MsgApi>({
+                sendMessage: vi.fn(async (_peer: Peer, elements: CanonicalElement[]) => {
                     sends.push(elements);
                     sendSeq += 1;
                     return { msgId: `tmp-${sendSeq}` };
@@ -176,24 +192,27 @@ function makeApi(): {
                 ),
                 recallMessage: recallMock,
                 fetchMsgsByMsgId: vi.fn(async () => [fwSentMsg("777", "1700000000000")]),
-            },
-            groupApi: {
+            }),
+            groupApi: stub<GroupApi>({
                 uinToUid: vi.fn(
                     async (uins: string[]) => new Map(uins.map((u) => [u, `uid-${u}`])),
                 ),
-            },
-            friendApi: {},
-            profileApi: {},
-            profileLikeApi: {},
-            ticketApi: {},
-            webApi: {},
-            groupNotifyApi: {},
-            richMediaApi: {},
+            }),
+            friendApi: stub<FriendApi>({}),
+            profileApi: stub<ProfileApi>({}),
+            profileLikeApi: stub<ProfileLikeApi>({}),
+            ticketApi: stub<TicketApi>({}),
+            webApi: stub<WebApi>({}),
+            groupNotifyApi: stub<GroupNotifyApi>({}),
+            richMediaApi: stub<RichMediaApi>({}),
             self: { uin: "10000", nickname: "机器人", uid: "uid-10000" },
             qqVersion: "9.9.9",
             implVersion: "test",
-            logger: { warn: vi.fn((obj: unknown) => warns.push(obj)), info: vi.fn() },
-        } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+            logger: stub<MilkyLoggerLike>({
+                warn: vi.fn((obj: unknown) => warns.push(obj)),
+                info: vi.fn(),
+            }),
+        }),
         new MessageSeqIndex(),
     );
     return { api, sends, forwardCalls, recallCalls, warns, recallMock };
@@ -381,7 +400,9 @@ describe("sendMilkyMessage forward 组装链（P2 批次一）", () => {
 
 describe("send_private_message / send_group_message（动作层）", () => {
     it("file:// 媒体段：同步展开为平台路径（不触下载）", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "sent-1" }));
+        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+            msgId: "sent-1",
+        }));
         const fetchMsgsByMsgId = vi.fn(async () => [indexableMsg("1300")]);
         const registry = messageApi({ msgApi: { sendMessage, fetchMsgsByMsgId } });
         const segments: OutgoingSegment[] = [
@@ -393,12 +414,10 @@ describe("send_private_message / send_group_message（动作层）", () => {
             message: segments,
         });
         expect(res.status).toBe("ok");
-        const [peer, elements] = sendMessage.mock.calls[0] as unknown as [
-            unknown,
-            Array<{ type: string; path?: string }>,
-        ];
+        const [peer, elements] = sendMessage.mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: ChatType.GROUP, peerUid: "10001" });
-        expect(elements[1]?.path?.endsWith("x.png")).toBe(true);
+        const image = elements?.[1];
+        expect(image?.type === "image" && image.path.endsWith("x.png")).toBe(true);
     });
 
     it("远程媒体缺 mediaDir → INVALID_PARAM（-400）", async () => {
@@ -412,7 +431,9 @@ describe("send_private_message / send_group_message（动作层）", () => {
     });
 
     it("at 转换失败（uinToUid 抛错）→ at 目标保持 uin 原样", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "sent-1" }));
+        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+            msgId: "sent-1",
+        }));
         const registry = messageApi({
             msgApi: { sendMessage, fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("1")]) },
             groupApi: { uinToUid: vi.fn(async () => new Map()) },
@@ -425,13 +446,8 @@ describe("send_private_message / send_group_message（动作层）", () => {
             ],
         });
         expect(res.status).toBe("ok");
-        const elements = (
-            sendMessage.mock.calls[0] as unknown as [
-                unknown,
-                Array<{ type: string; target?: string }>,
-            ]
-        )[1];
-        expect(elements[0]).toEqual({ type: "at", target: "90001" });
+        const elements = (sendMessage.mock.calls[0] ?? [])[1];
+        expect(elements?.[0]).toEqual({ type: "at", target: "90001" });
     });
 
     it("段数组为空 → -400（schema min(1)）", async () => {
@@ -462,7 +478,9 @@ describe("send_private_message / send_group_message（动作层）", () => {
     });
 
     it("send_private_message：C2C peer（uin→uid）+ 输出回查", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "sent-1" }));
+        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+            msgId: "sent-1",
+        }));
         const fetchMsgsByMsgId = vi.fn(async () => [
             {
                 msgId: "sent-1",
@@ -481,7 +499,7 @@ describe("send_private_message / send_group_message（动作层）", () => {
             message: [{ type: "text", data: { text: "私聊" } }],
         });
         expect(res.status).toBe("ok");
-        expect((sendMessage.mock.calls[0] as unknown as [unknown])?.[0]).toEqual({
+        expect(sendMessage.mock.calls[0]?.[0]).toEqual({
             chatType: ChatType.C2C,
             peerUid: "uid-20002",
         });
@@ -489,7 +507,9 @@ describe("send_private_message / send_group_message（动作层）", () => {
     });
 
     it("at uinToUid 抛错 → 目标保持 uin 原样（catch → undefined 映射）", async () => {
-        const sendMessage = vi.fn(async () => ({ msgId: "sent-1" }));
+        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+            msgId: "sent-1",
+        }));
         const registry = messageApi({
             msgApi: { sendMessage, fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("2")]) },
             groupApi: {
@@ -506,13 +526,8 @@ describe("send_private_message / send_group_message（动作层）", () => {
             ],
         });
         expect(res.status).toBe("ok");
-        const elements = (
-            sendMessage.mock.calls[0] as unknown as [
-                unknown,
-                Array<{ type: string; target?: string }>,
-            ]
-        )[1];
-        expect(elements[0]).toEqual({ type: "at", target: "90001" });
+        const elements = (sendMessage.mock.calls[0] ?? [])[1];
+        expect(elements?.[0]).toEqual({ type: "at", target: "90001" });
     });
 });
 

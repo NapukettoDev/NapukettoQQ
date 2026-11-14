@@ -14,6 +14,7 @@ import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
 import { z } from "zod";
+import { stub } from "../../core/__tests__/stub.js";
 import { ActionRegistry } from "../../core/framework/action-registry.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import type { BaseSatoriAction } from "../action/base-action.js";
@@ -179,7 +180,7 @@ describe("HTTP RPC 分发", () => {
     });
 
     it("KernelError → 映射状态码（message.delete 撤回被拒 403）", async () => {
-        setA.api.msgApi.recallMessage.mockRejectedValueOnce(
+        vi.mocked(setA.api.msgApi.recallMessage).mockRejectedValueOnce(
             kernelError("无权限撤回", "PERMISSION_DENIED"),
         );
         const { status, json } = await postRpc(PORT_HTTP_A, "message.delete", {
@@ -391,20 +392,24 @@ const setD = buildSet({
     wsPort: 36248,
     registry: (() => {
         const reg = new ActionRegistry<BaseSatoriAction<unknown, unknown>>();
-        reg.register({
-            name: "boom.action",
-            schema: z.object({}).passthrough(),
-            run: async () => {
-                throw new Error("原始错误");
-            },
-        } as unknown as BaseSatoriAction<unknown, unknown>);
-        reg.register({
-            name: "boom2.action",
-            schema: z.object({}).passthrough(),
-            run: async () => {
-                throw 42; // 非 Error 抛出物：internal error 兜底
-            },
-        } as unknown as BaseSatoriAction<unknown, unknown>);
+        reg.register(
+            stub<BaseSatoriAction<unknown, unknown>>({
+                name: "boom.action",
+                schema: z.object({}).passthrough(),
+                run: async () => {
+                    throw new Error("原始错误");
+                },
+            }),
+        );
+        reg.register(
+            stub<BaseSatoriAction<unknown, unknown>>({
+                name: "boom2.action",
+                schema: z.object({}).passthrough(),
+                run: async () => {
+                    throw 42; // 非 Error 抛出物：internal error 兜底
+                },
+            }),
+        );
         return reg;
     })(),
 });

@@ -7,8 +7,15 @@
  * 私聊文件双回调去重、精华 diff（基线/新增/移除/操作者回填/拉取失败）、
  * 置顶翻转（播种/首见/影子过滤）、bot_offline、群通知与好友请求通道。
  */
-import { ChatType, GrayTipSubType, TipGroupElementType } from "@napuketto/kernel";
+import {
+    ChatType,
+    GrayTipSubType,
+    type GroupCache,
+    NTGroupMemberRole,
+    TipGroupElementType,
+} from "@napuketto/kernel";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import {
     type AdapterEnv,
     adapterEnv,
@@ -339,10 +346,12 @@ describe("消息通道分流（Msg/onRecvMsg）", () => {
         const envCache = await adapterEnv({
             config: { port: 36397 },
             withGroupChannel: false,
-            groupCache: {
+            groupCache: stub<GroupCache>({
                 getGroupDetail: vi.fn(async () => ({
                     groupCode: "10001",
+                    groupUin: "10001",
                     groupName: "缓存群",
+                    ownerUin: "20002",
                     memberNum: 5,
                     maxMemberNum: 100,
                 })),
@@ -351,9 +360,13 @@ describe("消息通道分流（Msg/onRecvMsg）", () => {
                     uin: "20002",
                     nick: "甲",
                     cardName: "名片甲",
-                    role: 3,
+                    role: NTGroupMemberRole.ADMIN,
+                    remark: "",
+                    shutUpTime: 0,
+                    joinTime: "0",
+                    lastSpeakTime: "0",
                 })),
-            },
+            }),
         });
         try {
             await envCache.adapter.start();

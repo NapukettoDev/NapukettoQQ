@@ -1,14 +1,16 @@
 /**
  * guild-mute.test.ts：guild.member.mute 动作单测（Satori 毫秒 → kernel setMemberShutUp 秒）。
  */
+import type { GroupApi } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import type { GuildActionDeps } from "../guild.js";
 import { GuildMemberMuteAction } from "../guild.js";
 
 /** mute 动作最小依赖（groupApi.setMemberShutUp + uinToUid）。 */
-function makeDeps(setMemberShutUp: ReturnType<typeof vi.fn>): GuildActionDeps {
-    return {
-        groupApi: { setMemberShutUp },
+function makeDeps(setMemberShutUp: GroupApi["setMemberShutUp"]): GuildActionDeps {
+    return stub<GuildActionDeps>({
+        groupApi: stub<GroupApi>({ setMemberShutUp }),
         uinToUid: async (uins: string[]) => {
             const map = new Map<string, string>();
             for (const uin of uins) {
@@ -16,7 +18,7 @@ function makeDeps(setMemberShutUp: ReturnType<typeof vi.fn>): GuildActionDeps {
             }
             return map;
         },
-    } as unknown as GuildActionDeps;
+    });
 }
 
 describe("GuildMemberMuteAction", () => {

@@ -12,16 +12,28 @@
 import {
     type BuddyListener,
     ChatType,
+    type FriendApi,
+    type GroupApi,
+    type GroupCache,
     type GroupListener,
+    type GroupNotifyApi,
     type LoginEventChannel,
+    type MsgApi,
     type MsgListener,
     NTEventChannel,
+    type ProfileApi,
+    type ProfileLikeApi,
     type RawMessage,
+    type RecentContactApi,
     type RecentContactListener,
+    type RichMediaApi,
+    type TicketApi,
+    type WebApi,
 } from "@napuketto/kernel";
 import type { TransportAdapter } from "@napuketto/network";
 import { EventBroadcaster } from "@napuketto/network";
 import { vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
 import { MilkyApi } from "../api.js";
@@ -84,7 +96,7 @@ export interface EnvOptions {
     friendApi?: Record<string, unknown>;
     webApi?: Record<string, unknown>;
     recentContactApi?: Record<string, unknown>;
-    groupCache?: Record<string, unknown>;
+    groupCache?: GroupCache;
     withGroupChannel?: boolean;
     withBuddyChannel?: boolean;
     withRecentContactChannel?: boolean;
@@ -134,16 +146,16 @@ export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
             : undefined;
 
     const api = new MilkyApi(
-        {
-            msgApi: {
+        stub<ConstructorParameters<typeof MilkyApi>[0]>({
+            msgApi: stub<MsgApi>({
                 fetchMessages: vi.fn(async () => []),
                 fetchMsgsByMsgId: vi.fn(async () => []),
                 fetchForwardMessage: vi.fn(async () => []),
                 sendMessage: vi.fn(async () => ({ msgId: "sent-1" })),
                 recallMessage: vi.fn(async () => undefined),
                 ...opts.msgApi,
-            },
-            groupApi: {
+            }),
+            groupApi: stub<GroupApi>({
                 uinToUid: vi.fn(
                     async (uins: string[]) => new Map(uins.map((u) => [u, `uid-${u}`])),
                 ),
@@ -151,32 +163,32 @@ export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
                     async (uids: string[]) => new Map(uids.map((u) => [u, u.replace("uid-", "")])),
                 ),
                 ...opts.groupApi,
-            },
-            friendApi: {
+            }),
+            friendApi: stub<FriendApi>({
                 getBuddyReqList: vi.fn(async () => []),
                 ...opts.friendApi,
-            },
-            profileApi: {},
-            profileLikeApi: {},
-            ticketApi: {},
-            webApi: {
+            }),
+            profileApi: stub<ProfileApi>({}),
+            profileLikeApi: stub<ProfileLikeApi>({}),
+            ticketApi: stub<TicketApi>({}),
+            webApi: stub<WebApi>({
                 getEssenceMsgList: vi.fn(async () => []),
                 ...opts.webApi,
-            },
-            groupNotifyApi: {
+            }),
+            groupNotifyApi: stub<GroupNotifyApi>({
                 getSingleScreenNotifies: vi.fn(async () => []),
                 handleGroupRequest: vi.fn(async () => undefined),
-            },
-            richMediaApi: {},
-            recentContactApi: {
+            }),
+            richMediaApi: stub<RichMediaApi>({}),
+            recentContactApi: stub<RecentContactApi>({
                 getPinnedContacts: vi.fn(async () => []),
                 ...opts.recentContactApi,
-            },
+            }),
             self: { uin: opts.selfUin ?? "10000", nickname: "机器人", uid: "uid-10000" },
             qqVersion: "9.9.9-test",
             implVersion: "0.0.0-test",
             ...(opts.groupCache !== undefined ? { groupCache: opts.groupCache } : {}),
-        } as unknown as ConstructorParameters<typeof MilkyApi>[0],
+        }),
         new MessageSeqIndex(),
     );
 

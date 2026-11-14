@@ -31,7 +31,7 @@ type GetMsgPayload = z.infer<typeof getMsgSchema>;
 /** get_msg 依赖（OneBotApi 视图，由装配方注入）。 */
 export type GetMsgDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRole"
+    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRole" | "logger"
 >;
 
 /** 获取消息详情（P2-10 接 kernel fetchMsgsByMsgId）。 */
@@ -60,8 +60,15 @@ export class GetMsgAction extends BaseAction<GetMsgPayload, OB11MessageInfo> {
         if (atUids.length > 0) {
             try {
                 uidToUin = await this.deps.uidToUin(atUids);
-            } catch {
-                // uid 解析失败：at 原样（uid）
+            } catch (err) {
+                // uid 解析失败：at 原样（uid），warn 留痕
+                this.deps.logger?.warn(
+                    {
+                        count: atUids.length,
+                        error: err instanceof Error ? err.message : String(err),
+                    },
+                    "ob11: get_msg at uid→uin 失败，at 原样",
+                );
             }
         }
         // 群消息查发送者角色（GroupCache 缓存优先；失败回退缺省 member）
@@ -81,7 +88,7 @@ export class GetMsgAction extends BaseAction<GetMsgPayload, OB11MessageInfo> {
 /** 历史消息依赖（OneBotApi 视图，由装配方注入）。 */
 export type MsgHistoryDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRoles"
+    "msgApi" | "messageUnique" | "uidToUin" | "groupMemberRoles" | "logger"
 >;
 
 /** 默认历史消息条数。 */
@@ -145,8 +152,12 @@ async function fetchAndTranslateHistory(
     if (atUids.size > 0) {
         try {
             uidToUin = await deps.uidToUin([...atUids]);
-        } catch {
-            // uid 解析失败：at 原样（uid）
+        } catch (err) {
+            // uid 解析失败：at 原样（uid），warn 留痕
+            deps.logger?.warn(
+                { count: atUids.size, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 历史消息 at uid→uin 失败，at 原样",
+            );
         }
     }
     const ctx: ReceiveTranslateContext = {

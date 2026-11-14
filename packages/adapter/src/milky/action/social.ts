@@ -109,9 +109,13 @@ export class GetFriendRequestsAction extends MilkyApiAction<
         // 发起者 uid → uin 批量转换（initiator_id 需要 uin；失败 0 兜底）
         let uidToUin = new Map<string, string>();
         if (reqs.length > 0) {
-            uidToUin = await this.api
-                .uidToUin(reqs.map((req) => req.friendUid))
-                .catch(() => new Map<string, string>());
+            uidToUin = await this.api.uidToUin(reqs.map((req) => req.friendUid)).catch((err) => {
+                this.api.logger?.warn(
+                    { count: reqs.length, error: err instanceof Error ? err.message : String(err) },
+                    "milky: 好友申请 uid→uin 失败，initiator_id 兜底 0",
+                );
+                return new Map<string, string>();
+            });
         }
         const requests: FriendRequestEntity[] = reqs.map((req) => ({
             time: Number(req.reqTime) || 0,
