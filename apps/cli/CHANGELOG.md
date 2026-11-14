@@ -1,5 +1,12 @@
 # @napuketto/cli
 
+## 0.6.9
+
+### Patch Changes
+
+- Updated dependencies [e74cbb3]
+  - @napuketto/loader@0.9.1
+
 ## 0.6.8
 
 ### Patch Changes
