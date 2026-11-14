@@ -62,3 +62,14 @@ export function firstUntranslatedGrayTip(msg: RawMessage): GrayTipElement | unde
     }
     return undefined;
 }
+
+/**
+ * 撤回 grayTip 元素（非撤回消息返回 undefined；Milky 收链路 notice/召回
+ * 分流判据，2026-11-14 自 milky adapter.ts 收拢）。
+ */
+export function findRevokeElement(
+    msg: RawMessage,
+): NonNullable<GrayTipElement["revokeElement"]> | undefined {
+    return msg.elements.find((el) => el.grayTipElement?.revokeElement != null)?.grayTipElement
+        ?.revokeElement;
+}

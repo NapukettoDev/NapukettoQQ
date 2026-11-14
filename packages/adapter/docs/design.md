@@ -31,11 +31,19 @@
   （不设 AdapterRegistry 中间层）。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
-- 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`（number /
-  string 两种口径）、gray-tip 的 `hasGrayTip`、essence 的 `EssenceListSync`（列表缓存 +
-  串行链 + diff，OB11 / Milky adapter 共用）、lookup 的 `findFirstMatch`（候选屏依序
-  查找骨架，milky api 与 satori action 共用）；协议目录只留形状差异（事件翻译、识别表、
-  错误口径——NOT_FOUND 抛错类型与消息归调用方）。
+- 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`/`numericUin`
+  （number / string / 数字串口径）、gray-tip 的 `hasGrayTip`/`findRevokeElement`、
+  essence 的 `EssenceListSync`（列表缓存 + 串行链 + diff，OB11 / Milky adapter 共用）、
+  lookup 的 `findFirstMatch`（候选屏依序查找骨架，milky api 与 satori action 共用）、
+  log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
+  面）；协议目录只留形状差异（事件翻译、识别表、错误口径——NOT_FOUND 抛错类型与
+  消息归调用方）。
+- adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为三块——
+  `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
+  `subscribeOnly` / `unsubscribeOnly` 公共面）；`event-pipeline.ts` 接管事件通道
+  订阅/退订、自消息过滤、去重缓存（fileKeys / essenceKeys / pinWatch）与广播派发；
+  `enrichment.ts` 接管翻译前的异步查询（批量 uidToUin、群实体回填、msgId 反查、
+  精华 diff 触发），翻译函数保持纯函数（ADR-008）。
 
 ### OneBot 11 事件链
 
