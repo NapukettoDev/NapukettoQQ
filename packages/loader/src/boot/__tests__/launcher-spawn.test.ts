@@ -200,7 +200,7 @@ describe("launchSelfHost 前置校验", () => {
                 // selfHostEntry 未传 → 走默认入口分支（dist 产物）
                 expect(h.spawnCalls[0]?.args[0]).toBe(DEFAULT_SELF_HOST_ENTRY);
                 // defaultStubDir 纯路径推导（不读 native 子模块内容）
-                expect(defaultStubDir().endsWith(join("native", "build", "stub-test-env"))).toBe(
+                expect(defaultStubDir().endsWith(join("native", "prebuilt", "win32-x64"))).toBe(
                     true,
                 );
             });

@@ -175,7 +175,7 @@ jobs:
             # persist-credentials: false —— checkout 默认把 token 写进 .git/config
             # 并一直生效（这里是 App token，不再是 GITHUB_TOKEN）；留着这份
             # 凭证会让请求头里的身份归属变得不确定。本 job 其余步骤都不需要它。
-            # submodules: recursive —— loader 包 files 里的 native/build/stub-test-env
+            # submodules: recursive —— loader 包 files 里的 native/prebuilt/win32-x64
             # 只存在于私有 submodule 中，CI 上不检出则该条目匹配不到文件、npm 打包
             # 静默丢件（0.0.36–0.0.38 事故：stub DLL 缺失，零配置自建宿主必挂），
             # 下方「校验 loader 打包产物」守卫兜底。
@@ -265,7 +265,7 @@ jobs:
               run: pnpm release:build
 
             # 打包守卫：@napuketto/loader 的 files 依赖 submodule 产物
-            # native/build/stub-test-env/QQNT.dll。磁盘存在 ≠ 会进包——files 条目
+            # native/prebuilt/win32-x64/QQNT.dll。磁盘存在 ≠ 会进包——files 条目
             # 匹配不到文件时 npm 会静默忽略（0.0.36–0.0.38 由此发出不可用包），
             # 故按 npm pack --dry-run 的真实清单断言，缺件即终止发布；files 条目
             # 本身被改坏（DLL 不进清单）时同样在此拦下。
@@ -278,12 +278,12 @@ jobs:
               run: |
                   npm pack --dry-run > "$RUNNER_TEMP/loader-pack.txt" 2>&1
                   cat "$RUNNER_TEMP/loader-pack.txt"
-                  grep -q 'native/build/stub-test-env/QQNT.dll' "$RUNNER_TEMP/loader-pack.txt" || {
-                      echo "::error::@napuketto/loader 打包清单缺少 native/build/stub-test-env/QQNT.dll（submodule 未检出或 files 失效），已阻止发布。"
+                  grep -q 'native/prebuilt/win32-x64/QQNT.dll' "$RUNNER_TEMP/loader-pack.txt" || {
+                      echo "::error::@napuketto/loader 打包清单缺少 native/prebuilt/win32-x64/QQNT.dll（submodule 未检出或 files 失效），已阻止发布。"
                       exit 1
                   }
-                  grep -q 'native/build/linux-x64/libnapuketto_stub.so' "$RUNNER_TEMP/loader-pack.txt" || {
-                      echo "::error::@napuketto/loader 打包清单缺少 native/build/linux-x64/libnapuketto_stub.so（files 未含 Linux stub 目录），Linux 用户在用户机器上会报 stub 未找到，已阻止发布。"
+                  grep -q 'native/prebuilt/linux-x64/libnapuketto_stub.so' "$RUNNER_TEMP/loader-pack.txt" || {
+                      echo "::error::@napuketto/loader 打包清单缺少 native/prebuilt/linux-x64/libnapuketto_stub.so（files 未含 Linux stub 目录），Linux 用户在用户机器上会报 stub 未找到，已阻止发布。"
                       exit 1
                   }
 

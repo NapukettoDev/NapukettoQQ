@@ -169,8 +169,8 @@ for (const dir of PUBLISHED_PACKAGES) {
 }
 
 /**
- * loader 的原生产物打包守卫（2026-11-10 补）：`files` 只列 `native/build/stub-test-env`
- * 时，`build/linux-x64/libnapuketto_stub.so` 不会进 tarball——`NAPUTO_LINUX_NATIVE=1`
+ * loader 的原生产物打包守卫（2026-11-10 补）：`files` 只列 Windows stub 目录
+ * 时，`prebuilt/linux-x64/libnapuketto_stub.so` 不会进 tarball——Linux 原生宿主
  * 的用户会直接报「Linux stub 未找到」（发布包实测 0.6.0 缺该目录）。这里钉死两个
  * stub 目录都在白名单里，配合 release.yml 的 pack 守卫双重兜底。
  */
@@ -178,8 +178,8 @@ describe("@napuketto/loader 原生产物打包", () => {
     const { pkg } = readPackage("packages/loader");
 
     it("files 同时包含 Windows 与 Linux stub 目录", () => {
-        expect(pkg.files).toContain("native/build/stub-test-env");
-        expect(pkg.files).toContain("native/build/linux-x64");
+        expect(pkg.files).toContain("native/prebuilt/win32-x64");
+        expect(pkg.files).toContain("native/prebuilt/linux-x64");
     });
 });
 

@@ -184,7 +184,7 @@ export function main(): void {
         .option("--qq-path <path>", "QQ 安装路径（联调覆盖）")
         .option(
             "--stub-dir <dir>",
-            "stub QQNT.dll 目录（自建宿主 PATH 前置，缺省 loader/native/stub-test-env，Git Submodule）",
+            "stub QQNT.dll 目录（自建宿主 PATH 前置，缺省 loader/native/prebuilt/win32-x64，Git Submodule）",
         );
 
     // 启动字符画（每次 cli 启动、首个 action 前打印；受 [log].banner / NAPUKETTO_NO_BANNER

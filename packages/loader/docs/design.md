@@ -47,7 +47,7 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 
 Windows：
 
-- stub 校验：`native/build/stub-test-env/QQNT.dll`（`--stub-dir` 或 `NAPUTO_STUB_DIR`
+- stub 校验：`native/prebuilt/win32-x64/QQNT.dll`（`--stub-dir` 或 `NAPUTO_STUB_DIR`
   覆盖），缺失在 spawn 前抛错。
 - 环境：PATH 前置 stub 目录 + `wrapper.node` 目录，并注入 `NAPUTO_STUB_DIR`。
 - 入站图片自动下载补丁（issue #105）：stub 私有组件在 wrapper 加载后
@@ -61,7 +61,7 @@ Windows：
 
 Linux：
 
-- stub：`native/build/linux-<arch>/libnapuketto_stub.so`（`NAPUTO_LINUX_STUB` 覆盖），
+- stub：`native/prebuilt/linux-x64/libnapuketto_stub.so`（`NAPUTO_LINUX_STUB` 覆盖），
   预加载 `LD_PRELOAD=<stub>:<libgnutls.so.30>`；gnutls 是 `libbugly` 的无 `DT_NEEDED`
   隐藏依赖。
 - 宿主 node：`process.execPath` 是 node 直接用，否则 `which node`。
