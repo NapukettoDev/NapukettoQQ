@@ -1,5 +1,6 @@
 /**
- * Milky 群文件类动作测试（group-file.ts，p3 系列）
+ * Milky 群文件类动作测试（group-file.ts，2026-11-14 域对齐重组，自
+ * p3-group-file + p1-actions/p2-batch2 群文件用例归并）
  *
  * 锁定：get_group_files 的文件/文件夹实体映射（fileSize 字符串数值化、
  * folder 元数据防御读取）、move/rename/delete/persist 的参数透传（target
@@ -7,7 +8,6 @@
  * 走闪传（file:// 展开 + 上传文件集 + 卡片，file_id = fileSetId）、download_url、
  * rename_group_folder、schema 边界（空 id → -400）。
  */
-
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ChatType } from "@napuketto/kernel";
@@ -117,6 +117,62 @@ describe("get_group_files", () => {
         });
         expect(getGroupFileList).toHaveBeenCalledWith("10001", "d9");
     });
+
+    it("文件/文件夹实体字段映射（P1 补测）", async () => {
+        const registry = fileRegistry({
+            richMediaApi: {
+                getGroupFileList: vi.fn(async () => [
+                    {
+                        fileInfo: {
+                            fileId: "f1",
+                            fileName: "a.zip",
+                            fileSize: "2048",
+                            parent: "",
+                            uploadTime: 1760000000,
+                            uploaderUin: "20002",
+                        },
+                    },
+                    {
+                        folderInfo: {
+                            folderId: "d1",
+                            folderName: "资料",
+                            folderUid: "",
+                            createTime: 1760000000,
+                            modifyTime: 1760000001,
+                            totalFileCount: 3,
+                        },
+                    },
+                ]),
+            },
+        });
+        const result = await registry.get("get_group_files")?.handle({ group_id: 10001 });
+        const fileData = result?.data as { files: unknown[]; folders: unknown[] } | undefined;
+        expect(fileData?.files).toEqual([
+            {
+                group_id: 10001,
+                file_id: "f1",
+                file_name: "a.zip",
+                parent_folder_id: "",
+                file_size: 2048,
+                uploaded_time: 1760000000,
+                expire_time: null,
+                uploader_id: 20002,
+                downloaded_times: 0,
+            },
+        ]);
+        expect(fileData?.folders).toEqual([
+            {
+                group_id: 10001,
+                folder_id: "d1",
+                parent_folder_id: "",
+                folder_name: "资料",
+                created_time: 1760000000,
+                last_modified_time: 1760000001,
+                creator_id: 0,
+                file_count: 3,
+            },
+        ]);
+    });
 });
 
 describe("move / rename / delete / persist 群文件", () => {
@@ -202,6 +258,25 @@ describe("create / delete / rename folder", () => {
         });
         expect(res.retcode).toBe(-400);
     });
+
+    it("create_group_folder：空 folder_name → -400（P1 schema 补测）", async () => {
+        const registry = fileRegistry({});
+        const result = await registry
+            .get("create_group_folder")
+            ?.handle({ group_id: 10001, folder_name: "" });
+        expect(result?.retcode).toBe(-400);
+    });
+
+    it("rename_group_folder：参数透传（P2 批次二补测）", async () => {
+        const renameGroupFolder = vi.fn(async () => undefined);
+        const registry = fileRegistry({ richMediaApi: { renameGroupFolder } });
+        await actionOf(registry, "rename_group_folder").handle({
+            group_id: 10001,
+            folder_id: "fd1",
+            new_folder_name: "新名",
+        });
+        expect(renameGroupFolder).toHaveBeenCalledWith("10001", "fd1", "新名");
+    });
 });
 
 describe("upload_group_file（闪传通道）", () => {
@@ -252,6 +327,27 @@ describe("upload_group_file（闪传通道）", () => {
         });
         expect(res.status).toBe("ok");
     });
+
+    it("群 peer + parent_folder_id 仅 schema 兼容（P2 批次二补测）", async () => {
+        const sendFile = vi.fn(async () => ({
+            fileSetId: "fs-group",
+            shareLink: "",
+            fileCount: 1,
+        }));
+        const registry = fileRegistry({ flashTransferApi: { sendFile } });
+        const res = await actionOf(registry, "upload_group_file").handle({
+            group_id: 10001,
+            parent_folder_id: "/",
+            file_uri: "file:///C:/a.zip",
+            file_name: "a.zip",
+        });
+        expect(res.retcode).toBe(0);
+        expect(sendFile).toHaveBeenCalledWith(
+            expect.objectContaining({ chatType: 2, peerUid: "10001" }),
+            [expect.stringMatching(/a\.zip$/)],
+            { name: "a.zip" },
+        );
+    });
 });
 
 describe("get_group_file_download_url", () => {
@@ -280,5 +376,18 @@ describe("get_group_file_download_url", () => {
             file_id: "missing",
         });
         expect(res.retcode).toBe(-404);
+    });
+
+    it("download_url 透传（P2 批次二补测）", async () => {
+        const registry = fileRegistry({
+            richMediaApi: {
+                getGroupFileDownloadUrl: vi.fn(async () => "https://dl/x"),
+            },
+        });
+        const res = await actionOf(registry, "get_group_file_download_url").handle({
+            group_id: 10001,
+            file_id: "f1",
+        });
+        expect(res.data).toEqual({ download_url: "https://dl/x" });
     });
 });

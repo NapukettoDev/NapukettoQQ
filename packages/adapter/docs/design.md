@@ -35,6 +35,16 @@
   `create*Actions(api)` 工厂同文件（领域文件 ≤300 行，共享 helper `resolve-peer` /
   `limits` / `error-map` / `resolve-uid` 保留独立文件）；`action/index.ts` 只遍历工厂
   注册——新增动作在领域文件登记即可，注册表零样板。
+- Milky 动作文件按领域组织：`milky/action/` 下 group（query / manage / essence /
+  notice，另有群文件 `group-file` 一域）/ message（send / query / ops）+ profile /
+  social / system，动作类同文件（每文件 150~300 行）；`index.ts` 仍按 P0 → P1 →
+  P2 批次二顺序逐个 register，动作类迁移不改变注册序与动作名。测试与源码域
+  一一对应（`__tests__/` 下 group-*.test.ts / message-*.test.ts / registry.test.ts
+  等，共享桩在 `test-support.ts`）。
+- 协议目录内不设转发 barrel：`index.ts` 只保留 `package.json` `exports` 声明的
+  6 个子路径入口（包根 / core / onebot11 / satori / kurobot / milky）与承载注册表、
+  类型聚合等实际聚合面的文件；单模块转发壳（如 `satori/api`、`onebot11/api`、
+  `satori/event`、`satori/helper/element`）一律直引目标模块。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
 - 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`/`numericUin`

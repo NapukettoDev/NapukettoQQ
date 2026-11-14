@@ -4,7 +4,7 @@
 import type { BuddyReq } from "@napuketto/kernel";
 import { z } from "zod";
 import { findFirstMatch } from "../../core/shared/lookup.js";
-import type { SatoriApi } from "../api/index.js";
+import type { SatoriApi } from "../api/satori-api.js";
 import { toUser } from "../helper/index.js";
 import type { Friend, List } from "../types/index.js";
 import { BaseSatoriAction } from "./base-action.js";

@@ -6,7 +6,7 @@
  */
 
 import { ActionRegistry } from "../../core/framework/action-registry.js";
-import type { SatoriApi } from "../api/index.js";
+import type { SatoriApi } from "../api/satori-api.js";
 import type { BaseSatoriAction } from "./base-action.js";
 import { type ChannelActionDeps, ChannelGetAction, ChannelListAction } from "./channel.js";
 import {

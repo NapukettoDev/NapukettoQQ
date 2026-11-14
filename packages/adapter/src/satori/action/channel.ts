@@ -3,7 +3,7 @@
  * （channel.create / update / delete / mute：QQ 不支持 → 501，见 registry）
  */
 import { z } from "zod";
-import type { SatoriApi } from "../api/index.js";
+import type { SatoriApi } from "../api/satori-api.js";
 import { toChannelById } from "../helper/index.js";
 import type { Channel, List } from "../types/index.js";
 import { BaseSatoriAction } from "./base-action.js";

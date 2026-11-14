@@ -1,5 +1,6 @@
 /**
- * Milky 系统 + 资料类动作测试（system.ts + profile.ts）
+ * Milky 系统 + 资料类动作测试（system.ts + profile.ts，2026-11-14 域对齐重组，
+ * 自 p3-profile.test.ts 改名归位）
  *
  * 锁定：get_login_info/get_impl_info 版本协商面、get_user_profile 字段映射
  * （无源字段空兜底）、get_friend_info 命中与 NOT_FOUND、set_nickname/set_bio

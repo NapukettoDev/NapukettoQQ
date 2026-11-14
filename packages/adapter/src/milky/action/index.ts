@@ -9,31 +9,10 @@ import { ActionRegistry } from "../../core/index.js";
 import type { MilkyApi } from "../api.js";
 import type { MilkyAction } from "./base-action.js";
 import {
-    AcceptGroupInvitationAction,
-    AcceptGroupRequestAction,
-    DeleteGroupAnnouncementAction,
-    GetGroupAnnouncementsAction,
     GetGroupEssenceMessagesAction,
-    GetGroupInfoAction,
-    GetGroupMemberInfoAction,
-    GetGroupMemberListAction,
-    GetGroupNotificationsAction,
-    KickGroupMemberAction,
-    QuitGroupAction,
-    RejectGroupInvitationAction,
-    RejectGroupRequestAction,
-    SendGroupAnnouncementAction,
     SendGroupMessageReactionAction,
-    SendGroupNudgeAction,
-    SetGroupAvatarAction,
     SetGroupEssenceMessageAction,
-    SetGroupMemberAdminAction,
-    SetGroupMemberCardAction,
-    SetGroupMemberMuteAction,
-    SetGroupMemberSpecialTitleAction,
-    SetGroupNameAction,
-    SetGroupWholeMuteAction,
-} from "./group.js";
+} from "./group-essence.js";
 import {
     CreateGroupFolderAction,
     DeleteGroupFileAction,
@@ -47,18 +26,46 @@ import {
     UploadGroupFileAction,
 } from "./group-file.js";
 import {
+    DeleteGroupAnnouncementAction,
+    KickGroupMemberAction,
+    QuitGroupAction,
+    SendGroupAnnouncementAction,
+    SendGroupNudgeAction,
+    SetGroupAvatarAction,
+    SetGroupMemberAdminAction,
+    SetGroupMemberCardAction,
+    SetGroupMemberMuteAction,
+    SetGroupMemberSpecialTitleAction,
+    SetGroupNameAction,
+    SetGroupWholeMuteAction,
+} from "./group-manage.js";
+import {
+    AcceptGroupInvitationAction,
+    AcceptGroupRequestAction,
+    GetGroupNotificationsAction,
+    RejectGroupInvitationAction,
+    RejectGroupRequestAction,
+} from "./group-notice.js";
+import {
+    GetGroupAnnouncementsAction,
+    GetGroupInfoAction,
+    GetGroupMemberInfoAction,
+    GetGroupMemberListAction,
+} from "./group-query.js";
+import {
     GetCustomFaceUrlListAction,
-    GetForwardedMessagesAction,
-    GetHistoryMessagesAction,
-    GetMessageAction,
     GetResourceTempUrlAction,
     MarkMessageAsReadAction,
     RecallGroupMessageAction,
     RecallPrivateMessageAction,
-    SendGroupMessageAction,
-    SendPrivateMessageAction,
     UploadPrivateFileAction,
-} from "./message.js";
+} from "./message-ops.js";
+import {
+    GetForwardedMessagesAction,
+    GetHistoryMessagesAction,
+    GetMessageAction,
+} from "./message-query.js";
+import { SendGroupMessageAction, SendPrivateMessageAction } from "./message-send.js";
 import {
     GetCookiesAction,
     GetCSRFTokenAction,

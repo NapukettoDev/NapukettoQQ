@@ -8,21 +8,18 @@ export type { SatoriActionDeps } from "./action/index.js";
 export { createSatoriActionRegistry } from "./action/index.js";
 export type { SatoriAdapterOptions } from "./adapter.js";
 export { NapukettoSatoriAdapter } from "./adapter.js";
-export type { SatoriApiOptions } from "./api/index.js";
-export { SatoriApi } from "./api/index.js";
-export type { SatoriEventContent, SatoriEventDeps } from "./event/index.js";
-export type {
-    CanonicalToSatoriDeps,
-    SatoriElement,
-    SatoriToCanonicalDeps,
-} from "./helper/element/index.js";
+export type { SatoriApiOptions } from "./api/satori-api.js";
+export { SatoriApi } from "./api/satori-api.js";
+export type { SatoriEventContent, SatoriEventDeps } from "./event/translate.js";
+export type { CanonicalToSatoriDeps } from "./helper/element/canonical.js";
+export { canonicalToSatoriElements } from "./helper/element/canonical.js";
+export type { SatoriToCanonicalDeps } from "./helper/element/deps.js";
+export type { SatoriElement } from "./helper/element/element.js";
+export { parseElements, renderElements } from "./helper/element/element.js";
 export {
-    canonicalToSatoriElements,
     parseContentToCanonical,
-    parseElements,
-    renderElements,
     satoriToCanonicalElements,
-} from "./helper/element/index.js";
+} from "./helper/element/element-convert.js";
 export type { SatoriConfig } from "./helper/index.js";
 export { HTTP_STATUS, satoriConfigSchema, satoriHttpStatusMap } from "./helper/index.js";
 export type { AssembleSatoriTransportsOptions, SatoriTransportSet } from "./transport.js";
