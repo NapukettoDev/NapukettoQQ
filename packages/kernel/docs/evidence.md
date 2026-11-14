@@ -348,3 +348,22 @@ els=["1:text:[ 对方通过QQ闪传发送文件给你，请打开链接查看：
 （`apis/flash-transfer.ts`）的取舍：完成判定靠事件计数（每个文件 `onFileDidFinishUpload`
 按 `cliFileId` 去重 + 取到 `fileSetId`），不靠返回值；默认 10 分钟超时抛 `TIMEOUT`，
 监听器在 `finally` 注销且卸载失败只吞掉。
+
+## 入站图片路径防御实测（2026-11-14，issue #105 修复真机验收）
+
+环境：Windows 自建宿主，QQ 9.9.33-52230，账号 3567141148；stub 补丁状态
+`applied`（boot 日志 `[media-patch] state=pending … → state=applied cleared=1`，
+组件 B 定案即报 pending，45s 复读命中终态）。
+
+| 观察面 | 结果 |
+|---|---|
+| 原图落盘 | `nt_data/Pic/2026-11/Ori/525b8dcc….jpg`（432,173 B，mtime 15:12）真实存在 |
+| OB11 WS 事件 | image 段 `file` = 绝对本地路径，`stat` 通过（432,173 B） |
+| Milky `get_history_messages` | pic/image 段 `resource_id` = 同一绝对路径（历史读取路径同样有效） |
+| 缩略图 | `Thumb/` 目录零文件、事件 thumbPath 恒空——`GetAutoPreloadSize` thumbSize=0 走原图分支，缩略图分支未触发（与 2026-11-12 结论一致） |
+| transferStatus | 原始字段无 NAPI/协议面暴露，未单独回查；落盘与路径有效性由磁盘 + 双协议面证实 |
+
+含义：补丁 applied 时，入站图片从落盘到协议层路径全链真实；kernel 防御层
+（桥层落盘宽限 + canonical 存在性裁决）在快速路径零开销直通。补丁降级
+（killswitch / 版本特征失配）时由单测覆盖：路径缺失 → 宽限 2s → 置空（或回退
+picUrl），下游不再收到不存在的本地路径。

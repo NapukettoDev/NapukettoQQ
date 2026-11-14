@@ -21,7 +21,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     return { ...actual, spawn: spawnMock };
 });
 
-import { launchSelfHost } from "../launcher.js";
+import { type LaunchOptions, launchSelfHost } from "../launcher.js";
 
 let tmp = "";
 
@@ -85,6 +85,85 @@ describe("launchSelfHost 环境注入（win32 本机 node）", () => {
             expect(env["NAPUTO_CFG_DIR"]).toBe(join(tmp, "acct-10001"));
             expect(env["NAPKETTO_CONFIG"]).toBe(join(tmp, "napuketto.toml"));
             expect((env["PATH"] ?? "").includes(stubDir)).toBe(true);
+        },
+    );
+
+    it.skipIf(process.platform !== "win32")(
+        "nativeMediaPatch 开关注入（issue #105：显式 true 清继承 killswitch / false 注入 / 缺省继承）",
+        async () => {
+            tmp = mkdtempSync(join(tmpdir(), "napuketto-launcher-patch-test-"));
+            const selfHostEntry = join(tmp, "self-host.cjs");
+            writeFileSync(selfHostEntry, "");
+            const stubDir = join(tmp, "stub");
+            mkdirSync(stubDir);
+            writeFileSync(join(stubDir, "QQNT.dll"), "");
+            const cfgDir = join(tmp, "acct-10001");
+            spawnMock.mockImplementation(
+                () => new EventEmitter() as unknown as ReturnType<typeof spawn>,
+            );
+            const base: LaunchOptions = {
+                qq: {
+                    qqPath: "C:\\QQ",
+                    installDir: "C:\\QQ",
+                    version: "9.9.9",
+                    wrapperPath: join(stubDir, "wrapper.node"),
+                    source: "local" as const,
+                },
+                kernelEntry: join(tmp, "kernel.mjs"),
+                cfgDir,
+                selfHostEntry,
+                stubDir,
+                stdio: ["ignore", "pipe", "pipe"],
+            };
+            const statusPath = join(cfgDir, "media-patch-status.json");
+
+            const prevDisable = process.env["NAPUTO_DISABLE_MEDIA_PATCH"];
+            process.env["NAPUTO_DISABLE_MEDIA_PATCH"] = "1";
+            try {
+                // 显式 true：清除继承的 killswitch，注入状态路径
+                await launchSelfHost({ ...base, nativeMediaPatch: true });
+                {
+                    const [, , opts] = spawnMock.mock.calls.at(-1) as unknown as [
+                        string,
+                        string[],
+                        { env: Record<string, string> },
+                    ];
+                    expect(opts.env["NAPUTO_DISABLE_MEDIA_PATCH"]).toBeUndefined();
+                    expect(opts.env["NAPUTO_MEDIA_PATCH_STATUS"]).toBe(statusPath);
+                }
+
+                // 显式 false：注入 killswitch（覆盖继承值），状态路径保留（观测 disabled_by_env）
+                spawnMock.mockClear();
+                await launchSelfHost({ ...base, nativeMediaPatch: false });
+                {
+                    const [, , opts] = spawnMock.mock.calls.at(-1) as unknown as [
+                        string,
+                        string[],
+                        { env: Record<string, string> },
+                    ];
+                    expect(opts.env["NAPUTO_DISABLE_MEDIA_PATCH"]).toBe("1");
+                    expect(opts.env["NAPUTO_MEDIA_PATCH_STATUS"]).toBe(statusPath);
+                }
+
+                // 缺省：继承环境（killswitch 保留）+ 状态路径注入
+                spawnMock.mockClear();
+                await launchSelfHost({ ...base });
+                {
+                    const [, , opts] = spawnMock.mock.calls.at(-1) as unknown as [
+                        string,
+                        string[],
+                        { env: Record<string, string> },
+                    ];
+                    expect(opts.env["NAPUTO_DISABLE_MEDIA_PATCH"]).toBe("1");
+                    expect(opts.env["NAPUTO_MEDIA_PATCH_STATUS"]).toBe(statusPath);
+                }
+            } finally {
+                if (prevDisable === undefined) {
+                    delete process.env["NAPUTO_DISABLE_MEDIA_PATCH"];
+                } else {
+                    process.env["NAPUTO_DISABLE_MEDIA_PATCH"] = prevDisable;
+                }
+            }
         },
     );
 });

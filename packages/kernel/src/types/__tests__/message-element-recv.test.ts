@@ -10,8 +10,12 @@
  *  - 未知 elementType → unknown（宽容不抛）
  *  - 子元素缺失 → 默认空值 canonical
  */
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { ChatType, type RawElement, type RawMessage } from "@napuketto/kernel";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { toCanonicalElements } from "../message-element.js";
 import { ElementType } from "../services/msg-service.js";
 
@@ -32,6 +36,18 @@ function makeMsg(elements: RawElement[]): RawMessage {
         elements,
     };
 }
+
+// pic 本地路径存在性防御（2026-11-14）：「存在 → 直通」用例用真实临时文件承载。
+let picTmpDir: string;
+let realPicPath: string;
+beforeAll(() => {
+    picTmpDir = mkdtempSync(join(tmpdir(), "napuketto-pic-recv-"));
+    realPicPath = join(picTmpDir, "real.png");
+    writeFileSync(realPicPath, "png");
+});
+afterAll(() => {
+    rmSync(picTmpDir, { recursive: true, force: true });
+});
 
 describe("toCanonicalElements", () => {
     it("TEXT 普通 → canonical text", () => {
@@ -97,22 +113,42 @@ describe("toCanonicalElements", () => {
         ]);
     });
 
-    it("PIC：有 url → path + url；无 url → 仅 path", () => {
+    it("PIC：本地路径存在 → path 直通 + url；无 url → 仅 path", () => {
         expect(
             toCanonicalElements(
                 makeMsg([
                     {
                         elementType: ElementType.PIC,
-                        picElement: { picPath: "/p.png", picUrl: "https://x/p.png" },
+                        picElement: { picPath: realPicPath, picUrl: "https://x/p.png" },
                     },
                 ]),
             ),
-        ).toEqual([{ type: "image", path: "/p.png", url: "https://x/p.png" }]);
+        ).toEqual([{ type: "image", path: realPicPath, url: "https://x/p.png" }]);
         expect(
             toCanonicalElements(
-                makeMsg([{ elementType: ElementType.PIC, picElement: { picPath: "/p.png" } }]),
+                makeMsg([{ elementType: ElementType.PIC, picElement: { picPath: realPicPath } }]),
             ),
-        ).toEqual([{ type: "image", path: "/p.png" }]);
+        ).toEqual([{ type: "image", path: realPicPath }]);
+    });
+
+    it("PIC 路径不存在 → 不暴露（有 url 回退 url，无 url 置空）", () => {
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    {
+                        elementType: ElementType.PIC,
+                        picElement: { picPath: "/nonexistent/p.png", picUrl: "https://x/p.png" },
+                    },
+                ]),
+            ),
+        ).toEqual([{ type: "image", path: "https://x/p.png", url: "https://x/p.png" }]);
+        expect(
+            toCanonicalElements(
+                makeMsg([
+                    { elementType: ElementType.PIC, picElement: { picPath: "/nonexistent/p.png" } },
+                ]),
+            ),
+        ).toEqual([{ type: "image", path: "" }]);
     });
 
     it("PIC 无 path 无 url → path 空", () => {
@@ -124,14 +160,14 @@ describe("toCanonicalElements", () => {
     it("PIC Linux 形态：无 picPath/picUrl，原图走 sourcePath（originImageUrl 相对路径不冒充 url）", () => {
         const picElement = {
             fileName: "A.png",
-            sourcePath: "/data/Pic/2026-11/Ori/a.png",
+            sourcePath: realPicPath,
             originImageUrl: "/download?appid=1407&fileid=xx&spec=0",
             md5HexStr: "a",
         };
         expect(
             toCanonicalElements(makeMsg([{ elementType: ElementType.PIC, picElement }])),
-        ).toEqual([{ type: "image", path: "/data/Pic/2026-11/Ori/a.png" }]);
-        // 空串字段同样视为缺失（Linux 原生对象给 "" 而非省略）
+        ).toEqual([{ type: "image", path: realPicPath }]);
+        // 空串字段同样视为缺失（Linux 原生对象给 "" 而非省略）；缺失路径不暴露
         expect(
             toCanonicalElements(
                 makeMsg([
@@ -141,7 +177,7 @@ describe("toCanonicalElements", () => {
                     },
                 ]),
             ),
-        ).toEqual([{ type: "image", path: "/s.png" }]);
+        ).toEqual([{ type: "image", path: "" }]);
     });
 
     it("FACE → id 转字符串；子元素缺失 → '0'", () => {

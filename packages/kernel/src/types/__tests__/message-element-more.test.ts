@@ -5,7 +5,11 @@
  *  - video thumbPath 三形态防御读取（Map / 平面对象 / 字符串 / 空对象）
  * 发送方向（toSendElements）已有基线，不重复。
  */
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { RawElement, RawMessage } from "../entities.js";
 import type { CanonicalElement } from "../message-element.js";
 import { toCanonicalElements, toSendElements } from "../message-element.js";
@@ -13,6 +17,19 @@ import { toCanonicalElements, toSendElements } from "../message-element.js";
 function msgOf(el: RawElement): RawMessage {
     return { msgId: "m1", elements: [el] } as unknown as RawMessage;
 }
+
+// pic 本地路径存在性防御（2026-11-14）：canonical 只暴露真实存在的本地路径，
+// 「路径存在 → 直通」用例用真实临时文件承载。
+let picTmpDir: string;
+let realPicPath: string;
+beforeAll(() => {
+    picTmpDir = mkdtempSync(join(tmpdir(), "napuketto-pic-"));
+    realPicPath = join(picTmpDir, "real.png");
+    writeFileSync(realPicPath, "png");
+});
+afterAll(() => {
+    rmSync(picTmpDir, { recursive: true, force: true });
+});
 
 describe("text 元素", () => {
     it("纯文本", () => {
@@ -75,26 +92,39 @@ describe("text 元素", () => {
 });
 
 describe("pic 元素", () => {
-    it("picPath + picUrl：path/url 都带上", () => {
+    it("picPath 存在 + picUrl：path/url 都带上", () => {
         expect(
             toCanonicalElements(
                 msgOf({
                     elementType: 2,
-                    picElement: { picPath: "/p.png", picUrl: "https://u" } as never,
+                    picElement: { picPath: realPicPath, picUrl: "https://u" } as never,
                 }),
             ),
-        ).toEqual([{ type: "image", path: "/p.png", url: "https://u" }]);
+        ).toEqual([{ type: "image", path: realPicPath, url: "https://u" }]);
     });
 
-    it("仅 picUrl → path 兜底 picUrl；仅 picPath → 无 url 键", () => {
+    it("仅 picUrl → path 兜底 picUrl", () => {
         expect(
             toCanonicalElements(
                 msgOf({ elementType: 2, picElement: { picUrl: "https://u" } as never }),
             ),
         ).toEqual([{ type: "image", path: "https://u", url: "https://u" }]);
+    });
+
+    it("picPath 不存在 → path 回退 picUrl；无 url → 置空（不暴露不存在的本地路径）", () => {
         expect(
-            toCanonicalElements(msgOf({ elementType: 2, picElement: { picPath: "/p" } as never })),
-        ).toEqual([{ type: "image", path: "/p" }]);
+            toCanonicalElements(
+                msgOf({
+                    elementType: 2,
+                    picElement: { picPath: "/nonexistent/p.png", picUrl: "https://u" } as never,
+                }),
+            ),
+        ).toEqual([{ type: "image", path: "https://u", url: "https://u" }]);
+        expect(
+            toCanonicalElements(
+                msgOf({ elementType: 2, picElement: { picPath: "/nonexistent/p" } as never }),
+            ),
+        ).toEqual([{ type: "image", path: "" }]);
         expect(toCanonicalElements(msgOf({ elementType: 2 } as never))).toEqual([
             { type: "image", path: "" },
         ]);
@@ -287,26 +317,26 @@ describe("toSendElements 补充分支", () => {
 });
 
 describe("缺省字段兜底补充", () => {
-    it("pic：picPath/picUrl 全缺 → path 空串；仅 picPath → 无 url 键", () => {
+    it("pic：picPath/picUrl 全缺 → path 空串；picPath 存在 → 无 url 键", () => {
         expect(toCanonicalElements(msgOf({ elementType: 2, picElement: {} } as never))).toEqual([
             { type: "image", path: "" },
         ]);
         expect(
             toCanonicalElements(
-                msgOf({ elementType: 2, picElement: { picPath: "/local/p.png" } } as never),
+                msgOf({ elementType: 2, picElement: { picPath: realPicPath } } as never),
             ),
-        ).toEqual([{ type: "image", path: "/local/p.png" }]);
+        ).toEqual([{ type: "image", path: realPicPath }]);
     });
 
-    it("pic：有 picUrl → canonical 带 url", () => {
+    it("pic：picPath 存在 + picUrl → canonical 带 url", () => {
         expect(
             toCanonicalElements(
                 msgOf({
                     elementType: 2,
-                    picElement: { picPath: "/p.png", picUrl: "https://example/p.png" },
+                    picElement: { picPath: realPicPath, picUrl: "https://example/p.png" },
                 } as never),
             ),
-        ).toEqual([{ type: "image", path: "/p.png", url: "https://example/p.png" }]);
+        ).toEqual([{ type: "image", path: realPicPath, url: "https://example/p.png" }]);
     });
 
     it("file：无 fileName → 无 name 键；有 fileName → name 键", () => {

@@ -53,6 +53,12 @@ export interface LaunchOptions {
     qrOnly?: boolean;
     /** IPC 子进程模式（=1：stdout 走 JSON 行协议 + stdin 收 action/control，koishi 插件驱动）。 */
     ipc?: boolean;
+    /**
+     * 入站图片自动下载补丁（issue #105，私有 native/ stub 组件）开关。
+     * true（缺省）/ undefined = 启用并注入状态文件路径；false = 注入
+     * NAPUTO_DISABLE_MEDIA_PATCH=1 killswitch（stub 跳过全部内存操作）。
+     */
+    nativeMediaPatch?: boolean;
     /** 自建宿主入口（默认 dist/host/self-host.cjs）。 */
     selfHostEntry?: string;
     /** Windows 版 node.exe 路径（win32 非 node 宿主时显式指定；缺省系统 PATH 探测/自动下载）。 */
@@ -387,9 +393,18 @@ function buildLaunchEnv(options: LaunchOptions): Record<string, string> {
         ...(options.quickUin !== undefined ? { [ENV.QUICK_UIN]: options.quickUin } : {}),
         ...(options.qrOnly === true ? { [ENV.QR_ONLY]: "1" } : {}),
         ...(options.ipc === true ? { [ENV.IPC]: "1" } : {}),
+        // 入站图片自动下载补丁（issue #105）：状态文件恒注入（观测面）；显式
+        // false 追加 killswitch（stub 跳过全部内存操作并写 disabled_by_env）。
+        [ENV.MEDIA_PATCH_STATUS]: join(cfg, "media-patch-status.json"),
+        ...(options.nativeMediaPatch === false ? { [ENV.MEDIA_PATCH_DISABLE]: "1" } : {}),
         ...(options.extraEnv !== undefined ? options.extraEnv : {}),
     };
-    return { ...env, ...optional };
+    const merged = { ...env, ...optional };
+    if (options.nativeMediaPatch === true) {
+        // 显式 true：清除继承的 killswitch（显式配置优先于环境变量）
+        delete merged[ENV.MEDIA_PATCH_DISABLE];
+    }
+    return merged;
 }
 
 /** 环境变量名（self-host.cjs 与 kernel 引导读取）。 */
@@ -417,4 +432,8 @@ export const ENV = {
     IPC: "NAPUTO_IPC",
     /** 数据根（cli 注入：停止哨兵目录解析用，self-host 不再从 CFG_DIR 反推）。 */
     DATA_ROOT: "NAPUTO_DATA_ROOT",
+    /** 入站图片自动下载补丁 killswitch（=1 时 stub 跳过全部内存操作）。 */
+    MEDIA_PATCH_DISABLE: "NAPUTO_DISABLE_MEDIA_PATCH",
+    /** 入站图片自动下载补丁状态文件路径（stub 后台线程写 JSON，self-host 读后记日志）。 */
+    MEDIA_PATCH_STATUS: "NAPUTO_MEDIA_PATCH_STATUS",
 } as const;
