@@ -54,6 +54,15 @@ describe("OneBotApi uin/uid 转换委托", () => {
         expect(uinToUid).toHaveBeenCalledWith(["90001"]);
         expect(uidToUin).toHaveBeenCalledWith(["u90001"]);
     });
+
+    it("裸引用（脱绑）调用仍委托 groupApi（resolveUid 回调场景，issue #110）", async () => {
+        const api = makeApiWithGroupApi({
+            uinToUid: vi.fn(async (uins: string[]) => new Map(uins.map((u) => [u, `u${u}`]))),
+        });
+        const detached = api.uinToUid;
+        // ESM 严格模式下裸函数调用 this === undefined，未绑定的原型方法在此炸 groupApi
+        expect(await detached.call(undefined, ["90001"])).toEqual(new Map([["90001", "u90001"]]));
+    });
 });
 
 /** 构造 OneBotApi（注入带方法的 groupApi 桩）。 */

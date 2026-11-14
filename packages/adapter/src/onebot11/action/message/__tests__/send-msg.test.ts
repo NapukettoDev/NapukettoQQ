@@ -255,8 +255,10 @@ describe("send_private_msg", () => {
 
     it("uin 解析不到 → retcode 105", async () => {
         const { deps } = makeDeps();
-        deps.uinToUid = vi.fn(async () => new Map<string, string>());
-        const action = new SendPrivateMsgAction(deps);
+        const action = new SendPrivateMsgAction({
+            ...deps,
+            uinToUid: vi.fn(async () => new Map<string, string>()),
+        });
         const result = await action.handle({ user_id: 11111, message: "私信" });
         expect(result.retcode).toBe(105);
     });
