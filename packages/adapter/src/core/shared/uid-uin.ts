@@ -48,3 +48,14 @@ export function toUin(
 export function toUinString(uid: string, uidToUin: ReadonlyMap<string, string>): string {
     return uidToUin.get(uid) ?? uid;
 }
+
+/** 数字串判别（uin）。 */
+const NUMERIC_RE = /^\d+$/;
+
+/**
+ * 数字串 uin → number（缺失/非法 → null，调用方按口径省略或跳过；
+ * 2026-11-14 自 onebot11 adapter.ts 收拢，essence 载荷 operator/sender 用）。
+ */
+export function numericUin(value: string | null): number | null {
+    return value !== null && NUMERIC_RE.test(value) ? Number(value) : null;
+}
