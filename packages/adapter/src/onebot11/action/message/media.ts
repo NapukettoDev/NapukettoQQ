@@ -140,8 +140,9 @@ function extractPicElement(
     el: RawElement,
     deps: { mediaBaseDir?: string | undefined },
 ): MediaInfoResult | undefined {
+    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
     const pic = el.picElement;
-    if (pic === undefined) {
+    if (pic == null) {
         return undefined;
     }
     const out: MediaInfoResult = {};
@@ -229,9 +230,10 @@ export function createMediaActions(api: OneBotApi): Ob11Action[] {
                 if (first === undefined) {
                     throw kernelError(`消息 ${id} 不存在或已被撤回`, "NOT_FOUND");
                 }
-                const el = first.elements.find((e) => e.pttElement !== undefined);
+                // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+                const el = first.elements.find((e) => e.pttElement != null);
                 const ptt = el?.pttElement;
-                if (ptt === undefined || ptt.filePath === undefined) {
+                if (ptt == null || ptt.filePath === undefined) {
                     throw kernelError(`消息 ${id} 不包含语音`, "NOT_FOUND");
                 }
                 const meta = (): MediaInfoResult => ({

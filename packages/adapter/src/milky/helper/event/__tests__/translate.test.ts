@@ -6,6 +6,8 @@
  *  - 段映射：text / mention（uid→uin，失败跳过）/ mention_all / face / reply 回填 /
  *    image / light_app / xml；unknown 跳过
  *  - message_recall：operator uid→uin + wording
+ *  - time：msgTime 双平台样本（10 位秒=Linux / 13 位毫秒=Windows）经 toUnixSeconds
+ *    归一，输出恒为 Unix 秒
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
@@ -82,6 +84,14 @@ describe("toMessageReceiveEvent", () => {
         expect(data.group).toEqual(GROUP_ENTITY);
         expect(data.group_member).toEqual(MEMBER_ENTITY);
         expect(data.segments).toEqual([{ type: "text", data: { text: "你好" } }]);
+    });
+
+    it("10 位秒级 msgTime（Linux 3.2.x）→ time 同值（归一不二次除 1000）", () => {
+        const event = toMessageReceiveEvent(makeMsg({ msgTime: "1760000000" }), {
+            selfUin: "10000",
+        });
+        expect(event.time).toBe(1760000000);
+        expect(event.data.time).toBe(1760000000);
     });
 
     it("好友消息：peer_id=peerUin + friend 实体（peerName 兜底昵称）", () => {

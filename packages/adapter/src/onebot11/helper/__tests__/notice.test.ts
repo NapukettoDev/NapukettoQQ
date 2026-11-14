@@ -483,3 +483,53 @@ describe("toOfflineFileNotice：字段映射", () => {
         expect(event.time).toBeGreaterThan(0);
     });
 });
+
+describe("Linux 原生空值形状（变体字段显式 null，== null 判据回归）", () => {
+    it("grayTipElement 为 null → 无事件不抛错（toOb11NoticeEvent 循环守卫）", () => {
+        // 回归：`g === undefined` 遇显式 null 直读字段抛 TypeError → 收链路中断
+        const msg = stub<RawMessage>({
+            ...groupMsg({ subElementType: GrayTipSubType.REVOKE }),
+            elements: [
+                { elementType: 1, textElement: { content: "hi" }, grayTipElement: null },
+            ] as never,
+        });
+        expect(() => toOb11NoticeEvent(msg, CTX)).not.toThrow();
+        expect(toOb11NoticeEvent(msg, CTX)).toBeNull();
+    });
+
+    it("REVOKE 但 revokeElement 显式 null → 无事件（toRecall == null 判据）", () => {
+        // 旧 `=== undefined` 判据漏判 null → revoke.operatorUid 直读 null 抛错
+        const msg = groupMsg({
+            subElementType: GrayTipSubType.REVOKE,
+            revokeElement: null,
+        });
+        expect(() => toOb11NoticeEvent(msg, CTX)).not.toThrow();
+        expect(toOb11NoticeEvent(msg, CTX)).toBeNull();
+    });
+
+    it("GROUP 但 groupElement 显式 null → 无事件不抛错", () => {
+        const msg = groupMsg({
+            subElementType: GrayTipSubType.GROUP,
+            groupElement: null,
+        });
+        expect(() => toOb11NoticeEvent(msg, CTX)).not.toThrow();
+        expect(toOb11NoticeEvent(msg, CTX)).toBeNull();
+    });
+
+    it("REVOKE 正常撤回后跟 null 变体元素 → 事件仍产出（null 不打断翻译）", () => {
+        const msg = stub<RawMessage>({
+            ...groupMsg({ subElementType: GrayTipSubType.REVOKE }),
+            elements: [
+                {
+                    elementType: 8,
+                    grayTipElement: {
+                        subElementType: GrayTipSubType.REVOKE,
+                        revokeElement: { operatorUid: "u9" },
+                    },
+                },
+                { elementType: 8, grayTipElement: null },
+            ] as never,
+        });
+        expect(toOb11NoticeEvent(msg, CTX)).toMatchObject({ notice_type: "group_recall" });
+    });
+});

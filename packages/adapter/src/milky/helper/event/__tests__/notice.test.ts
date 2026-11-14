@@ -2,7 +2,8 @@
  * Milky notice 事件翻译测试（grayTip 系）
  *
  * 锁定：成员增加（approve/invite 两形态）/ 减少（踢/退）/ 禁言 / 全员禁言 /
- * 改名 / 解散（操作者缺失不产出）/ 戳一戳（群/好友）/ 未知子类型返回 null。
+ * 改名 / 解散（操作者缺失不产出）/ 戳一戳（群/好友）/ 未知子类型返回 null /
+ * time 双平台样本（10 位秒=Linux / 13 位毫秒=Windows）归一恒为 Unix 秒。
  */
 import {
     ChatType,
@@ -66,6 +67,24 @@ describe("toMilkyNoticeEvent", () => {
             event_type: "group_member_increase",
             data: { group_id: 10001, user_id: 20002, operator_id: 20002, invitor_id: null },
         });
+    });
+
+    it("10 位秒级 msgTime（Linux 3.2.x）→ time 同值（归一不二次除 1000）", () => {
+        const event = toMilkyNoticeEvent(
+            {
+                ...groupMsg({
+                    subElementType: GrayTipSubType.GROUP,
+                    groupElement: {
+                        type: TipGroupElementType.MEMBER_ADD,
+                        memberUid: "uid-20002",
+                        adminUid: "uid-20002",
+                    },
+                }),
+                msgTime: "1760000000",
+            },
+            ctx(),
+        );
+        expect(event?.time).toBe(1760000000);
     });
 
     it("成员增加（邀请入群）：invitor_id 有值、operator_id 为 null", () => {

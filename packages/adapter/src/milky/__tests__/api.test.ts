@@ -206,6 +206,28 @@ describe("MilkyApi.resolveSentOutput", () => {
         ).resolves.toBe("sent-1");
     });
 
+    it("10 位秒级 msgTime（Linux 3.2.x）→ time 同值（归一不二次除 1000）", async () => {
+        const sent = {
+            msgId: "sent-sec",
+            msgSeq: "1301",
+            msgTime: "1760000000",
+            chatType: ChatType.GROUP,
+            peerUid: "10001",
+            senderUin: "10000",
+            senderUid: "uid-10000",
+            elements: [],
+        };
+        const api = stubApi({
+            fetchMessages: async () => [],
+        });
+        (api.msgApi as { fetchMsgsByMsgId: unknown }).fetchMsgsByMsgId = vi.fn(async () => [sent]);
+        const out = await api.resolveSentOutput(
+            { chatType: ChatType.GROUP, peerUid: "10001" },
+            "sent-sec",
+        );
+        expect(out.time).toBe(1760000000);
+    });
+
     it("回查未命中 → UNKNOWN 抛错", async () => {
         const api = stubApi();
         (api.msgApi as { fetchMsgsByMsgId: unknown }).fetchMsgsByMsgId = vi.fn(async () => []);

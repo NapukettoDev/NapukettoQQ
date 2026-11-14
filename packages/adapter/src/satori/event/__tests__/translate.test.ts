@@ -31,13 +31,21 @@ describe("toSatoriMessageEvent", () => {
     it("群聊消息 → message-created（channel/guild/user/member 平铺）", async () => {
         const content = await toSatoriMessageEvent(makeRawMsg(), { selfUin: "10001" });
         expect(content.type).toBe("message-created");
-        expect(content.timestamp).toBe(1700000000);
+        // 10 位秒级 msgTime（Linux）→ Satori 规范毫秒级 timestamp
+        expect(content.timestamp).toBe(1700000000000);
         expect(content.guild).toEqual({ id: "10001", name: "测试群" });
         expect(content.channel).toEqual({ id: "10001", type: 0, name: "测试群" });
         expect(content.user).toEqual({ id: "90001", name: "小明" });
         expect(content.member).toEqual({ user: { id: "90001", name: "小明" } });
         expect(content.message?.id).toBe("m1");
         expect(content.message?.content).toBe("你好");
+    });
+
+    it("13 位毫秒级 msgTime（Windows）→ timestamp 同值（量级归一无二次除 1000）", async () => {
+        const content = await toSatoriMessageEvent(makeRawMsg({ msgTime: "1700000000000" }), {
+            selfUin: "10001",
+        });
+        expect(content.timestamp).toBe(1700000000000);
     });
 
     it("私聊消息 → 无 guild/member，channel DIRECT", async () => {
@@ -129,7 +137,7 @@ describe("toSatoriGrayTipEvent：撤回", () => {
         const content = await toSatoriGrayTipEvent(raw, UIN_MAP);
         expect(content).toEqual({
             type: "message-deleted",
-            timestamp: 1700000100,
+            timestamp: 1700000100000,
             channel: { id: "10001", type: 0 },
             guild: { id: "10001", name: "测试群" },
             message: { id: "9" }, // NT 侧撤回 id 取 msgSeq（对齐 OB11 语义）
@@ -195,7 +203,7 @@ describe("toSatoriGrayTipEvent：群成员变动", () => {
         const content = await toSatoriGrayTipEvent(raw, UIN_MAP);
         expect(content).toEqual({
             type: "guild-member-added",
-            timestamp: 1700000200,
+            timestamp: 1700000200000,
             guild: { id: "10001", name: "测试群" },
             channel: { id: "10001", type: 0 },
             member: { user: { id: "91001", name: "新人" }, nick: "备注" },

@@ -3,7 +3,7 @@
  *
  * （传输装配/重建语义见 adapter-reload.test.ts 与 transport.test.ts，此处
  * 聚焦消息事件广播：sn 递增、事件形状、grayTip 分流、退订幂等、无 broadcaster
- * 降级、grayTip 翻译失败静默。）
+ * 降级、翻译失败 warn 留痕。）
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -68,6 +68,11 @@ async function drain(): Promise<void> {
 function makeAdapter(
     api: StubSatoriApi,
     spy?: ReturnType<typeof spyBroadcaster>,
+    logger?: {
+        warn: (obj: unknown, msg?: string) => void;
+        debug: (obj: unknown, msg?: string) => void;
+        info: (obj: unknown, msg?: string) => void;
+    },
 ): {
     adapter: NapukettoSatoriAdapter;
     fire: (msgs: unknown) => void;
@@ -94,6 +99,7 @@ function makeAdapter(
                 seed: satoriConfigSchema.parse({}),
             }),
             ...(spy !== undefined ? { broadcaster: spy.broadcaster } : {}),
+            ...(logger !== undefined ? { logger } : {}),
             msgChannel: channel,
         }),
     );
@@ -187,7 +193,8 @@ describe("收链路广播（Msg/onRecvMsg）", () => {
         expect(created?.guild).toEqual({ id: "10001", name: "测试群" });
         expect(created?.channel).toEqual({ id: "10001", type: 0, name: "测试群" });
         expect(created?.user).toEqual({ id: "90001", name: "小明" });
-        expect(created?.login).toMatchObject({ platform: "qq", sn: 2 });
+        // login.sn 是登录序号，与事件 sn（此处为 2）是两套计数：非登录事件固定 0
+        expect(created?.login).toMatchObject({ platform: "qq", sn: 0 });
         // 收方向回填频道类型缓存（adapter 内部 SatoriApi 实例；原型 spy 观察）
         const spy = vi.spyOn(SatoriApi.prototype, "setChannelType");
         await fireAndWait([makeRawMsg({ msgId: "again" })]);
@@ -299,14 +306,43 @@ describe("grayTip 分流", () => {
         expect(eventBodies(spyResult.events)).toHaveLength(1); // 仅 login-updated
     });
 
-    it("grayTip 翻译失败（uidToUin 拒绝）→ 静默吞掉，不产生未处理拒绝", async () => {
+    it("grayTip 翻译失败（uidToUin 拒绝）→ warn 留痕，不产生未处理拒绝", async () => {
         const spyResult = spyBroadcaster();
         const api = stubSatoriApi();
+        const warn = vi.fn();
         vi.mocked(api.groupApi.uidToUin).mockRejectedValueOnce(new Error("转换失败"));
-        const { adapter, fireAndWait } = makeAdapter(api, spyResult);
+        const { adapter, fireAndWait } = makeAdapter(api, spyResult, {
+            warn,
+            info: vi.fn(),
+            debug: vi.fn(),
+        });
         await adapter.start();
         await fireAndWait([makeRevokeMsg()]);
         expect(eventBodies(spyResult.events)).toHaveLength(1); // 仅 login-updated，无事件
+        // 失败留痕（warn 日志，非静默）
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[1]).toContain("grayTip 翻译失败");
+        expect(warn.mock.calls[0]?.[0]).toMatchObject({ err: "转换失败" });
+    });
+
+    it("message-created 翻译失败（channel 类型回填抛错）→ warn 留痕，事件跳过", async () => {
+        const spyResult = spyBroadcaster();
+        const warn = vi.fn();
+        const spy = vi.spyOn(SatoriApi.prototype, "setChannelType").mockImplementation(() => {
+            throw new Error("回填失败");
+        });
+        const { adapter, fireAndWait } = makeAdapter(stubSatoriApi(), spyResult, {
+            warn,
+            info: vi.fn(),
+            debug: vi.fn(),
+        });
+        await adapter.start();
+        await fireAndWait([makeRawMsg()]);
+        spy.mockRestore();
+        const types = eventBodies(spyResult.events).map((e) => e.type);
+        expect(types).not.toContain("message-created");
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[1]).toContain("消息翻译失败");
     });
 
     it("message-created 链路 at uid 转换失败 → at 原样 uid，事件照常广播", async () => {

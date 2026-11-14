@@ -5,7 +5,8 @@
  *  - 群聊：guild + channel(TEXT) + user + member
  *  - 私聊：channel(DIRECT) + user（对端兜底 senderUin 或 peerUin）
  *  - content：元素渲染；空 → 不写
- *  - created_at：有效时间戳写入
+ *  - created_at：Satori 规范毫秒级；msgTime 双平台样本（10 位秒=Linux /
+ *    13 位毫秒=Windows）经 toUnixSeconds 归一后换算，量级无关
  *  - memberName 与 nickname 不同 → member.nick
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
@@ -42,7 +43,13 @@ describe("toSatoriMessage", () => {
         expect(msg.channel).toEqual({ id: "10001", type: 0, name: "测试群" });
         expect(msg.user).toEqual({ id: "90001", name: "小明" });
         expect(msg.member).toEqual({ user: { id: "90001", name: "小明" } });
-        expect(msg.created_at).toBe(1700000000);
+        // 10 位秒级样本（Linux）→ Satori 规范毫秒级 created_at
+        expect(msg.created_at).toBe(1700000000000);
+    });
+
+    it("13 位毫秒级 msgTime（Windows）→ created_at 同值（量级归一无二次除 1000）", async () => {
+        const msg = await toSatoriMessage(makeMsg({ msgTime: "1700000000000" }), deps);
+        expect(msg.created_at).toBe(1700000000000);
     });
 
     it("群聊 memberName 与 nickname 不同 → member.nick", async () => {

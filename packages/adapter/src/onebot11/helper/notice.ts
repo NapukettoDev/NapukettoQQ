@@ -28,7 +28,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { toUnixSeconds } from "../../shared/raw-message.js";
-import { toUin } from "../../shared/uid-uin.js";
+import { MS_TO_SEC, toUin } from "../../shared/uid-uin.js";
 
 export { collectGrayTipUids, hasGrayTip } from "../../shared/gray-tip.js";
 
@@ -46,9 +46,6 @@ import type {
     OB11GroupUploadNoticeEvent,
     OB11NotifyNoticeEvent,
 } from "../event/index.js";
-
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
 
 /** 群文件业务类型（group_upload 的 file.busid,与 kernel 群文件系列同源语义）。 */
 const GROUP_FILE_BUS_ID = 102;
@@ -98,7 +95,8 @@ function toRecall(
     g: GrayTipElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupRecallNoticeEvent | OB11FriendRecallNoticeEvent | null {
-    if (g?.revokeElement === undefined) {
+    // Linux 原生对象把未命中的变体字段显式置 null（== null 判据，见 design 不变量）
+    if (g?.revokeElement == null) {
         return null;
     }
     const revoke = g.revokeElement;
@@ -193,8 +191,9 @@ function toGroupChange(
     g: GrayTipElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupEvent | null {
+    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
     const grp = g?.groupElement;
-    if (grp === undefined || grp.type === undefined) {
+    if (grp == null || grp.type === undefined) {
         return null;
     }
     const builder = GROUP_CHANGE_BUILDERS[grp.type];
@@ -378,7 +377,8 @@ function logUntranslatedGrayTip(msg: RawMessage, ctx: NoticeTranslateContext): v
 export function toOb11NoticeEvent(msg: RawMessage, ctx: NoticeTranslateContext): OB11Event | null {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        if (g === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+        if (g == null) {
             continue;
         }
         const event = translateGrayTip(msg, g, ctx);

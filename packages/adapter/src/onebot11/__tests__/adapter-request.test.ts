@@ -1,7 +1,8 @@
 /**
- * adapter 请求分发与事件链补充测试：handleRequest（404/echo/缺参）、心跳
- * （fake timers）、reportSelfMessage、offline_file / online_file / 好友列表 raw 日志、
- * sysmsg 732:21 group_card 识别表广播路径（uid→uin 批量转换）。
+ * adapter 请求分发与事件链补充测试：handleRequest（404/echo/缺参）、传输层
+ * 异常兜底（retcode 999 + echo 透传）、心跳（fake timers）、reportSelfMessage、
+ * offline_file / online_file / 好友列表 raw 日志、sysmsg 732:21 group_card
+ * 识别表广播路径（uid→uin 批量转换）。
  *
  * 与 adapter.test.ts（IPC 桥面 / reload / essence）互补，避免重复覆盖。
  */
@@ -19,7 +20,7 @@ import type {
     TicketApi,
     WebApi,
 } from "@napuketto/kernel";
-import type { EventBroadcaster } from "@napuketto/network";
+import { EventBroadcaster } from "@napuketto/network";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigBase } from "../../core/index.js";
 import { stub } from "../../shared/__tests__/stub.js";
@@ -65,13 +66,15 @@ function captureChannel(): {
     return { channel, handlers };
 }
 
-/** 构造适配器（seed 配置；事件捕获数组返回）。 */
+/** 构造适配器（seed 配置；事件捕获数组返回；broadcaster 可注入真实实例）。 */
 function makeAdapter(options?: {
     seed?: Record<string, unknown>;
     groupApi?: Record<string, unknown>;
     logger?: AdapterLoggerLike;
     groupChannel?: GroupEventChannel;
     friendChannel?: BuddyEventChannel;
+    /** 真 EventBroadcaster（传输装配 close 需 register/unregister 完整面）。 */
+    broadcaster?: EventBroadcaster;
 }): {
     adapter: NapukettoOneBot11Adapter;
     events: Record<string, unknown>[];
@@ -87,9 +90,11 @@ function makeAdapter(options?: {
             defaults: ob11ConfigSchema.parse({}),
             seed: ob11ConfigSchema.parse(options?.seed ?? {}),
         }),
-        broadcaster: stub<EventBroadcaster>({
-            emit: (e: unknown) => events.push(e as Record<string, unknown>),
-        }),
+        broadcaster:
+            options?.broadcaster ??
+            stub<EventBroadcaster>({
+                emit: (e: unknown) => events.push(e as Record<string, unknown>),
+            }),
         msgChannel: msg.channel,
         ...(options?.groupChannel !== undefined ? { groupChannel: options.groupChannel } : {}),
         ...(options?.friendChannel !== undefined ? { friendChannel: options.friendChannel } : {}),
@@ -113,6 +118,30 @@ describe("handleRequest（请求分发）", () => {
         await adapter.handleRequest({ action: "no_such_action" }, (res) => responses.push(res));
         expect((responses[0] as { retcode: number }).retcode).toBe(404);
         expect((responses[0] as { message: string }).message).toBe("未知动作: no_such_action");
+    });
+
+    it("缺 action 带 echo → 404 响应透传 echo（WS 客户端按 echo 关联请求）", async () => {
+        const { adapter } = makeAdapter();
+        const responses: unknown[] = [];
+        await adapter.handleRequest({ params: {}, echo: "echo-missing" }, (res) =>
+            responses.push(res),
+        );
+        expect(responses[0]).toMatchObject({
+            retcode: 404,
+            status: "failed",
+            echo: "echo-missing",
+        });
+    });
+
+    it("未知 action 带 echo → 404 响应透传 echo；无 echo 不写 echo 字段", async () => {
+        const { adapter } = makeAdapter();
+        const responses: unknown[] = [];
+        await adapter.handleRequest({ action: "nope", echo: 42 }, (res) => responses.push(res));
+        expect(responses[0]).toMatchObject({ retcode: 404, echo: 42 });
+        responses.length = 0;
+        await adapter.handleRequest({ action: "nope" }, (res) => responses.push(res));
+        expect(responses[0]).toMatchObject({ retcode: 404 });
+        expect("echo" in (responses[0] as object)).toBe(false);
     });
 
     it("已知动作无 echo → HTTP 入口 handle（参数校验失败 retcode 400）", async () => {
@@ -486,5 +515,55 @@ describe("grayTip notice 广播链（broadcastNotice）", () => {
             message_id: 42,
         });
         adapter.unsubscribeOnly();
+    });
+});
+
+describe("传输层兜底（handleRequest 异常 → retcode 999）", () => {
+    /** 传输装配用固定端口（transport.test 占用 37230-37233，错开）。 */
+    const bailoutPort = 37234;
+
+    it("分发异常带 echo → 兜底响应 999 + echo 透传；无 echo 不写字段", async () => {
+        const { adapter } = makeAdapter({
+            seed: {
+                httpServers: [{ enabled: true, port: bailoutPort, token: "tok-bailout" }],
+            },
+            broadcaster: new EventBroadcaster(),
+        });
+        // 让注册表分发同步抛出未映射异常（绕过动作层 retcode 映射，直达 .catch 兜底）
+        const getSpy = vi.spyOn(adapter.registry, "get").mockImplementation(() => {
+            throw new Error("分发崩溃");
+        });
+        await adapter.start();
+        const bailout = await fetch(`http://127.0.0.1:${bailoutPort}`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: "Bearer tok-bailout",
+            },
+            body: JSON.stringify({ action: "get_status", echo: "echo-bailout" }),
+        });
+        expect(bailout.status).toBe(200);
+        const body = (await bailout.json()) as {
+            retcode: number;
+            message: string;
+            echo?: unknown;
+        };
+        expect(body.retcode).toBe(999);
+        expect(body.message).toContain("分发崩溃");
+        expect(body.echo).toBe("echo-bailout");
+        // 无 echo 请求：echoFieldOf 空对象分支（响应不带 echo 字段）
+        const bare = await fetch(`http://127.0.0.1:${bailoutPort}`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                authorization: "Bearer tok-bailout",
+            },
+            body: JSON.stringify({ action: "get_status" }),
+        });
+        const bareBody = (await bare.json()) as { retcode: number; echo?: unknown };
+        expect(bareBody.retcode).toBe(999);
+        expect("echo" in bareBody).toBe(false);
+        getSpy.mockRestore();
+        await adapter.stop();
     });
 });

@@ -23,6 +23,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { firstUntranslatedGrayTip } from "../../../shared/gray-tip.js";
+import { toUnixSeconds } from "../../../shared/raw-message.js";
 import { toUin } from "../../../shared/uid-uin.js";
 import type {
     FriendNudgeData,
@@ -35,9 +36,6 @@ import type {
     GroupWholeMuteData,
     MilkyEvent,
 } from "../../types.js";
-
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
 
 /** grayTip 翻译上下文（uid→uin 映射，调用方批量转换）。 */
 export interface NoticeTranslateContext {
@@ -55,7 +53,7 @@ function envelope<T>(
     data: T,
 ): MilkyEvent<T> {
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(ctx.selfUin),
         event_type: eventType,
         data,
@@ -110,7 +108,8 @@ function groupElementToEvent(
     grp: TipGroupElement | undefined,
     ctx: NoticeTranslateContext,
 ): MilkyEvent | null {
-    if (grp === undefined || grp.type === undefined) {
+    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+    if (grp == null || grp.type === undefined) {
         return null;
     }
     const mapper = GROUP_CHANGE_MAPPERS[grp.type];
@@ -273,7 +272,8 @@ export function toMilkyNoticeEvent(
 ): MilkyEvent | null {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        if (g === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+        if (g == null) {
             continue;
         }
         const event = translateGrayTip(msg, g, ctx);

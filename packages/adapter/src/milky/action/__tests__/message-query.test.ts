@@ -330,6 +330,21 @@ describe("get_forwarded_messages", () => {
         expect((res.data as GetForwardedMessagesOutput).messages[0]?.sender_name).toBe("昵称");
     });
 
+    it("10 位秒级 msgTime（Linux 3.2.x）→ time 同值（归一不二次除 1000）", async () => {
+        const { api, registry } = makeApi({
+            forwarded: [rawMsg({ msgTime: "1760000000" })],
+        });
+        api.seqIndex.recordForward("res-1", {
+            chatType: ChatType.GROUP,
+            peerUid: "10001",
+            msgId: "m-1",
+        });
+        const res = await action(registry, "get_forwarded_messages").handle({
+            forward_id: "res-1",
+        });
+        expect((res.data as GetForwardedMessagesOutput).messages[0]?.time).toBe(1760000000);
+    });
+
     it("forward_id 未登记：NOT_FOUND（-404）", async () => {
         const { registry } = makeApi({});
         const res = await action(registry, "get_forwarded_messages").handle({
@@ -412,6 +427,24 @@ describe("get_message", () => {
         expect(data.message.group.group_name).toBe("实体群");
         expect(data.message.group_member.card).toBe("名片甲");
         expect(data.message.segments[0]).toEqual({ type: "text", data: { text: "hi" } });
+    });
+
+    it("get_message：10 位秒级 msgTime（Linux 3.2.x）→ time 同值（归一不二次除 1000）", async () => {
+        const api = buildMilkyApi({
+            msgApi: {
+                fetchMsgsByMsgId: vi.fn(async () => [
+                    { ...indexableMsg("150"), msgTime: "1760000000" },
+                ]),
+            },
+        });
+        api.seqIndex.record({ ...indexableMsg("150"), msgTime: "1760000000" } as never);
+        const registry = registryOf(api);
+        const res = await action(registry, "get_message").handle({
+            message_scene: "group",
+            peer_id: 10001,
+            message_seq: 150,
+        });
+        expect((res.data as { message: { time: number } }).message.time).toBe(1760000000);
     });
 
     it("seq 不可解析 → NOT_FOUND", async () => {

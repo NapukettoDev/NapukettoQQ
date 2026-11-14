@@ -11,6 +11,7 @@
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
+import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
 import { forEachRawMessage } from "../shared/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
 import type { SatoriApiOptions } from "./api/satori-api.js";
@@ -36,6 +37,8 @@ export interface SatoriAdapterOptions extends SatoriApiOptions {
     broadcaster: EventBroadcaster;
     /** kernel 消息事件通道（消息收链路入口）。 */
     msgChannel: MsgEventChannel;
+    /** 校准日志（可选：翻译失败留痕；缺省静默）。 */
+    logger?: AdapterLoggerLike;
 }
 
 /** Satori 协议适配器。 */
@@ -45,6 +48,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
     private readonly msgChannel: MsgEventChannel;
     private readonly api: SatoriApi;
     private readonly registry: ReturnType<typeof createSatoriActionRegistry>;
+    private readonly logger: AdapterLoggerLike | undefined;
     private transports: SatoriTransportSet | null = null;
     private unsubscribe: (() => void) | null = null;
     private eventSn = 0;
@@ -61,6 +65,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
         });
         this.msgChannel = opts.msgChannel;
         this.api = new SatoriApi(opts);
+        this.logger = opts.logger;
         // 动作注册表（HTTP RPC 分发）
         this.registry = createSatoriActionRegistry({ api: this.api });
     }
@@ -127,15 +132,16 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
         }
         this.unsubscribe = this.msgChannel.on("Msg/onRecvMsg", (msgs) => {
             forEachRawMessage(msgs, (msg) => {
-                // grayTip（系统事件）→ 撤回/群成员变动事件；否则 → 消息事件
+                // grayTip（系统事件）→ 撤回/群成员变动事件；否则 → 消息事件。
+                // 翻译失败 warn 留痕（收链路结构探测期宽容，不打断后续消息）
                 if (hasSatoriGrayTip(msg)) {
-                    this.broadcastGrayTip(msg).catch(() => {
-                        // grayTip 翻译失败静默（结构探测期宽容）
+                    this.broadcastGrayTip(msg).catch((err: unknown) => {
+                        logEventFailure(this.logger, "satori: grayTip 翻译失败，事件跳过", err);
                     });
                     return;
                 }
-                this.broadcastMessageCreated(msg).catch(() => {
-                    // 消息翻译失败静默（同 grayTip：结构探测期宽容，不打断收链路）
+                this.broadcastMessageCreated(msg).catch((err: unknown) => {
+                    logEventFailure(this.logger, "satori: 消息翻译失败，事件跳过", err);
                 });
             });
         });
@@ -172,7 +178,9 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
                 sn: this.nextSn(),
                 type: content.type,
                 timestamp: content.timestamp,
-                login: toMinimalLogin(this.eventSn, this.api.selfUin),
+                // login.sn 是登录序号，与事件 sn 是两套计数（固定 0，登录变更经
+                // login-updated 广播），不得混用全局事件序号
+                login: toMinimalLogin(0, this.api.selfUin),
                 ...pickEventResources(content),
             }),
         );

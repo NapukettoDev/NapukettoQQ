@@ -9,6 +9,7 @@
  * （撤回 2 分钟窗口 / get_message 最近引用），不做全量持久索引。
  */
 import type { ChatType, RawMessage } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../../shared/raw-message.js";
 
 /** 单方向最大条目数（测试用例引用容量语义）。 */
 export const MAX_ENTRIES = 4096;
@@ -45,7 +46,7 @@ export class MessageSeqIndex {
         this.msgToMeta.set(msg.msgId, {
             seq,
             senderUin: msg.senderUin,
-            timeSec: Math.floor(Number(msg.msgTime) / 1000),
+            timeSec: toUnixSeconds(msg.msgTime),
         });
         this.evict();
     }

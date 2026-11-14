@@ -2,7 +2,7 @@
  * OB11 inbound sysmsg 域（自 event-pipeline.ts 拆出）
  *
  * Msg/onRecvSysMsg 总闸：参数收窄（未知形状 raw warn）→ 单条字节块走
- * core/shared/sysmsg.ts 的 processSysMsgBlob 通用管线（解码 → 信封 → 识别 →
+ * shared/sysmsg.ts 的 processSysMsgBlob 通用管线（解码 → 信封 → 识别 →
  * 分流）。表命中做两件事：732:1 精华加速触发器（表外，踢入 essence 域的串行
  * diff 链）与识别表规则广播（uid→uin 经 enrichment 批量回填后 extract）；
  * 未识别 / 提取失败落校准路径，不广播半成品。

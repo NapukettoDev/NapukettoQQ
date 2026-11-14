@@ -1,5 +1,5 @@
 /**
- * Milky sysmsg 识别表（识别机制共享自 core/sysmsg.ts）
+ * Milky sysmsg 识别表（识别机制共享自 shared/sysmsg.ts）
  *
  * 键 = 原生分发键 "msgType:subType"，规则产出事件 data 体（信封 time/self_id/
  * event_type 由适配器统一包装）。路径依据 = 三轮录制 wire bytes 全量解码
@@ -9,8 +9,8 @@
  *    f3={f1 faceId 字符串, f5: 1=添加/2=撤销, f3:1 仅添加时存在}}。
  *    operator 不在 push（f4=bot 自身 uid 占位）——user_id 省略。
  *  - 732:1 群精华设置：f1.f1=群号, f1.f8.f8.f1=msgSeq（路径提取共享自
- *    core/shared/essence.ts extractEssenceSetSysMsg）；取消精华无独立 sysmsg
- *    （remove 走 onGroupEssenceListChange 列表 diff，core/shared/essence.ts）。
+ *    shared/essence.ts extractEssenceSetSysMsg）；取消精华无独立 sysmsg
+ *    （remove 走 onGroupEssenceListChange 列表 diff，shared/essence.ts）。
  *  - 528:349/381/382 多端设备同步族：不广播。
  */
 import { extractEssenceSetSysMsg } from "../../../shared/essence.js";

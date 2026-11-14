@@ -12,6 +12,7 @@ import {
     type RawMessage,
     toCanonicalElements,
 } from "@napuketto/kernel";
+import { toUnixSeconds } from "../../../shared/raw-message.js";
 import type {
     GroupEntity,
     GroupFileUploadData,
@@ -23,9 +24,6 @@ import type {
 } from "../../types.js";
 import { toFriendEntity, toGroupEntity, toGroupMemberEntity } from "../message/entities.js";
 import { canonicalToIncomingSegments, type ReceiveSegmentContext } from "../message/segments.js";
-
-/** 毫秒 → 秒（Unix 时间戳）。 */
-const MS_TO_SEC = 1000;
 
 /** 接收事件翻译上下文。 */
 export interface ReceiveTranslateContext extends ReceiveSegmentContext {
@@ -75,7 +73,7 @@ export function toMessageReceiveEvent(
         segments.push(...ctx.forwardSegments);
     }
     const scene = chatTypeToScene(msg.chatType);
-    const time = Math.floor(Number(msg.msgTime) / MS_TO_SEC);
+    const time = toUnixSeconds(msg.msgTime);
     let data: IncomingMessage;
     if (scene === "group") {
         data = {
@@ -131,13 +129,14 @@ export function toMessageRecallEvent(
 ): MilkyEvent<MessageRecallData> | null {
     const gray = msg.elements.find((el) => el.grayTipElement != null)?.grayTipElement;
     const revoke = gray?.revokeElement;
-    if (revoke === undefined) {
+    // Linux 原生对象变体字段显式置 null（== null 判据）
+    if (revoke == null) {
         return null;
     }
     const scene = chatTypeToScene(msg.chatType);
     const operatorUin = ctx.uidToUin?.get(revoke.operatorUid) ?? revoke.operatorUid;
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(ctx.selfUin),
         event_type: "message_recall",
         data: {
@@ -160,11 +159,11 @@ export function toGroupFileUploadEvent(
         return null;
     }
     const file = msg.elements.find((el) => el.fileElement != null)?.fileElement;
-    if (file === undefined) {
+    if (file == null) {
         return null;
     }
     return {
-        time: Math.floor(Number(msg.msgTime) / MS_TO_SEC),
+        time: toUnixSeconds(msg.msgTime),
         self_id: Number(selfUin),
         event_type: "group_file_upload",
         data: {

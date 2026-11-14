@@ -173,6 +173,18 @@ describe("GetImageAction", () => {
         expect(result.message).toContain("不包含图片");
     });
 
+    it("Linux 原生空值形状：picElement 显式 null → retcode 102 不抛错（== null 判据回归）", async () => {
+        const msg = stub<RawMessage>({
+            ...(picMsg({}) as object),
+            elements: [{ elementType: 2, picElement: null }] as never,
+        });
+        const result = await mediaActionOf(makeDeps(msg, {}), "get_image").handle({
+            message_id: 1,
+        });
+        expect(result.retcode).toBe(102);
+        expect(result.message).toContain("不包含图片");
+    });
+
     it("message_id 与 file 都缺 → retcode 105「需要 message_id 或 file」", async () => {
         const deps = makeDeps(picMsg({ picUrl: "https://x/img.jpg" }), {});
         const result = await mediaActionOf(deps, "get_image").handle({});
@@ -415,6 +427,22 @@ describe("GetRecordAction", () => {
     it("消息无 ptt → NOT_FOUND", async () => {
         const result = await mediaActionOf(
             makeDeps(picMsg({}), { mediaBaseDir: tempDir("voice-nop") }),
+            "get_record",
+        ).handle({ message_id: 1 });
+        expect(result.status).toBe("failed");
+        expect(result.message).toContain("不包含语音");
+    });
+
+    it("Linux 原生空值形状：pttElement 显式 null → NOT_FOUND 不抛错（== null 判据回归）", async () => {
+        // 回归：find 谓词 `!== undefined` 遇显式 null 命中 → ptt.filePath 直读 null 抛错
+        const msg = stub<RawMessage>({
+            ...(picMsg({}) as object),
+            elements: [
+                { elementType: 4, pttElement: null, picElement: null, fileElement: null },
+            ] as never,
+        });
+        const result = await mediaActionOf(
+            makeDeps(msg, { mediaBaseDir: tempDir("voice-null") }),
             "get_record",
         ).handle({ message_id: 1 });
         expect(result.status).toBe("failed");

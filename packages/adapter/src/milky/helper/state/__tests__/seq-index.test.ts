@@ -2,7 +2,8 @@
  * MessageSeqIndex 基线测试（Milky seq↔msgId 双向映射）
  *
  * 锁定：双向登记/反查、FIFO 容量淘汰、collectReplyMeta 批量回填
- * （未命中不进表）。
+ * （未命中不进表）、msgTime 双平台样本（10 位秒=Linux / 13 位毫秒=Windows）
+ * 经 toUnixSeconds 归一。
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
@@ -38,6 +39,12 @@ describe("MessageSeqIndex", () => {
             senderId: 90001,
             time: 1760000000,
         });
+    });
+
+    it("10 位秒级 msgTime（Linux 3.2.x）→ collectReplyMeta time 同值（归一不二次除 1000）", () => {
+        const index = new MessageSeqIndex();
+        index.record(makeMsg({ msgTime: "1760000000" }));
+        expect(index.collectReplyMeta(["m1"]).get("m1")?.time).toBe(1760000000);
     });
 
     it("peer 隔离：同 seq 不同会话不串", () => {
