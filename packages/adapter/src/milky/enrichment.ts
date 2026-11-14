@@ -30,7 +30,13 @@ export class MilkyEnrichment {
         if (unique.length === 0) {
             return Promise.resolve(undefined);
         }
-        return this.api.uidToUin(unique).catch(() => undefined);
+        return this.api.uidToUin(unique).catch((err) => {
+            this.api.logger?.warn(
+                { count: unique.length, error: err instanceof Error ? err.message : String(err) },
+                "milky: uid→uin 批量转换失败，事件退用 uid",
+            );
+            return undefined;
+        });
     }
 
     /** at uid → uin 批量转换（mention.user_id 用；失败 mention 段跳过）。 */
@@ -46,8 +52,12 @@ export class MilkyEnrichment {
         }
         try {
             ctx.uidToUin = await this.api.uidToUin(atUids);
-        } catch {
-            // 转换失败：mention 段跳过
+        } catch (err) {
+            // 转换失败：mention 段跳过（warn 留痕）
+            this.api.logger?.warn(
+                { count: atUids.length, error: err instanceof Error ? err.message : String(err) },
+                "milky: at uid→uin 失败，mention 段跳过",
+            );
         }
     }
 
@@ -57,8 +67,27 @@ export class MilkyEnrichment {
             return;
         }
         const [detail, member] = await Promise.all([
-            this.api.groupCache.getGroupDetail(msg.peerUid).catch(() => undefined),
-            this.api.groupCache.getMember(msg.peerUid, msg.senderUid).catch(() => undefined),
+            this.api.groupCache.getGroupDetail(msg.peerUid).catch((err) => {
+                this.api.logger?.warn(
+                    {
+                        group: msg.peerUid,
+                        error: err instanceof Error ? err.message : String(err),
+                    },
+                    "milky: 群详情缓存读取失败，实体回填退化",
+                );
+                return undefined;
+            }),
+            this.api.groupCache.getMember(msg.peerUid, msg.senderUid).catch((err) => {
+                this.api.logger?.debug(
+                    {
+                        group: msg.peerUid,
+                        member: msg.senderUid,
+                        error: err instanceof Error ? err.message : String(err),
+                    },
+                    "milky: 群成员缓存读取失败，实体回填退化",
+                );
+                return undefined;
+            }),
         ]);
         ctx.groupEntity = toGroupEntity(detail, msg.peerUid);
         ctx.groupMemberEntity = toGroupMemberEntity(member, msg.peerUid, msg.senderUin);

@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { kernelError, type RawElement } from "@napuketto/kernel";
+import { kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
 import { z } from "zod";
 import { BaseAction } from "../../../core/index.js";
@@ -46,7 +46,7 @@ export interface MediaInfoResult {
 /** 媒体动作依赖（OneBotApi 视图）。 */
 export type GetMediaDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "cacheDir" | "mediaBaseDir"
+    "msgApi" | "messageUnique" | "cacheDir" | "mediaBaseDir" | "logger"
 >;
 
 /**
@@ -76,7 +76,7 @@ export function resolveLocalMediaFile(
 /** 图片主动下载（picUrl → cacheDir/media/<uuid>.<ext>；无 cacheDir/url 返回 null）。 */
 async function downloadImageToCache(
     url: string,
-    deps: Pick<GetMediaDeps, "cacheDir">,
+    deps: Pick<GetMediaDeps, "cacheDir" | "logger">,
 ): Promise<string | null> {
     const cacheDir = deps.cacheDir;
     if (cacheDir === undefined || cacheDir === "") {
@@ -89,7 +89,12 @@ async function downloadImageToCache(
     try {
         await downloadUrl(url, dest);
         return dest;
-    } catch {
+    } catch (err) {
+        // 下载失败退原始 url（QQ 端自行拉取；warn 留痕）
+        deps.logger?.warn(
+            { url, error: err instanceof Error ? err.message : String(err) },
+            "ob11: 图片主动下载失败，get_image 退原始 url",
+        );
         return null;
     }
 }
@@ -212,7 +217,17 @@ export class GetRecordAction extends BaseAction<GetMediaPayload, MediaInfoResult
         if (local !== null) {
             return { ...meta(), file: local };
         }
-        // 本地未命中 → 原生下载（downloadRichMedia + 元素回查；失败回退原始路径）
+        // 本地未命中 → 原生下载 + 元素回查；失败回退原始路径
+        const downloaded = await this.downloadPttFallback(msgId, peer, id);
+        return downloaded ?? { ...meta(), file: ptt.filePath };
+    }
+
+    /** 原生下载语音 → 元素回查本地路径；下载失败/未命中 null（warn 留痕，不抛错）。 */
+    private async downloadPttFallback(
+        msgId: string,
+        peer: Peer,
+        id: number | string,
+    ): Promise<MediaInfoResult | null> {
         try {
             const downloaded = await this.deps.msgApi.downloadPtt(msgId, peer);
             const rel = downloaded.filePath;
@@ -230,10 +245,13 @@ export class GetRecordAction extends BaseAction<GetMediaPayload, MediaInfoResult
                     };
                 }
             }
-        } catch {
-            // 下载失败：回退现状（原始路径 + 元数据，不抛错）
+        } catch (err) {
+            this.deps.logger?.warn(
+                { message_id: id, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 语音原生下载失败，get_record 回退原始路径",
+            );
         }
-        return { ...meta(), file: ptt.filePath };
+        return null;
     }
 }
 

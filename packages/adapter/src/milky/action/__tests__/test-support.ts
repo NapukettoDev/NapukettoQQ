@@ -6,8 +6,15 @@
  * - `actionOf`：按名取动作，未注册即抛错（测试装配失败的快速失败）。
  * - `memberStub` / `friendStub` / `detailStub`：kernel 实体最小形状。
  */
-import type { Friend, GroupDetailInfo, GroupMember } from "@napuketto/kernel";
-import { ChatType } from "@napuketto/kernel";
+import {
+    type CanonicalElement,
+    ChatType,
+    type FlashTransferUploadOptions,
+    type Friend,
+    type GroupDetailInfo,
+    type GroupMember,
+    type Peer,
+} from "@napuketto/kernel";
 import { vi } from "vitest";
 import type { ActionRegistry } from "../../../core/index.js";
 import { MilkyApi } from "../../api.js";
@@ -105,7 +112,13 @@ export function buildMilkyApi(overrides: ApiOverrides = {}): MilkyApi {
         },
         richMediaApi: { ...overrides.richMediaApi },
         flashTransferApi: {
-            sendFile: vi.fn(async () => ({ fileSetId: "fs-stub", shareLink: "", fileCount: 1 })),
+            sendFile: vi.fn(
+                async (_target: Peer, _paths: string[], _options: FlashTransferUploadOptions) => ({
+                    fileSetId: "fs-stub",
+                    shareLink: "",
+                    fileCount: 1,
+                }),
+            ),
             ...overrides.flashTransferApi,
         },
         recentContactApi: {
@@ -200,7 +213,9 @@ export function messageApi(overrides: ApiOverrides = {}): ReturnType<typeof regi
         buildMilkyApi({
             ...overrides,
             msgApi: {
-                sendMessage: vi.fn(async () => ({ msgId: "sent-1" })),
+                sendMessage: vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+                    msgId: "sent-1",
+                })),
                 fetchMsgsByMsgId: vi.fn(async () => []),
                 fetchMessages: vi.fn(async () => []),
                 recallMessage: vi.fn(async () => undefined),

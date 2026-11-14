@@ -16,6 +16,7 @@
 import type { GroupMember } from "@napuketto/kernel";
 import { type GroupNotify, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import { SatoriActionError } from "../base-action.js";
 import type { GuildActionDeps } from "../guild.js";
 import {
@@ -27,6 +28,7 @@ import {
     GuildMemberKickAction,
     GuildMemberListAction,
 } from "../guild.js";
+
 import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
 
 /** 构造群成员（最小合法）。 */
@@ -46,13 +48,13 @@ function makeMember(uid: string, uin: string, nick: string, cardName = ""): Grou
 
 /** 从桩 api 构造 GuildActionDeps（可注入缓存）。 */
 function makeDeps(api: StubSatoriApi, groupCache?: Record<string, never>): GuildActionDeps {
-    return {
+    return stub<GuildActionDeps>({
         groupApi: api.groupApi,
         groupNotifyApi: api.groupNotifyApi,
         uinToUid: api.uinToUid,
         uidToUin: api.uidToUin,
         ...(groupCache !== undefined ? { groupCache: groupCache as never } : {}),
-    } as unknown as GuildActionDeps;
+    });
 }
 
 describe("GuildGetAction", () => {
@@ -78,7 +80,7 @@ describe("GuildGetAction", () => {
 describe("GuildListAction", () => {
     it("无缓存：getGroupList(true) → List<Guild>", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupList.mockResolvedValueOnce([
+        vi.mocked(api.groupApi.getGroupList).mockResolvedValueOnce([
             { groupCode: "10001", groupName: "A" },
             { groupCode: "10002", groupName: "B" },
         ] as never);
@@ -110,7 +112,9 @@ describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）"
     ] as const)("approve=true → KAGREE（$name）", async ({ cls }) => {
         const api = stubSatoriApi();
         const notify: GroupNotify = { seq: "9527", type: 7, status: 1 };
-        api.groupNotifyApi.getSingleScreenNotifies.mockResolvedValueOnce([notify] as never);
+        vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
+            notify,
+        ] as never);
         const action = new cls(makeDeps(api));
         await action.run({ message_id: "9527", approve: true });
         expect(api.groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(false, 50);
@@ -125,7 +129,9 @@ describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）"
     it("approve=false → KREFUSE；comment 透传", async () => {
         const api = stubSatoriApi();
         const notify: GroupNotify = { seq: "42", type: 7, status: 1 };
-        api.groupNotifyApi.getSingleScreenNotifies.mockResolvedValueOnce([notify] as never);
+        vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
+            notify,
+        ] as never);
         const action = new GuildApproveAction(makeDeps(api));
         await action.run({ message_id: "42", approve: false, comment: "不通过" });
         expect(api.groupNotifyApi.handleGroupRequest).toHaveBeenCalledWith(
@@ -163,7 +169,7 @@ describe("GuildMemberGetAction", () => {
 
     it("缓存未命中：getGroupMemberInfo 整群拉取后单查", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupMemberInfo.mockResolvedValueOnce([
+        vi.mocked(api.groupApi.getGroupMemberInfo).mockResolvedValueOnce([
             makeMember("uid_123", "999", "直查"),
         ] as never);
         const action = new GuildMemberGetAction(makeDeps(api));
@@ -175,7 +181,7 @@ describe("GuildMemberGetAction", () => {
 
     it("直查也没有该成员：抛「群成员不存在」（500）", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupMemberInfo.mockResolvedValueOnce([
+        vi.mocked(api.groupApi.getGroupMemberInfo).mockResolvedValueOnce([
             makeMember("uid_other", "888", "别人"),
         ] as never);
         const action = new GuildMemberGetAction(makeDeps(api));
@@ -228,7 +234,7 @@ describe("GuildMemberListAction", () => {
 
     it("缓存空/缺失：getGroupMemberList 直查；uidToUin 未命中回退成员 uin", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupMemberList.mockResolvedValueOnce([
+        vi.mocked(api.groupApi.getGroupMemberList).mockResolvedValueOnce([
             makeMember("uid_a", "101", "A"),
         ] as never);
         api.uidToUin.mockResolvedValueOnce(new Map());

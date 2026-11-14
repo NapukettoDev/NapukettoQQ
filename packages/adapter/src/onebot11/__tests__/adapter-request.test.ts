@@ -5,34 +5,49 @@
  *
  * 与 adapter.test.ts（IPC 桥面 / reload / essence）互补，避免重复覆盖。
  */
-import type { BuddyEventChannel, GroupEventChannel, MsgEventChannel } from "@napuketto/kernel";
+import type {
+    BuddyEventChannel,
+    FriendApi,
+    GroupApi,
+    GroupEventChannel,
+    GroupNotifyApi,
+    MsgApi,
+    MsgEventChannel,
+    ProfileApi,
+    ProfileLikeApi,
+    RichMediaApi,
+    TicketApi,
+    WebApi,
+} from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
 import {
     type AdapterLoggerLike,
     NapukettoOneBot11Adapter,
     type OneBot11AdapterOptions,
 } from "../adapter.js";
+
 import { ob11ConfigSchema } from "../helper/index.js";
 
 /** 桩 kernel apis（可注入 groupApi 覆盖）。 */
 function stubOptions(
     groupApi?: Record<string, unknown>,
 ): Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel"> {
-    return {
-        msgApi: {},
-        groupApi: groupApi ?? {},
-        groupNotifyApi: {},
-        friendApi: {},
-        ticketApi: {},
-        richMediaApi: {},
-        profileApi: {},
-        profileLikeApi: {},
-        webApi: {},
+    return stub<Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel">>({
+        msgApi: stub<MsgApi>({}),
+        groupApi: stub<GroupApi>(groupApi ?? {}),
+        groupNotifyApi: stub<GroupNotifyApi>({}),
+        friendApi: stub<FriendApi>({}),
+        ticketApi: stub<TicketApi>({}),
+        richMediaApi: stub<RichMediaApi>({}),
+        profileApi: stub<ProfileApi>({}),
+        profileLikeApi: stub<ProfileLikeApi>({}),
+        webApi: stub<WebApi>({}),
         self: { uin: "10001", nickname: "测试号" },
         system: { appVersion: "test" },
-    } as unknown as Omit<OneBot11AdapterOptions, "config" | "broadcaster" | "msgChannel">;
+    });
 }
 
 /** 捕获 handler 的假通道。 */
@@ -41,12 +56,12 @@ function captureChannel(): {
     handlers: Map<string, (...args: unknown[]) => void>;
 } {
     const handlers = new Map<string, (...args: unknown[]) => void>();
-    const channel = {
+    const channel = stub<MsgEventChannel>({
         on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
             handlers.set(event, handler);
             return () => handlers.delete(event);
         }),
-    } as unknown as MsgEventChannel;
+    });
     return { channel, handlers };
 }
 
@@ -54,11 +69,7 @@ function captureChannel(): {
 function makeAdapter(options?: {
     seed?: Record<string, unknown>;
     groupApi?: Record<string, unknown>;
-    logger?: {
-        warn: ReturnType<typeof vi.fn>;
-        info: ReturnType<typeof vi.fn>;
-        debug: ReturnType<typeof vi.fn>;
-    };
+    logger?: AdapterLoggerLike;
     groupChannel?: GroupEventChannel;
     friendChannel?: BuddyEventChannel;
 }): {
@@ -76,15 +87,13 @@ function makeAdapter(options?: {
             defaults: ob11ConfigSchema.parse({}),
             seed: ob11ConfigSchema.parse(options?.seed ?? {}),
         }),
-        broadcaster: {
+        broadcaster: stub<EventBroadcaster>({
             emit: (e: unknown) => events.push(e as Record<string, unknown>),
-        } as unknown as EventBroadcaster,
+        }),
         msgChannel: msg.channel,
         ...(options?.groupChannel !== undefined ? { groupChannel: options.groupChannel } : {}),
         ...(options?.friendChannel !== undefined ? { friendChannel: options.friendChannel } : {}),
-        ...(options?.logger !== undefined
-            ? { logger: options.logger as unknown as AdapterLoggerLike }
-            : {}),
+        ...(options?.logger !== undefined ? { logger: options.logger } : {}),
     });
     return { adapter, events, msg };
 }
@@ -305,12 +314,12 @@ describe("c3 扩展源：offline_file / online_file / 好友列表 raw 日志", 
     it("Buddy/onBuddyListChange(V2) → info raw 校准日志（friend_add 数据源积累）", async () => {
         const info = vi.fn();
         const friendHandlers = new Map<string, (...args: unknown[]) => void>();
-        const friendChannel = {
+        const friendChannel = stub<BuddyEventChannel>({
             on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
                 friendHandlers.set(event, handler);
                 return () => undefined;
             }),
-        } as unknown as BuddyEventChannel;
+        });
         const { adapter } = makeAdapter({
             logger: { warn: vi.fn(), info, debug: vi.fn() },
             friendChannel,

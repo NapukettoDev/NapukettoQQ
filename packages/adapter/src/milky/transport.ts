@@ -143,7 +143,7 @@ export function assembleMilkyTransports(opts: {
     const { config, broadcaster, registry, logger } = opts;
     const hub = new MilkyEventHub();
     const token = config.token;
-    const authorize = token !== "" ? makeMilkyAuthorize(token) : undefined;
+    const authorize = token !== "" ? makeMilkyAuthorize(token, logger) : undefined;
 
     const server = new HttpServer({
         host: config.host,
@@ -152,7 +152,7 @@ export function assembleMilkyTransports(opts: {
     });
     hub.attachTo(server, config);
     server.onPathRequest = (ctx, req, respond) => {
-        handleMilkyHttpRequest(ctx, req, respond, registry);
+        handleMilkyHttpRequest(ctx, req, respond, registry, logger);
     };
 
     const adapters: TransportAdapter[] = [server, hub];
@@ -189,6 +189,7 @@ function handleMilkyHttpRequest(
     req: unknown,
     respond: Respond,
     registry: ActionRegistry<MilkyAction<unknown, unknown>>,
+    logger?: MilkyLoggerLike,
 ): void {
     if (ctx.method !== "POST") {
         respond(undefined, 404);
@@ -224,18 +225,23 @@ function handleMilkyHttpRequest(
                 });
             }
         })
-        .catch(() => {
+        .catch((err) => {
+            // runAction 之外的意外异常：warn 留痕后统一回 -500（响应面不变）
+            logger?.warn(
+                { path: ctx.path, error: err instanceof Error ? err.message : String(err) },
+                "milky: 动作分发异常，已回 -500",
+            );
             respond({ status: "failed", retcode: -500, data: null, message: "internal error" });
         });
 }
 
 /** 鉴权钩子：Bearer 头或 access_token 查询参数（规范允许 SSE/WS 查询参数兜底）。 */
-function makeMilkyAuthorize(token: string): AuthorizeHook {
-    return (ctx) => tokenMatches(ctx, token);
+function makeMilkyAuthorize(token: string, logger?: MilkyLoggerLike): AuthorizeHook {
+    return (ctx) => tokenMatches(ctx, token, logger);
 }
 
-/** 请求凭据匹配（头优先，查询参数兜底）。 */
-function tokenMatches(ctx: RequestContext, token: string): boolean {
+/** 请求凭据匹配（头优先，查询参数兜底；URL 解析失败 fail-closed 拒绝并 debug 留痕）。 */
+function tokenMatches(ctx: RequestContext, token: string, logger?: MilkyLoggerLike): boolean {
     const auth = ctx.headers["authorization"] ?? ctx.headers["Authorization"];
     if (auth?.startsWith(BEARER_PREFIX)) {
         return auth.slice(BEARER_PREFIX.length) === token;
@@ -243,7 +249,11 @@ function tokenMatches(ctx: RequestContext, token: string): boolean {
     try {
         const url = new URL(ctx.url, "http://localhost");
         return url.searchParams.get("access_token") === token;
-    } catch {
+    } catch (err) {
+        logger?.debug(
+            { url: ctx.url, error: err instanceof Error ? err.message : String(err) },
+            "milky: 鉴权 URL 解析失败，按未授权拒绝",
+        );
         return false;
     }
 }

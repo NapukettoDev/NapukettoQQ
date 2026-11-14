@@ -204,7 +204,9 @@ describe("send_group_nudge", () => {
 
 describe("send_group_announcement / delete_group_announcement", () => {
     it("send_group_announcement：无图直发 publishGroupBulletin 链", async () => {
-        const publishGroupAnnouncement = vi.fn(async () => undefined);
+        const publishGroupAnnouncement = vi.fn(
+            async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
+        );
         const registry = groupRegistry({ groupApi: { publishGroupAnnouncement } });
         const res = await actionOf(registry, "send_group_announcement").handle({
             group_id: 10001,
@@ -216,7 +218,9 @@ describe("send_group_announcement / delete_group_announcement", () => {
 
     it("send_group_announcement：file:// image_uri 展开本地路径后透传", async () => {
         const { pathToFileURL } = await import("node:url");
-        const publishGroupAnnouncement = vi.fn(async () => undefined);
+        const publishGroupAnnouncement = vi.fn(
+            async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
+        );
         const registry = groupRegistry({ groupApi: { publishGroupAnnouncement } });
         const filePath = join("盘", "公告.png");
         const res = await actionOf(registry, "send_group_announcement").handle({
@@ -225,16 +229,14 @@ describe("send_group_announcement / delete_group_announcement", () => {
             image_uri: pathToFileURL(filePath).href,
         });
         expect(res.status).toBe("ok");
-        const [, , imageArg] = publishGroupAnnouncement.mock.calls[0] as unknown as [
-            string,
-            string,
-            string,
-        ];
-        expect(imageArg.endsWith("公告.png")).toBe(true);
+        const [, , imageArg] = publishGroupAnnouncement.mock.calls[0] ?? [];
+        expect(imageArg?.endsWith("公告.png")).toBe(true);
     });
 
     it("send_group_announcement：image_uri 空串视同无图", async () => {
-        const publishGroupAnnouncement = vi.fn(async () => undefined);
+        const publishGroupAnnouncement = vi.fn(
+            async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
+        );
         const registry = groupRegistry({ groupApi: { publishGroupAnnouncement } });
         await actionOf(registry, "send_group_announcement").handle({
             group_id: 10001,
@@ -245,7 +247,9 @@ describe("send_group_announcement / delete_group_announcement", () => {
     });
 
     it("send_group_announcement：file:// image_uri 展开后进 kernel（P2 批次二补测）", async () => {
-        const publishGroupAnnouncement = vi.fn(async () => undefined);
+        const publishGroupAnnouncement = vi.fn(
+            async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
+        );
         const registry = groupRegistry({
             groupApi: { publishGroupAnnouncement },
         });

@@ -2,10 +2,13 @@
  * OB11 传输装配集成测试（真端口）：HTTP 反向鉴权（Bearer/裸头/查询参数）、
  * 反向 WS 请求-响应与 4401 拒连、HTTP 正向上报头（x-self-id/authorization）、
  * 正向 WS 客户端握手头（X-Self-ID/x-client-role）与双向请求、close 注销广播。
+ * 另覆盖装配分支（自 transport-branches 并入）：enabled=false 不装配、
+ * wsServers token 兜底链、恶意请求行鉴权 fail-closed。
  *
  * 锁定 docs/protocols/onebot11.md §2 的传输语义；端口固定（CI 两平台跑同一套）。
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect } from "node:net";
 import { EventBroadcaster, WsServer } from "@napuketto/network";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsTestClient } from "ws";
@@ -299,5 +302,138 @@ describe("装配分支补充（无 token / 可选字段）", () => {
         // emit 后不再有注册的传输（close 已注销）——不产生真实上报
         broadcaster.emit({ probe: true });
         expect(true).toBe(true);
+    });
+});
+
+const BRANCH_TOKEN = "tok-x";
+const WS_CONFIG_TOKEN_PORT = 37243;
+const WS_NO_TOKEN_PORT = 37244;
+const RAW_PROBE_PORT = 37245;
+
+/** 关闭全部装配（有则关；幂等）。 */
+async function closeAll(...sets: Array<Ob11TransportSet | undefined>): Promise<void> {
+    for (const set of sets) {
+        if (set !== undefined) {
+            await set.close();
+        }
+    }
+}
+
+/** WS 连入并发一条请求，收集首个响应帧（解析为 JSON）。 */
+function wsRequest(
+    port: number,
+    headers: Record<string, string> = {},
+): Promise<{ retcode?: number; echo?: unknown }> {
+    return new Promise((resolve, reject) => {
+        const ws = new WsTestClient(`ws://127.0.0.1:${port}`, { headers });
+        ws.on("open", () => {
+            ws.send(JSON.stringify({ action: "get_status", echo: "branch" }));
+        });
+        ws.on("message", (raw) => {
+            try {
+                resolve(JSON.parse(raw.toString()) as { retcode?: number; echo?: unknown });
+            } finally {
+                ws.close();
+            }
+        });
+        ws.on("error", (err: Error) => reject(err));
+        setTimeout(() => {
+            ws.terminate();
+            reject(new Error("WS 响应超时"));
+        }, 3000);
+    });
+}
+
+describe("enabled=false 实例不装配", () => {
+    it("httpServers / wsServers 混合开关 → 只装配 enabled 实例", async () => {
+        const { set } = assemble({
+            httpServers: [
+                { enabled: false, host: "127.0.0.1", port: 1 },
+                { enabled: true, host: "127.0.0.1", port: RAW_PROBE_PORT },
+            ],
+            wsServers: [
+                { enabled: true, host: "127.0.0.1", port: WS_NO_TOKEN_PORT },
+                { enabled: false, host: "127.0.0.1", port: 1 },
+            ],
+        });
+        // 2 个反向 server（1 HTTP + 1 WS），禁用项被跳过
+        expect(set.servers).toHaveLength(2);
+        expect(set.transports).toHaveLength(0);
+        await closeAll(set);
+    });
+});
+
+describe("wsServers token 兜底链", () => {
+    it("实例无 token + 协议级 config.token → Bearer 连入成功（?? 右支兜底）", async () => {
+        const { set } = assemble({
+            token: BRANCH_TOKEN,
+            wsServers: [{ enabled: true, host: "127.0.0.1", port: WS_CONFIG_TOKEN_PORT }],
+        });
+        try {
+            await set.servers[0]?.open();
+            const reply = await wsRequest(WS_CONFIG_TOKEN_PORT, {
+                authorization: `Bearer ${BRANCH_TOKEN}`,
+            });
+            expect(reply.retcode).toBe(0);
+            expect(reply.echo).toBe("branch");
+        } finally {
+            await closeAll(set);
+        }
+    });
+
+    it("协议级与实例都无 token → 匿名连入可请求（authorize 未装配）", async () => {
+        const { set } = assemble({
+            wsServers: [{ enabled: true, host: "127.0.0.1", port: WS_NO_TOKEN_PORT }],
+        });
+        try {
+            await set.servers[0]?.open();
+            const reply = await wsRequest(WS_NO_TOKEN_PORT);
+            expect(reply.retcode).toBe(0);
+        } finally {
+            await closeAll(set);
+        }
+    });
+});
+
+describe("hasAccessTokenQuery 解析失败兜底（恶意请求行）", () => {
+    const { set } = assemble({
+        token: BRANCH_TOKEN,
+        wsServers: [{ enabled: true, host: "127.0.0.1", port: RAW_PROBE_PORT }],
+    });
+
+    afterAll(async () => {
+        await closeAll(set);
+    });
+
+    it("WS 升级行构造成非法 URL → 鉴权按 false 处理（升级后收 4401 关闭帧，不抛错）", async () => {
+        await set.servers[0]?.open();
+        // ws 库的 connection 事件在 101 升级完成后触发——鉴权失败走应用层
+        // close(4401, "unauthorized")：关闭帧 = 0x88 + 长度 0x0E（2+12 字节）+ 关闭码 0x1131
+        const sawRejectFrame = await new Promise<boolean>((resolve, reject) => {
+            const raw = connect({ host: "127.0.0.1", port: RAW_PROBE_PORT }, () => {
+                // 请求目标 "//[::1?..." → new URL 抛 TypeError，
+                // hasAccessTokenQuery catch 兜底 false → 4401 关闭帧
+                raw.write(
+                    `GET //[::1?access_token=${BRANCH_TOKEN} HTTP/1.1\r\n` +
+                        "Host: 127.0.0.1\r\n" +
+                        "Upgrade: websocket\r\n" +
+                        "Connection: Upgrade\r\n" +
+                        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                        "Sec-WebSocket-Version: 13\r\n\r\n",
+                );
+            });
+            raw.on("data", (chunk: Buffer) => {
+                if (chunk.includes(Buffer.from([0x88, 0x0e, 0x11, 0x31]))) {
+                    raw.destroy();
+                    resolve(true);
+                }
+            });
+            raw.on("error", (err: Error) => reject(err));
+            setTimeout(() => {
+                raw.destroy();
+                resolve(false);
+            }, 3000);
+        });
+        expect(sawRejectFrame).toBe(true);
     });
 });

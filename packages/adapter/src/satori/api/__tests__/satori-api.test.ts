@@ -82,7 +82,7 @@ describe("resolvePeer", () => {
 
     it("未命中且 getGroupInfo 失败 → 私聊 Peer 且缓存 false", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupInfo.mockRejectedValueOnce(new Error("群不存在"));
+        vi.mocked(api.groupApi.getGroupInfo).mockRejectedValueOnce(new Error("群不存在"));
         const satoriApi = makeApi(api);
         await expect(satoriApi.resolvePeer("90001")).resolves.toEqual({
             chatType: ChatType.C2C,
@@ -96,8 +96,8 @@ describe("resolvePeer", () => {
 
     it("私聊 uinToUid 未命中该 uin：peerUid 退化用原 uin", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupInfo.mockRejectedValueOnce(new Error("x"));
-        api.groupApi.uinToUid.mockResolvedValueOnce(new Map());
+        vi.mocked(api.groupApi.getGroupInfo).mockRejectedValueOnce(new Error("x"));
+        vi.mocked(api.groupApi.uinToUid).mockResolvedValueOnce(new Map());
         const satoriApi = makeApi(api);
         await expect(satoriApi.resolvePeer("90002")).resolves.toEqual({
             chatType: ChatType.C2C,
@@ -129,7 +129,7 @@ describe("委托方法", () => {
 describe("setChannelType", () => {
     it("同一 channel_id 二次回填覆盖旧值", async () => {
         const api = stubSatoriApi();
-        api.groupApi.getGroupInfo.mockRejectedValue(new Error("x"));
+        vi.mocked(api.groupApi.getGroupInfo).mockRejectedValue(new Error("x"));
         const satoriApi = makeApi(api);
         satoriApi.setChannelType("123", false);
         satoriApi.setChannelType("123", true);

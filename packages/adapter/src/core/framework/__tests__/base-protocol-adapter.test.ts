@@ -6,6 +6,7 @@
  */
 import type { EventBroadcaster } from "@napuketto/network";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../__tests__/stub.js";
 import { BaseProtocolAdapter } from "../base-protocol-adapter.js";
 import type { ProtocolConfig } from "../config.js";
 
@@ -48,7 +49,7 @@ class TestAdapter extends BaseProtocolAdapter<{ enabled: boolean }> {
 function stubConfig(loadImpl: () => Promise<{ enabled: boolean }>): ProtocolConfig<{
     enabled: boolean;
 }> {
-    return { load: loadImpl } as unknown as ProtocolConfig<{ enabled: boolean }>;
+    return stub<ProtocolConfig<{ enabled: boolean }>>({ load: loadImpl });
 }
 
 describe("BaseProtocolAdapter 生命周期", () => {
@@ -97,11 +98,11 @@ describe("BaseProtocolAdapter 生命周期", () => {
 describe("BaseProtocolAdapter 广播", () => {
     it("有 broadcaster：broadcastEvent 透传 emit", () => {
         const emitted: unknown[] = [];
-        const broadcaster = {
+        const broadcaster = stub<EventBroadcaster>({
             emit: (e: unknown) => {
                 emitted.push(e);
             },
-        } as unknown as EventBroadcaster;
+        });
         const adapter = new TestAdapter(
             stubConfig(async () => ({ enabled: true })),
             broadcaster,

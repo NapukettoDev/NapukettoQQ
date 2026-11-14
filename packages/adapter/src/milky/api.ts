@@ -53,7 +53,7 @@ export interface MilkyApiOptions {
     implVersion: string;
     /** 发送媒体 http(s)/base64 URI 下载缓存目录（缺省 = 远程媒体发送不可用）。 */
     mediaDir?: string;
-    /** 动作层可观测出口（P2 批次一：forward 临时消息撤回失败 warn；缺省静默）。 */
+    /** 动作层可观测出口（降级分支 warn/debug 留痕 + forward 临时消息撤回失败；缺省静默）。 */
     logger?: MilkyLoggerLike;
 }
 
@@ -117,15 +117,20 @@ export class MilkyApi {
      */
     async resolveUidFromUin(uin: number | string): Promise<string> {
         const uinStr = String(uin);
+        let cause: unknown;
         try {
             const uid = (await this.uinToUid([uinStr])).get(uinStr);
             if (uid !== undefined && uid !== "") {
                 return uid;
             }
-        } catch {
-            // 落到下方报错
+        } catch (err) {
+            cause = err;
         }
-        throw kernelError(`用户 ${uinStr} 不存在或 uin→uid 转换失败`, "INVALID_PARAM");
+        throw kernelError(
+            `用户 ${uinStr} 不存在或 uin→uid 转换失败`,
+            "INVALID_PARAM",
+            cause === undefined ? undefined : { cause },
+        );
     }
 
     /**
@@ -140,8 +145,12 @@ export class MilkyApi {
         let uid: string | undefined;
         try {
             uid = (await this.uinToUid([uin])).get(uin);
-        } catch {
-            // 转换失败：退 uin 原样
+        } catch (err) {
+            // 转换失败：退 uin 原样（warn 留痕，QQ 端发送时判断）
+            this.logger?.warn(
+                { uin, error: err instanceof Error ? err.message : String(err) },
+                "milky: uin→uid 转换失败，peer 退用 uin 原样",
+            );
         }
         return {
             chatType: scene === "friend" ? ChatType.C2C : ChatType.C2C_TEMP,
@@ -162,7 +171,17 @@ export class MilkyApi {
         if (indexed !== undefined) {
             return indexed;
         }
-        const msgs = await this.msgApi.fetchMessages(peer, { count: 60 }).catch(() => []);
+        const msgs = await this.msgApi.fetchMessages(peer, { count: 60 }).catch((err) => {
+            this.logger?.debug(
+                {
+                    peer: peer.peerUid,
+                    seq,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                "milky: msgSeq 反查近段历史失败",
+            );
+            return [];
+        });
         const hit = msgs.find((m: RawMessage) => Number(m.msgSeq) === seq);
         if (hit === undefined) {
             return undefined;

@@ -211,7 +211,7 @@ describe("set_avatar（远程 URI 下载链）", () => {
             typeof vi.fn
         >;
         expect(downloadUrl).toHaveBeenCalledTimes(1);
-        const [url, dest] = downloadUrl.mock.calls[0] as unknown as [string, string];
+        const [url, dest] = downloadUrl.mock.calls[0] ?? [];
         expect(url).toBe("http://127.0.0.1:1/a.png");
         expect(dest.startsWith(mediaDir)).toBe(true);
         expect(setHeader).toHaveBeenCalledWith(dest);

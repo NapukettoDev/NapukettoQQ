@@ -12,6 +12,7 @@
 import type { CanonicalElement } from "@napuketto/kernel";
 import { z } from "zod";
 import { BaseAction, ensureSilk, prepareVideoElements } from "../../../core/index.js";
+import type { AdapterLoggerLike } from "../../../core/shared/log.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
@@ -31,7 +32,7 @@ const sendMsgSchema = z.object({
 export type SendMsgPayload = z.infer<typeof sendMsgSchema>;
 
 /** send_msg 依赖（OneBotApi 视图，由装配方注入）。 */
-export type SendMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid">;
+export type SendMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid" | "logger">;
 
 /** 共享发送核心：解析 Peer → canonical 翻译（含 auto_escape）→ sendMessage → 映射 message_id。 */
 async function sendOb11Message(
@@ -58,8 +59,12 @@ async function sendOb11Message(
     if (atUins.length > 0) {
         try {
             uinToUid = await deps.uinToUid(atUins);
-        } catch {
-            // uin 解析失败：at 原样（uin），交给 QQ 端判断
+        } catch (err) {
+            // uin 解析失败：at 原样（uin），交给 QQ 端判断（warn 留痕）
+            deps.logger?.warn(
+                { count: atUins.length, error: err instanceof Error ? err.message : String(err) },
+                "ob11: at uin→uid 失败，at 段原样发送",
+            );
         }
     }
     canonical = applySendContext(canonical, {
@@ -76,7 +81,7 @@ async function sendOb11Message(
         });
     }
     // 语音段：非 silk 输入转 silk（QQ 语音协议）；转换在协议层完成，kernel 不背 media（红线）
-    canonical = await ensureVoiceSilk(canonical);
+    canonical = await ensureVoiceSilk(canonical, deps.logger);
     // 视频段：缺首帧缩略图时用 ffmpeg 抽帧并补时长/尺寸（QQ 视频消息发送契约，
     // 缺失时 native 只回 sendStatus=0）
     const prepared = await prepareVideoElements(canonical);
@@ -173,11 +178,14 @@ function escapeText(text: string): string {
 }
 
 /** 语音元素统一转 silk：非 silk 自动转码（QQ 语音格式），已是 silk 原样。 */
-async function ensureVoiceSilk(elements: CanonicalElement[]): Promise<CanonicalElement[]> {
+async function ensureVoiceSilk(
+    elements: CanonicalElement[],
+    logger: AdapterLoggerLike | undefined,
+): Promise<CanonicalElement[]> {
     const out: CanonicalElement[] = [];
     for (const el of elements) {
         if (el.type === "voice") {
-            out.push({ ...el, path: await ensureSilk(el.path) });
+            out.push({ ...el, path: await ensureSilk(el.path, logger) });
         } else {
             out.push(el);
         }

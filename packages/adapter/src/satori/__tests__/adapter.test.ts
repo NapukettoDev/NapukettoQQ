@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { ChatType } from "@napuketto/kernel";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
@@ -77,23 +78,25 @@ function makeAdapter(
         tmpRoot = mkdtempSync(join(tmpdir(), "nk-test-satori-adapter-"));
     }
     const { channel, fire } = fakeMsgChannel();
-    const adapter = new NapukettoSatoriAdapter({
-        msgApi: api.msgApi,
-        groupApi: api.groupApi,
-        groupNotifyApi: api.groupNotifyApi,
-        friendApi: api.friendApi,
-        profileApi: api.profileApi,
-        self: api.self,
-        cacheDir: api.cacheDir,
-        config: new ProtocolConfig({
-            path: join(tmpRoot, "cfg.toml"),
-            schema: satoriConfigSchema,
-            defaults: satoriConfigSchema.parse({}),
-            seed: satoriConfigSchema.parse({}),
+    const adapter = new NapukettoSatoriAdapter(
+        stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
+            msgApi: api.msgApi,
+            groupApi: api.groupApi,
+            groupNotifyApi: api.groupNotifyApi,
+            friendApi: api.friendApi,
+            profileApi: api.profileApi,
+            self: api.self,
+            cacheDir: api.cacheDir,
+            config: new ProtocolConfig({
+                path: join(tmpRoot, "cfg.toml"),
+                schema: satoriConfigSchema,
+                defaults: satoriConfigSchema.parse({}),
+                seed: satoriConfigSchema.parse({}),
+            }),
+            ...(spy !== undefined ? { broadcaster: spy.broadcaster } : {}),
+            msgChannel: channel,
         }),
-        ...(spy !== undefined ? { broadcaster: spy.broadcaster } : {}),
-        msgChannel: channel,
-    } as unknown as ConstructorParameters<typeof NapukettoSatoriAdapter>[0]);
+    );
     return {
         adapter,
         fire,
@@ -299,7 +302,7 @@ describe("grayTip 分流", () => {
     it("grayTip 翻译失败（uidToUin 拒绝）→ 静默吞掉，不产生未处理拒绝", async () => {
         const spyResult = spyBroadcaster();
         const api = stubSatoriApi();
-        api.groupApi.uidToUin.mockRejectedValueOnce(new Error("转换失败"));
+        vi.mocked(api.groupApi.uidToUin).mockRejectedValueOnce(new Error("转换失败"));
         const { adapter, fireAndWait } = makeAdapter(api, spyResult);
         await adapter.start();
         await fireAndWait([makeRevokeMsg()]);
@@ -309,7 +312,7 @@ describe("grayTip 分流", () => {
     it("message-created 链路 at uid 转换失败 → at 原样 uid，事件照常广播", async () => {
         const spyResult = spyBroadcaster();
         const api = stubSatoriApi();
-        api.groupApi.uidToUin.mockRejectedValue(new Error("boom"));
+        vi.mocked(api.groupApi.uidToUin).mockRejectedValue(new Error("boom"));
         const { adapter, fireAndWait } = makeAdapter(api, spyResult);
         await adapter.start();
         await fireAndWait([
@@ -377,26 +380,28 @@ describe("startTransports 完整装配（真实端口端到端）", () => {
             tmpRoot = mkdtempSync(join(tmpdir(), "nk-test-satori-adapter-"));
         }
         const { channel, fire } = fakeMsgChannel();
-        const adapter = new NapukettoSatoriAdapter({
-            msgApi: api.msgApi,
-            groupApi: api.groupApi,
-            groupNotifyApi: api.groupNotifyApi,
-            friendApi: api.friendApi,
-            profileApi: api.profileApi,
-            self: api.self,
-            cacheDir: api.cacheDir,
-            config: new ProtocolConfig({
-                path: join(tmpRoot, "cfg-full.toml"),
-                schema: satoriConfigSchema,
-                defaults: satoriConfigSchema.parse({}),
-                seed: satoriConfigSchema.parse({
-                    httpServers: [{ enabled: true, host: "127.0.0.1", port: 36251 }],
-                    wsServers: [{ enabled: true, host: "127.0.0.1", port: 36252 }],
+        const adapter = new NapukettoSatoriAdapter(
+            stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
+                msgApi: api.msgApi,
+                groupApi: api.groupApi,
+                groupNotifyApi: api.groupNotifyApi,
+                friendApi: api.friendApi,
+                profileApi: api.profileApi,
+                self: api.self,
+                cacheDir: api.cacheDir,
+                config: new ProtocolConfig({
+                    path: join(tmpRoot, "cfg-full.toml"),
+                    schema: satoriConfigSchema,
+                    defaults: satoriConfigSchema.parse({}),
+                    seed: satoriConfigSchema.parse({
+                        httpServers: [{ enabled: true, host: "127.0.0.1", port: 36251 }],
+                        wsServers: [{ enabled: true, host: "127.0.0.1", port: 36252 }],
+                    }),
                 }),
+                broadcaster: spyResult.broadcaster,
+                msgChannel: channel,
             }),
-            broadcaster: spyResult.broadcaster,
-            msgChannel: channel,
-        } as unknown as ConstructorParameters<typeof NapukettoSatoriAdapter>[0]);
+        );
 
         await adapter.start();
         // login-updated（在线）已经广播
@@ -445,23 +450,25 @@ describe("startTransports 完整装配（真实端口端到端）", () => {
         const api = stubSatoriApi();
         const { channel } = fakeMsgChannel();
         const onSpy = vi.spyOn(channel, "on");
-        const adapter = new NapukettoSatoriAdapter({
-            msgApi: api.msgApi,
-            groupApi: api.groupApi,
-            groupNotifyApi: api.groupNotifyApi,
-            friendApi: api.friendApi,
-            profileApi: api.profileApi,
-            self: api.self,
-            cacheDir: api.cacheDir,
-            config: new ProtocolConfig({
-                path: join(tmpRoot, "cfg-guard.toml"),
-                schema: satoriConfigSchema,
-                defaults: satoriConfigSchema.parse({}),
-                seed: satoriConfigSchema.parse({}),
+        const adapter = new NapukettoSatoriAdapter(
+            stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
+                msgApi: api.msgApi,
+                groupApi: api.groupApi,
+                groupNotifyApi: api.groupNotifyApi,
+                friendApi: api.friendApi,
+                profileApi: api.profileApi,
+                self: api.self,
+                cacheDir: api.cacheDir,
+                config: new ProtocolConfig({
+                    path: join(tmpRoot, "cfg-guard.toml"),
+                    schema: satoriConfigSchema,
+                    defaults: satoriConfigSchema.parse({}),
+                    seed: satoriConfigSchema.parse({}),
+                }),
+                broadcaster: spyResult.broadcaster,
+                msgChannel: channel,
             }),
-            broadcaster: spyResult.broadcaster,
-            msgChannel: channel,
-        } as unknown as ConstructorParameters<typeof NapukettoSatoriAdapter>[0]);
+        );
         await adapter.start();
         expect(onSpy).toHaveBeenCalledTimes(1);
         // 白盒：直接再调 subscribe（private，经类型断言访问），应命中幂等守卫

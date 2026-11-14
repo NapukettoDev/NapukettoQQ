@@ -9,7 +9,8 @@
  *  - message.delete → recallMessage
  */
 import { ChatType } from "@napuketto/kernel";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import { makeRawMsg } from "../../__tests__/test-support.js";
 import { SatoriActionError } from "../base-action.js";
 import type { MessageActionDeps } from "../message.js";
@@ -19,18 +20,19 @@ import {
     MessageGetAction,
     MessageListAction,
 } from "../message.js";
+
 import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
 
 /** 从桩 api 构造 MessageActionDeps。 */
 function makeDeps(api: StubSatoriApi): MessageActionDeps {
-    return {
+    return stub<MessageActionDeps>({
         msgApi: api.msgApi,
         selfUin: api.selfUin,
         uidToUin: api.uidToUin,
         resolvePeer: api.resolvePeer,
         setChannelType: api.setChannelType,
         toCanonicalDeps: api.toCanonicalDeps,
-    } as unknown as MessageActionDeps;
+    });
 }
 
 describe("MessageCreateAction", () => {
@@ -51,10 +53,7 @@ describe("MessageCreateAction", () => {
             },
         ]);
         expect(api.setChannelType).toHaveBeenCalledWith("10001", true);
-        const [peer, elements] = api.msgApi.sendMessage.mock.calls[0] as unknown as [
-            { chatType: number; peerUid: string },
-            Array<{ type: string }>,
-        ];
+        const [peer, elements] = vi.mocked(api.msgApi.sendMessage).mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: ChatType.GROUP, peerUid: "10001" });
         // at 已转 canonical（uid 化）
         expect(elements).toEqual([
@@ -95,7 +94,7 @@ describe("MessageCreateAction", () => {
 describe("MessageGetAction", () => {
     it("fetchMsgsByMsgId → toSatoriMessage 翻译（guild/channel/user 提升）", async () => {
         const api = stubSatoriApi();
-        api.msgApi.fetchMsgsByMsgId.mockResolvedValueOnce([makeRawMsg()] as never);
+        vi.mocked(api.msgApi.fetchMsgsByMsgId).mockResolvedValueOnce([makeRawMsg()] as never);
         const action = new MessageGetAction(makeDeps(api));
         const message = await action.run({ channel_id: "10001", message_id: "m1" });
         expect(message.id).toBe("m1");
@@ -123,7 +122,7 @@ describe("MessageListAction", () => {
         const older = makeRawMsg({ msgId: "older", msgTime: "1700000000" });
         const newer = makeRawMsg({ msgId: "newer", msgTime: "1700000001" });
         // 原生返回新→旧
-        api.msgApi.fetchMessages.mockResolvedValueOnce([newer, older] as never);
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([newer, older] as never);
         const action = new MessageListAction(makeDeps(api));
         // limit=2 与 raw 数量相等 → 触发 next 令牌
         const result = await action.run({ channel_id: "10001", limit: 2 });
@@ -135,7 +134,7 @@ describe("MessageListAction", () => {
         const api = stubSatoriApi();
         const older = makeRawMsg({ msgId: "older" });
         const newer = makeRawMsg({ msgId: "newer" });
-        api.msgApi.fetchMessages.mockResolvedValueOnce([newer, older] as never);
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([newer, older] as never);
         const action = new MessageListAction(makeDeps(api));
         const result = await action.run({ channel_id: "10001", order: "desc", limit: 2 });
         expect(result.data.map((m) => m.id)).toEqual(["newer", "older"]);
@@ -144,7 +143,9 @@ describe("MessageListAction", () => {
 
     it("next 透传为游标 msgId；limit 透传", async () => {
         const api = stubSatoriApi();
-        api.msgApi.fetchMessages.mockResolvedValueOnce([makeRawMsg({ msgId: "a" })] as never);
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([
+            makeRawMsg({ msgId: "a" }),
+        ] as never);
         const action = new MessageListAction(makeDeps(api));
         await action.run({ channel_id: "10001", next: "cursor-1", limit: 10 });
         expect(api.msgApi.fetchMessages).toHaveBeenCalledWith(
@@ -155,7 +156,9 @@ describe("MessageListAction", () => {
 
     it("raw 数量 < count：不写 next（已是最后一页）", async () => {
         const api = stubSatoriApi();
-        api.msgApi.fetchMessages.mockResolvedValueOnce([makeRawMsg({ msgId: "only" })] as never);
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([
+            makeRawMsg({ msgId: "only" }),
+        ] as never);
         const action = new MessageListAction(makeDeps(api));
         const result = await action.run({ channel_id: "10001", limit: 50 });
         expect(result.next).toBeUndefined();
@@ -171,7 +174,7 @@ describe("MessageListAction", () => {
 
     it("direction=before：合法方向", async () => {
         const api = stubSatoriApi();
-        api.msgApi.fetchMessages.mockResolvedValueOnce([makeRawMsg()] as never);
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([makeRawMsg()] as never);
         const action = new MessageListAction(makeDeps(api));
         await expect(
             action.run({ channel_id: "10001", direction: "before" }),
@@ -203,7 +206,7 @@ describe("MessageDeleteAction", () => {
     it("kernel 发送失败（KernelError）→ SatoriActionError 透传状态码", async () => {
         const api = stubSatoriApi();
         const { kernelError } = await import("@napuketto/kernel");
-        api.msgApi.recallMessage.mockRejectedValueOnce(
+        vi.mocked(api.msgApi.recallMessage).mockRejectedValueOnce(
             kernelError("无权限撤回", "PERMISSION_DENIED"),
         );
         const action = new MessageDeleteAction(makeDeps(api));
@@ -217,7 +220,7 @@ describe("MessageDeleteAction", () => {
 describe("消息动作错误映射", () => {
     it("非 KernelError 的意外错误 → 500 包装", async () => {
         const api = stubSatoriApi();
-        api.msgApi.sendMessage.mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(api.msgApi.sendMessage).mockRejectedValueOnce(new Error("boom"));
         const action = new MessageCreateAction(makeDeps(api));
         await expect(action.run({ channel_id: "10001", content: "x" })).rejects.toMatchObject({
             status: 500,
@@ -240,7 +243,7 @@ describe("消息翻译依赖注入（uidToUin 箭头透传）", () => {
     it("message.get：含 at 的消息触发 uidToUin 转换（at 显示 uin）", async () => {
         const api = stubSatoriApi();
         api.uidToUin.mockResolvedValueOnce(new Map([["sender-uid-1", "90001"]]));
-        api.msgApi.fetchMsgsByMsgId.mockResolvedValueOnce([
+        vi.mocked(api.msgApi.fetchMsgsByMsgId).mockResolvedValueOnce([
             makeRawMsg({
                 elements: [
                     {
@@ -260,7 +263,7 @@ describe("消息翻译依赖注入（uidToUin 箭头透传）", () => {
     it("message.list：含 at 的消息同样触发批量转换", async () => {
         const api = stubSatoriApi();
         api.uidToUin.mockResolvedValueOnce(new Map([["sender-uid-1", "90001"]]));
-        api.msgApi.fetchMessages.mockResolvedValueOnce([
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([
             makeRawMsg({
                 elements: [
                     {

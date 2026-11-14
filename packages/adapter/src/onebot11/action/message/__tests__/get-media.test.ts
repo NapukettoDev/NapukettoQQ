@@ -9,8 +9,9 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RawMessage } from "@napuketto/kernel";
+import type { MsgApi, RawMessage } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { GetImageAction, GetRecordAction, resolveLocalMediaFile } from "../media.js";
 
@@ -20,16 +21,16 @@ function makeDeps(
     extra: {
         mediaBaseDir?: string;
         cacheDir?: string;
-        downloadPtt?: (msgId: string, peer: unknown) => Promise<unknown>;
+        downloadPtt?: MsgApi["downloadPtt"];
     } = {},
 ) {
     const messageUnique = new MessageUnique();
     messageUnique.alloc(msg?.msgId ?? "m1", { chatType: 1, peerUid: "u1" });
-    return {
+    return stub<ConstructorParameters<typeof GetImageAction>[0]>({
         messageUnique,
         cacheDir: extra.cacheDir,
         mediaBaseDir: extra.mediaBaseDir,
-        msgApi: {
+        msgApi: stub<MsgApi>({
             fetchMsgsByMsgId: vi.fn(async () => (msg === null ? [] : [msg])),
             ...(extra.downloadPtt !== undefined
                 ? { downloadPtt: vi.fn(extra.downloadPtt) }
@@ -38,13 +39,13 @@ function makeDeps(
                           throw new Error("下载不可用");
                       }),
                   }),
-        },
-    } as unknown as ConstructorParameters<typeof GetImageAction>[0];
+        }),
+    });
 }
 
 /** 图片消息工厂。 */
 function picMsg(pic: Record<string, unknown>): RawMessage {
-    return {
+    return stub<RawMessage>({
         msgId: "m1",
         msgSeq: "1",
         msgTime: "1700000000000",
@@ -57,7 +58,7 @@ function picMsg(pic: Record<string, unknown>): RawMessage {
         peerName: "",
         sendNickName: "",
         elements: [{ elementType: 2, picElement: pic }],
-    } as unknown as RawMessage;
+    });
 }
 
 const dirs: string[] = [];
@@ -184,10 +185,10 @@ describe("GetImageAction", () => {
 
 /** 语音消息工厂。 */
 function pttMsg(ptt: Record<string, unknown>): RawMessage {
-    return {
+    return stub<RawMessage>({
         ...(picMsg({}) as object),
         elements: [{ elementType: 4, pttElement: ptt }],
-    } as unknown as RawMessage;
+    });
 }
 
 describe("GetRecordAction", () => {

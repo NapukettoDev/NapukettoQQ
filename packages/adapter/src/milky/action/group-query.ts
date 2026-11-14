@@ -115,7 +115,14 @@ async function memberOf(api: MilkyApi, groupId: number, userId: number): Promise
     const groupCode = String(groupId);
     const uin = String(userId);
     if (api.groupCache !== undefined) {
-        const uid = await api.resolveUidFromUin(userId).catch(() => uin);
+        const uid = await api.resolveUidFromUin(userId).catch((err) => {
+            // uin→uid 失败退 uin 查缓存（大概率 NOT_FOUND，debug 留痕）
+            api.logger?.debug(
+                { group: groupCode, uin, error: err instanceof Error ? err.message : String(err) },
+                "milky: 成员 uin→uid 失败，退用 uin 查缓存",
+            );
+            return uin;
+        });
         const member = await api.groupCache.getMember(groupCode, uid);
         if (member === undefined) {
             throw kernelError(`成员 ${uin} 不在群 ${groupCode}`, "NOT_FOUND");
@@ -152,7 +159,13 @@ async function senderUinOf(b: GroupBulletin, api: MilkyApi): Promise<number> {
     if (typeof uid !== "string" || uid === "") {
         return 0;
     }
-    const uins = await api.uidToUin([uid]).catch(() => undefined);
+    const uins = await api.uidToUin([uid]).catch((err) => {
+        api.logger?.debug(
+            { uid, error: err instanceof Error ? err.message : String(err) },
+            "milky: 公告发送者 uid→uin 失败，兜底 0",
+        );
+        return undefined;
+    });
     return Number(uins?.get(uid)) || 0;
 }
 

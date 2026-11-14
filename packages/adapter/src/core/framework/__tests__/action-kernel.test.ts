@@ -11,6 +11,7 @@
 import { type KernelErrorCode, kernelError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { stub } from "../../__tests__/stub.js";
 import { type ActionKernelSpec, type ErrorCodeMap, runAction } from "../action-kernel.js";
 
 /** OB11 风格映射表（与 onebot11 error-map 同构的最小子集）。 */
@@ -87,7 +88,7 @@ describe("runAction：错误映射", () => {
 
     it("映射表缺项：回退 UNKNOWN 对应 retcode", async () => {
         // 仅登记 UNKNOWN（Record 类型要求全集，测试用断言收窄模拟漏登记）
-        const partial = { UNKNOWN: 1599 } as unknown as ErrorCodeMap;
+        const partial = stub<ErrorCodeMap>({ UNKNOWN: 1599 });
         const outcome = await runAction(
             makeSpec({
                 errorCodeMap: partial,

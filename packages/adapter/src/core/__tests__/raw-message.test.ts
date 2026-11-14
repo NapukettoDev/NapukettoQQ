@@ -9,6 +9,7 @@ import type { MsgEventChannel } from "@napuketto/kernel";
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { forEachRawMessage, subscribeRawMessages } from "../shared/raw-message.js";
+import { stub } from "./stub.js";
 
 /** 构造最小合法 RawMessage。 */
 function makeMsg(msgId: string): RawMessage {
@@ -47,12 +48,10 @@ describe("forEachRawMessage", () => {
 
     it("null / undefined / 非对象项：过滤掉不回调", () => {
         const seen: string[] = [];
-        forEachRawMessage(
-            [null, undefined, 42, "str", makeMsg("ok")] as unknown as unknown,
-            (msg) => {
-                seen.push(msg.msgId);
-            },
-        );
+        const garbage: unknown = [null, undefined, 42, "str", makeMsg("ok")];
+        forEachRawMessage(garbage, (msg) => {
+            seen.push(msg.msgId);
+        });
         expect(seen).toEqual(["ok"]);
     });
 
@@ -68,12 +67,12 @@ describe("forEachRawMessage", () => {
 describe("subscribeRawMessages", () => {
     it("包装 channel.on：回调参数逐条规范化后交给 handler", () => {
         let callback: ((msgs: unknown) => void) | undefined;
-        const channel = {
+        const channel = stub<MsgEventChannel>({
             on: vi.fn((_event: string, cb: (msgs: unknown) => void) => {
                 callback = cb;
                 return () => undefined;
             }),
-        } as unknown as MsgEventChannel;
+        });
         const handler = vi.fn();
         subscribeRawMessages(channel, handler);
         expect(channel.on).toHaveBeenCalledWith("Msg/onRecvMsg", expect.any(Function));
@@ -85,9 +84,9 @@ describe("subscribeRawMessages", () => {
 
     it("返回退订函数：直接透传 channel.on 的返回值", () => {
         const unsub = vi.fn(() => undefined);
-        const channel = {
+        const channel = stub<MsgEventChannel>({
             on: vi.fn(() => unsub),
-        } as unknown as MsgEventChannel;
+        });
         const result = subscribeRawMessages(channel, () => undefined);
         result();
         expect(unsub).toHaveBeenCalledTimes(1);

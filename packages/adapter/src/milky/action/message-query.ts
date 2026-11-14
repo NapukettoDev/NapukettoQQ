@@ -63,8 +63,27 @@ export class GetMessageAction extends MilkyApiAction<
         const ctx: ReceiveTranslateContext = { selfUin: this.api.self.uin };
         if (scene === "group") {
             const [detail, member] = await Promise.all([
-                this.api.groupCache?.getGroupDetail(peer.peerUid).catch(() => undefined),
-                this.api.groupCache?.getMember(peer.peerUid, msg.senderUid).catch(() => undefined),
+                this.api.groupCache?.getGroupDetail(peer.peerUid).catch((err) => {
+                    this.api.logger?.warn(
+                        {
+                            group: peer.peerUid,
+                            error: err instanceof Error ? err.message : String(err),
+                        },
+                        "milky: 群详情缓存读取失败，实体回填退化",
+                    );
+                    return undefined;
+                }),
+                this.api.groupCache?.getMember(peer.peerUid, msg.senderUid).catch((err) => {
+                    this.api.logger?.debug(
+                        {
+                            group: peer.peerUid,
+                            member: msg.senderUid,
+                            error: err instanceof Error ? err.message : String(err),
+                        },
+                        "milky: 群成员缓存读取失败，实体回填退化",
+                    );
+                    return undefined;
+                }),
             ]);
             ctx.groupEntity = toGroupEntity(detail, peer.peerUid);
             ctx.groupMemberEntity = toGroupMemberEntity(member, peer.peerUid, msg.senderUin);
@@ -149,8 +168,20 @@ export class GetHistoryMessagesAction extends MilkyApiAction<
             return { detail: undefined, members: new Map() };
         }
         const [detail, members] = await Promise.all([
-            this.api.groupCache.getGroupDetail(groupCode).catch(() => undefined),
-            this.api.groupCache.getMembers(groupCode).catch(() => []),
+            this.api.groupCache.getGroupDetail(groupCode).catch((err) => {
+                this.api.logger?.warn(
+                    { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                    "milky: 群详情缓存读取失败，历史翻译退化",
+                );
+                return undefined;
+            }),
+            this.api.groupCache.getMembers(groupCode).catch((err) => {
+                this.api.logger?.warn(
+                    { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                    "milky: 群成员表缓存读取失败，历史翻译退化",
+                );
+                return [] as GroupMember[];
+            }),
         ]);
         const memberByUid = new Map<string, GroupMember>();
         for (const m of members) {
@@ -227,7 +258,13 @@ export class GetForwardedMessagesAction extends MilkyApiAction<
         if (uids.size === 0) {
             return new Map();
         }
-        return await this.api.uidToUin([...uids]).catch(() => new Map<string, string>());
+        return await this.api.uidToUin([...uids]).catch((err) => {
+            this.api.logger?.warn(
+                { count: uids.size, error: err instanceof Error ? err.message : String(err) },
+                "milky: 历史 at uid→uin 失败，mention 段跳过",
+            );
+            return new Map<string, string>();
+        });
     }
 
     /** 发送者名（群场景成员缓存昵称/名片，失败退 uin 字符串）。 */
@@ -235,7 +272,17 @@ export class GetForwardedMessagesAction extends MilkyApiAction<
         if (this.api.groupCache !== undefined && msg.chatType === ChatType.GROUP) {
             const member = await this.api.groupCache
                 .getMember(msg.peerUid, msg.senderUid)
-                .catch(() => undefined);
+                .catch((err) => {
+                    this.api.logger?.debug(
+                        {
+                            group: msg.peerUid,
+                            member: msg.senderUid,
+                            error: err instanceof Error ? err.message : String(err),
+                        },
+                        "milky: 发送者成员缓存读取失败，退 uin 字符串",
+                    );
+                    return undefined;
+                });
             const name =
                 member?.cardName !== undefined && member.cardName !== ""
                     ? member.cardName

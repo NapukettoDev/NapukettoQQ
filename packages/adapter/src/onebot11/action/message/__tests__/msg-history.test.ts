@@ -8,6 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../../core/__tests__/stub.js";
 import type { GroupSenderRole } from "../../../helper/data.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import {
@@ -23,12 +24,12 @@ function rawMsg(overrides: {
     senderUin?: string;
     senderUid?: string;
     peerUid?: string;
-    chatType?: number;
+    chatType?: ChatType;
     atUid?: string;
     replyId?: string;
     sendMemberName?: string;
 }): RawMessage {
-    return {
+    return stub<RawMessage>({
         msgId: overrides.msgId,
         msgSeq: overrides.msgSeq,
         msgTime: "1700000000000",
@@ -55,7 +56,7 @@ function rawMsg(overrides: {
                 : []),
             { elementType: 1, textElement: { content: "正文" } },
         ],
-    } as unknown as RawMessage;
+    });
 }
 
 /** 构造历史消息依赖桩（msgApi.fetchMessages / uidToUin / groupMemberRoles 可控）。 */

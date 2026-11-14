@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { afterAll, describe, expect, it } from "vitest";
+import { stub } from "../../core/__tests__/stub.js";
 import { ProtocolConfig } from "../../core/index.js";
 import { type KurobotMsgApi, NapukettoKurobotAdapter } from "../adapter.js";
 import { kurobotConfigDefaults, kurobotConfigSchema } from "../config.js";
@@ -44,12 +45,12 @@ afterAll(async () => {
 /** 桩消息事件通道（捕获 onRecvMsg 处理器，供用例注入合成消息）。 */
 function stubMsgChannel(): { channel: MsgEventChannel; emit: (msgs: unknown) => void } {
     let handler: ((msgs: unknown) => void) | null = null;
-    const channel = {
+    const channel = stub<MsgEventChannel>({
         on: (_event: string, cb: (msgs: unknown) => void) => {
             handler = cb;
             return () => undefined;
         },
-    } as unknown as MsgEventChannel;
+    });
     return {
         channel,
         emit: (msgs) => {

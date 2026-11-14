@@ -21,6 +21,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { GroupApi } from "@napuketto/kernel";
+import type { AdapterLoggerLike } from "../../core/shared/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
 
@@ -59,6 +60,8 @@ export interface OneBotApiOptions {
     system: OneBotSystemOptions;
     /** 群/成员缓存（ADR-008，读缓存动作用；未装配时动作直查 api）。 */
     groupCache?: GroupCache;
+    /** 降级分支可观测出口（缓存/转换失败 warn/debug 留痕；缺省静默）。 */
+    logger?: AdapterLoggerLike;
 }
 
 /**
@@ -106,6 +109,8 @@ export class OneBotApi {
     readonly exit: (() => Promise<void>) | undefined;
     /** 进程重启回调（set_restart 用）。 */
     readonly restart: (() => Promise<void>) | undefined;
+    /** 降级分支可观测出口（缺省静默）。 */
+    readonly logger?: AdapterLoggerLike | undefined;
 
     constructor(opts: OneBotApiOptions) {
         this.msgApi = opts.msgApi;
@@ -128,6 +133,7 @@ export class OneBotApi {
         this.mediaBaseDir = opts.system.mediaBaseDir;
         this.exit = opts.system.exit;
         this.restart = opts.system.restart;
+        this.logger = opts.logger;
     }
 
     /**
@@ -156,7 +162,11 @@ export class OneBotApi {
         try {
             const member = await this.groupCache.getMember(groupCode, uid);
             return member === undefined ? undefined : GroupApi.roleToString(member.role);
-        } catch {
+        } catch (err) {
+            this.logger?.warn(
+                { group: groupCode, uid, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 群成员缓存读取失败，sender.role 回退 member",
+            );
             return undefined;
         }
     }
@@ -175,7 +185,11 @@ export class OneBotApi {
                 out.set(member.uid, GroupApi.roleToString(member.role));
             }
             return out;
-        } catch {
+        } catch (err) {
+            this.logger?.warn(
+                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 群成员表缓存读取失败，历史 role 回退 member",
+            );
             return undefined;
         }
     }

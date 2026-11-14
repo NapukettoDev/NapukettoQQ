@@ -35,7 +35,11 @@ export class Ob11Enrichment {
         }
         try {
             return await this.api.uidToUin(uids);
-        } catch {
+        } catch (err) {
+            this.calibLogger?.warn(
+                { count: uids.length, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 请求 uid→uin 批量转换失败，退用 uid",
+            );
             return new Map();
         }
     }
@@ -62,8 +66,15 @@ export class Ob11Enrichment {
         if (atUids.length > 0) {
             try {
                 uidToUin = await this.api.uidToUin(atUids);
-            } catch {
-                // uid 解析失败：at 原样（uid），不阻塞事件上报
+            } catch (err) {
+                // uid 解析失败：at 原样（uid），不阻塞事件上报（warn 留痕）
+                this.calibLogger?.warn(
+                    {
+                        count: atUids.length,
+                        error: err instanceof Error ? err.message : String(err),
+                    },
+                    "ob11: 消息 at uid→uin 失败，at 原样",
+                );
             }
         }
         const senderRole =
@@ -93,7 +104,16 @@ export class Ob11Enrichment {
         try {
             const map = await this.api.uidToUin(uids);
             return (uid: string) => Number(map.get(uid) ?? 0);
-        } catch {
+        } catch (err) {
+            this.calibLogger?.warn(
+                {
+                    msgType: env.msgType,
+                    subType: env.subType,
+                    count: uids.length,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                "ob11: sysmsg uid→uin 失败，实体 uin 恒 0",
+            );
             return () => 0;
         }
     }
@@ -105,7 +125,13 @@ export class Ob11Enrichment {
      */
     async resolveEssenceMsgId(groupCode: string, seq: number): Promise<number | null> {
         const peer = { chatType: ChatType.GROUP, peerUid: groupCode };
-        const msgs = await this.api.msgApi.fetchMessages(peer, { count: 60 }).catch(() => []);
+        const msgs = await this.api.msgApi.fetchMessages(peer, { count: 60 }).catch((err) => {
+            this.calibLogger?.debug(
+                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                "ob11: 精华反查近段历史拉取失败",
+            );
+            return [];
+        });
         const hit = msgs.find((m) => Number(m.msgSeq) === seq);
         if (hit === undefined) {
             this.calibLogger?.warn(

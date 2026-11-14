@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
+import type { AdapterLoggerLike } from "./log.js";
 
 /** 读文件头 8 字节（判断 silk 魔数）。 */
 async function readFileHead(path: string): Promise<string> {
@@ -27,16 +28,21 @@ async function readFileHead(path: string): Promise<string> {
 
 /**
  * 语音转码：非 silk 输入（任意音频格式，经 @napuketto/media 归一化）转 silk。
- * 已是 silk（#!SILK_V3 头）原样返回；转码失败原样返回（由 kernel 发送时兜底）。
+ * 已是 silk（#!SILK_V3 头）原样返回；转码失败原样返回（由 kernel 发送时兜底），
+ * 可选 logger 记录降级上下文。
  */
-export async function ensureSilk(path: string): Promise<string> {
+export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Promise<string> {
     try {
         const header = await readFileHead(path);
         if (header.startsWith("#!SILK")) {
             return path;
         }
         return await encodePcmToSilk(path);
-    } catch {
+    } catch (err) {
+        logger?.warn(
+            { path, error: err instanceof Error ? err.message : String(err) },
+            "语音 silk 转码失败，原样透传",
+        );
         return path;
     }
 }

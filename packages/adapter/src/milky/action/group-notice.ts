@@ -74,7 +74,13 @@ export class GetGroupNotificationsAction extends MilkyApiAction<
         if (uids.length === 0) {
             return new Map();
         }
-        return await this.api.uidToUin(uids).catch(() => new Map<string, string>());
+        return await this.api.uidToUin(uids).catch((err) => {
+            this.api.logger?.warn(
+                { count: uids.length, error: err instanceof Error ? err.message : String(err) },
+                "milky: 通知 uid→uin 失败，实体 id 兜底 0",
+            );
+            return new Map<string, string>();
+        });
     }
 }
 

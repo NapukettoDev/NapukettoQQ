@@ -9,7 +9,8 @@
  *  - user.channel.create：私聊频道 id = 对端 uin（无实际创建）
  */
 import { ChatType } from "@napuketto/kernel";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { stub } from "../../../core/__tests__/stub.js";
 import type { ChannelActionDeps } from "../channel.js";
 import { ChannelGetAction, ChannelListAction } from "../channel.js";
 import type { UserActionDeps } from "../user.js";
@@ -20,21 +21,21 @@ function makeChannelDeps(
     api: StubSatoriApi,
     groupCache?: Record<string, never>,
 ): ChannelActionDeps {
-    return {
+    return stub<ChannelActionDeps>({
         groupApi: api.groupApi,
         selfUin: api.selfUin,
         resolvePeer: api.resolvePeer,
         setChannelType: api.setChannelType,
         ...(groupCache !== undefined ? { groupCache: groupCache as never } : {}),
-    } as unknown as ChannelActionDeps;
+    });
 }
 
 function makeUserDeps(api: StubSatoriApi, groupCache?: Record<string, never>): UserActionDeps {
-    return {
+    return stub<UserActionDeps>({
         profileApi: api.profileApi,
         groupApi: api.groupApi,
         ...(groupCache !== undefined ? { groupCache: groupCache as never } : {}),
-    } as unknown as UserActionDeps;
+    });
 }
 
 describe("ChannelGetAction", () => {
@@ -120,7 +121,7 @@ describe("UserGetAction", () => {
 
     it("nickname undefined（防御路径）→ 退化 long_nick", async () => {
         const api = stubSatoriApi();
-        api.profileApi.getStrangerInfo.mockResolvedValueOnce({
+        vi.mocked(api.profileApi.getStrangerInfo).mockResolvedValueOnce({
             nickname: undefined,
             long_nick: "个性签名",
         } as never);
@@ -133,7 +134,7 @@ describe("UserGetAction", () => {
 
     it("nickname 为空串（?? 不触发）→ 仅 ID（toUser 空串不写 name）", async () => {
         const api = stubSatoriApi();
-        api.profileApi.getStrangerInfo.mockResolvedValueOnce({
+        vi.mocked(api.profileApi.getStrangerInfo).mockResolvedValueOnce({
             nickname: "",
             long_nick: "不会用到的签名",
         } as never);
@@ -143,7 +144,7 @@ describe("UserGetAction", () => {
 
     it("陌生人信息查询失败：退化为仅 ID（不抛错）", async () => {
         const api = stubSatoriApi();
-        api.profileApi.getStrangerInfo.mockRejectedValueOnce(new Error("非好友"));
+        vi.mocked(api.profileApi.getStrangerInfo).mockRejectedValueOnce(new Error("非好友"));
         const action = new UserGetAction(makeUserDeps(api));
         await expect(action.run({ user_id: "90001" })).resolves.toEqual({ id: "90001" });
     });
