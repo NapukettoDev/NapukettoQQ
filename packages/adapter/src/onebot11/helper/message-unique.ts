@@ -1,5 +1,5 @@
 /**
- * MessageUnique：OneBot message_id ↔ NT msgId 双向映射（P2-3，协议相关）
+ * MessageUnique：OneBot message_id ↔ NT msgId 双向映射（协议相关）
  *
  * OB11 的 message_id 是 int32；NT msgId 是雪花字符串（如 "3071303571-1234567890"）。
  * 本类提供稳定双向映射：新消息分配递增 int32，消息事件翻译与 send_msg 返回都走这里，

@@ -1,27 +1,23 @@
 /**
- * 消息转发域动作（2026-11-14 自 send-forward-msg / forward-single-msg /
- * get-forward-msg 合并）
+ * 消息转发域动作
  *
- * - send_group_forward_msg / send_private_forward_msg（P2-12）：messages 每项为
+ * - send_group_forward_msg / send_private_forward_msg：messages 每项为
  *   node 元素 `{ type: "node", data: { id } }`——id 是此前 send_msg 返回的 OB11
  *   message_id。经 MessageUnique 反查源 msgId + peer，组装到目标 peer（群直通 /
  *   私聊 uinToUid）→ MsgApi.sendForwardMessage
- * - forward_group_single_msg / forward_friend_single_msg（P2-12）：message_id 反查
+ * - forward_group_single_msg / forward_friend_single_msg：message_id 反查
  *   源 msgId + peer；group_id/user_id 为目标 → MsgApi.forwardSingleMessage
- * - get_forward_msg（P2-12）：message_id / id → fetchForwardMessage（getMultiMsg）
+ * - get_forward_msg：message_id / id → fetchForwardMessage（getMultiMsg）
  *   → 每条 toOb11MessageInfo → { messages }
  */
 
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { z } from "zod";
-import { BaseAction } from "../../../core/index.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import { toOb11MessageInfo } from "../../helper/index.js";
 import { type MessageUnique, resolveMsgIdAndPeer } from "../../helper/message-unique.js";
-import type { OB11MessageInfo } from "../../types/index.js";
-import { ob11ErrorCodeMap } from "../error-map.js";
+import { defineOb11Action, type Ob11Action, resolveUid } from "../base-action.js";
 import { MAX_FORWARD_NODES } from "../limits.js";
-import { resolveUid } from "../resolve-uid.js";
 import { resolveTargetPeer } from "./resolve-peer.js";
 
 const forwardNodeSchema = z.object({
@@ -39,18 +35,27 @@ const sendGroupForwardMsgSchema = z.object({
     messages: z.array(z.unknown()).max(MAX_FORWARD_NODES).default([]),
 });
 
-type SendGroupForwardMsgPayload = z.infer<typeof sendGroupForwardMsgSchema>;
-
 const sendPrivateForwardMsgSchema = z.object({
     user_id: z.number(),
     // 上界见 action/limits.ts
     messages: z.array(z.unknown()).max(MAX_FORWARD_NODES).default([]),
 });
 
-type SendPrivateForwardMsgPayload = z.infer<typeof sendPrivateForwardMsgSchema>;
+const forwardSingleMsgSchema = z.object({
+    message_id: z.union([z.number(), z.string()]),
+    group_id: z.number().optional(),
+    user_id: z.number().optional(),
+});
+
+type ForwardSingleMsgPayload = z.infer<typeof forwardSingleMsgSchema>;
+
+const getForwardMsgSchema = z.object({
+    message_id: z.union([z.number(), z.string()]).optional(),
+    id: z.union([z.number(), z.string()]).optional(),
+});
 
 /** 合并转发依赖（OneBotApi 视图，由装配方注入）。 */
-export type ForwardMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid">;
+type ForwardMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid">;
 
 /** 解析 node 元素列表 → 源消息 (msgId, peer) 列表（id 反查，跳过无法解析的项）。 */
 function resolveSourceMessages(
@@ -95,147 +100,64 @@ async function sendForward(
     return { message_id: deps.messageUnique.alloc(msgId, target) };
 }
 
-/** 发送群合并转发（P2-12 接 kernel sendForwardMessage）。 */
-export class SendGroupForwardMsgAction extends BaseAction<
-    SendGroupForwardMsgPayload,
-    { message_id: number }
-> {
-    readonly name = "send_group_forward_msg";
-    readonly schema = sendGroupForwardMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: ForwardMsgDeps;
-
-    constructor(deps: ForwardMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected async _handle(payload: SendGroupForwardMsgPayload): Promise<{ message_id: number }> {
-        const target: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
-        return await sendForward(payload.messages, target, this.deps);
-    }
+/** 单条转发共用实现：message_id 反查源消息 + 目标 Peer 解析 → forwardSingleMessage。 */
+async function forwardSingleMsg(
+    payload: ForwardSingleMsgPayload,
+    deps: ForwardMsgDeps,
+): Promise<null> {
+    const { msgId, peer: sourcePeer } = resolveMsgIdAndPeer(payload.message_id, deps.messageUnique);
+    const dstPeer = await resolveTargetPeer(payload, deps, "单条转发需要 group_id 或 user_id");
+    await deps.msgApi.forwardSingleMessage(sourcePeer, [msgId], dstPeer);
+    return null;
 }
 
-/** 发送私聊合并转发（P2-12）。 */
-export class SendPrivateForwardMsgAction extends BaseAction<
-    SendPrivateForwardMsgPayload,
-    { message_id: number }
-> {
-    readonly name = "send_private_forward_msg";
-    readonly schema = sendPrivateForwardMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: ForwardMsgDeps;
-
-    constructor(deps: ForwardMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected async _handle(
-        payload: SendPrivateForwardMsgPayload,
-    ): Promise<{ message_id: number }> {
-        const uid = await resolveUid(String(payload.user_id), this.deps.uinToUid);
-        const target: Peer = { chatType: ChatType.C2C, peerUid: uid };
-        return await sendForward(payload.messages, target, this.deps);
-    }
-}
-
-const forwardSingleMsgSchema = z.object({
-    message_id: z.union([z.number(), z.string()]),
-    group_id: z.number().optional(),
-    user_id: z.number().optional(),
-});
-
-type ForwardSingleMsgPayload = z.infer<typeof forwardSingleMsgSchema>;
-
-/** 单条转发依赖（OneBotApi 视图，由装配方注入）。 */
-type ForwardSingleMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid">;
-
-/** 单条转发基类（两个动作共用实现）。 */
-abstract class ForwardSingleMsgBase extends BaseAction<ForwardSingleMsgPayload, null> {
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: ForwardSingleMsgDeps;
-
-    constructor(deps: ForwardSingleMsgDeps) {
-        super();
-        this.deps = deps;
-    }
-
-    protected async _handle(payload: ForwardSingleMsgPayload): Promise<null> {
-        const { msgId, peer: sourcePeer } = resolveMsgIdAndPeer(
-            payload.message_id,
-            this.deps.messageUnique,
-        );
-        const dstPeer = await resolveTargetPeer(
-            payload,
-            this.deps,
-            "单条转发需要 group_id 或 user_id",
-        );
-        await this.deps.msgApi.forwardSingleMessage(sourcePeer, [msgId], dstPeer);
-        return null;
-    }
-}
-
-/** 转发单条消息到群（P2-12）。 */
-export class ForwardGroupSingleMsgAction extends ForwardSingleMsgBase {
-    readonly name = "forward_group_single_msg";
-    readonly schema = forwardSingleMsgSchema;
-}
-
-/** 转发单条消息到好友（P2-12）。 */
-export class ForwardFriendSingleMsgAction extends ForwardSingleMsgBase {
-    readonly name = "forward_friend_single_msg";
-    readonly schema = forwardSingleMsgSchema;
-}
-
-const getForwardMsgSchema = z.object({
-    message_id: z.union([z.number(), z.string()]).optional(),
-    id: z.union([z.number(), z.string()]).optional(),
-});
-
-type GetForwardMsgPayload = z.infer<typeof getForwardMsgSchema>;
-
-/** 获取合并转发内容（P2-12 接 kernel fetchForwardMessage）。 */
-export class GetForwardMsgAction extends BaseAction<
-    GetForwardMsgPayload,
-    { messages: OB11MessageInfo[] }
-> {
-    readonly name = "get_forward_msg";
-    readonly schema = getForwardMsgSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: Pick<OneBotApi, "msgApi" | "messageUnique">;
-
-    constructor(deps: Pick<OneBotApi, "msgApi" | "messageUnique">) {
-        super();
-        this.deps = deps;
-    }
-
-    protected async _handle(
-        payload: GetForwardMsgPayload,
-    ): Promise<{ messages: OB11MessageInfo[] }> {
-        const id = payload.message_id ?? payload.id;
-        if (id === undefined) {
-            throw kernelError("get_forward_msg 需要 message_id 或 id", "INVALID_PARAM");
-        }
-        const { msgId, peer } = resolveMsgIdAndPeer(id, this.deps.messageUnique);
-        const msgs = await this.deps.msgApi.fetchForwardMessage(peer, msgId);
-        return {
-            messages: msgs.map((msg) => toOb11MessageInfo(msg, this.deps.messageUnique)),
-        };
-    }
-}
-
-/** 消息转发域动作工厂（合并转发 ×2 / 单条转发 ×2 / get_forward_msg）。 */
-export function createForwardActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
+/** 消息转发域动作工厂（合并转发 ×2 / get_forward_msg / 单条转发 ×2）。 */
+export function createForwardActions(api: OneBotApi): Ob11Action[] {
     return [
-        new SendGroupForwardMsgAction(api),
-        new SendPrivateForwardMsgAction(api),
-        new GetForwardMsgAction(api),
-        new ForwardGroupSingleMsgAction(api),
-        new ForwardFriendSingleMsgAction(api),
+        defineOb11Action({
+            name: "send_group_forward_msg",
+            schema: sendGroupForwardMsgSchema,
+            handle: async (payload) => {
+                const target: Peer = {
+                    chatType: ChatType.GROUP,
+                    peerUid: String(payload.group_id),
+                };
+                return await sendForward(payload.messages, target, api);
+            },
+        }),
+        defineOb11Action({
+            name: "send_private_forward_msg",
+            schema: sendPrivateForwardMsgSchema,
+            handle: async (payload) => {
+                const uid = await resolveUid(String(payload.user_id), api.uinToUid);
+                const target: Peer = { chatType: ChatType.C2C, peerUid: uid };
+                return await sendForward(payload.messages, target, api);
+            },
+        }),
+        defineOb11Action({
+            name: "get_forward_msg",
+            schema: getForwardMsgSchema,
+            handle: async (payload) => {
+                const id = payload.message_id ?? payload.id;
+                if (id === undefined) {
+                    throw kernelError("get_forward_msg 需要 message_id 或 id", "INVALID_PARAM");
+                }
+                const { msgId, peer } = resolveMsgIdAndPeer(id, api.messageUnique);
+                const msgs = await api.msgApi.fetchForwardMessage(peer, msgId);
+                return {
+                    messages: msgs.map((msg) => toOb11MessageInfo(msg, api.messageUnique)),
+                };
+            },
+        }),
+        defineOb11Action({
+            name: "forward_group_single_msg",
+            schema: forwardSingleMsgSchema,
+            handle: (payload) => forwardSingleMsg(payload, api),
+        }),
+        defineOb11Action({
+            name: "forward_friend_single_msg",
+            schema: forwardSingleMsgSchema,
+            handle: (payload) => forwardSingleMsg(payload, api),
+        }),
     ];
 }

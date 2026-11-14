@@ -1,12 +1,13 @@
 /**
- * BaseProtocolAdapter：协议适配器骨架（ADR-013，只写一次，各协议薄映射）
+ * BaseProtocolAdapter：协议适配器骨架（只写一次，各协议薄映射）
  *
  * 生命周期：start（校验配置 → 协议层初始化 → 启动传输）→ stop。
  * 请求分发：协议层把 network 的 onRequest 绑定到 `handleRequest`。
  * 事件广播：协议层翻译 kernel 事件后经 `broadcastEvent` 推给 network。
  */
+
+import type { ConfigBase } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import type { ProtocolConfig } from "./config.js";
 
 /**
  * 适配器生命周期钩子：由协议层实现（配置校验、初始化、资源清理）。
@@ -29,13 +30,13 @@ export interface ProtocolHooks<TConfig = unknown> {
 export abstract class BaseProtocolAdapter<TConfig> {
     abstract readonly protocol: string;
 
-    protected readonly config: ProtocolConfig<TConfig>;
+    protected readonly config: ConfigBase<TConfig>;
     protected readonly hooks: ProtocolHooks<TConfig>;
     private readonly broadcaster: EventBroadcaster | undefined;
     private started = false;
 
     constructor(opts: {
-        config: ProtocolConfig<TConfig>;
+        config: ConfigBase<TConfig>;
         hooks: ProtocolHooks<TConfig>;
         broadcaster?: EventBroadcaster;
     }) {

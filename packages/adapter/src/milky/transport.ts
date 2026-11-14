@@ -6,7 +6,7 @@
  *   （200 ok / 200 failed(-400/-403/自定) / 401 鉴权 / 404 API 不存在（空 body）/
  *   415 Content-Type）。
  * - /event：onRawRequest 承接 SSE（createSseResponse，event: milky_event）；
- *   onUpgrade 承接同端口 WS 升级（网络原语 2026-10-28 下沉 network）。
+ * onUpgrade 承接同端口 WS 升级（网络原语 下沉 network）。
  * - WebHook：HttpClient（fire-and-forget POST，Authorization 头带 token）。
  *
  * 事件推送统一经 MilkyEventHub（注册到 EventBroadcaster，send → SSE/WS 客户端）。
@@ -32,7 +32,7 @@ const API_PATH_RE = /^\/api\/([a-z][a-z0-9_]*)$/;
 /** Bearer 前缀。 */
 const BEARER_PREFIX = "Bearer ";
 
-/** 校准 logger 最小面（webhook 失败 / 配置异常 / 批次三事件校准数据；缺省静默）。 */
+/** 校准 logger 最小面（webhook 失败 / 配置异常 / 事件校准数据；缺省静默）。 */
 export interface MilkyLoggerLike {
     debug(obj: unknown, msg?: string): void;
     warn(obj: unknown, msg?: string): void;

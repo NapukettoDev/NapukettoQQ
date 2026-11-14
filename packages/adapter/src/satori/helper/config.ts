@@ -1,12 +1,9 @@
 /**
- * Satori 协议配置（zod schema，归属本包，ADR-012）
+ * Satori 协议配置（zod schema，归属本包）
  * 协议配置 schema 在各自协议包，kernel 只提供 ConfigBase 基类。
  */
 import { z } from "zod";
-import {
-    createHttpServerSchema,
-    createWsServerSchema,
-} from "../../core/framework/transport-schema.js";
+import { createServerSchema } from "../../core/framework/transport-schema.js";
 
 /** HTTP RPC 服务器默认端口（satori.chat 惯例 5500 区间，取 5500）。 */
 const DEFAULT_HTTP_PORT = 5500;
@@ -14,10 +11,10 @@ const DEFAULT_HTTP_PORT = 5500;
 const DEFAULT_WS_PORT = 5501;
 
 /** HTTP RPC 服务器实例（POST /v1/{resource}.{method}）。 */
-const httpServerSchema = createHttpServerSchema(DEFAULT_HTTP_PORT);
+const httpServerSchema = createServerSchema(DEFAULT_HTTP_PORT);
 
 /** WS 事件服务实例（/v1/events 信令，第三方 SDK 连入）。 */
-const wsServerSchema = createWsServerSchema(DEFAULT_WS_PORT);
+const wsServerSchema = createServerSchema(DEFAULT_WS_PORT);
 
 /** Satori 配置 schema。 */
 export const satoriConfigSchema = z.object({

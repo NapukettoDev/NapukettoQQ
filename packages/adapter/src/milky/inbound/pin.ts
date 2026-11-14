@@ -4,10 +4,10 @@
  * getPinnedContacts 播种基线（重启后首个取消置顶也能观测到翻转）。
  */
 import type { RecentContact, RecentContactListChanged } from "@napuketto/kernel";
-import { numericUin } from "../../core/shared/uid-uin.js";
+import { numericUin } from "../../shared/uid-uin.js";
+import type { MilkyInboundBase } from "../api.js";
 import { PinWatch, toPeerPinChangeData } from "../helper/event/peer-pin.js";
 import type { PeerPinChangeData } from "../types.js";
-import type { MilkyInboundBase } from "./base.js";
 
 interface PinPayload {
     chatType: number;
@@ -23,7 +23,7 @@ export type MilkyInboundPinDeps = MilkyInboundBase;
 /** Milky 置顶域处理器（翻转检测 + 播种基线 + peer_pin_change 广播）。 */
 export class MilkyInboundPin {
     private readonly deps: MilkyInboundPinDeps;
-    /** peer_pin 翻转检测（批次三；启动期 getPinnedContacts 播种）。 */
+    /** peer_pin 翻转检测（启动期 getPinnedContacts 播种）。 */
     private readonly pinWatch = new PinWatch();
 
     constructor(deps: MilkyInboundPinDeps) {
@@ -40,7 +40,7 @@ export class MilkyInboundPin {
         }
     }
 
-    /** 启动基线：置顶会话播种（2026-11-14 起失败补 debug 日志，不再静默）。 */
+    /** 启动基线：置顶会话播种（失败补 debug 日志，不再静默）。 */
     seed(): void {
         void this.deps.api.recentContactApi
             .getPinnedContacts()

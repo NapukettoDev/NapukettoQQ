@@ -9,9 +9,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
-import { SetQQAvatarAction, SetQQProfileAction, SetSelfLongnickAction } from "../account.js";
-import { DownloadFileAction } from "../file.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import { createSystemAccountActions } from "../account.js";
+import { createSystemFileActions } from "../file.js";
 
 let tmpRoot = "";
 afterAll(() => {
@@ -41,7 +42,10 @@ function makeResponse(ok: boolean, body: string, status = ok ? 200 : 500): Respo
 describe("set_self_longnick / set_qq_profile", () => {
     it("个性签名 → setLongNick", async () => {
         const profileApi = { setLongNick: vi.fn(async () => undefined) };
-        const result = await new SetSelfLongnickAction(profileApi as never).handle({
+        const result = await ob11ActionOf(
+            createSystemAccountActions({ profileApi } as never),
+            "set_self_longnick",
+        ).handle({
             longNick: "新签名",
         });
         expect(result.retcode).toBe(0);
@@ -53,7 +57,10 @@ describe("set_self_longnick / set_qq_profile", () => {
             setNickName: vi.fn(async () => undefined),
             setLongNick: vi.fn(async () => undefined),
         };
-        const action = new SetQQProfileAction(profileApi as never);
+        const action = ob11ActionOf(
+            createSystemAccountActions({ profileApi } as never),
+            "set_qq_profile",
+        );
         await action.handle({ nickname: "新昵称" });
         expect(profileApi.setNickName).toHaveBeenCalledWith("新昵称");
         expect(profileApi.setLongNick).not.toHaveBeenCalled();
@@ -62,7 +69,10 @@ describe("set_self_longnick / set_qq_profile", () => {
     });
 
     it("缺 nickname → retcode 400", async () => {
-        const action = new SetQQProfileAction({ setNickName: vi.fn() } as never);
+        const action = ob11ActionOf(
+            createSystemAccountActions({ setNickName: vi.fn() } as never),
+            "set_qq_profile",
+        );
         expect((await action.handle({})).retcode).toBe(400);
     });
 });
@@ -73,7 +83,10 @@ describe("set_qq_avatar", () => {
         const avatar = join(dir, "avatar.png");
         writeFileSync(avatar, "png");
         const profileApi = { setHeader: vi.fn(async () => undefined) };
-        const result = await new SetQQAvatarAction({ profileApi } as never).handle({
+        const result = await ob11ActionOf(
+            createSystemAccountActions({ profileApi } as never),
+            "set_qq_avatar",
+        ).handle({
             file: avatar,
         });
         expect(result.retcode).toBe(0);
@@ -83,9 +96,10 @@ describe("set_qq_avatar", () => {
     it("本地文件不存在 → retcode 102 NOT_FOUND", async () => {
         const dir = ensureTmp();
         const missing = join(dir, "no-such-avatar.png");
-        const result = await new SetQQAvatarAction({
-            profileApi: { setHeader: vi.fn() },
-        } as never).handle({ file: missing });
+        const result = await ob11ActionOf(
+            createSystemAccountActions({ profileApi: { setHeader: vi.fn() } } as never),
+            "set_qq_avatar",
+        ).handle({ file: missing });
         expect(result.retcode).toBe(102);
         expect(result.message).toContain("头像文件不存在");
     });
@@ -96,10 +110,10 @@ describe("set_qq_avatar", () => {
         vi.stubGlobal("fetch", fetchStub);
         try {
             const profileApi = { setHeader: vi.fn(async (_path: string) => undefined) };
-            const result = await new SetQQAvatarAction({
-                profileApi,
-                cacheDir: dir,
-            } as never).handle({ file: "https://example.com/a.png" });
+            const result = await ob11ActionOf(
+                createSystemAccountActions({ profileApi, cacheDir: dir } as never),
+                "set_qq_avatar",
+            ).handle({ file: "https://example.com/a.png" });
             expect(result.retcode).toBe(0);
             const written = profileApi.setHeader.mock.calls[0]?.[0] as string;
             expect(written.startsWith(join(dir, "avatar-"))).toBe(true);
@@ -115,10 +129,10 @@ describe("set_qq_avatar", () => {
         vi.stubGlobal("fetch", fetchStub);
         try {
             const profileApi = { setHeader: vi.fn(async (_path: string) => undefined) };
-            const result = await new SetQQAvatarAction({
-                profileApi,
-                cacheDir: dir,
-            } as never).handle({ file: "https://example.com/" });
+            const result = await ob11ActionOf(
+                createSystemAccountActions({ profileApi, cacheDir: dir } as never),
+                "set_qq_avatar",
+            ).handle({ file: "https://example.com/" });
             expect(result.retcode).toBe(0);
             expect(basename(profileApi.setHeader.mock.calls[0]?.[0] as string)).toContain(
                 "avatar.bin",
@@ -135,10 +149,13 @@ describe("set_qq_avatar", () => {
             vi.fn(async () => makeResponse(false, "", 404)),
         );
         try {
-            const result = await new SetQQAvatarAction({
-                profileApi: { setHeader: vi.fn() },
-                cacheDir: dir,
-            } as never).handle({ file: "https://example.com/a.png" });
+            const result = await ob11ActionOf(
+                createSystemAccountActions({
+                    profileApi: { setHeader: vi.fn() },
+                    cacheDir: dir,
+                } as never),
+                "set_qq_avatar",
+            ).handle({ file: "https://example.com/a.png" });
             expect(result.retcode).toBe(999);
             expect(result.message).toContain("头像下载失败");
         } finally {
@@ -147,9 +164,10 @@ describe("set_qq_avatar", () => {
     });
 
     it("URL 头像：未注入 cacheDir → retcode 106", async () => {
-        const result = await new SetQQAvatarAction({
-            profileApi: { setHeader: vi.fn() },
-        } as never).handle({ file: "https://example.com/a.png" });
+        const result = await ob11ActionOf(
+            createSystemAccountActions({ profileApi: { setHeader: vi.fn() } } as never),
+            "set_qq_avatar",
+        ).handle({ file: "https://example.com/a.png" });
         expect(result.retcode).toBe(106);
         expect(result.message).toContain("缓存目录");
     });
@@ -164,7 +182,10 @@ describe("download_file", () => {
         });
         vi.stubGlobal("fetch", fetchStub);
         try {
-            const result = await new DownloadFileAction({ cacheDir: dir } as never).handle({
+            const result = await ob11ActionOf<{ file: string }>(
+                createSystemFileActions({ cacheDir: dir } as never),
+                "download_file",
+            ).handle({
                 url: "https://example.com/pkg.bin",
                 headers: { "x-a": "1" },
             });
@@ -182,7 +203,10 @@ describe("download_file", () => {
         const fetchStub = vi.fn(async () => makeResponse(true, "bytes"));
         vi.stubGlobal("fetch", fetchStub);
         try {
-            const result = await new DownloadFileAction({ cacheDir: dir } as never).handle({
+            const result = await ob11ActionOf<{ file: string }>(
+                createSystemFileActions({ cacheDir: dir } as never),
+                "download_file",
+            ).handle({
                 url: "https://example.com/",
             });
             expect(result.status).toBe("ok");
@@ -199,7 +223,10 @@ describe("download_file", () => {
             vi.fn(async () => makeResponse(false, "", 403)),
         );
         try {
-            const result = await new DownloadFileAction({ cacheDir: dir } as never).handle({
+            const result = await ob11ActionOf(
+                createSystemFileActions({ cacheDir: dir } as never),
+                "download_file",
+            ).handle({
                 url: "https://example.com/pkg.bin",
             });
             expect(result.retcode).toBe(999);
@@ -210,7 +237,10 @@ describe("download_file", () => {
     });
 
     it("cacheDir 未注入 → retcode 106（INVALID_STATE）", async () => {
-        const result = await new DownloadFileAction({} as never).handle({
+        const result = await ob11ActionOf(
+            createSystemFileActions({} as never),
+            "download_file",
+        ).handle({
             url: "https://example.com/x",
         });
         expect(result.retcode).toBe(106);

@@ -1,6 +1,6 @@
 /**
  * OB11 收链路订阅接线板：管理 unsubscribes 与 kernel 频道 → 领域处理器路由；
- * 域处理在 inbound/，异步回填在 enrichment.ts（ADR-008）。
+ * 域处理在 inbound/，异步回填在 enrichment.ts。
  */
 import type {
     BuddyCacheEventChannel,
@@ -8,8 +8,8 @@ import type {
     GroupEventChannel,
     MsgEventChannel,
 } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "../core/shared/log.js";
-import { subscribeRawMessages } from "../core/shared/raw-message.js";
+import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
+import { subscribeRawMessages } from "../shared/raw-message.js";
 import type { OneBotApi } from "./api/one-bot-api.js";
 import { Ob11Enrichment } from "./enrichment.js";
 import type { OB11Config } from "./helper/index.js";
@@ -68,7 +68,16 @@ export class Ob11EventPipeline {
         if (groupChannel !== undefined) {
             this.unsubscribes.push(
                 groupChannel.on("Group/onGroupNotifiesUpdated", (doubt, notifies) => {
-                    void this.request.groupNotifies(doubt, notifies);
+                    // 回填/翻译失败只丢本批事件，不打断收链路
+                    this.request
+                        .groupNotifies(doubt, notifies)
+                        .catch((err: unknown) =>
+                            logEventFailure(
+                                this.deps.logger,
+                                "ob11: group request 翻译失败（整批丢弃）",
+                                err,
+                            ),
+                        );
                 }),
                 groupChannel.on("Group/onGroupEssenceListChange", (a) => this.essence.change(a)),
             );

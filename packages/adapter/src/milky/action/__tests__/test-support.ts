@@ -157,7 +157,7 @@ export function actionOf(
 }
 
 /**
- * 群类依赖桩（groupApi 全方法 vi.fn；group 四域测试共用，2026-11-14 自 p3-group
+ * 群类依赖桩（groupApi 全方法 vi.fn；group 四域测试共用，自 p3-group
  * 上移）。groupApi/msgApi/webApi/groupNotifyApi 缺省桩可覆写，其余服务键
  * （friendApi / richMediaApi / flashTransferApi / recentContactApi / groupCache /
  * selfUid 等）经 spread 直通 buildMilkyApi。
@@ -205,7 +205,7 @@ export function groupRegistry(overrides: ApiOverrides = {}): ReturnType<typeof r
 }
 
 /**
- * 消息类依赖桩（msgApi 常用方法 vi.fn；message 三域测试共用，2026-11-14 自
+ * 消息类依赖桩（msgApi 常用方法 vi.fn；message 三域测试共用，自
  * p3-message 上移）。msgApi 缺省桩可覆写，其余服务键经 spread 直通。
  */
 export function messageApi(overrides: ApiOverrides = {}): ReturnType<typeof registryOf> {

@@ -8,7 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../shared/gray-tip.js";
+import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../gray-tip.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */
 function makeMsg(elements: RawMessage["elements"]): RawMessage {

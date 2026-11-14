@@ -10,12 +10,20 @@
 import { type CanonicalElement, ChatType, type Peer } from "@napuketto/kernel";
 import { describe, expect, it, type Mock, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import {
-    SendGroupMsgAction,
-    SendMsgAction,
-    type SendMsgDeps,
-    SendPrivateMsgAction,
-} from "../send.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import type { Ob11Action } from "../../base-action.js";
+import { createSendActions, type SendMsgDeps } from "../send.js";
+
+/** 取发送域动作（TReturn 断言为 { message_id }，保持 result.data 属性访问的编译期类型）。 */
+function sendActionOf(
+    deps: SendMsgDeps,
+    name: "send_msg" | "send_private_msg" | "send_group_msg",
+): Ob11Action<unknown, { message_id: number }> {
+    return ob11ActionOf(createSendActions(deps as never), name) as Ob11Action<
+        unknown,
+        { message_id: number }
+    >;
+}
 
 /** sendMessage 桩类型（calls[0] 直接解构出 peer/elements）。 */
 type SendMock = Mock<(peer: Peer, elements: CanonicalElement[]) => Promise<{ msgId: string }>>;
@@ -46,7 +54,7 @@ function makeDeps(options?: { sendMessage?: SendMock; uinToUidFail?: boolean }):
 describe("send_msg（共享核心 sendOb11Message）", () => {
     it("群聊 CQ 码文本 → Peer{GROUP, 群号} + text 元素 + message_id 分配", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({
             message_type: "group",
             group_id: 808,
@@ -68,7 +76,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("CQ 码串含 at → uin→uid 批量转换一次", async () => {
         const { deps, sendMessage, uinToUid } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({
             message_type: "group",
             group_id: 808,
@@ -81,7 +89,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("at-all 不参与 uin→uid 转换（不调 uinToUid）", async () => {
         const { deps, sendMessage, uinToUid } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({
             message_type: "group",
             group_id: 808,
@@ -98,7 +106,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
     it("segment 数组：reply OB11 id → NT msgId；反查不到原样透传", async () => {
         const { deps, sendMessage } = makeDeps();
         deps.messageUnique.alloc("nt-src", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({
             message_type: "group",
             group_id: 808,
@@ -114,7 +122,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("auto_escape=true → text 元素 CQ 特殊字符转义", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({
             message_type: "group",
             group_id: 808,
@@ -129,7 +137,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("auto_escape=true → 非 text 元素原样保留", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({
             message_type: "group",
             group_id: 808,
@@ -142,7 +150,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("auto_escape 缺省 → 不转义", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         await action.handle({ group_id: 808, message: "a[b]" });
         const [, elements] = sendMessage.mock.calls[0] ?? [];
         expect(elements?.[0]?.type === "text" && elements?.[0]?.text).toBe("a[b]");
@@ -150,7 +158,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("uinToUid 抛错 → at 目标原样（uin），发送不阻塞", async () => {
         const { deps, sendMessage, uinToUid } = makeDeps({ uinToUidFail: true });
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({
             message_type: "group",
             group_id: 808,
@@ -164,7 +172,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("语音段：不存在的文件路径经 ensureSilk 原样透传（转码失败兜底）", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({
             message_type: "group",
             group_id: 808,
@@ -178,7 +186,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("缺 group_id 与 user_id → retcode 105（INVALID_PARAM）", async () => {
         const { deps } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({ message: "hi" });
         expect(result.retcode).toBe(105);
         expect(result.message).toBe("send_msg 需要 group_id 或 user_id");
@@ -186,13 +194,13 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("message 缺失 → retcode 400（zod）", async () => {
         const { deps } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         expect((await action.handle({ group_id: 808 })).retcode).toBe(400);
     });
 
     it("消息段超上限（200）→ retcode 400", async () => {
         const { deps } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const segments = Array.from({ length: 201 }, () => ({
             type: "text",
             data: { text: "x" },
@@ -202,7 +210,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 
     it("WS 入口（websocketHandle）echo 原样带回", async () => {
         const { deps } = makeDeps();
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.websocketHandle({ group_id: 808, message: "hi" }, "echo-1");
         expect(result.echo).toBe("echo-1");
         expect(result.retcode).toBe(0);
@@ -215,7 +223,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
                 throw kernelError("发送失败", "SEND_FAILED");
             }),
         });
-        const action = new SendMsgAction(deps);
+        const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({ group_id: 808, message: "hi" });
         expect(result.retcode).toBe(100);
         expect(result.status).toBe("failed");
@@ -225,7 +233,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
 describe("send_private_msg", () => {
     it("user_id uin→uid → Peer{C2C, uid}", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendPrivateMsgAction(deps);
+        const action = sendActionOf(deps, "send_private_msg");
         const result = await action.handle({ user_id: 90001, message: "私信" });
         expect(result.retcode).toBe(0);
         const [peer] = sendMessage.mock.calls[0] ?? [];
@@ -234,10 +242,13 @@ describe("send_private_msg", () => {
 
     it("uin 解析不到 → retcode 105", async () => {
         const { deps } = makeDeps();
-        const action = new SendPrivateMsgAction({
-            ...deps,
-            uinToUid: vi.fn(async () => new Map<string, string>()),
-        });
+        const action = sendActionOf(
+            {
+                ...deps,
+                uinToUid: vi.fn(async () => new Map<string, string>()),
+            },
+            "send_private_msg",
+        );
         const result = await action.handle({ user_id: 11111, message: "私信" });
         expect(result.retcode).toBe(105);
     });
@@ -246,7 +257,7 @@ describe("send_private_msg", () => {
 describe("send_group_msg", () => {
     it("group_id 直通 Peer{GROUP}", async () => {
         const { deps, sendMessage } = makeDeps();
-        const action = new SendGroupMsgAction(deps);
+        const action = sendActionOf(deps, "send_group_msg");
         const result = await action.handle({ group_id: 909, message: "群消息" });
         expect(result.retcode).toBe(0);
         const [peer] = sendMessage.mock.calls[0] ?? [];

@@ -6,12 +6,8 @@
  */
 import { TicketApi } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import {
-    GetClientkeyAction,
-    GetCookiesAction,
-    GetCredentialsAction,
-    GetCsrfTokenAction,
-} from "../account.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import { createSystemAccountActions } from "../account.js";
 
 /** 构造 ticket 依赖（selfUin=10001）。 */
 function ticketDeps(cookies: Record<string, string> = { skey: "@testSkey" }) {
@@ -31,7 +27,10 @@ describe("get_clientkey", () => {
                 url: "https://example",
             })),
         };
-        const result = await new GetClientkeyAction(ticketApi as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemAccountActions({ ticketApi } as never),
+            "get_clientkey",
+        ).handle({});
         expect(result.data).toEqual({
             clientKey: "ck",
             keyIndex: "1",
@@ -44,14 +43,20 @@ describe("get_clientkey", () => {
 describe("get_cookies", () => {
     it("domain/user_id 缺省 → v2.qq.com + selfUin", async () => {
         const deps = ticketDeps();
-        const result = await new GetCookiesAction(deps as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemAccountActions(deps as never),
+            "get_cookies",
+        ).handle({});
         expect(result.data).toEqual({ skey: "@testSkey" });
         expect(deps.ticketApi.getCookies).toHaveBeenCalledWith("v2.qq.com", "10001");
     });
 
     it("domain/user_id 显式传入覆盖", async () => {
         const deps = ticketDeps();
-        await new GetCookiesAction(deps as never).handle({ domain: "qun.qq.com", user_id: 90001 });
+        await ob11ActionOf(createSystemAccountActions(deps as never), "get_cookies").handle({
+            domain: "qun.qq.com",
+            user_id: 90001,
+        });
         expect(deps.ticketApi.getCookies).toHaveBeenCalledWith("qun.qq.com", "90001");
     });
 });
@@ -59,7 +64,10 @@ describe("get_cookies", () => {
 describe("get_csrf_token", () => {
     it("qun.qq.com skey → bkn 数值", async () => {
         const deps = ticketDeps({ skey: "@abc" });
-        const result = await new GetCsrfTokenAction(deps as never).handle({});
+        const result = await ob11ActionOf<{ token: number }>(
+            createSystemAccountActions(deps as never),
+            "get_csrf_token",
+        ).handle({});
         expect(result.status).toBe("ok");
         expect(deps.ticketApi.getCookies).toHaveBeenCalledWith("qun.qq.com", "10001");
         expect(result.data?.token).toBe(Number(TicketApi.getBkn("@abc")));
@@ -67,7 +75,10 @@ describe("get_csrf_token", () => {
 
     it('skey 缺失 → 空 bkn（getBkn("") 初值）', async () => {
         const deps = ticketDeps({});
-        const result = await new GetCsrfTokenAction(deps as never).handle({});
+        const result = await ob11ActionOf<{ token: number }>(
+            createSystemAccountActions(deps as never),
+            "get_csrf_token",
+        ).handle({});
         expect(result.data?.token).toBe(Number(TicketApi.getBkn("")));
     });
 });
@@ -75,7 +86,10 @@ describe("get_csrf_token", () => {
 describe("get_credentials", () => {
     it("domain 缺省 qun.qq.com → cookies + csrf_token", async () => {
         const deps = ticketDeps({ skey: "@abc" });
-        const result = await new GetCredentialsAction(deps as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemAccountActions(deps as never),
+            "get_credentials",
+        ).handle({});
         expect(result.data).toEqual({
             cookies: { skey: "@abc" },
             csrf_token: Number(TicketApi.getBkn("@abc")),
@@ -85,14 +99,19 @@ describe("get_credentials", () => {
 
     it("cookies 无 skey → csrf_token 取 getBkn 空串初值", async () => {
         const deps = ticketDeps({});
-        const result = await new GetCredentialsAction(deps as never).handle({});
+        const result = await ob11ActionOf<{ cookies: Record<string, string>; csrf_token: number }>(
+            createSystemAccountActions(deps as never),
+            "get_credentials",
+        ).handle({});
         expect(result.data?.cookies).toEqual({});
         expect(result.data?.csrf_token).toBe(Number(TicketApi.getBkn("")));
     });
 
     it("自定义 domain 透传", async () => {
         const deps = ticketDeps();
-        await new GetCredentialsAction(deps as never).handle({ domain: "vip.qq.com" });
+        await ob11ActionOf(createSystemAccountActions(deps as never), "get_credentials").handle({
+            domain: "vip.qq.com",
+        });
         expect(deps.ticketApi.getCookies).toHaveBeenCalledWith("vip.qq.com", "10001");
     });
 });

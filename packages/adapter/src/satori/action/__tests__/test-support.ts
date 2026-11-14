@@ -16,7 +16,26 @@ import type {
     ProfileApi,
 } from "@napuketto/kernel";
 import { vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
+import type { SatoriAction } from "../base-action.js";
+
+/**
+ * 测试视角的 Satori 动作（run 返回 `R`；由用例按动作签名标注，恢复强类型
+ * 断言面——与类时代的动作泛型等价）。
+ */
+export interface SatoriTestAction<R> {
+    readonly name: string;
+    run(payload: unknown): Promise<R>;
+}
+
+/** 按动作名从领域工厂产物中取动作（未注册即抛错，防静默漏测）。 */
+export function satoriActionOf<R>(actions: SatoriAction[], name: string): SatoriTestAction<R> {
+    const action = actions.find((a) => a.name === name);
+    if (action === undefined) {
+        throw new Error(`动作未注册: ${name}`);
+    }
+    return action as SatoriTestAction<R>;
+}
 
 /** uid → uin 默认桩映射（uid_xxx 形式；仅本文件内部使用）。 */
 function uinToUidMap(uins: string[]): Map<string, string> {

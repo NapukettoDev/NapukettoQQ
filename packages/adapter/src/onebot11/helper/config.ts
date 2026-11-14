@@ -1,16 +1,13 @@
 /**
- * OneBot 11 协议配置（zod schema，归属本包，ADR-012）
+ * OneBot 11 协议配置（zod schema，归属本包）
  * 协议配置 schema 在各自协议包，kernel 只提供 ConfigBase 基类。
  *
- * 2026-08-07 多实例化（P2-18）：对齐 NapCat——httpServers / httpPostUrls / wsServers /
+ * 多实例化：对齐 NapCat——httpServers / httpPostUrls / wsServers /
  * wsReverseUrls 四个数组实例（每实例可覆盖全局 token）；旧单对象字段 http/httpPost/ws/
  * wsReverse 废弃（zod strip 静默忽略，不兼容迁移）。
  */
 import { z } from "zod";
-import {
-    createHttpServerSchema,
-    createWsServerSchema,
-} from "../../core/framework/transport-schema.js";
+import { createServerSchema } from "../../core/framework/transport-schema.js";
 
 /** HTTP 反向服务器默认端口。 */
 const DEFAULT_HTTP_PORT = 3000;
@@ -27,7 +24,7 @@ const DEFAULT_RECONNECT_DELAY_MS = 5000;
 const MESSAGE_FORMATS = ["array", "string"] as const;
 
 /** HTTP 反向服务器实例（第三方 POST 指令入口）。 */
-const httpServerSchema = createHttpServerSchema(DEFAULT_HTTP_PORT);
+const httpServerSchema = createServerSchema(DEFAULT_HTTP_PORT);
 
 /** HTTP 正向上报实例（Webhook 事件推送）。 */
 const httpPostSchema = z.object({
@@ -40,7 +37,7 @@ const httpPostSchema = z.object({
 });
 
 /** 反向 WS server 实例（第三方 WS 连入，带 WS ping 间隔扩展字段）。 */
-const wsServerSchema = createWsServerSchema(DEFAULT_WS_PORT).extend({
+const wsServerSchema = createServerSchema(DEFAULT_WS_PORT).extend({
     /** WS ping 间隔（毫秒）。 */
     heartbeatInterval: z.number().int().default(DEFAULT_WS_HEARTBEAT_MS),
 });
@@ -72,7 +69,7 @@ export const ob11ConfigSchema = z.object({
     /** 消息内容格式：array = 消息段数组（标准），string = CQ 码字符串。 */
     messagePostFormat: z.enum(MESSAGE_FORMATS).default("array"),
     /**
-     * 群文件报形式（B4，2026-09-08）：false（缺省）= message 事件 + file 段
+     * 群文件报形式（）：false（缺省）= message 事件 + file 段
      * （go-cqhttp 兼容;此前 file 元素被静默丢弃,本版本起透出）；true = 含
      * fileElement 的群消息改报 group_upload notice 事件（替代 message 事件）。
      */

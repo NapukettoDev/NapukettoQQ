@@ -1,8 +1,8 @@
 /**
- * raw 日志截断与最小 logger 面（协议 adapter 校准日志共用，2026-11-14 自
+ * raw 日志截断与最小 logger 面（协议 adapter 校准日志共用，自
  * onebot11/milky adapter.ts 顶部内联工具收拢）。
  *
- * info/warn 级 raw 字段对运行状态无信息量（2026-10-25 输出内容治理）：
+ * info/warn 级 raw 字段对运行状态无信息量（输出内容治理）：
  * hex/base64/JSON 原文保留前缀定位 + 缺省长度标注；完整值仅在 debug 级
  * 与日志文件中出现。两种截断口径刻意并存——OB11 校准日志带缺省长度标注，
  * Milky 长文本校准日志用固定切片（无标注）。
@@ -30,10 +30,22 @@ export function sliceRaw(value: string | undefined, max = RAW_DEBUG_LIMIT): stri
     return value === undefined ? "" : value.slice(0, max);
 }
 
+/**
+ * 事件链翻译失败留痕（收链路异步 .catch 统一出口：单条/整批丢弃，warn 留痕
+ * 不打断订阅；err 规范化为 message 串）。
+ */
+export function logEventFailure(
+    logger: AdapterLoggerLike | undefined,
+    msg: string,
+    err: unknown,
+): void {
+    logger?.warn({ err: err instanceof Error ? err.message : String(err) }, msg);
+}
+
 /** 最小 logger 面（校准日志用：未知事件形状打 raw JSON；缺省静默）。 */
 export interface AdapterLoggerLike {
     warn(obj: unknown, msg?: string): void;
     info(obj: unknown, msg?: string): void;
-    /** 校准数据（2026-10-25 级别重分配：info → debug；此面必须支持）。 */
+    /** 校准数据（级别重分配：info → debug；此面必须支持）。 */
     debug(obj: unknown, msg?: string): void;
 }

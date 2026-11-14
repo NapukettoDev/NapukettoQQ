@@ -11,7 +11,7 @@
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { makeMemberChangeMsg, makeRawMsg, makeRevokeMsg } from "../../__tests__/test-support.js";
 import {
     collectSatoriGrayTipUids,
@@ -87,7 +87,7 @@ describe("hasSatoriGrayTip", () => {
     });
 
     it("Linux 原生空值形状：grayTipElement 为 null 不命中也不抛错", () => {
-        // 回归 2026-11-10：`g === undefined` 判断在 Linux（变体显式 null）下不生效，
+        // 回归 `g === undefined` 判断在 Linux（变体显式 null）下不生效，
         // 直接读 null.subElementType 抛错 → 订阅回调被事件通道吞掉 → 整条消息
         // 事件不广播。
         const msg = stub<RawMessage>({

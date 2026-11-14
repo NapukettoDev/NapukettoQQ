@@ -15,7 +15,7 @@
  * 永久停止（等版本升级或配置修正，error 日志）。未 established 时发送直接丢弃（不积压）。
  *
  * 客户端用 Node 内置 `WebSocket`（Node ≥22.4 标准可用，undici 实现）：adapter 因此
- * 不需要声明 `ws` 依赖（ws 归 network 所有），发布依赖面少一个包（2026-11-03）。
+ * 不需要声明 `ws` 依赖（ws 归 network 所有），发布依赖面少一个包。
  */
 import { randomUUID } from "node:crypto";
 import {
@@ -305,7 +305,7 @@ export class KurobotConnection {
         return msg;
     }
 
-    /** 未知帧容忍（对齐 ADR-026 服务端策略）：事件帧忽略；请求帧回 `<type>_result` 失败回执；`_result` 结尾不回执（防乒乓）。 */
+    /** 未知帧容忍（对齐 服务端策略）：事件帧忽略；请求帧回 `<type>_result` 失败回执；`_result` 结尾不回执（防乒乓）。 */
     private handleUnknownFrame(type: string, id: string | undefined): void {
         if (id === undefined) {
             this.log.debug({ type }, "kurobot: 未知事件帧，忽略");

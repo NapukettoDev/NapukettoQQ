@@ -1,5 +1,5 @@
 /**
- * Milky 收链路边界异步回填（ADR-008，2026-11-14 自 adapter.ts 拆分）
+ * Milky 收链路边界异步回填（自 adapter.ts 拆分）
  *
  * 翻译函数保持纯函数：uid→uin 批量转换、群实体（getGroupInfo / getGroupMember
  * 缓存优先）等翻译前的异步查询在此完成，结果经 ctx 注入翻译。查询全部

@@ -1,5 +1,5 @@
 /**
- * Milky 群通知域动作测试（group-notice.ts，2026-11-14 域对齐重组）
+ * Milky 群通知域动作测试（group-notice.ts，域对齐重组）
  *
  * 锁定：通知类型→实体五变体映射（uid→uin）、客户端分页（limit/next）、
  * 未知通知类型过滤、is_filtered doubt 标志、群通知应答（KAGREE/KREFUSE +
@@ -257,7 +257,7 @@ describe("群通知应答（accept/reject request + invitation）", () => {
         expect(res.retcode).toBe(-400);
     });
 
-    it("accept_group_request：notification_type 非法 → -400（P1 schema 补测）", async () => {
+    it("accept_group_request：notification_type 非法 → -400（schema 补测）", async () => {
         const registry = groupRegistry({});
         const result = await registry.get("accept_group_request")?.handle({
             notification_seq: 1,

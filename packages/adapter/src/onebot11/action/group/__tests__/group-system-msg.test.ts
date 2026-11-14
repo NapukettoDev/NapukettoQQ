@@ -7,8 +7,31 @@
  */
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { makeNotify, stubUidToUin } from "../../__tests__/test-support.js";
-import { GetGroupSystemMsgAction } from "../get-group-system-msg.js";
+import { makeNotify, ob11ActionOf, stubUidToUin } from "../../__tests__/test-support.js";
+import { createGroupSystemMsgActions } from "../get-group-system-msg.js";
+
+/**
+ * 与 get-group-system-msg.ts 的 GroupSystemMessageInfo / GroupSystemMsgResult
+ * 同构（生产侧未导出，仅供断言类型标注）。
+ */
+interface GroupSystemMsgItem {
+    request_id: number;
+    invitor_uin: number;
+    invitor_nick: string;
+    group_id: number;
+    message: string;
+    group_name: string;
+    checked: boolean;
+    actor: number;
+    requester_nick: string;
+}
+
+/** 同构 GroupSystemMsgResult（含 InvitedRequest 兼容别名）。 */
+interface GroupSystemMsgResult {
+    invited_requests: GroupSystemMsgItem[];
+    InvitedRequest: GroupSystemMsgItem[];
+    join_requests: GroupSystemMsgItem[];
+}
 
 describe("get_group_system_msg", () => {
     it("邀请（type 1）与申请（type 7）分流到 invited_requests / join_requests", async () => {
@@ -23,8 +46,10 @@ describe("get_group_system_msg", () => {
                 makeNotify({ seq: "3", type: GroupNotifyMsgType.SET_ADMIN }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(result.status).toBe("ok");
         const data = result.data;
         expect(data?.invited_requests).toHaveLength(1);
@@ -47,10 +72,13 @@ describe("get_group_system_msg", () => {
         const groupNotifyApi = {
             getSingleScreenNotifies: vi.fn(async () => []),
         };
-        const action = new GetGroupSystemMsgAction({
-            groupNotifyApi,
-            uidToUin: stubUidToUin(),
-        } as never);
+        const action = ob11ActionOf(
+            createGroupSystemMsgActions({
+                groupNotifyApi,
+                uidToUin: stubUidToUin(),
+            } as never),
+            "get_group_system_msg",
+        );
         await action.handle({});
         expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(false, 50);
         await action.handle({ count: 5 });
@@ -69,8 +97,10 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(uidToUin).toHaveBeenCalledWith(["u90002", "u90009"]);
         expect(result.data?.invited_requests[0]).toMatchObject({
             invitor_uin: 90002,
@@ -90,8 +120,10 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_system_msg",
+        ).handle({});
         // 只收集 user1 的 uid；空串 user2 不入表
         expect(uidToUin).toHaveBeenCalledWith(["u90002"]);
         expect(result.data?.invited_requests[0]).toMatchObject({ invitor_uin: 90002 });
@@ -109,8 +141,10 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(uidToUin).not.toHaveBeenCalled();
         expect(result.data?.invited_requests).toHaveLength(1);
     });
@@ -126,11 +160,13 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({
-            groupNotifyApi,
-            uidToUin: stubUidToUin(),
-        } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({
+                groupNotifyApi,
+                uidToUin: stubUidToUin(),
+            } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(result.data?.join_requests[0]).toMatchObject({
             group_id: 0,
             group_name: "",
@@ -153,11 +189,13 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({
-            groupNotifyApi,
-            uidToUin: stubUidToUin(),
-        } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({
+                groupNotifyApi,
+                uidToUin: stubUidToUin(),
+            } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(result.data?.join_requests[0]?.checked).toBe(false);
         expect(result.data?.join_requests[1]?.checked).toBe(true);
     });
@@ -172,17 +210,21 @@ describe("get_group_system_msg", () => {
                 }),
             ]),
         };
-        const action = new GetGroupSystemMsgAction({
-            groupNotifyApi,
-            uidToUin: stubUidToUin(),
-        } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupSystemMsgResult>(
+            createGroupSystemMsgActions({
+                groupNotifyApi,
+                uidToUin: stubUidToUin(),
+            } as never),
+            "get_group_system_msg",
+        ).handle({});
         expect(result.data?.invited_requests[0]).toMatchObject({ invitor_nick: "", actor: 0 });
     });
 
     it("count 参数非法 → retcode 400", async () => {
-        const action = new GetGroupSystemMsgAction({} as never);
-        const result = await action.handle({ count: "bad" });
+        const result = await ob11ActionOf(
+            createGroupSystemMsgActions({} as never),
+            "get_group_system_msg",
+        ).handle({ count: "bad" });
         expect(result.retcode).toBe(400);
     });
 });

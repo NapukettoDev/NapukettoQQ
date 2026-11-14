@@ -1,5 +1,5 @@
 /**
- * Satori 错误映射（ADR-017）：KernelErrorCode → HTTP 状态码
+ * Satori 错误映射：KernelErrorCode → HTTP 状态码
  * 与 OB11 的 retcode 不同，Satori 直接用 HTTP 状态码表达错误。
  * 动作未实现 → 501；API 不存在 → 404；鉴权失败 → 401。
  */

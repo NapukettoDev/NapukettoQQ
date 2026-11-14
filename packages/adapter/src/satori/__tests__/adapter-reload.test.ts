@@ -1,5 +1,5 @@
 /**
- * adapter-reload.test.ts：onReload 热更新重建传输单测（2026-09-08 T7）。
+ * adapter-reload.test.ts：onReload 热更新重建传输单测（）。
  *
  * 文件型配置（非 seed）：start 后改写配置文件 → reload() → 断言
  * 传输重建（OB11 lifecycle enable 二次广播 + 退订重订阅；Satori
@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
 import { satoriConfigSchema } from "../helper/index.js";
 
@@ -62,7 +62,7 @@ describe("NapukettoSatoriAdapter.reload", () => {
         const adapter = new NapukettoSatoriAdapter(
             stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
                 ...(stubApiOptions() as object),
-                config: new ProtocolConfig({
+                config: new ConfigBase({
                     path: cfgPath,
                     schema: satoriConfigSchema,
                     defaults: satoriConfigSchema.parse({}),

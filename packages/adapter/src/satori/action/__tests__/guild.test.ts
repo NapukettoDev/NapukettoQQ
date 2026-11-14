@@ -16,20 +16,13 @@
 import type { GroupMember } from "@napuketto/kernel";
 import { type GroupNotify, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
+import type { Guild, GuildMember, List } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";
 import type { GuildActionDeps } from "../guild.js";
-import {
-    GuildApproveAction,
-    GuildGetAction,
-    GuildListAction,
-    GuildMemberApproveAction,
-    GuildMemberGetAction,
-    GuildMemberKickAction,
-    GuildMemberListAction,
-} from "../guild.js";
+import { createGuildActions } from "../guild.js";
 
-import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
+import { type StubSatoriApi, satoriActionOf, stubSatoriApi } from "./test-support.js";
 
 /** 构造群成员（最小合法）。 */
 function makeMember(uid: string, uin: string, nick: string, cardName = ""): GroupMember {
@@ -57,10 +50,15 @@ function makeDeps(api: StubSatoriApi, groupCache?: Record<string, never>): Guild
     });
 }
 
-describe("GuildGetAction", () => {
+/** 构造指定群组动作（工厂产物按名取出）。 */
+function actionOf<R>(api: StubSatoriApi, name: string, groupCache?: Record<string, never>) {
+    return satoriActionOf<R>(createGuildActions(makeDeps(api, groupCache)), name);
+}
+
+describe("guild.get", () => {
     it("guild_id → getGroupInfo，返回 Guild（id/groupName）", async () => {
         const api = stubSatoriApi();
-        const action = new GuildGetAction(makeDeps(api));
+        const action = actionOf<Guild>(api, "guild.get");
         await expect(action.run({ guild_id: "10001" })).resolves.toEqual({
             id: "10001",
             name: "测试群",
@@ -69,7 +67,7 @@ describe("GuildGetAction", () => {
     });
 
     it("缺 guild_id → SatoriActionError(400)", async () => {
-        const action = new GuildGetAction(makeDeps(stubSatoriApi()));
+        const action = actionOf<Guild>(stubSatoriApi(), "guild.get");
         await expect(action.run({})).rejects.toMatchObject({
             status: 400,
             message: "参数校验失败",
@@ -77,14 +75,14 @@ describe("GuildGetAction", () => {
     });
 });
 
-describe("GuildListAction", () => {
+describe("guild.list", () => {
     it("无缓存：getGroupList(true) → List<Guild>", async () => {
         const api = stubSatoriApi();
         vi.mocked(api.groupApi.getGroupList).mockResolvedValueOnce([
             { groupCode: "10001", groupName: "A" },
             { groupCode: "10002", groupName: "B" },
         ] as never);
-        const action = new GuildListAction(makeDeps(api));
+        const action = actionOf<List<Guild>>(api, "guild.list");
         await expect(action.run({})).resolves.toEqual({
             data: [
                 { id: "10001", name: "A" },
@@ -99,32 +97,32 @@ describe("GuildListAction", () => {
         const groupCache = {
             listGroupsRefreshed: vi.fn(async () => [{ groupCode: "20001", groupName: "C" }]),
         };
-        const action = new GuildListAction(makeDeps(api, groupCache as never));
+        const action = actionOf<List<Guild>>(api, "guild.list", groupCache as never);
         await expect(action.run({})).resolves.toEqual({ data: [{ id: "20001", name: "C" }] });
         expect(api.groupApi.getGroupList).not.toHaveBeenCalled();
     });
 });
 
-describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）", () => {
-    it.each([
-        { name: "guild.approve", cls: GuildApproveAction },
-        { name: "guild.member.approve", cls: GuildMemberApproveAction },
-    ] as const)("approve=true → KAGREE（$name）", async ({ cls }) => {
-        const api = stubSatoriApi();
-        const notify: GroupNotify = { seq: "9527", type: 7, status: 1 };
-        vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
-            notify,
-        ] as never);
-        const action = new cls(makeDeps(api));
-        await action.run({ message_id: "9527", approve: true });
-        expect(api.groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(false, 50);
-        expect(api.groupNotifyApi.handleGroupRequest).toHaveBeenCalledWith(
-            false,
-            notify,
-            NTGroupRequestOperateTypes.KAGREE,
-            "",
-        );
-    });
+describe("guild.approve / guild.member.approve（共用应答实现）", () => {
+    it.each([{ name: "guild.approve" }, { name: "guild.member.approve" }] as const)(
+        "approve=true → KAGREE（$name）",
+        async ({ name }) => {
+            const api = stubSatoriApi();
+            const notify: GroupNotify = { seq: "9527", type: 7, status: 1 };
+            vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
+                notify,
+            ] as never);
+            const action = actionOf(api, name);
+            await action.run({ message_id: "9527", approve: true });
+            expect(api.groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(false, 50);
+            expect(api.groupNotifyApi.handleGroupRequest).toHaveBeenCalledWith(
+                false,
+                notify,
+                NTGroupRequestOperateTypes.KAGREE,
+                "",
+            );
+        },
+    );
 
     it("approve=false → KREFUSE；comment 透传", async () => {
         const api = stubSatoriApi();
@@ -132,7 +130,7 @@ describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）"
         vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
             notify,
         ] as never);
-        const action = new GuildApproveAction(makeDeps(api));
+        const action = actionOf<void>(api, "guild.approve");
         await action.run({ message_id: "42", approve: false, comment: "不通过" });
         expect(api.groupNotifyApi.handleGroupRequest).toHaveBeenCalledWith(
             false,
@@ -144,7 +142,7 @@ describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）"
 
     it("seq 未匹配任何通知：抛普通 Error（run 包装为 500）", async () => {
         const api = stubSatoriApi();
-        const action = new GuildApproveAction(makeDeps(api));
+        const action = actionOf<void>(api, "guild.approve");
         await expect(action.run({ message_id: "missing", approve: true })).rejects.toMatchObject({
             status: 500,
             message: "群通知不存在",
@@ -152,13 +150,13 @@ describe("GuildApproveAction / GuildMemberApproveAction（共用基类实现）"
     });
 });
 
-describe("GuildMemberGetAction", () => {
+describe("guild.member.get", () => {
     it("缓存命中：直接映射（cardName 优先作 nick）", async () => {
         const api = stubSatoriApi();
         const groupCache = {
             getMember: vi.fn(async () => makeMember("uid_123", "123", "原昵", "名片")),
         };
-        const action = new GuildMemberGetAction(makeDeps(api, groupCache as never));
+        const action = actionOf<GuildMember>(api, "guild.member.get", groupCache as never);
         await expect(action.run({ guild_id: "10001", user_id: "123" })).resolves.toEqual({
             user: { id: "123", name: "原昵" },
             nick: "名片",
@@ -172,7 +170,7 @@ describe("GuildMemberGetAction", () => {
         vi.mocked(api.groupApi.getGroupMemberInfo).mockResolvedValueOnce([
             makeMember("uid_123", "999", "直查"),
         ] as never);
-        const action = new GuildMemberGetAction(makeDeps(api));
+        const action = actionOf<GuildMember>(api, "guild.member.get");
         await expect(action.run({ guild_id: "10001", user_id: "123" })).resolves.toEqual({
             user: { id: "123", name: "直查" },
         });
@@ -184,7 +182,7 @@ describe("GuildMemberGetAction", () => {
         vi.mocked(api.groupApi.getGroupMemberInfo).mockResolvedValueOnce([
             makeMember("uid_other", "888", "别人"),
         ] as never);
-        const action = new GuildMemberGetAction(makeDeps(api));
+        const action = actionOf<GuildMember>(api, "guild.member.get");
         await expect(action.run({ guild_id: "10001", user_id: "123" })).rejects.toMatchObject({
             status: 500,
             message: "群成员不存在",
@@ -196,21 +194,21 @@ describe("GuildMemberGetAction", () => {
         const groupCache = {
             getMember: vi.fn(async () => makeMember("uid_123", "123", "昵称", "")),
         };
-        const action = new GuildMemberGetAction(makeDeps(api, groupCache as never));
+        const action = actionOf<GuildMember>(api, "guild.member.get", groupCache as never);
         await expect(action.run({ guild_id: "10001", user_id: "123" })).resolves.toEqual({
             user: { id: "123", name: "昵称" },
         });
         const same = {
             getMember: vi.fn(async () => makeMember("uid_123", "123", "同名", "同名")),
         };
-        const action2 = new GuildMemberGetAction(makeDeps(api, same as never));
+        const action2 = actionOf<GuildMember>(api, "guild.member.get", same as never);
         await expect(action2.run({ guild_id: "10001", user_id: "123" })).resolves.toEqual({
             user: { id: "123", name: "同名" },
         });
     });
 });
 
-describe("GuildMemberListAction", () => {
+describe("guild.member.list", () => {
     it("缓存命中：批量 uidToUin（user.id = uin），无 next（≤100）", async () => {
         const api = stubSatoriApi();
         api.uidToUin.mockResolvedValueOnce(
@@ -225,7 +223,7 @@ describe("GuildMemberListAction", () => {
                 makeMember("uid_b", "2", "B"),
             ]),
         };
-        const action = new GuildMemberListAction(makeDeps(api, groupCache as never));
+        const action = actionOf<List<GuildMember>>(api, "guild.member.list", groupCache as never);
         await expect(action.run({ guild_id: "10001" })).resolves.toEqual({
             data: [{ user: { id: "101", name: "A" } }, { user: { id: "102", name: "B" } }],
         });
@@ -238,7 +236,7 @@ describe("GuildMemberListAction", () => {
             makeMember("uid_a", "101", "A"),
         ] as never);
         api.uidToUin.mockResolvedValueOnce(new Map());
-        const action = new GuildMemberListAction(makeDeps(api));
+        const action = actionOf<List<GuildMember>>(api, "guild.member.list");
         const result = await action.run({ guild_id: "10001", next: undefined });
         expect(result.data).toEqual([{ user: { id: "101", name: "A" } }]);
         expect(api.groupApi.getGroupMemberList).toHaveBeenCalledWith("10001", true);
@@ -252,7 +250,7 @@ describe("GuildMemberListAction", () => {
         }
         const groupCache = { getMembers: vi.fn(async () => many) };
         api.uidToUin.mockResolvedValueOnce(new Map());
-        const action = new GuildMemberListAction(makeDeps(api, groupCache as never));
+        const action = actionOf<List<GuildMember>>(api, "guild.member.list", groupCache as never);
         const result = await action.run({ guild_id: "10001" });
         expect(result.data).toHaveLength(100);
         expect(result.next).toBe("100");
@@ -266,24 +264,24 @@ describe("GuildMemberListAction", () => {
         }
         const groupCache = { getMembers: vi.fn(async () => many) };
         api.uidToUin.mockResolvedValueOnce(new Map());
-        const action = new GuildMemberListAction(makeDeps(api, groupCache as never));
+        const action = actionOf<List<GuildMember>>(api, "guild.member.list", groupCache as never);
         const result = await action.run({ guild_id: "10001" });
         expect(result.data).toHaveLength(100);
         expect(result.next).toBeUndefined();
     });
 });
 
-describe("GuildMemberKickAction", () => {
+describe("guild.member.kick", () => {
     it("uinToUid → kickMember（permanent 缺省 false）", async () => {
         const api = stubSatoriApi();
-        const action = new GuildMemberKickAction(makeDeps(api));
+        const action = actionOf<void>(api, "guild.member.kick");
         await action.run({ guild_id: "10001", user_id: "123" });
         expect(api.groupApi.kickMember).toHaveBeenCalledWith("10001", ["uid_123"], false);
     });
 
     it("permanent=true 透传", async () => {
         const api = stubSatoriApi();
-        const action = new GuildMemberKickAction(makeDeps(api));
+        const action = actionOf<void>(api, "guild.member.kick");
         await action.run({ guild_id: "10001", user_id: "123", permanent: true });
         expect(api.groupApi.kickMember).toHaveBeenCalledWith("10001", ["uid_123"], true);
     });
@@ -291,7 +289,7 @@ describe("GuildMemberKickAction", () => {
 
 describe("校验兜底", () => {
     it("guild_id 非字符串 → SatoriActionError(400)", async () => {
-        const action = new GuildMemberKickAction(makeDeps(stubSatoriApi()));
+        const action = actionOf<void>(stubSatoriApi(), "guild.member.kick");
         await expect(action.run({ guild_id: 1, user_id: "x" })).rejects.toBeInstanceOf(
             SatoriActionError,
         );

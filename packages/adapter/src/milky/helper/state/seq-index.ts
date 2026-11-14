@@ -32,7 +32,7 @@ export class MessageSeqIndex {
     private readonly seqToMsg = new Map<string, string>();
     /** msgId → seq 元信息。 */
     private readonly msgToMeta = new Map<string, SeqMeta>();
-    /** 合并转发 resId → 定位信息（P1：get_forwarded_messages）。 */
+    /** 合并转发 resId → 定位信息（get_forwarded_messages）。 */
     private readonly forwards = new Map<string, ForwardEntry>();
 
     /** 接收链路登记（一条消息双向写入；重复 msgId 覆盖）。 */

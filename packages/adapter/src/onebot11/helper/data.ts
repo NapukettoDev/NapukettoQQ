@@ -1,5 +1,5 @@
 /**
- * OB11 消息翻译（ADR-008 翻译层，2026-08-08 拆分）
+ * OB11 消息翻译（翻译层，拆分）
  *
  * - 单元素 segment 转换（canonicalToSegment / segmentToCanonical）与 CQ 码
  *   构建（CQ_SEGMENT_BUILDERS / cqCodeToSegment / segmentsToCqMessage）→ segment.ts
@@ -46,8 +46,8 @@ export function segmentsToCanonical(segments: OB11MessageSegment[]): CanonicalEl
 }
 
 /**
- * 接收方向翻译上下文（ID 空间转换，P2-19，2026-08-07）。
- * 翻译核心保持纯函数（ADR-008），调用方在协议边界准备上下文注入：
+ * 接收方向翻译上下文（ID 空间转换）。
+ * 翻译核心保持纯函数，调用方在协议边界准备上下文注入：
  * canonical 的 at.target 是 NT uid、reply.messageId 是 NT 雪花 msgId，
  * OB11 需要 uin / OB11 message_id。
  */
@@ -112,7 +112,7 @@ export function applyReceiveContext(
 }
 
 /**
- * 发送方向翻译上下文（ID 空间转换，P2-19，2026-08-07）。
+ * 发送方向翻译上下文（ID 空间转换）。
  * OB11 的 at.qq 是 uin、reply.id 是 OB11 message_id，canonical 需要 uid / NT msgId。
  */
 export interface SendTranslateContext {

@@ -1,6 +1,6 @@
 /**
- * Milky 群查询域动作（2026-11-14 自 group.ts 拆分，结构重构会话 4/5）
- *
+ * Milky 群查询域动作：get_group_info / get_group_member_list /
+ * get_group_member_info / get_group_announcements。
  * 只读取合：群信息（GroupCache 详情缓存优先）、成员列表/单查（缓存惰性回填，
  * 直查路径按 uin 匹配）、群公告列表（bulletin 形状待校准，宽松映射）。
  */
@@ -16,88 +16,81 @@ import type {
     GetGroupMemberListOutput,
     GroupAnnouncementEntity,
 } from "../types.js";
-import { MilkyApiAction } from "./base-action.js";
+import { defineMilkyAction, type MilkyAction } from "./base-action.js";
 
-const groupIdField = { group_id: z.number().int().min(10001) } as const;
-const userIdField = { user_id: z.number().int().min(10001) } as const;
-const optBool = z.boolean().nullable().optional();
+/** 群域共入参（群号 / 成员 uin / 可选布尔；群管理 / 通知 / 精华 / 文件域复用）。 */
+export const groupIdField = { group_id: z.number().int().min(10001) } as const;
+export const userIdField = { user_id: z.number().int().min(10001) } as const;
+export const optBool = z.boolean().nullable().optional();
 
-/** get_group_info：获取群信息（GroupCache 详情缓存优先）。 */
-export class GetGroupInfoAction extends MilkyApiAction<
-    { group_id: number; no_cache?: boolean | null | undefined },
-    GetGroupInfoOutput
-> {
-    readonly name = "get_group_info";
-    readonly schema = z.object({ ...groupIdField, no_cache: optBool });
-
-    protected async _handle(payload: {
-        group_id: number;
-        no_cache?: boolean | null | undefined;
-    }): Promise<GetGroupInfoOutput> {
-        const groupCode = String(payload.group_id);
-        const detail =
-            this.api.groupCache !== undefined
-                ? await this.api.groupCache.getGroupDetail(groupCode)
-                : await this.api.groupApi.getGroupInfo(groupCode);
-        return { group: toGroupEntity(detail, groupCode) };
-    }
-}
-
-/** get_group_member_list：获取群成员列表（GroupCache 惰性回填）。 */
-export class GetGroupMemberListAction extends MilkyApiAction<
-    { group_id: number; no_cache?: boolean | null | undefined },
-    GetGroupMemberListOutput
-> {
-    readonly name = "get_group_member_list";
-    readonly schema = z.object({ ...groupIdField, no_cache: optBool });
-
-    protected async _handle(payload: {
-        group_id: number;
-        no_cache?: boolean | null | undefined;
-    }): Promise<GetGroupMemberListOutput> {
-        const members = await membersOf(this.api, String(payload.group_id));
-        return {
-            members: members.map((m) => toGroupMemberEntity(m, String(payload.group_id), m.uin)),
-        };
-    }
-}
-
-/** get_group_member_info：获取群成员信息（user_id = uin → 成员单查）。 */
-export class GetGroupMemberInfoAction extends MilkyApiAction<
-    { group_id: number; user_id: number; no_cache?: boolean | null | undefined },
-    GetGroupMemberInfoOutput
-> {
-    readonly name = "get_group_member_info";
-    readonly schema = z.object({ ...groupIdField, ...userIdField, no_cache: optBool });
-
-    protected async _handle(payload: {
-        group_id: number;
-        user_id: number;
-        no_cache?: boolean | null | undefined;
-    }): Promise<GetGroupMemberInfoOutput> {
-        const member = await memberOf(this.api, payload.group_id, payload.user_id);
-        return {
-            member: toGroupMemberEntity(member, String(payload.group_id), String(payload.user_id)),
-        };
-    }
-}
-
-/** get_group_announcements：获取群公告列表（bulletin 形状待校准，宽松映射）。 */
-export class GetGroupAnnouncementsAction extends MilkyApiAction<
-    { group_id: number },
-    GetGroupAnnouncementsOutput
-> {
-    readonly name = "get_group_announcements";
-    readonly schema = z.object({ ...groupIdField });
-
-    protected async _handle(payload: { group_id: number }): Promise<GetGroupAnnouncementsOutput> {
-        const groupCode = String(payload.group_id);
-        const bulletins = await this.api.groupApi.getGroupAnnouncements(groupCode);
-        const announcements = await Promise.all(
-            bulletins.map((b) => bulletinToEntity(b, payload.group_id, this.api)),
-        );
-        return { announcements };
-    }
+/** 群查询域动作工厂（群信息 / 成员列表 / 成员单查 / 公告列表）。 */
+export function createGroupQueryActions(api: MilkyApi): MilkyAction[] {
+    return [
+        defineMilkyAction({
+            name: "get_group_info",
+            schema: z.object({ ...groupIdField, no_cache: optBool }),
+            // GroupCache 详情缓存优先
+            handle: async (payload: {
+                group_id: number;
+                no_cache?: boolean | null | undefined;
+            }): Promise<GetGroupInfoOutput> => {
+                const groupCode = String(payload.group_id);
+                const detail =
+                    api.groupCache !== undefined
+                        ? await api.groupCache.getGroupDetail(groupCode)
+                        : await api.groupApi.getGroupInfo(groupCode);
+                return { group: toGroupEntity(detail, groupCode) };
+            },
+        }),
+        defineMilkyAction({
+            name: "get_group_member_list",
+            schema: z.object({ ...groupIdField, no_cache: optBool }),
+            // GroupCache 惰性回填
+            handle: async (payload: {
+                group_id: number;
+                no_cache?: boolean | null | undefined;
+            }): Promise<GetGroupMemberListOutput> => {
+                const members = await membersOf(api, String(payload.group_id));
+                return {
+                    members: members.map((m) =>
+                        toGroupMemberEntity(m, String(payload.group_id), m.uin),
+                    ),
+                };
+            },
+        }),
+        defineMilkyAction({
+            name: "get_group_member_info",
+            schema: z.object({ ...groupIdField, ...userIdField, no_cache: optBool }),
+            // user_id = uin → 成员单查
+            handle: async (payload: {
+                group_id: number;
+                user_id: number;
+                no_cache?: boolean | null | undefined;
+            }): Promise<GetGroupMemberInfoOutput> => {
+                const member = await memberOf(api, payload.group_id, payload.user_id);
+                return {
+                    member: toGroupMemberEntity(
+                        member,
+                        String(payload.group_id),
+                        String(payload.user_id),
+                    ),
+                };
+            },
+        }),
+        defineMilkyAction({
+            name: "get_group_announcements",
+            schema: z.object({ ...groupIdField }),
+            // bulletin 形状待校准，宽松映射
+            handle: async (payload: { group_id: number }): Promise<GetGroupAnnouncementsOutput> => {
+                const groupCode = String(payload.group_id);
+                const bulletins = await api.groupApi.getGroupAnnouncements(groupCode);
+                const announcements = await Promise.all(
+                    bulletins.map((b) => bulletinToEntity(b, payload.group_id, api)),
+                );
+                return { announcements };
+            },
+        }),
+    ];
 }
 
 /** ---------- 内部辅助 ---------- */

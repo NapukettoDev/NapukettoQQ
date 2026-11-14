@@ -1,5 +1,5 @@
 /**
- * core/shared/raw-message.test.ts：RawMessage 数组规范化单测（OB11 / Satori 共用）。
+ * shared/raw-message.test.ts：RawMessage 规范化 + msgTime 归一单测（跨协议共用）。
  *
  * 锁定：数组/单对象/null/非对象项的规范化语义；subscribeRawMessages
  * 订阅包装与退订。
@@ -8,7 +8,7 @@
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { forEachRawMessage, subscribeRawMessages } from "../shared/raw-message.js";
+import { forEachRawMessage, subscribeRawMessages, toUnixSeconds } from "../raw-message.js";
 import { stub } from "./stub.js";
 
 /** 构造最小合法 RawMessage。 */
@@ -90,5 +90,29 @@ describe("subscribeRawMessages", () => {
         const result = subscribeRawMessages(channel, () => undefined);
         result();
         expect(unsub).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("toUnixSeconds（msgTime 单位归一）", () => {
+    it("毫秒字符串 → 秒（Windows QQNT 形态）", () => {
+        expect(toUnixSeconds("1700000000000")).toBe(1_700_000_000);
+        expect(toUnixSeconds("1700000000123")).toBe(1_700_000_000);
+    });
+
+    it("秒字符串 → 原样（Linux 3.2.x 原生 wrapper 形态）", () => {
+        expect(toUnixSeconds("1794307394")).toBe(1_794_307_394);
+    });
+
+    it("数字输入同样按量级归一", () => {
+        expect(toUnixSeconds(1_700_000_000_123)).toBe(1_700_000_000);
+        expect(toUnixSeconds(1_794_307_394)).toBe(1_794_307_394);
+    });
+
+    it("空 / 非法 / 非正 → 0（调用方决定兜底）", () => {
+        expect(toUnixSeconds(undefined)).toBe(0);
+        expect(toUnixSeconds("")).toBe(0);
+        expect(toUnixSeconds("abc")).toBe(0);
+        expect(toUnixSeconds("0")).toBe(0);
+        expect(toUnixSeconds(-1)).toBe(0);
     });
 });

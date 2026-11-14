@@ -1,5 +1,5 @@
 /**
- * Milky 适配器事件分发测试（adapter.ts 收链路，批次三全量）
+ * Milky 适配器事件分发测试（adapter.ts 收链路，全量）
  *
  * 锁定：消息通道三源分流（message_receive / group_file_upload / notice /
  * message_recall / 自消息不上报）、at+reply 回填、转发登记、sysmsg 识别表
@@ -15,7 +15,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import {
     type AdapterEnv,
     adapterEnv,
@@ -390,7 +390,7 @@ describe("消息通道分流（Msg/onRecvMsg）", () => {
     });
 });
 
-describe("sysmsg 通道（Msg/onRecvSysMsg，批次三识别表）", () => {
+describe("sysmsg 通道（Msg/onRecvSysMsg，识别表）", () => {
     /** 732:16 表情回应 blob（faceId/f5/群号/msgSeq 可配）。 */
     function reactionBlob(opts: { f5: number; group?: number; seq?: number }): Uint8Array {
         const detail = new ProtoWriter()

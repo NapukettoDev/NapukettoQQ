@@ -1,5 +1,5 @@
 /**
- * sysmsg 解码与识别共享层（2026-11-01 自 onebot11/helper/sysmsg.ts 上移，
+ * sysmsg 解码与识别共享层（自 onebot11/helper/sysmsg.ts 上移，
  * milky.md §0.8.3/§0.8.6——OB11 与 Milky 共用同一识别机制）
  *
  * Msg/onRecvSysMsg 是群名片/头衔/精华/表情回应等系统事件的 sys msg 总闸，payload =
@@ -12,10 +12,10 @@
  *    识别表按协议各自维护（onebot11/helper/sysmsg.ts / milky/helper/sysmsg.ts），
  *    表条目随录制窗口样本扩充；未识别一律走结构化校准日志，不广播。
  *
- * 证据：真实样本（c3 观测窗 2026-09-09 双样本 528/382）+ 批次三轮录制
- * （2026-11-01，732:16 / 732:1 / 732:21 / 528:349/381/382，wire bytes 全量解码，
+ * 证据：真实样本（ 观测窗 双样本 528/382）+ 轮录制
+ * （732:16 / 732:1 / 732:21 / 528:349/381/382，wire bytes 全量解码，
  * milky.md §0.8.6 识别表）+ wrapper.node OnSysMsg* 处理器分类学（原生分发键 =
- * msg_type/sub_type）。翻译纯函数（ADR-008）。
+ * msg_type/sub_type）。翻译纯函数。
  */
 import type { AdapterLoggerLike } from "./log.js";
 
@@ -200,15 +200,12 @@ export function decodeProtoTree(data: Uint8Array, depth = 0): readonly SysMsgFie
 }
 
 /** 取字段号首个命中的节点（规则实现用，路径导航原语）。 */
-export function firstField(
-    tree: readonly SysMsgField[] | null,
-    no: number,
-): SysMsgField | undefined {
+function firstField(tree: readonly SysMsgField[] | null, no: number): SysMsgField | undefined {
     return tree?.find((f) => f.no === no);
 }
 
 /** bytes 节点的子树（非 bytes/不透明 → null）。 */
-export function getChildren(field: SysMsgField | undefined): readonly SysMsgField[] | null {
+function getChildren(field: SysMsgField | undefined): readonly SysMsgField[] | null {
     return field?.kind === "bytes" ? field.children : null;
 }
 
@@ -218,7 +215,7 @@ export function varintToNumber(value: bigint): number | null {
 }
 
 /** UTF-8 严格解码 + 可打印检查（含控制字符判不可解码，返回 null）。 */
-export function decodeText(bytes: Uint8Array): string | null {
+function decodeText(bytes: Uint8Array): string | null {
     try {
         const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
         for (const ch of text) {
@@ -503,7 +500,7 @@ export function toHex(bytes: Uint8Array): string {
 }
 
 // ---------------------------------------------------------------------------
-// 单条字节块通用管线（OB11 / Milky 同构流程收拢，2026-11-14）
+// 单条字节块通用管线（OB11 / Milky 同构流程收拢）
 // ---------------------------------------------------------------------------
 
 /** processSysMsgBlob 装配参数（识别表 / 命中分流 / 校准日志由协议侧注入）。 */
@@ -556,7 +553,7 @@ export async function processSysMsgBlob<TEvent>(
     if (await opts.onNotice(tree, env, rec)) {
         return;
     }
-    // 校准遥测（协议逆向用）：info/warn 级不出（2026-10-25 级别重分配），debug
+    // 校准遥测（协议逆向用）：info/warn 级不出（级别重分配），debug
     // 级保留全量字段（含 raw hex）供校准采集
     opts.logger?.debug(
         {

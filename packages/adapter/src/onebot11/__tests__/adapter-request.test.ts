@@ -21,8 +21,8 @@ import type {
 } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import {
     type AdapterLoggerLike,
     NapukettoOneBot11Adapter,
@@ -81,7 +81,7 @@ function makeAdapter(options?: {
     const events: Record<string, unknown>[] = [];
     const adapter = new NapukettoOneBot11Adapter({
         ...stubOptions(options?.groupApi),
-        config: new ProtocolConfig({
+        config: new ConfigBase({
             path: "ob11-test.toml",
             schema: ob11ConfigSchema,
             defaults: ob11ConfigSchema.parse({}),

@@ -1,7 +1,6 @@
 /**
- * Milky 消息发送域动作（2026-11-14 自 message.ts 拆分，结构重构会话 4/5）
+ * Milky 消息发送域动作：send_private_message / send_group_message。
  *
- * P0：send_private_message / send_group_message。
  * 发送核心 sendMilkyMessage：OutgoingSegment → canonical（媒体 URI 异步落盘 +
  * at uin→uid + reply seq→msgId 原样兜底）→ MsgApi.sendMessage → 回查 msgSeq/time。
  * forward 段走专用组装链（sendForwardComposition，临时消息法，见 milky.md §0.6）。
@@ -13,7 +12,7 @@ import type { MilkyApi } from "../api.js";
 import { resolveMediaUri } from "../helper/message/media-uri.js";
 import { outgoingSegmentsToCanonical } from "../helper/message/segments.js";
 import type { OutgoingForwardedMessage, OutgoingSegment, SendMessageOutput } from "../types.js";
-import { MilkyApiAction } from "./base-action.js";
+import { defineMilkyAction, type MilkyAction } from "./base-action.js";
 
 /**
  * OutgoingSegment 宽松校验：入口只保证「{type, data}」形状，字段级转换在
@@ -24,9 +23,9 @@ const outgoingSegmentSchema = z
     .loose() as unknown as ZodType<OutgoingSegment>;
 
 /**
- * 单条消息的段数上限（2026-11-03 依赖审计整改）：.min(1) 只保下界，不设上界时
- * 第三方可 POST 十万个合法段让 zod 逐项解析（zod 4.6.1 的 CWE-770 是内存放大，
- * 补丁版只修放大、不修「无界数组」本身）。真实单条 QQ 消息远低于此值。
+ * 单条消息的段数上限：.min(1) 只保下界，不设上界时第三方可 POST 十万个合法段
+ * 让 zod 逐项解析（zod 4.6.1 的 CWE-770 是内存放大，补丁版只修放大、不修
+ * 「无界数组」本身）。真实单条 QQ 消息远低于此值。
  */
 const MAX_OUTGOING_SEGMENTS = 200;
 
@@ -34,44 +33,32 @@ const sendMessageFields = {
     message: z.array(outgoingSegmentSchema).min(1).max(MAX_OUTGOING_SEGMENTS),
 } as const;
 
-/** send_private_message：发送私聊消息。 */
-export class SendPrivateMessageAction extends MilkyApiAction<
-    { user_id: number; message: OutgoingSegment[] },
-    SendMessageOutput
-> {
-    readonly name = "send_private_message";
-    readonly schema = z.object({ user_id: z.number().int().min(10001), ...sendMessageFields });
-
-    protected async _handle(payload: {
-        user_id: number;
-        message: OutgoingSegment[];
-    }): Promise<SendMessageOutput> {
-        const peer = await this.api.resolvePeer("friend", payload.user_id);
-        return await sendMilkyMessage(peer, payload.message, this.api);
-    }
-}
-
-/** send_group_message：发送群聊消息。 */
-export class SendGroupMessageAction extends MilkyApiAction<
-    { group_id: number; message: OutgoingSegment[] },
-    SendMessageOutput
-> {
-    readonly name = "send_group_message";
-    readonly schema = z.object({ group_id: z.number().int().min(10001), ...sendMessageFields });
-
-    protected async _handle(payload: {
-        group_id: number;
-        message: OutgoingSegment[];
-    }): Promise<SendMessageOutput> {
-        const peer = await this.api.resolvePeer("group", payload.group_id);
-        return await sendMilkyMessage(peer, payload.message, this.api);
-    }
+/** 消息发送域动作工厂（send_private_message / send_group_message）。 */
+export function createMessageSendActions(api: MilkyApi): MilkyAction[] {
+    return [
+        defineMilkyAction({
+            name: "send_private_message",
+            schema: z.object({ user_id: z.number().int().min(10001), ...sendMessageFields }),
+            handle: async (payload: { user_id: number; message: OutgoingSegment[] }) => {
+                const peer = await api.resolvePeer("friend", payload.user_id);
+                return await sendMilkyMessage(peer, payload.message, api);
+            },
+        }),
+        defineMilkyAction({
+            name: "send_group_message",
+            schema: z.object({ group_id: z.number().int().min(10001), ...sendMessageFields }),
+            handle: async (payload: { group_id: number; message: OutgoingSegment[] }) => {
+                const peer = await api.resolvePeer("group", payload.group_id);
+                return await sendMilkyMessage(peer, payload.message, api);
+            },
+        }),
+    ];
 }
 
 /** ---------- 发送核心与组装链 ---------- */
 
 /** 发送核心：segments → canonical（URI/ID 转换）→ sendMessage → 回查输出。
- *  forward 段分流到组装链（P2 批次一，临时消息法）。 */
+ *  forward 段分流到组装链（临时消息法）。 */
 export async function sendMilkyMessage(
     peer: Peer,
     segments: OutgoingSegment[],
@@ -90,7 +77,7 @@ export async function sendMilkyMessage(
 }
 
 /**
- * forward 段组装链（P2 批次一，milky.md §0.6）：仅支持单 forward 单独发。
+ * forward 段组装链（milky.md §0.6）：仅支持单 forward 单独发。
  * 临时消息法：逐条发送 messages[i].segments → sendForwardMessage（buildMultiForwardMsg
  * 以目标 peer 的真实消息组装 → sendMsg）→ best-effort 撤回临时消息 → 回查输出。
  *

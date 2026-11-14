@@ -9,33 +9,24 @@
  * 翻译词条透传与上限校验。
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-    GetLoginInfoAction,
-    GetRobotUinRangeAction,
-    GetStatusAction,
-    GetVersionInfoAction,
-    TranslateEn2ZhAction,
-} from "../info.js";
-import {
-    BotExitAction,
-    CanSendImageAction,
-    CanSendRecordAction,
-    CleanCacheAction,
-    SetDiyOnlineStatusAction,
-    SetOnlineStatusAction,
-    SetRestartAction,
-} from "../status.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import { createSystemInfoActions } from "../info.js";
+import { createSystemStatusActions } from "../status.js";
 
 describe("本地组装类动作", () => {
     it("get_status → { online: true, good: true }", async () => {
-        const result = await new GetStatusAction().handle({});
+        const result = await ob11ActionOf(
+            createSystemInfoActions({} as never),
+            "get_status",
+        ).handle({});
         expect(result.data).toEqual({ online: true, good: true });
     });
 
     it("get_version_info → app_name/protocol_version 固定，app_version 注入", async () => {
-        const result = await new GetVersionInfoAction({ appVersion: "9.9.9-test" } as never).handle(
-            {},
-        );
+        const result = await ob11ActionOf(
+            createSystemInfoActions({ appVersion: "9.9.9-test" } as never),
+            "get_version_info",
+        ).handle({});
         expect(result.data).toEqual({
             app_name: "napuketto-qq",
             app_version: "9.9.9-test",
@@ -44,69 +35,110 @@ describe("本地组装类动作", () => {
     });
 
     it("get_login_info → self uin/nickname 注入", async () => {
-        const result = await new GetLoginInfoAction({ uin: "10001", nickname: "测试号" }).handle(
-            {},
-        );
+        const result = await ob11ActionOf(
+            createSystemInfoActions({ self: { uin: "10001", nickname: "测试号" } } as never),
+            "get_login_info",
+        ).handle({});
         expect(result.data).toEqual({ user_id: 10001, nickname: "测试号" });
     });
 
     it("get_robot_uin_range → 固定 min/max", async () => {
-        const result = await new GetRobotUinRangeAction().handle({});
+        const result = await ob11ActionOf(
+            createSystemInfoActions({} as never),
+            "get_robot_uin_range",
+        ).handle({});
         expect(result.data).toEqual({ min: 10001, max: 4294967295 });
     });
 
     it("can_send_image / can_send_record → 恒 true", async () => {
-        expect((await new CanSendImageAction().handle({})).data).toEqual({ yes: true });
-        expect((await new CanSendRecordAction().handle({})).data).toEqual({ yes: true });
+        expect(
+            (
+                await ob11ActionOf(createSystemStatusActions({} as never), "can_send_image").handle(
+                    {},
+                )
+            ).data,
+        ).toEqual({ yes: true });
+        expect(
+            (
+                await ob11ActionOf(
+                    createSystemStatusActions({} as never),
+                    "can_send_record",
+                ).handle({})
+            ).data,
+        ).toEqual({ yes: true });
     });
 });
 
 describe("clean_cache / bot_exit / set_restart（回调注入）", () => {
     it("clean_cache 已配置 → 调用回调", async () => {
         const cleanCache = vi.fn(async () => undefined);
-        const result = await new CleanCacheAction({ cleanCache } as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemStatusActions({ cleanCache } as never),
+            "clean_cache",
+        ).handle({});
         expect(result.retcode).toBe(0);
         expect(cleanCache).toHaveBeenCalledTimes(1);
     });
 
     it("clean_cache 未配置 → retcode 106（INVALID_STATE）", async () => {
-        const result = await new CleanCacheAction({} as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemStatusActions({} as never),
+            "clean_cache",
+        ).handle({});
         expect(result.retcode).toBe(106);
         expect(result.message).toContain("clean_cache 未配置");
     });
 
     it("bot_exit 已配置 → 调用 exit", async () => {
         const exit = vi.fn(async () => undefined);
-        const result = await new BotExitAction({ exit } as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemStatusActions({ exit } as never),
+            "bot_exit",
+        ).handle({});
         expect(result.retcode).toBe(0);
         expect(exit).toHaveBeenCalledTimes(1);
     });
 
     it("bot_exit 未配置 → retcode 106", async () => {
-        expect((await new BotExitAction({} as never).handle({})).retcode).toBe(106);
+        expect(
+            (await ob11ActionOf(createSystemStatusActions({} as never), "bot_exit").handle({}))
+                .retcode,
+        ).toBe(106);
     });
 
     it("set_restart → restart 优先；缺省退化为 exit", async () => {
         const exit = vi.fn(async () => undefined);
         const restart = vi.fn(async () => undefined);
-        await new SetRestartAction({ exit, restart } as never).handle({});
+        await ob11ActionOf(
+            createSystemStatusActions({ exit, restart } as never),
+            "set_restart",
+        ).handle({});
         expect(restart).toHaveBeenCalledTimes(1);
         expect(exit).not.toHaveBeenCalled();
         // 只有 exit 时退化
         const exitOnly = vi.fn(async () => undefined);
-        await new SetRestartAction({ exit: exitOnly } as never).handle({});
+        await ob11ActionOf(
+            createSystemStatusActions({ exit: exitOnly } as never),
+            "set_restart",
+        ).handle({});
         expect(exitOnly).toHaveBeenCalledTimes(1);
     });
 
     it("set_restart 都未配置 → retcode 106", async () => {
-        expect((await new SetRestartAction({} as never).handle({})).retcode).toBe(106);
+        expect(
+            (await ob11ActionOf(createSystemStatusActions({} as never), "set_restart").handle({}))
+                .retcode,
+        ).toBe(106);
     });
 });
 
 describe("set_online_status / set_diy_online_status", () => {
     it("全缺省 → status=10 / extStatus=0 / batteryStatus=0", async () => {
         const msgApi = { setOnlineStatus: vi.fn(async () => undefined) };
-        const result = await new SetOnlineStatusAction(msgApi as never).handle({});
+        const result = await ob11ActionOf(
+            createSystemStatusActions({ msgApi } as never),
+            "set_online_status",
+        ).handle({});
         expect(result.retcode).toBe(0);
         expect(msgApi.setOnlineStatus).toHaveBeenCalledWith({
             status: 10,
@@ -117,7 +149,10 @@ describe("set_online_status / set_diy_online_status", () => {
 
     it("显式字段透传", async () => {
         const msgApi = { setOnlineStatus: vi.fn(async () => undefined) };
-        await new SetOnlineStatusAction(msgApi as never).handle({
+        await ob11ActionOf(
+            createSystemStatusActions({ msgApi } as never),
+            "set_online_status",
+        ).handle({
             status: 40,
             ext_status: 1,
             battery_status: 88,
@@ -131,7 +166,10 @@ describe("set_online_status / set_diy_online_status", () => {
 
     it("set_diy_online_status → customStatus（face_id/face_type 缺省补空/1）", async () => {
         const msgApi = { setOnlineStatus: vi.fn(async () => undefined) };
-        const result = await new SetDiyOnlineStatusAction(msgApi as never).handle({
+        const result = await ob11ActionOf(
+            createSystemStatusActions({ msgApi } as never),
+            "set_diy_online_status",
+        ).handle({
             wording: "摸鱼中",
         });
         expect(result.retcode).toBe(0);
@@ -145,7 +183,10 @@ describe("set_online_status / set_diy_online_status", () => {
 
     it("set_diy_online_status face_id/face_type/status 显式传入", async () => {
         const msgApi = { setOnlineStatus: vi.fn(async () => undefined) };
-        await new SetDiyOnlineStatusAction(msgApi as never).handle({
+        await ob11ActionOf(
+            createSystemStatusActions({ msgApi } as never),
+            "set_diy_online_status",
+        ).handle({
             status: 50,
             wording: "忙碌",
             face_id: "12",
@@ -160,9 +201,10 @@ describe("set_online_status / set_diy_online_status", () => {
     });
 
     it("set_diy_online_status 缺 wording → retcode 400", async () => {
-        const action = new SetDiyOnlineStatusAction({
-            setOnlineStatus: vi.fn(),
-        } as never);
+        const action = ob11ActionOf(
+            createSystemStatusActions({ setOnlineStatus: vi.fn() } as never),
+            "set_diy_online_status",
+        );
         expect((await action.handle({})).retcode).toBe(400);
     });
 });
@@ -170,7 +212,10 @@ describe("set_online_status / set_diy_online_status", () => {
 describe("translate_en2zh", () => {
     it("words 透传 → { words }", async () => {
         const richMediaApi = { translateWords: vi.fn(async () => ["你好", "世界"]) };
-        const result = await new TranslateEn2ZhAction(richMediaApi as never).handle({
+        const result = await ob11ActionOf(
+            createSystemInfoActions({ richMediaApi } as never),
+            "translate_en2zh",
+        ).handle({
             words: ["hello", "world"],
         });
         expect(result.data).toEqual({ words: ["你好", "世界"] });
@@ -178,7 +223,10 @@ describe("translate_en2zh", () => {
     });
 
     it("词条超上限（2000）→ retcode 400", async () => {
-        const action = new TranslateEn2ZhAction({ translateWords: vi.fn() } as never);
+        const action = ob11ActionOf(
+            createSystemInfoActions({ translateWords: vi.fn() } as never),
+            "translate_en2zh",
+        );
         const words = Array.from({ length: 2001 }, () => "a");
         expect((await action.handle({ words })).retcode).toBe(400);
     });

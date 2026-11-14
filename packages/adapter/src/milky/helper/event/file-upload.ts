@@ -1,5 +1,5 @@
 /**
- * friend_file_upload 翻译（Milky 批次三，2026-11-01 录制定型）
+ * friend_file_upload 翻译（Milky ，录制定型）
  *
  * 源：Msg/onRecvOfflineFileMsg 与 Msg/onFileMsgCome（同载荷 RawMessage 数组，
  * 双回调按 msgId 在适配器去重）；fileElement{fileName, fileSize 字符串,
@@ -9,7 +9,7 @@
  * fileSha/fileSha3 实测为空——取 file10MMd5（md5）充值，上传侧校准后回填。
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
-import { resolveUin } from "../../../core/shared/uid-uin.js";
+import { resolveUin } from "../../../shared/uid-uin.js";
 import type { FriendFileUploadData } from "../../types.js";
 
 /** 单条 C2C 文件消息 → 事件载荷（非 C2C / 无 fileElement / 无 fileUuid → null）。 */

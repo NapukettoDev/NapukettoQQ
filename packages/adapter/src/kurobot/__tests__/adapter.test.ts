@@ -1,7 +1,7 @@
 /**
  * adapter.test.ts：NapukettoKurobotAdapter 适配器级全链路（任务书阶段 2/4，无 QQ）。
  *
- * 假 kurobridge-ws 服务端 + ProtocolConfig（seed 模式）+ 桩 msgChannel/msgApi：
+ * 假 kurobridge-ws 服务端 + ConfigBase（seed 模式）+ 桩 msgChannel/msgApi：
  * [accounts.kurobot] 配置生效 → 连入握手 → QQ 群消息出帧（chat/command、自消息
  * 过滤、非绑定群不发）→ 服务端帧渲染回群（chat/join/leave/death/command_result、
  * status 只缓存）→ 绑定更新（bindings_updated / query_result）热生效。
@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { afterAll, describe, expect, it } from "vitest";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { type KurobotMsgApi, NapukettoKurobotAdapter } from "../adapter.js";
 import { kurobotConfigDefaults, kurobotConfigSchema } from "../config.js";
 import { type FakeKurobotServer, startFakeKurobotServer, waitFor } from "./test-support.js";
@@ -131,7 +131,7 @@ async function harness(s: FakeKurobotServer): Promise<Harness> {
     const { channel: msgChannel, emit } = stubMsgChannel();
     const { api: msgApi, calls } = stubMsgApi();
     const adapter = new NapukettoKurobotAdapter({
-        config: new ProtocolConfig({
+        config: new ConfigBase({
             path: join(tempDir(), "kurobot.toml"),
             schema: kurobotConfigSchema,
             defaults: kurobotConfigDefaults(),

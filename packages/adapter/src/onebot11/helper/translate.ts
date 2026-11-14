@@ -1,7 +1,7 @@
 /**
- * OB11 翻译辅助（NT 实体 → OB11 结构，P2-4）
+ * OB11 翻译辅助（NT 实体 → OB11 结构）
  *
- * 纯函数（ADR-008）：只读入参，不调 API、不读缓存。
+ * 纯函数：只读入参，不调 API、不读缓存。
  * 群成员/群信息等 NT 实体 → OB11 返回结构的薄映射。
  */
 import { type Group, GroupApi, type GroupDetailInfo, type GroupMember } from "@napuketto/kernel";

@@ -3,12 +3,33 @@
  *
  * 约定：
  * - uin↔uid 桩映射固定：90001↔u90001、90002↔u90002、90009↔u90009（断言写具体值）。
- * - 动作直接实例化（不经注册表），统一经 handle() 走 BaseAction 的 zod 校验 +
- *   错误映射——动作的行为面就是「参数映射 + 返回值映射 + 错误映射」。
+ * - 动作经领域工厂构造（不经注册表），按名取出后统一走 handle() /
+ *   websocketHandle()（zod 校验 + 错误映射）——动作的行为面就是「参数映射 +
+ *   返回值映射 + 错误映射」。
  * - 覆盖项显式传 undefined 表示「该字段缺失」（exactOptionalPropertyTypes 友好）。
  */
 import { type GroupMember, type GroupNotify, NTGroupMemberRole } from "@napuketto/kernel";
 import { type Mock, vi } from "vitest";
+import type { ActionResult, Ob11Action } from "../base-action.js";
+
+/** 测试视角的动作（handle / websocketHandle 返回 R；与工厂动作形状同构）。 */
+export interface Ob11TestAction<R> {
+    readonly name: string;
+    handle(payload: unknown): Promise<ActionResult<R>>;
+    websocketHandle(payload: unknown, echo?: unknown): Promise<ActionResult<R>>;
+}
+
+/**
+ * 按动作名从领域工厂产物中取动作（未注册即抛错，防静默漏测）。
+ * `R` = 动作返回类型，由用例按动作签名标注，恢复强类型断言面。
+ */
+export function ob11ActionOf<R>(actions: Ob11Action[], name: string): Ob11TestAction<R> {
+    const action = actions.find((a) => a.name === name);
+    if (action === undefined) {
+        throw new Error(`动作未注册: ${name}`);
+    }
+    return action as Ob11TestAction<R>;
+}
 
 /** 固定 uid↔uin 桩映射（两个方向的表驱动来源）。 */
 const UIN_BY_UID: Record<string, string> = {

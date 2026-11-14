@@ -1,11 +1,11 @@
 /**
- * peer_pin_change 翻译（Milky 批次三，RecentContact/onRecentContactListChangedVer2）
+ * peer_pin_change 翻译（Milky ，RecentContact/onRecentContactListChangedVer2）
  *
  * 回调随消息活动高频快照（含 topFlag 的全量条目 + chatType=7 影子条目），
  * 不能见条目就广播——按「同会话 topFlag 前后值翻转」检测（PinWatch）。
  * 启动期以 getPinnedContacts 播种基线（重启后首个取消置顶也能观测到）。
  *
- * 证据：2026-11-01 set_peer_pin 自触发翻转实验——changedList 条目
+ * 证据：set_peer_pin 自触发翻转实验——changedList 条目
  * {chatType, peerUin, topFlag(1/0), topFlagTime(秒级 unix 字符串)}，与操作
  * 一一对应（milky.md §0.8.6）。
  */

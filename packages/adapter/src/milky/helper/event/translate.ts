@@ -1,7 +1,7 @@
 /**
- * Milky 事件翻译（RawMessage → Milky 事件，纯函数，ADR-008）
+ * Milky 事件翻译（RawMessage → Milky 事件，纯函数）
  *
- * P0 事件两种：message_receive（onRecvMsg）/ message_recall（grayTip REVOKE）。
+ * 事件两种：message_receive（onRecvMsg）/ message_recall（grayTip REVOKE）。
  * 实体与 reply 回填在广播路径异步取得后经 ctx 注入（翻译保持纯函数）；
  * 撤回事件的 sender_id 取 RawMessage.senderUin（grayTip 系统消息的 sender
  * 即被撤回原消息的发送者，口径待真实事件校准）。
@@ -38,7 +38,7 @@ export interface ReceiveTranslateContext extends ReceiveSegmentContext {
     /** group 场景：群成员实体（缺省最小实体）。 */
     groupMemberEntity?: GroupMemberEntity;
     /**
-     * 合并转发段（P1）：adapter 从 RawMessage 的 multiForwardMsgElement 提取
+     * 合并转发段：adapter 从 RawMessage 的 multiForwardMsgElement 提取
      * resId 后预构建（canonical 不承载 MULTI_FORWARD），追加到段尾。
      */
     forwardSegments?: IncomingSegment[];

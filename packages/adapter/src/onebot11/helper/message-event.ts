@@ -1,13 +1,12 @@
 /**
- * OB11 消息事件翻译（RawMessage → OB11 消息事件，纯函数，ADR-008）
+ * OB11 消息事件翻译（RawMessage → OB11 消息事件，纯函数）
  *
  * 与 message-info.ts 的 toOb11MessageInfo（get_msg/历史消息返回结构）是两套格式：
  * 事件带 self_id/post_type/message_id；信息结构用于动作返回。
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
-import { senderNickname } from "../../core/shared/raw-message.js";
-import { toUnixSeconds } from "../../core/shared/time.js";
+import { senderNickname, toUnixSeconds } from "../../shared/raw-message.js";
 import type {
     OB11GroupMessageEvent,
     OB11MessageEvent,
@@ -25,7 +24,7 @@ import type { MessageUnique } from "./message-unique.js";
 
 /** RawMessage → OB11 消息事件（message_id 经 MessageUnique 映射并记录 peer）。
  * messageFormat 决定 message 字段格式：array = 消息段数组（标准），string = CQ 码字符串。
- * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id，P2-19）。 */
+ * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id）。 */
 export function toOb11MessageEvent(
     msg: RawMessage,
     selfUin: string,

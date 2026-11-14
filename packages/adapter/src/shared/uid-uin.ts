@@ -1,6 +1,6 @@
 /**
- * uid → uin 解析（OB11 / Milky 请求与通知翻译共用，P1 2026-10-30 收敛；
- * 2026-11-14 起 Satori 事件翻译的 string 口径也归此模块）
+ * uid → uin 解析（OB11 / Milky 请求与通知翻译共用， 收敛；
+ * Satori 事件翻译的 string 口径也归此模块）
  *
  * uidToUin 批量映射由调用方取得后传入；映射缺省退化为 uid 数值（wrapper 部分回调
  * 直接给 uin），非数字返回 0（调用方按 0 兜底展示）。
@@ -32,7 +32,7 @@ export function resolveUin(uid: string | undefined, uidToUin: ReadonlyMap<string
 
 /**
  * uid → uin（number 口径；ctx 只要求携带 uidToUin 映射——OB11 / Milky 的
- * request + notice 翻译通用，2026-11-14 自各协议本地 toUin 收拢）。
+ * request + notice 翻译通用，自各协议本地 toUin 收拢）。
  */
 export function toUin(
     uid: string | undefined,
@@ -43,7 +43,7 @@ export function toUin(
 
 /**
  * uid → uin（string 口径：Satori 资源对象 user.id 保留协议串；映射缺省退化
- * uid 原文，2026-11-14 自 satori/event/translate.ts 收拢）。
+ * uid 原文，自 satori/event/translate.ts 收拢）。
  */
 export function toUinString(uid: string, uidToUin: ReadonlyMap<string, string>): string {
     return uidToUin.get(uid) ?? uid;
@@ -54,7 +54,7 @@ const NUMERIC_RE = /^\d+$/;
 
 /**
  * 数字串 uin → number（缺失/非法 → null，调用方按口径省略或跳过；
- * 2026-11-14 自 onebot11 adapter.ts 收拢，essence 载荷 operator/sender 用）。
+ * 自 onebot11 adapter.ts 收拢，essence 载荷 operator/sender 用）。
  */
 export function numericUin(value: string | null): number | null {
     return value !== null && NUMERIC_RE.test(value) ? Number(value) : null;

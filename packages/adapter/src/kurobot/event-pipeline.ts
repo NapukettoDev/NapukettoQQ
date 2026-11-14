@@ -5,7 +5,7 @@
  * 归 adapter 协调）。共享状态在 session.ts。
  */
 import type { MsgEventChannel } from "@napuketto/kernel";
-import { forEachRawMessage } from "../core/shared/raw-message.js";
+import { forEachRawMessage } from "../shared/raw-message.js";
 import type { KurobotMessageHandler } from "./inbound/message.js";
 
 /** 订阅接线板装配参数（频道与消息域处理器由 adapter 注入）。 */

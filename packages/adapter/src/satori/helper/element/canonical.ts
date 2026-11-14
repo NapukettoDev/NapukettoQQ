@@ -1,5 +1,5 @@
 /**
- * 收方向转换：kernel canonical → Satori 元素（从 element-convert.ts 拆分，2026-08-08 FTA 优化）
+ * 收方向转换：kernel canonical → Satori 元素（从 element-convert.ts 拆分，FTA 优化）
  *
  * canonicalToSatoriElements：纯函数映射，宽容忽略 unknown（json/xml 无法表达）。
  * at 目标为 uid 时经 uidToUin 批量转换（异步，失败原样 uid）。

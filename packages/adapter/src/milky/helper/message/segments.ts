@@ -1,5 +1,5 @@
 /**
- * Milky 消息段 ↔ canonical 元素转换（纯函数，ADR-008）
+ * Milky 消息段 ↔ canonical 元素转换（纯函数）
  *
  * 接收方向：canonical → IncomingSegment（规范 14 种中映射 12 种；market_face /
  * markdown 无 canonical 对应（MFACE/MARKDOWN 原始元素形状未探测），unknown 一律
@@ -178,7 +178,7 @@ function fileToIncoming(el: Extract<CanonicalElement, { type: "file" }>): Incomi
 }
 
 /**
- * 合并转发 → forward 段（P1）。
+ * 合并转发 → forward 段。
  * 接收方向 canonical 不承载 MULTI_FORWARD（kernel toCanonicalElement 无此分支），
  * 由 adapter 从 RawMessage 提取 resId 后调用本函数经 ctx 注入（翻译保持纯函数）。
  * title 取 NT fileName（转发卡片标题语义）。
@@ -228,7 +228,7 @@ function rawToPayload(raw: unknown): string {
  * OutgoingSegment 数组 → canonical 元素（同步映射；媒体 URI 解析与 at uin→uid
  * 由调用方在返回值上继续处理）。
  * forward 在此报错：顶层 forward 已由 sendMilkyMessage 分流到组装链（message.ts，
- * P2 批次一），命中本分支 = forward 与其他段混发漏网或嵌套 forward（组装链内逐项
+ *），命中本分支 = forward 与其他段混发漏网或嵌套 forward（组装链内逐项
  * 转换经过此处）——均显式拒绝。
  */
 export function outgoingSegmentsToCanonical(segments: OutgoingSegment[]): {

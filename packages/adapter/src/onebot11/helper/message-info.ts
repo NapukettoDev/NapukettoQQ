@@ -2,13 +2,12 @@
  * OB11 消息信息翻译（RawMessage → OB11 消息信息结构）
  *
  * get_msg / get_group_msg_history / get_friend_msg_history 返回项用。
- * 纯函数（ADR-008）：只读入参，不调 API、不读缓存。
+ * 纯函数：只读入参，不调 API、不读缓存。
  * 与 adapter.ts 的 toOb11MessageEvent（事件格式，带 self_id/post_type）是两套结构，不复用。
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
-import { senderNickname } from "../../core/shared/raw-message.js";
-import { toUnixSeconds } from "../../core/shared/time.js";
+import { senderNickname, toUnixSeconds } from "../../shared/raw-message.js";
 import type { OB11MessageInfo } from "../types/index.js";
 import {
     applyReceiveContext,
@@ -19,7 +18,7 @@ import {
 import type { MessageUnique } from "./message-unique.js";
 
 /** RawMessage → OB11 消息信息（message_id 经 MessageUnique 映射）。
- * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id，P2-19）。 */
+ * ctx（可选）：接收方向 ID 转换上下文（at uid→uin、reply NT msgId→OB11 id）。 */
 export function toOb11MessageInfo(
     msg: RawMessage,
     unique: MessageUnique,
@@ -53,7 +52,7 @@ export function toOb11MessageInfo(
             sender.card = msg.sendMemberName;
         }
     } else {
-        // 2026-08-07 修复：user_id 应为发送者（senderUin），与消息事件一致。
+        // 修复：user_id 应为发送者（senderUin），与消息事件一致。
         // 此前用 peerUin（会话对端）——机器人自己发的消息 user_id 会错成对端。
         info.user_id = Number(msg.senderUin);
     }

@@ -1,6 +1,6 @@
 /**
- * 群精华共享翻译层（2026-11-03 自 milky/helper/essence.ts 上移，milky + onebot11 共用；
- * 2026-11-14 补 EssenceListSync 串行同步器，双协议 adapter 共用）
+ * 群精华共享翻译层（自 milky/helper/essence.ts 上移，milky + onebot11 共用；
+ * 补 EssenceListSync 串行同步器，双协议 adapter 共用）
  *
  * 数据源（milky.md §0.8.6 识别表，三轮录制实证）：
  *  - sysmsg 732:1 群精华设置：f1.f1=群号, f1.f8.f8.f1=msgSeq（extractEssenceSetSysMsg）；
@@ -174,7 +174,7 @@ export interface EssenceListSyncDeps {
 }
 
 /**
- * 精华列表串行同步器（OB11 / Milky adapter 共用，2026-11-14 收拢）：
+ * 精华列表串行同步器（OB11 / Milky adapter 共用，收拢）：
  *  - 列表缓存（群号 → seq → 条目）+ 串行链——并发回写乱序会把新列表覆盖成旧列表，
  *    732:1 触发器与列表回调共用一条链，谁先到谁触发，diff 幂等 + 串行天然去重；
  *  - 基线未建立只建基线不产出事件（避免全量首推被误报为逐条加精）。

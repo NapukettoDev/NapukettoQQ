@@ -8,50 +8,50 @@
 
 ### 统一模型与生命周期
 
-- 统一面只有两处：消息以 kernel `CanonicalElement` 为内部模型，动作统一
-  `BaseAction` + `ActionResult`；事件保留各协议原生结构（OB11 事件 / Satori Event /
-  Milky event / KuroBot 帧），不引入第二套内部事件抽象。
+- 统一面只有两处：消息以 kernel `CanonicalElement` 为内部模型，动作统一为
+  `{ name, schema, handle }` 声明式对象（各协议 `defineXxxAction` 工厂产出，
+  信封差异收在各自 base-action 运行时）；事件保留各协议原生结构（OB11 事件 /
+  Satori Event / Milky event / KuroBot 帧），不引入第二套内部事件抽象。
 - `BaseProtocolAdapter<TConfig>`（`src/core/framework/base-protocol-adapter.ts`）：
   `start()` = `config.load()` → `hooks.onStart`；`stop()` → `onStop`；
   `reload()` = 重新 `load()` → `hooks.onReload`。start/stop 幂等（started 标记），
   事件出口 `broadcastEvent` 只写构造时注入的 broadcaster。钩子面
   `ProtocolHooks<TConfig>` 与适配器同参数化：onStart/onReload 强类型透传协议配置，
   协议层不再手动收窄。
-- `ProtocolConfig`（`src/core/framework/config.ts`）复用 kernel `ConfigBase`：TOML/JSON
-  读写 + zod 校验 + `seed` 内存初值；协议 schema 归各协议目录（ADR-012）。装配层按账号段
-  注入 seed，adapter 不读独立协议配置文件。
+- 配置直接复用 kernel `ConfigBase`：TOML/JSON 读写 + zod 校验 + `seed` 内存初值；
+  协议 schema 归各协议目录（ADR-012）。装配层按账号段注入 seed，adapter 不读独立协议配置文件。
 - 动作执行内核 `runAction`（`src/core/framework/action-kernel.ts`，三协议共用）：
   safeParse → 执行 → `isKernelError` 统一判别映射（ADR-017）。差异全部参数化——
   校验失败 retcode（OB11 400/1400、Milky -400、Satori 400）、校验失败消息、
   结果包装（OB11/Milky 组信封、Satori 抛 `SatoriActionError`）与协议自有错误透传
   （`passthrough`）。非 KernelError 一律落映射表 UNKNOWN 兜底，不做形状嗅探。
-- `BaseAction`：`name` + zod `schema` + `errorCodeMap`；HTTP `handle` 校验失败 400、
-  WS `websocketHandle` 失败 1400 并回传 echo；`KernelError.code` 经映射表转协议 retcode
-  （ADR-017）。`ActionRegistry` 按名分发，未知动作 404。装配方直接持有各协议适配器
-  （不设 AdapterRegistry 中间层）。
+- 动作运行时按协议分文件（`defineOb11Action` / `defineMilkyAction` / `defineSatoriAction`）：
+  声明 `name` + zod `schema` + `handle`，工厂闭包依赖并统一信封与错误映射（OB11 HTTP 400 /
+  WS 1400 + echo；Milky -400；Satori 抛 `SatoriActionError`）。`ActionRegistry` 按名分发，
+  未知动作 404。装配方直接持有各协议适配器（不设 AdapterRegistry 中间层）。
 - OB11 动作文件按领域组织：`action/` 下 message / group / friend / system 领域文件
-  （动作类与 `create*Actions(api)` 工厂同文件，≤300 行；共享 helper `resolve-peer` /
-  `limits` / `error-map` / `resolve-uid` 独立文件）；`index.ts` 只遍历工厂注册零样板。
+  （声明式动作与 `create*Actions(api)` 工厂同文件，≤300 行）；错误码映射与 uid 解析收在
+  `action/base-action.ts`，`index.ts` 只遍历工厂注册零样板。
 - Milky 动作文件按领域组织：`milky/action/` 下 group（query / manage / essence /
   notice，另有群文件 `group-file` 一域）/ message（send / query / ops）+ profile /
-  social / system，动作类同文件（每文件 150~300 行）；`index.ts` 仍按 P0 → P1 → P2
-  的注册顺序逐个 register，动作类迁移不改变注册序与动作名。
+  social / system，声明式动作与领域工厂同文件（每文件 150~300 行）；`index.ts`
+  按领域工厂顺序遍历注册。
 - 协议目录内不设转发 barrel：`index.ts` 只保留 `package.json` `exports` 声明的
   6 个子路径入口与实际聚合面（注册表/类型聚合）；单模块转发壳一律直引目标模块。
 - fail-soft 降级分支必须留痕：kernel API 调用失败（uid↔uin、群缓存读、媒体下载）→
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
   不引 logger；保留项：sysmsg `decodeText` 三态与 satori 翻译层（无 logger 基建）。
-- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `core/__tests__/stub.ts`
+- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `shared/__tests__/stub.ts`
   的 `stub<T>`/`stubList<T>` 与各协议 `test-support.ts` 强类型工厂。豁免：私有字段
   窥视、故意畸形输入、私有 internals 断言；碎片测试（`*-branches`/`*-extra`）并入
   主测试文件，不新增。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
-- 跨协议重复原语收在 `src/core/shared/`：uid-uin 的 `toUin`/`toUinString`/`numericUin`
-  （number / string / 数字串口径）、gray-tip 的 `hasGrayTip`/`findRevokeElement`、
+- 跨协议 QQ 共享原语收在包内 `src/shared/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
+  `numericUin`（number / string / 数字串口径）、gray-tip 的 `hasGrayTip`/`findRevokeElement`、
   essence 的 `EssenceListSync`（列表缓存 + 串行链 + diff，OB11 / Milky adapter 共用）、
-  lookup 的 `findFirstMatch`（候选屏依序查找骨架，milky api 与 satori action 共用）、
+  raw-message 的数组规范化与 `toUnixSeconds`（Windows 毫秒 / Linux 秒归一）、
   log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
   面）；协议目录只留形状差异（事件翻译、识别表、错误口径——NOT_FOUND 抛错类型与
   消息归调用方）。
@@ -64,7 +64,7 @@
   ≤110 行；kurobot 双向流另有 session.ts 共享状态）；`enrichment.ts` 接管翻译
   前的异步查询（批量 uidToUin、群实体回填、msgId 反查），翻译函数保持纯函数
   （ADR-008）。sysmsg 单条字节块的解码 → 信封 → 识别 → 分流管线收拢
-  `core/shared/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
+  `shared/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
 
 ### OneBot 11 事件链
 
@@ -154,7 +154,7 @@
 ### sysmsg 解码与识别
 
 - `Msg/onRecvSysMsg` 是群名片/头衔/精华/表情回应等系统事件的总闸，payload 是原始
-  protobuf 字节（带符号 int8 数组）。共享层在 `src/core/shared/sysmsg.ts`，OB11 与
+  protobuf 字节（带符号 int8 数组）。共享层在 `src/shared/sysmsg.ts`，OB11 与
   Milky 各自只维护识别表。
 - 解码：`decodeProtoTree` 手写 wire-format（varint + length-delimited，BigInt 保 64 位；
   定长 wire 跳过；深度/字段数/varint 长度设上限），length-delimited 递归 try-parse，

@@ -1,7 +1,7 @@
 /**
  * Milky 适配器生命周期测试（adapter.ts 装配/启停/热更新）
  *
- * 锁定：enabled=false 空转（不订阅不起传输）、start 即监听（2026-11-01 回归）、
+ * 锁定：enabled=false 空转（不订阅不起传输）、start 即监听（回归）、
  * start 幂等、stop 退订（通道不再派发）+ 关传输、reload 重建（enabled 切换生效）、
  * token 鉴权装配、广播路径（捕获 adapter 收到事件）。
  */

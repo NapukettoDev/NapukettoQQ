@@ -1,5 +1,5 @@
 /**
- * OB11 request 事件翻译（2026-09-08）
+ * OB11 request 事件翻译
  *
  * 事件源（kernel 事件通道，本次接线）：
  *  - `Group/onGroupNotifiesUpdated`（GroupBridge，群系统通知推送）→ group_add / group_invite
@@ -9,7 +9,7 @@
  *  - 群请求 flag = GroupNotify.seq（set_group_add_request 按 `item.seq === flag` 匹配）
  *  - 好友请求 flag = BuddyReq.reqTime（set_friend_add_request 按 `reqTime === flag` 匹配）
  *
- * 纯函数（ADR-008）：uid→uin 由调用方批量转换后传入。
+ * 纯函数：uid→uin 由调用方批量转换后传入。
  * ⚠️ onBuddyReqChange 回调参数形状未经真实事件校准（wrapper 字符串证据仅有方法名），
  * narrowBuddyReqs 防御性收窄，未知形状返回 null 由调用方打 raw 日志积累校准数据。
  */
@@ -20,9 +20,9 @@ import {
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
 } from "@napuketto/kernel";
-import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../core/shared/uid-uin.js";
+import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../shared/uid-uin.js";
 
-export type { RequestTranslateContext } from "../../core/shared/uid-uin.js";
+export type { RequestTranslateContext } from "../../shared/uid-uin.js";
 
 import type { OB11FriendRequestEvent, OB11GroupRequestEvent } from "../event/index.js";
 
@@ -66,8 +66,8 @@ export function toOb11GroupRequestEvent(
     };
 }
 
-/** BuddyReq 防御性收窄收敛到 core（OB11 / Milky 共用，P1 2026-10-30）。 */
-export { isBuddyReqLike, narrowBuddyReqs } from "../../core/shared/buddy-req.js";
+/** BuddyReq 防御性收窄收敛到 core（OB11 / Milky 共用）。 */
+export { isBuddyReqLike, narrowBuddyReqs } from "../../shared/buddy-req.js";
 
 /**
  * BuddyReq → OB11 好友请求事件（friend）。

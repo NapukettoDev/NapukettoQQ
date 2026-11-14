@@ -1,5 +1,5 @@
 /**
- * Milky 消息查询域动作测试（message-query.ts，2026-11-14 域对齐重组，自
+ * Milky 消息查询域动作测试（message-query.ts，域对齐重组，自
  * p1-message.test.ts / p3-message.test.ts 查询用例归并）
  *
  * 锁定：get_history_messages 的 seq 锚点（索引命中 / 近段扫描兜底 / NOT_FOUND）、
@@ -17,7 +17,7 @@ import {
     type RawMessage,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../core/__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../../types.js";
@@ -210,7 +210,7 @@ describe("get_history_messages", () => {
         });
     });
 
-    it("缺 message_scene → -400（P1 schema 补测）", async () => {
+    it("缺 message_scene → -400（schema 补测）", async () => {
         const { registry } = makeApi({});
         const result = await registry
             .get("get_history_messages")

@@ -8,15 +8,29 @@
  */
 import { ChatType, type Peer, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../core/__tests__/stub.js";
+import { stub } from "../../../../shared/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
-import {
-    ForwardFriendSingleMsgAction,
-    ForwardGroupSingleMsgAction,
-    GetForwardMsgAction,
-    SendGroupForwardMsgAction,
-    SendPrivateForwardMsgAction,
-} from "../forward.js";
+import type { OB11MessageInfo } from "../../../types/index.js";
+import { ob11ActionOf } from "../../__tests__/test-support.js";
+import type { Ob11Action } from "../../base-action.js";
+import { createForwardActions } from "../forward.js";
+
+/** 取转发域动作（TReturn 按动作断言，保持 result.data 属性访问的编译期类型）。 */
+function forwardActionOf(
+    deps: unknown,
+    name: "send_group_forward_msg" | "send_private_forward_msg",
+): Ob11Action<unknown, { message_id: number }>;
+function forwardActionOf(
+    deps: unknown,
+    name: "get_forward_msg",
+): Ob11Action<unknown, { messages: OB11MessageInfo[] }>;
+function forwardActionOf(
+    deps: unknown,
+    name: "forward_group_single_msg" | "forward_friend_single_msg",
+): Ob11Action<unknown, null>;
+function forwardActionOf(deps: unknown, name: string): Ob11Action<unknown, never> {
+    return ob11ActionOf(createForwardActions(deps as never), name) as Ob11Action<unknown, never>;
+}
 
 /** 构造转发依赖桩（真实 MessageUnique + 可控 sendForwardMessage / fetchForwardMessage）。 */
 function makeDeps(options?: {
@@ -54,7 +68,7 @@ describe("send_group_forward_msg", () => {
         const srcPeer = { chatType: ChatType.GROUP, peerUid: "808" };
         unique.alloc("nt-a", srcPeer);
         unique.alloc("nt-b", srcPeer);
-        const action = new SendGroupForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_group_forward_msg");
         const result = await action.handle({
             group_id: 909,
             messages: [
@@ -74,7 +88,7 @@ describe("send_group_forward_msg", () => {
     it("非法 node / 反查不到的 id / 无 id 字段 → 跳过不致命", async () => {
         const { deps, unique, sendForwardMessage } = makeDeps();
         unique.alloc("nt-a", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new SendGroupForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_group_forward_msg");
         await action.handle({
             group_id: 909,
             messages: [
@@ -94,7 +108,7 @@ describe("send_group_forward_msg", () => {
     it("非对象 node（parse 失败）与已登记但无 peer 的 id → 各自跳过", async () => {
         const { deps, unique, sendForwardMessage } = makeDeps();
         unique.alloc("nt-nopeer"); // 无 peer 登记
-        const action = new SendGroupForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_group_forward_msg");
         await action.handle({
             group_id: 909,
             messages: [
@@ -107,7 +121,7 @@ describe("send_group_forward_msg", () => {
 
     it("全部 node 不可解析 → retcode 105（INVALID_PARAM）", async () => {
         const { deps } = makeDeps();
-        const action = new SendGroupForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_group_forward_msg");
         const result = await action.handle({ group_id: 909, messages: [{ type: "node" }] });
         expect(result.retcode).toBe(105);
         expect(result.message).toContain("至少一条可解析的源消息");
@@ -115,7 +129,7 @@ describe("send_group_forward_msg", () => {
 
     it("messages 缺省 []（zod default）→ retcode 105", async () => {
         const { deps } = makeDeps();
-        const action = new SendGroupForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_group_forward_msg");
         const result = await action.handle({ group_id: 909 });
         expect(result.retcode).toBe(105);
     });
@@ -125,7 +139,7 @@ describe("send_private_forward_msg", () => {
     it("user_id uin→uid → 目标 Peer{C2C}", async () => {
         const { deps, unique, sendForwardMessage } = makeDeps();
         unique.alloc("nt-a", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new SendPrivateForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_private_forward_msg");
         const result = await action.handle({
             user_id: 90001,
             messages: [{ type: "node", data: { id: 1 } }],
@@ -139,7 +153,7 @@ describe("send_private_forward_msg", () => {
 
     it("user_id 解析失败 → retcode 105", async () => {
         const { deps } = makeDeps({ uinMap: {} });
-        const action = new SendPrivateForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "send_private_forward_msg");
         const result = await action.handle({ user_id: 11111, messages: [] });
         expect(result.retcode).toBe(105);
     });
@@ -150,7 +164,7 @@ describe("forward_group_single_msg / forward_friend_single_msg", () => {
         const { deps, unique, forwardSingleMessage } = makeDeps();
         const srcPeer = { chatType: ChatType.GROUP, peerUid: "808" };
         unique.alloc("nt-a", srcPeer);
-        const action = new ForwardGroupSingleMsgAction(deps);
+        const action = forwardActionOf(deps, "forward_group_single_msg");
         const result = await action.handle({ message_id: 1, group_id: 909 });
         expect(result.retcode).toBe(0);
         expect(forwardSingleMessage).toHaveBeenCalledWith(srcPeer, ["nt-a"], {
@@ -162,7 +176,7 @@ describe("forward_group_single_msg / forward_friend_single_msg", () => {
     it("好友目标 → uin→uid 解析", async () => {
         const { deps, unique, forwardSingleMessage } = makeDeps();
         unique.alloc("nt-a", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new ForwardFriendSingleMsgAction(deps);
+        const action = forwardActionOf(deps, "forward_friend_single_msg");
         const result = await action.handle({ message_id: 1, user_id: 90001 });
         expect(result.retcode).toBe(0);
         expect(forwardSingleMessage).toHaveBeenCalledWith(
@@ -174,7 +188,7 @@ describe("forward_group_single_msg / forward_friend_single_msg", () => {
 
     it("message_id 未登记 → retcode 102；目标缺失 → retcode 105", async () => {
         const { deps } = makeDeps();
-        const action = new ForwardGroupSingleMsgAction(deps);
+        const action = forwardActionOf(deps, "forward_group_single_msg");
         expect((await action.handle({ message_id: 999, group_id: 1 })).retcode).toBe(102);
         deps.messageUnique.alloc("nt-1", { chatType: ChatType.GROUP, peerUid: "808" });
         // 源消息已登记但既无 group_id 也无 user_id → 目标解析失败
@@ -186,7 +200,7 @@ describe("get_forward_msg", () => {
     it("message_id → fetchForwardMessage → 逐条 OB11 信息（空转发返回空数组）", async () => {
         const { deps, unique, fetchForwardMessage } = makeDeps();
         unique.alloc("nt-fwd", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "get_forward_msg");
         const result = await action.handle({ message_id: 1 });
         expect(result.status).toBe("ok");
         expect(fetchForwardMessage).toHaveBeenCalledWith(
@@ -199,7 +213,7 @@ describe("get_forward_msg", () => {
     it("id 参数（NapCat 兼容别名）同样反查", async () => {
         const { deps, unique, fetchForwardMessage } = makeDeps();
         unique.alloc("nt-fwd", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "get_forward_msg");
         await action.handle({ id: "1" });
         expect(fetchForwardMessage).toHaveBeenCalledTimes(1);
     });
@@ -225,7 +239,7 @@ describe("get_forward_msg", () => {
             }
         ).fetchForwardMessage = vi.fn(async () => [inner]);
         unique.alloc("nt-fwd", { chatType: ChatType.GROUP, peerUid: "808" });
-        const action = new GetForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "get_forward_msg");
         const result = await action.handle({ message_id: 1 });
         expect(result.data?.messages).toHaveLength(1);
         expect(result.data?.messages[0]).toMatchObject({
@@ -237,7 +251,7 @@ describe("get_forward_msg", () => {
 
     it("缺 message_id 与 id → retcode 105", async () => {
         const { deps } = makeDeps();
-        const action = new GetForwardMsgAction(deps);
+        const action = forwardActionOf(deps, "get_forward_msg");
         const result = await action.handle({});
         expect(result.retcode).toBe(105);
         expect(result.message).toBe("get_forward_msg 需要 message_id 或 id");

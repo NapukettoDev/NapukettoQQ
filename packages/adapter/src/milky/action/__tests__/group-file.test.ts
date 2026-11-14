@@ -1,5 +1,5 @@
 /**
- * Milky 群文件类动作测试（group-file.ts，2026-11-14 域对齐重组，自
+ * Milky 群文件类动作测试（group-file.ts，域对齐重组，自
  * p3-group-file + p1-actions/p2-batch2 群文件用例归并）
  *
  * 锁定：get_group_files 的文件/文件夹实体映射（fileSize 字符串数值化、
@@ -125,7 +125,7 @@ describe("get_group_files", () => {
         expect(getGroupFileList).toHaveBeenCalledWith("10001", "d9");
     });
 
-    it("文件/文件夹实体字段映射（P1 补测）", async () => {
+    it("文件/文件夹实体字段映射（补测）", async () => {
         const registry = fileRegistry({
             richMediaApi: {
                 getGroupFileList: vi.fn(async () => [
@@ -266,7 +266,7 @@ describe("create / delete / rename folder", () => {
         expect(res.retcode).toBe(-400);
     });
 
-    it("create_group_folder：空 folder_name → -400（P1 schema 补测）", async () => {
+    it("create_group_folder：空 folder_name → -400（schema 补测）", async () => {
         const registry = fileRegistry({});
         const result = await registry
             .get("create_group_folder")
@@ -274,7 +274,7 @@ describe("create / delete / rename folder", () => {
         expect(result?.retcode).toBe(-400);
     });
 
-    it("rename_group_folder：参数透传（P2 批次二补测）", async () => {
+    it("rename_group_folder：参数透传（补测）", async () => {
         const renameGroupFolder = vi.fn(async () => undefined);
         const registry = fileRegistry({ richMediaApi: { renameGroupFolder } });
         await actionOf(registry, "rename_group_folder").handle({
@@ -339,7 +339,7 @@ describe("upload_group_file（闪传通道）", () => {
         expect(res.status).toBe("ok");
     });
 
-    it("群 peer + parent_folder_id 仅 schema 兼容（P2 批次二补测）", async () => {
+    it("群 peer + parent_folder_id 仅 schema 兼容（补测）", async () => {
         const sendFile = vi.fn(
             async (_target: Peer, _paths: string[], _options: FlashTransferUploadOptions) => ({
                 fileSetId: "fs-group",
@@ -391,7 +391,7 @@ describe("get_group_file_download_url", () => {
         expect(res.retcode).toBe(-404);
     });
 
-    it("download_url 透传（P2 批次二补测）", async () => {
+    it("download_url 透传（补测）", async () => {
         const registry = fileRegistry({
             richMediaApi: {
                 getGroupFileDownloadUrl: vi.fn(async () => "https://dl/x"),

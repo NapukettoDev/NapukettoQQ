@@ -12,8 +12,8 @@ import { join } from "node:path";
 import { ChatType } from "@napuketto/kernel";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
-import { stub } from "../../core/__tests__/stub.js";
-import { ProtocolConfig } from "../../core/index.js";
+import { ConfigBase } from "../../core/index.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
 import { SatoriApi } from "../api/satori-api.js";
@@ -87,7 +87,7 @@ function makeAdapter(
             profileApi: api.profileApi,
             self: api.self,
             cacheDir: api.cacheDir,
-            config: new ProtocolConfig({
+            config: new ConfigBase({
                 path: join(tmpRoot, "cfg.toml"),
                 schema: satoriConfigSchema,
                 defaults: satoriConfigSchema.parse({}),
@@ -389,7 +389,7 @@ describe("startTransports 完整装配（真实端口端到端）", () => {
                 profileApi: api.profileApi,
                 self: api.self,
                 cacheDir: api.cacheDir,
-                config: new ProtocolConfig({
+                config: new ConfigBase({
                     path: join(tmpRoot, "cfg-full.toml"),
                     schema: satoriConfigSchema,
                     defaults: satoriConfigSchema.parse({}),
@@ -459,7 +459,7 @@ describe("startTransports 完整装配（真实端口端到端）", () => {
                 profileApi: api.profileApi,
                 self: api.self,
                 cacheDir: api.cacheDir,
-                config: new ProtocolConfig({
+                config: new ConfigBase({
                     path: join(tmpRoot, "cfg-guard.toml"),
                     schema: satoriConfigSchema,
                     defaults: satoriConfigSchema.parse({}),

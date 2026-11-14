@@ -1,5 +1,5 @@
 /**
- * kurobot 协议配置（zod schema，归属本包，ADR-012；任务书 KUROBOT-PROMPT §1.2）
+ * kurobot 协议配置（zod schema，归属本包；任务书 KUROBOT-PROMPT §1.2）
  *
  * 单一 TOML 的 `[accounts.kurobot]` 账号段（段存在即启用、不写不启用），
  * seed 注入对齐 onebot11/satori 的 ConfigBase 模式。

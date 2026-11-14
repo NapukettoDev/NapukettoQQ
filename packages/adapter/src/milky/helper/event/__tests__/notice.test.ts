@@ -1,5 +1,5 @@
 /**
- * Milky notice 事件翻译测试（P1 grayTip 系）
+ * Milky notice 事件翻译测试（grayTip 系）
  *
  * 锁定：成员增加（approve/invite 两形态）/ 减少（踢/退）/ 禁言 / 全员禁言 /
  * 改名 / 解散（操作者缺失不产出）/ 戳一戳（群/好友）/ 未知子类型返回 null。

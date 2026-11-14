@@ -14,10 +14,10 @@ import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
 import { z } from "zod";
-import { stub } from "../../core/__tests__/stub.js";
 import { ActionRegistry } from "../../core/framework/action-registry.js";
+import { stub } from "../../shared/__tests__/stub.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
-import type { BaseSatoriAction } from "../action/base-action.js";
+import type { SatoriAction } from "../action/base-action.js";
 import { createSatoriActionRegistry } from "../action/index.js";
 import { satoriConfigSchema, toLogin } from "../helper/index.js";
 import { assembleSatoriTransports, type SatoriTransportSet, toEventSignal } from "../transport.js";
@@ -391,9 +391,9 @@ const setD = buildSet({
     httpPort: 36247,
     wsPort: 36248,
     registry: (() => {
-        const reg = new ActionRegistry<BaseSatoriAction<unknown, unknown>>();
+        const reg = new ActionRegistry<SatoriAction>();
         reg.register(
-            stub<BaseSatoriAction<unknown, unknown>>({
+            stub<SatoriAction>({
                 name: "boom.action",
                 schema: z.object({}).passthrough(),
                 run: async () => {
@@ -402,7 +402,7 @@ const setD = buildSet({
             }),
         );
         reg.register(
-            stub<BaseSatoriAction<unknown, unknown>>({
+            stub<SatoriAction>({
                 name: "boom2.action",
                 schema: z.object({}).passthrough(),
                 run: async () => {

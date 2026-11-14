@@ -1,14 +1,13 @@
 /**
- * 消息媒体域动作（2026-11-14 自 get-media / fetch-ptt-text 合并）
+ * 消息媒体域动作
  *
- * - get_image / get_record：获取图片/语音文件（P2-14；2026-09-08 T5 接主动下载；
- *   2026-09-08 B1 语音接原生 downloadRichMedia）。message_id 反查 → fetchMsgsByMsgId
- *   → 找 PIC/PTT 元素：
+ * - get_image / get_record：获取图片/语音文件（图片接主动下载；语音接原生
+ *   downloadRichMedia）。message_id 反查 → fetchMsgsByMsgId → 找 PIC/PTT 元素：
  *     - 本地文件解析：NT 相对路径（sourcePath/filePath）按 mediaBaseDir（QQ NT
  *       global 目录）解析为绝对路径，命中磁盘即返回 file
  *     - 图片主动下载：本地未命中且有 picUrl → @napuketto/media downloadUrl 落
  *       cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name
- *     - 语音主动下载（B1）：本地未命中 → kernel MsgApi.downloadPtt（原生
+ *     - 语音主动下载：本地未命中 → kernel MsgApi.downloadPtt（原生
  *       downloadRichMedia + 轮询元素回查）→ filePath 落盘后返回绝对路径；
  *       失败回退原始 filePath（NT 相对/绝对）+ 元数据，不抛错
  * - fetch_ptt_text：message_id → MsgApi.fetchPttText（内部：拉消息 → 找 PTT 元素
@@ -21,10 +20,9 @@ import { join } from "node:path";
 import { kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
 import { z } from "zod";
-import { BaseAction } from "../../../core/index.js";
 import type { OneBotApi } from "../../api/one-bot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
-import { ob11ErrorCodeMap } from "../error-map.js";
+import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
 const getMediaSchema = z.object({
     /** CQ 码 file 字段或 message_id（简化：message_id 反查）。 */
@@ -33,6 +31,10 @@ const getMediaSchema = z.object({
 });
 
 type GetMediaPayload = z.infer<typeof getMediaSchema>;
+
+const fetchPttTextSchema = z.object({
+    message_id: z.union([z.number(), z.string()]),
+});
 
 /** 媒体信息返回。 */
 export interface MediaInfoResult {
@@ -133,158 +135,126 @@ function takeId(payload: GetMediaPayload, actionName: string): number | string {
     return id;
 }
 
-/** 获取图片信息（本地优先，picUrl 主动下载兜底）。 */
-export class GetImageAction extends BaseAction<GetMediaPayload, MediaInfoResult> {
-    readonly name = "get_image";
-    readonly schema = getMediaSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: GetMediaDeps;
-
-    constructor(deps: GetMediaDeps) {
-        super();
-        this.deps = deps;
+/** 提取 pic 元素 → 媒体信息（url / 本地 file / 元数据；非 pic 元素返回 undefined）。 */
+function extractPicElement(
+    el: RawElement,
+    deps: { mediaBaseDir?: string | undefined },
+): MediaInfoResult | undefined {
+    const pic = el.picElement;
+    if (pic === undefined) {
+        return undefined;
     }
-
-    protected async _handle(payload: GetMediaPayload): Promise<MediaInfoResult> {
-        const id = takeId(payload, "get_image");
-        const base = await resolveMedia(id, "图片", this.deps, (el) => {
-            const pic = el.picElement;
-            if (pic === undefined) {
-                return undefined;
-            }
-            const out: MediaInfoResult = {};
-            if (pic.fileSize !== undefined) {
-                out.file_size = pic.fileSize;
-            }
-            if (pic.fileName !== undefined) {
-                out.file_name = pic.fileName;
-            }
-            if (pic.picUrl !== undefined) {
-                out.url = pic.picUrl;
-            }
-            const rel = pic.sourcePath ?? pic.picPath;
-            if (rel !== undefined) {
-                const local = resolveLocalMediaFile(rel, this.deps);
-                if (local !== null) {
-                    out.file = local;
-                }
-            }
-            return out;
-        });
-        // 本地未命中且有 URL → 主动下载到缓存目录
-        if (base.file === undefined && base.url !== undefined) {
-            const downloaded = await downloadImageToCache(base.url, this.deps);
-            if (downloaded !== null) {
-                base.file = downloaded;
-            }
-        }
-        return base;
+    const out: MediaInfoResult = {};
+    if (pic.fileSize !== undefined) {
+        out.file_size = pic.fileSize;
     }
-}
-
-/** 获取语音信息（本地优先；未命中走原生 downloadRichMedia，失败回退原始路径）。 */
-export class GetRecordAction extends BaseAction<GetMediaPayload, MediaInfoResult> {
-    readonly name = "get_record";
-    readonly schema = getMediaSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: GetMediaDeps;
-
-    constructor(deps: GetMediaDeps) {
-        super();
-        this.deps = deps;
+    if (pic.fileName !== undefined) {
+        out.file_name = pic.fileName;
     }
-
-    protected async _handle(payload: GetMediaPayload): Promise<MediaInfoResult> {
-        const id = takeId(payload, "get_record");
-        const { msgId, peer } = resolveMsgIdAndPeer(id, this.deps.messageUnique);
-        const msgs = await this.deps.msgApi.fetchMsgsByMsgId(peer, [msgId]);
-        const [first] = msgs;
-        if (first === undefined) {
-            throw kernelError(`消息 ${id} 不存在或已被撤回`, "NOT_FOUND");
-        }
-        const el = first.elements.find((e) => e.pttElement !== undefined);
-        const ptt = el?.pttElement;
-        if (ptt === undefined || ptt.filePath === undefined) {
-            throw kernelError(`消息 ${id} 不包含语音`, "NOT_FOUND");
-        }
-        const meta = (): MediaInfoResult => ({
-            ...(ptt.fileSize !== undefined ? { file_size: ptt.fileSize } : {}),
-            ...(ptt.fileName !== undefined ? { file_name: ptt.fileName } : {}),
-        });
-        const local = resolveLocalMediaFile(ptt.filePath, this.deps);
+    if (pic.picUrl !== undefined) {
+        out.url = pic.picUrl;
+    }
+    const rel = pic.sourcePath ?? pic.picPath;
+    if (rel !== undefined) {
+        const local = resolveLocalMediaFile(rel, deps);
         if (local !== null) {
-            return { ...meta(), file: local };
+            out.file = local;
         }
-        // 本地未命中 → 原生下载 + 元素回查；失败回退原始路径
-        const downloaded = await this.downloadPttFallback(msgId, peer, id);
-        return downloaded ?? { ...meta(), file: ptt.filePath };
     }
-
-    /** 原生下载语音 → 元素回查本地路径；下载失败/未命中 null（warn 留痕，不抛错）。 */
-    private async downloadPttFallback(
-        msgId: string,
-        peer: Peer,
-        id: number | string,
-    ): Promise<MediaInfoResult | null> {
-        try {
-            const downloaded = await this.deps.msgApi.downloadPtt(msgId, peer);
-            const rel = downloaded.filePath;
-            if (rel !== undefined && rel !== "") {
-                const localAfter = resolveLocalMediaFile(rel, this.deps);
-                if (localAfter !== null) {
-                    return {
-                        ...(downloaded.fileSize !== undefined
-                            ? { file_size: downloaded.fileSize }
-                            : {}),
-                        ...(downloaded.fileName !== undefined
-                            ? { file_name: downloaded.fileName }
-                            : {}),
-                        file: localAfter,
-                    };
-                }
-            }
-        } catch (err) {
-            this.deps.logger?.warn(
-                { message_id: id, error: err instanceof Error ? err.message : String(err) },
-                "ob11: 语音原生下载失败，get_record 回退原始路径",
-            );
-        }
-        return null;
-    }
+    return out;
 }
 
-const fetchPttTextSchema = z.object({
-    message_id: z.union([z.number(), z.string()]),
-});
-
-type FetchPttTextPayload = z.infer<typeof fetchPttTextSchema>;
-
-/** 语音转文字依赖（OneBotApi 视图，由装配方注入）。 */
-export type FetchPttTextDeps = Pick<OneBotApi, "msgApi" | "messageUnique">;
-
-/** 获取语音转文字结果（P2-10 接 kernel fetchPttText）。 */
-export class FetchPttTextAction extends BaseAction<FetchPttTextPayload, { text: string }> {
-    readonly name = "fetch_ptt_text";
-    readonly schema = fetchPttTextSchema;
-    protected readonly errorCodeMap = ob11ErrorCodeMap;
-
-    private readonly deps: FetchPttTextDeps;
-
-    constructor(deps: FetchPttTextDeps) {
-        super();
-        this.deps = deps;
+/** 原生下载语音 → 元素回查本地路径；下载失败/未命中 null（warn 留痕，不抛错）。 */
+async function downloadPttFallback(
+    msgId: string,
+    peer: Peer,
+    id: number | string,
+    deps: GetMediaDeps,
+): Promise<MediaInfoResult | null> {
+    try {
+        const downloaded = await deps.msgApi.downloadPtt(msgId, peer);
+        const rel = downloaded.filePath;
+        if (rel !== undefined && rel !== "") {
+            const localAfter = resolveLocalMediaFile(rel, deps);
+            if (localAfter !== null) {
+                return {
+                    ...(downloaded.fileSize !== undefined
+                        ? { file_size: downloaded.fileSize }
+                        : {}),
+                    ...(downloaded.fileName !== undefined
+                        ? { file_name: downloaded.fileName }
+                        : {}),
+                    file: localAfter,
+                };
+            }
+        }
+    } catch (err) {
+        deps.logger?.warn(
+            { message_id: id, error: err instanceof Error ? err.message : String(err) },
+            "ob11: 语音原生下载失败，get_record 回退原始路径",
+        );
     }
-
-    protected async _handle(payload: FetchPttTextPayload): Promise<{ text: string }> {
-        const { msgId, peer } = resolveMsgIdAndPeer(payload.message_id, this.deps.messageUnique);
-        const text = await this.deps.msgApi.fetchPttText(msgId, peer);
-        return { text };
-    }
+    return null;
 }
 
 /** 消息媒体域动作工厂（get_image / get_record / fetch_ptt_text）。 */
-export function createMediaActions(api: OneBotApi): BaseAction<unknown, unknown>[] {
-    return [new GetImageAction(api), new GetRecordAction(api), new FetchPttTextAction(api)];
+export function createMediaActions(api: OneBotApi): Ob11Action[] {
+    return [
+        defineOb11Action({
+            name: "get_image",
+            schema: getMediaSchema,
+            handle: async (payload): Promise<MediaInfoResult> => {
+                const id = takeId(payload, "get_image");
+                const base = await resolveMedia(id, "图片", api, (el) =>
+                    extractPicElement(el, api),
+                );
+                // 本地未命中且有 URL → 主动下载到缓存目录
+                if (base.file === undefined && base.url !== undefined) {
+                    const downloaded = await downloadImageToCache(base.url, api);
+                    if (downloaded !== null) {
+                        base.file = downloaded;
+                    }
+                }
+                return base;
+            },
+        }),
+        defineOb11Action({
+            name: "get_record",
+            schema: getMediaSchema,
+            handle: async (payload): Promise<MediaInfoResult> => {
+                const id = takeId(payload, "get_record");
+                const { msgId, peer } = resolveMsgIdAndPeer(id, api.messageUnique);
+                const msgs = await api.msgApi.fetchMsgsByMsgId(peer, [msgId]);
+                const [first] = msgs;
+                if (first === undefined) {
+                    throw kernelError(`消息 ${id} 不存在或已被撤回`, "NOT_FOUND");
+                }
+                const el = first.elements.find((e) => e.pttElement !== undefined);
+                const ptt = el?.pttElement;
+                if (ptt === undefined || ptt.filePath === undefined) {
+                    throw kernelError(`消息 ${id} 不包含语音`, "NOT_FOUND");
+                }
+                const meta = (): MediaInfoResult => ({
+                    ...(ptt.fileSize !== undefined ? { file_size: ptt.fileSize } : {}),
+                    ...(ptt.fileName !== undefined ? { file_name: ptt.fileName } : {}),
+                });
+                const local = resolveLocalMediaFile(ptt.filePath, api);
+                if (local !== null) {
+                    return { ...meta(), file: local };
+                }
+                // 本地未命中 → 原生下载 + 元素回查；失败回退原始路径
+                const downloaded = await downloadPttFallback(msgId, peer, id, api);
+                return downloaded ?? { ...meta(), file: ptt.filePath };
+            },
+        }),
+        defineOb11Action({
+            name: "fetch_ptt_text",
+            schema: fetchPttTextSchema,
+            handle: async (payload) => {
+                const { msgId, peer } = resolveMsgIdAndPeer(payload.message_id, api.messageUnique);
+                const text = await api.msgApi.fetchPttText(msgId, peer);
+                return { text };
+            },
+        }),
+    ];
 }

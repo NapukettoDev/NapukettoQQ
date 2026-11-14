@@ -4,11 +4,12 @@
  * 锁定：start（校验配置 → onStart → started）/ stop（onStop）幂等语义、
  * reload 走 onReload、broadcastEvent 无 broadcaster 不抛错、getBroadcaster 透出。
  */
+
+import type { ConfigBase } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../__tests__/stub.js";
+import { stub } from "../../../shared/__tests__/stub.js";
 import { BaseProtocolAdapter } from "../base-protocol-adapter.js";
-import type { ProtocolConfig } from "../config.js";
 
 /** 记录钩子调用的测试适配器（公开包装 protected 成员供断言）。 */
 class TestAdapter extends BaseProtocolAdapter<{ enabled: boolean }> {
@@ -16,7 +17,7 @@ class TestAdapter extends BaseProtocolAdapter<{ enabled: boolean }> {
 
     readonly calls: string[] = [];
 
-    constructor(config: ProtocolConfig<{ enabled: boolean }>, broadcaster?: EventBroadcaster) {
+    constructor(config: ConfigBase<{ enabled: boolean }>, broadcaster?: EventBroadcaster) {
         super({
             config,
             ...(broadcaster !== undefined ? { broadcaster } : {}),
@@ -45,11 +46,11 @@ class TestAdapter extends BaseProtocolAdapter<{ enabled: boolean }> {
     }
 }
 
-/** 最小 ProtocolConfig 桩（只实现 load）。 */
-function stubConfig(loadImpl: () => Promise<{ enabled: boolean }>): ProtocolConfig<{
+/** 最小 ConfigBase 桩（只实现 load）。 */
+function stubConfig(loadImpl: () => Promise<{ enabled: boolean }>): ConfigBase<{
     enabled: boolean;
 }> {
-    return stub<ProtocolConfig<{ enabled: boolean }>>({ load: loadImpl });
+    return stub<ConfigBase<{ enabled: boolean }>>({ load: loadImpl });
 }
 
 describe("BaseProtocolAdapter 生命周期", () => {

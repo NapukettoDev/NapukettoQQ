@@ -1,5 +1,5 @@
 /**
- * kurobot 协议适配器（KuroBot MVP-3，2026-09-13）
+ * kurobot 协议适配器（KuroBot MVP-3）
  * 公共面：镜像协议 schema + 配置 schema + 连接层 + 适配器。
  */
 

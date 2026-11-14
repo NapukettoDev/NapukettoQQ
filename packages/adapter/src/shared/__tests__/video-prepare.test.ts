@@ -22,7 +22,7 @@ vi.mock("@napuketto/media", async (importOriginal) => ({
     extractVideoFrame: media.extractVideoFrame,
 }));
 
-import { prepareVideoElements } from "../shared/media.js";
+import { prepareVideoElements } from "../media.js";
 
 let dir = "";
 

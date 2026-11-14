@@ -1,5 +1,5 @@
 /**
- * helper/error.test.ts：KernelErrorCode → HTTP 状态码映射单测（ADR-017）。
+ * helper/error.test.ts：KernelErrorCode → HTTP 状态码映射单测。
  *
  * 锁定：satoriHttpStatusMap 全码表值与 HTTP_STATUS 常量契约。
  */

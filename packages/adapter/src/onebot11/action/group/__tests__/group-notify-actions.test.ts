@@ -8,13 +8,30 @@
  */
 import { GroupNotifyMsgStatus } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { makeNotify, stubUidToUin } from "../../__tests__/test-support.js";
-import {
-    GetGroupAddRequestAction,
-    GetGroupIgnoredNotifiesAction,
-    GetGroupShutListAction,
-    SetGroupAddRequestAction,
-} from "../notify.js";
+import { makeNotify, ob11ActionOf, stubUidToUin } from "../../__tests__/test-support.js";
+import { createGroupNotifyActions } from "../notify.js";
+
+/**
+ * 与 notify.ts 的 GroupAddRequestItem / ShutListMember 同构
+ * （生产侧未导出，仅供断言类型标注）。
+ */
+interface GroupAddRequestItem {
+    flag: string;
+    group_id: number;
+    group_name: string;
+    user_id: number;
+    user_nick: string;
+    type: number;
+    checked: boolean;
+    postscript: string;
+}
+
+/** 同构 ShutListMember。 */
+interface ShutListMember {
+    user_id: number;
+    nickname: string;
+    shut_up_time: number;
+}
 
 describe("get_group_add_request / get_group_ignored_notifies", () => {
     it("未处理列表（doubt=false）→ GroupAddRequestItem 映射", async () => {
@@ -30,8 +47,10 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
                 }),
             ]),
         };
-        const action = new GetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "get_group_add_request",
+        ).handle({});
         expect(result.status).toBe("ok");
         expect(result.data).toEqual([
             {
@@ -52,8 +71,10 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
         const groupNotifyApi = {
             getSingleScreenNotifies: vi.fn(async () => []),
         };
-        const action = new GetGroupIgnoredNotifiesAction(groupNotifyApi as never);
-        await action.handle({ count: 3 });
+        await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "get_group_ignored_notifies",
+        ).handle({ count: 3 });
         expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(true, 3);
     });
 
@@ -61,8 +82,10 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
         const groupNotifyApi = {
             getSingleScreenNotifies: vi.fn(async () => []),
         };
-        const action = new GetGroupIgnoredNotifiesAction(groupNotifyApi as never);
-        await action.handle({});
+        await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "get_group_ignored_notifies",
+        ).handle({});
         expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledWith(true, 100);
     });
 
@@ -79,8 +102,10 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
                 }),
             ]),
         };
-        const action = new GetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupAddRequestItem[]>(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "get_group_add_request",
+        ).handle({});
         expect(result.data?.[0]).toMatchObject({
             flag: "2",
             group_id: 0,
@@ -97,8 +122,10 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
                 makeNotify({ seq: "3", user1: { uid: "u_abc", nickName: "甲" } }),
             ]),
         };
-        const action = new GetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf<GroupAddRequestItem[]>(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "get_group_add_request",
+        ).handle({});
         expect(result.data?.[0]?.user_id).toBeNaN();
     });
 });
@@ -113,8 +140,10 @@ describe("set_group_add_request", () => {
                     undefined,
             ),
         };
-        const action = new SetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({ flag: "88001" });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "set_group_add_request",
+        ).handle({ flag: "88001" });
         expect(result.retcode).toBe(0);
         expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledTimes(1);
         const [doubt, hit, operate, reason] = groupNotifyApi.handleGroupRequest.mock.calls[0] ?? [];
@@ -134,8 +163,10 @@ describe("set_group_add_request", () => {
                     undefined,
             ),
         };
-        const action = new SetGroupAddRequestAction(groupNotifyApi as never);
-        await action.handle({ flag: "88001", approve: false, reason: "不通过" });
+        await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "set_group_add_request",
+        ).handle({ flag: "88001", approve: false, reason: "不通过" });
         const [, , operate, reason] = groupNotifyApi.handleGroupRequest.mock
             .calls[0] as unknown as [boolean, unknown, number, string];
         // KREFUSE = 2
@@ -152,8 +183,10 @@ describe("set_group_add_request", () => {
                     undefined,
             ),
         };
-        const action = new SetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({ flag: "88002" });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "set_group_add_request",
+        ).handle({ flag: "88002" });
         expect(result.retcode).toBe(0);
         expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledTimes(2);
         expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledTimes(1);
@@ -167,8 +200,10 @@ describe("set_group_add_request", () => {
                     undefined,
             ),
         };
-        const action = new SetGroupAddRequestAction(groupNotifyApi as never);
-        const result = await action.handle({ flag: "999" });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "set_group_add_request",
+        ).handle({ flag: "999" });
         expect(result.retcode).toBe(102);
         expect(groupNotifyApi.handleGroupRequest).not.toHaveBeenCalled();
     });
@@ -183,8 +218,10 @@ describe("get_group_shut_list", () => {
                 { uid: "u90002", uin: "90002", nick: "乙", shutUpTime: 0 },
             ]),
         };
-        const action = new GetGroupShutListAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_shut_list",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(uidToUin).toHaveBeenCalledWith(["u90001", "u90002"]);
         expect(result.data).toEqual([
@@ -201,11 +238,13 @@ describe("get_group_shut_list", () => {
             ]),
         };
         // 空映射表：两个 uid 都查不到 → 依次回退 member.uin / member.uid
-        const action = new GetGroupShutListAction({
-            groupNotifyApi,
-            uidToUin: vi.fn(async () => new Map<string, string>()),
-        } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({
+                groupNotifyApi,
+                uidToUin: vi.fn(async () => new Map<string, string>()),
+            } as never),
+            "get_group_shut_list",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual([
             { user_id: 88001, nickname: "丁", shut_up_time: 1 },
             { user_id: Number("u-no-uin"), nickname: "戊", shut_up_time: 2 },
@@ -217,8 +256,10 @@ describe("get_group_shut_list", () => {
         const groupNotifyApi = {
             getGroupShutUpMemberList: vi.fn(async () => []),
         };
-        const action = new GetGroupShutListAction({ groupNotifyApi, uidToUin } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi, uidToUin } as never),
+            "get_group_shut_list",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual([]);
         expect(uidToUin).not.toHaveBeenCalled();
     });
@@ -229,11 +270,13 @@ describe("get_group_shut_list", () => {
                 { uid: "u-unknown", uin: "", nick: "丙", shutUpTime: 5 },
             ]),
         };
-        const action = new GetGroupShutListAction({
-            groupNotifyApi,
-            uidToUin: stubUidToUin(),
-        } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf<ShutListMember[]>(
+            createGroupNotifyActions({
+                groupNotifyApi,
+                uidToUin: stubUidToUin(),
+            } as never),
+            "get_group_shut_list",
+        ).handle({ group_id: 808 });
         expect(result.data?.[0]?.nickname).toBe("丙");
     });
 });

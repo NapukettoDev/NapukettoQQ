@@ -17,7 +17,8 @@
 ob11 = "debug"   # milky 的校准日志同源，按模块名替换
 ```
 
-拿到 hex 后直接解码（`@napuketto/adapter/core` 导出共享解码器）：
+拿到 hex 后直接解码（当时 `@napuketto/adapter/core` 公共导出共享解码器；该解码器现已
+收进包内 `src/shared/sysmsg.ts` 不再对外导出，复现时改从仓库源码路径引入）：
 
 ```js
 // probe-sysmsg.mjs：参数为逐字节十进制，直接贴日志 hex 的字节序列

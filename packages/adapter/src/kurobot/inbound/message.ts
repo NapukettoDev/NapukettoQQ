@@ -1,5 +1,5 @@
 /**
- * kurobot inbound 消息域（2026-11-14 自 event-pipeline.ts 拆出）
+ * kurobot inbound 消息域（自 event-pipeline.ts 拆出）
  *
  * kernel QQ 群消息 → kurobridge-ws 出站帧：仅群聊 + 自消息过滤 + 富文本降级 +
  * 命令前缀分流（command 帧）+ 出站绑定过滤（chat 帧）。连接出口经 conn 面

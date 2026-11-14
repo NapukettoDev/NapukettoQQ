@@ -1,5 +1,5 @@
 /**
- * kurobot 会话共享状态（2026-11-14 自 event-pipeline.ts 拆出）
+ * kurobot 会话共享状态（自 event-pipeline.ts 拆出）
  *
  * 双向处理器共用的运行时状态：出站绑定集（hello_ack 快照 + bindings_updated
  * 全量替换；空集 = 全部不发）、pending 命令/查询表（UUID 关联）、最近 status

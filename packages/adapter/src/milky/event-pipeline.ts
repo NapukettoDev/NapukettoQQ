@@ -1,6 +1,6 @@
 /**
  * Milky 收链路订阅接线板：管理 unsubscribes 与 kernel 频道 → 领域处理器路由。
- * 域处理在 inbound/，异步回填在 enrichment.ts（ADR-008），处理器装配归 adapter。
+ * 域处理在 inbound/，异步回填在 enrichment.ts，处理器装配归 adapter。
  */
 import type {
     BuddyEventChannel,
@@ -9,13 +9,15 @@ import type {
     MsgEventChannel,
     RecentContactEventChannel,
 } from "@napuketto/kernel";
-import { subscribeRawMessages } from "../core/shared/raw-message.js";
+import { logEventFailure } from "../shared/log.js";
+import { subscribeRawMessages } from "../shared/raw-message.js";
 import type { MilkyInboundEssence } from "./inbound/essence.js";
 import type { MilkyInboundFileNotice } from "./inbound/file-notice.js";
 import type { MilkyInboundMessage } from "./inbound/message.js";
 import type { MilkyInboundPin } from "./inbound/pin.js";
 import type { MilkyInboundRequest } from "./inbound/request.js";
 import type { MilkyInboundSysMsg } from "./inbound/sysmsg.js";
+import type { MilkyLoggerLike } from "./transport.js";
 
 export interface MilkyEventPipelineDeps {
     msgChannel: MsgEventChannel;
@@ -29,6 +31,8 @@ export interface MilkyEventPipelineDeps {
     request: MilkyInboundRequest;
     fileNotice: MilkyInboundFileNotice;
     pin: MilkyInboundPin;
+    /** 异步事件链失败留痕（缺省静默）。 */
+    logger?: MilkyLoggerLike | undefined;
 }
 
 export class MilkyEventPipeline {
@@ -39,7 +43,12 @@ export class MilkyEventPipeline {
         this.deps = deps;
     }
 
-    /** 订阅 kernel 事件（消息 + 群 + 好友 + 批次三，幂等；路由到 inbound/）。 */
+    /** 事件链异步失败兜底（单条/整批丢弃，warn 留痕不打断订阅）。 */
+    private logFailure(kind: string, err: unknown): void {
+        logEventFailure(this.deps.logger, `milky: ${kind} 翻译失败（丢弃）`, err);
+    }
+
+    /** 订阅 kernel 事件（消息 + 群 + 好友 + ，幂等；路由到 inbound/）。 */
     subscribe(): void {
         if (this.unsubscribes.length > 0) {
             return;
@@ -47,7 +56,11 @@ export class MilkyEventPipeline {
         const { msgChannel, groupChannel, buddyChannel, recentContactChannel, loginChannel } =
             this.deps;
         this.unsubscribes.push(
-            subscribeRawMessages(msgChannel, (msg) => void this.deps.message.handle(msg)),
+            subscribeRawMessages(msgChannel, (msg) =>
+                this.deps.message.handle(msg).catch((err: unknown) => {
+                    this.logFailure("message_receive", err);
+                }),
+            ),
             msgChannel.on("Msg/onRecvSysMsg", (a) => this.deps.sysMsg.handleRawArg(a)),
             msgChannel.on("Msg/onRecvOfflineFileMsg", (m) => this.deps.fileNotice.fileMessages(m)),
             msgChannel.on("Msg/onFileMsgCome", (m) => this.deps.fileNotice.fileMessages(m)),
@@ -55,7 +68,9 @@ export class MilkyEventPipeline {
         if (groupChannel !== undefined) {
             this.unsubscribes.push(
                 groupChannel.on("Group/onGroupNotifiesUpdated", (doubt, notifies) => {
-                    void this.deps.request.groupNotifies(doubt, notifies);
+                    this.deps.request.groupNotifies(doubt, notifies).catch((err: unknown) => {
+                        this.logFailure("group request", err);
+                    });
                 }),
                 groupChannel.on("Group/onGroupEssenceListChange", (a) =>
                     this.deps.essence.change(a),

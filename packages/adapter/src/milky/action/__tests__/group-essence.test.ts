@@ -1,5 +1,5 @@
 /**
- * Milky 群精华与表态域动作测试（group-essence.ts，2026-11-14 域对齐重组）
+ * Milky 群精华与表态域动作测试（group-essence.ts，域对齐重组）
  *
  * 锁定：精华 seq→msgId 反查（NOT_FOUND）、msg_content 近似翻译（text/image）与
  * 客户端分页、空文本空图片跳过、表情表态 reaction_type 映射（face→1/emoji→2）
@@ -127,7 +127,7 @@ describe("精华消息（set / list）", () => {
     });
 });
 
-describe("get_group_essence_messages（P1 补充：近似翻译 + 分页）", () => {
+describe("get_group_essence_messages（补充：近似翻译 + 分页）", () => {
     it("msg_content 近似翻译（text/image）+ 客户端分页", async () => {
         const registry = groupRegistry({
             webApi: {
@@ -225,7 +225,7 @@ describe("send_group_message_reaction", () => {
         expect(res.retcode).toBe(-400);
     });
 
-    it("缺 reaction → -400（P1 schema 补测）", async () => {
+    it("缺 reaction → -400（schema 补测）", async () => {
         const registry = groupRegistry({});
         const result = await registry.get("send_group_message_reaction")?.handle({
             group_id: 10001,

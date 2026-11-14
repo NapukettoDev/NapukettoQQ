@@ -7,14 +7,8 @@
  */
 import { NTGroupMemberRole } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { makeMember, stubConverters } from "../../__tests__/test-support.js";
-import {
-    GetGroupAtAllRemainAction,
-    GetGroupInfoAction,
-    GetGroupListAction,
-    GetGroupMemberInfoAction,
-    GetGroupMemberListAction,
-} from "../query.js";
+import { makeMember, ob11ActionOf, stubConverters } from "../../__tests__/test-support.js";
+import { createGroupQueryActions } from "../query.js";
 
 /** GroupDetailInfo 桩（getGroupInfo 返回）。 */
 function groupDetail() {
@@ -26,11 +20,10 @@ describe("get_group_info", () => {
         const cache = {
             getGroupDetail: vi.fn(async () => groupDetail()),
         };
-        const action = new GetGroupInfoAction({
-            groupApi: {},
-            groupCache: cache,
-        } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {}, groupCache: cache } as never),
+            "get_group_info",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(result.data).toEqual({
             group_id: 808,
@@ -44,16 +37,20 @@ describe("get_group_info", () => {
         const cache = {
             getGroupDetail: vi.fn(async () => ({ groupCode: "808", groupName: "极简群" })),
         };
-        const action = new GetGroupInfoAction({ groupApi: {}, groupCache: cache } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {}, groupCache: cache } as never),
+            "get_group_info",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual({ group_id: 808, group_name: "极简群" });
     });
 
     it("no_cache=true → 直查 groupApi.getGroupInfo，缓存未触", async () => {
         const cache = { getGroupDetail: vi.fn(async () => groupDetail()) };
         const groupApi = { getGroupInfo: vi.fn(async () => groupDetail()) };
-        const action = new GetGroupInfoAction({ groupApi, groupCache: cache } as never);
-        const result = await action.handle({ group_id: 808, no_cache: true });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi, groupCache: cache } as never),
+            "get_group_info",
+        ).handle({ group_id: 808, no_cache: true });
         expect(result.status).toBe("ok");
         expect(groupApi.getGroupInfo).toHaveBeenCalledWith("808");
         expect(cache.getGroupDetail).not.toHaveBeenCalled();
@@ -61,16 +58,20 @@ describe("get_group_info", () => {
 
     it("未装配缓存 → 直查 groupApi", async () => {
         const groupApi = { getGroupInfo: vi.fn(async () => groupDetail()) };
-        const action = new GetGroupInfoAction({ groupApi } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_info",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(result.data).toMatchObject({ group_id: 808 });
         expect(groupApi.getGroupInfo).toHaveBeenCalledTimes(1);
     });
 
     it("缺 group_id → retcode 400（zod 校验）", async () => {
-        const action = new GetGroupInfoAction({ groupApi: {} } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {} } as never),
+            "get_group_info",
+        ).handle({});
         expect(result.retcode).toBe(400);
         expect(result.status).toBe("failed");
     });
@@ -83,8 +84,10 @@ describe("get_group_list", () => {
             { groupCode: "909", groupName: "B 群" },
         ];
         const cache = { listGroups: vi.fn(() => groups) };
-        const action = new GetGroupListAction({ groupApi: {}, groupCache: cache } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {}, groupCache: cache } as never),
+            "get_group_list",
+        ).handle({});
         expect(result.status).toBe("ok");
         expect(result.data).toEqual([
             { group_id: 808, group_name: "A 群", member_count: 10, max_member_count: 200 },
@@ -98,8 +101,10 @@ describe("get_group_list", () => {
             listGroups: vi.fn(() => []),
             listGroupsRefreshed: vi.fn(async () => [{ groupCode: "808", groupName: "刷新群" }]),
         };
-        const action = new GetGroupListAction({ groupApi: {}, groupCache: cache } as never);
-        const result = await action.handle({ no_cache: true });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {}, groupCache: cache } as never),
+            "get_group_list",
+        ).handle({ no_cache: true });
         expect(result.data).toEqual([{ group_id: 808, group_name: "刷新群" }]);
         expect(cache.listGroupsRefreshed).toHaveBeenCalledTimes(1);
         expect(cache.listGroups).not.toHaveBeenCalled();
@@ -109,8 +114,10 @@ describe("get_group_list", () => {
         const groupApi = {
             getGroupList: vi.fn(async () => [{ groupCode: "7", groupName: "兜底" }]),
         };
-        const action = new GetGroupListAction({ groupApi } as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_list",
+        ).handle({});
         expect(result.data).toEqual([{ group_id: 7, group_name: "兜底" }]);
         expect(groupApi.getGroupList).toHaveBeenCalledWith(true);
     });
@@ -129,11 +136,10 @@ describe("get_group_member_list", () => {
             makeMember({ uid: "u90002", uin: "", role: NTGroupMemberRole.ADMIN, shutUpTime: 60 }),
         ];
         const cache = { getMembers: vi.fn(async () => members) };
-        const action = new GetGroupMemberListAction({
-            groupApi: { uidToUin },
-            groupCache: cache,
-        } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: { uidToUin }, groupCache: cache } as never),
+            "get_group_member_list",
+        ).handle({ group_id: 808 });
         expect(result.status).toBe("ok");
         expect(result.data).toEqual([
             {
@@ -161,8 +167,10 @@ describe("get_group_member_list", () => {
             uidToUin,
         };
         const cache = { getMembers: vi.fn(async () => []) };
-        const action = new GetGroupMemberListAction({ groupApi, groupCache: cache } as never);
-        const result = await action.handle({ group_id: 808, no_cache: true });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi, groupCache: cache } as never),
+            "get_group_member_list",
+        ).handle({ group_id: 808, no_cache: true });
         expect(result.data).toEqual([
             { group_id: 808, user_id: 90009, nickname: "小明", role: "member" },
         ]);
@@ -176,8 +184,10 @@ describe("get_group_member_list", () => {
             getGroupMemberList: vi.fn(async () => []),
             uidToUin,
         };
-        const action = new GetGroupMemberListAction({ groupApi } as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_member_list",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual([]);
         expect(groupApi.getGroupMemberList).toHaveBeenCalledWith("808", false);
     });
@@ -196,11 +206,13 @@ describe("get_group_member_info", () => {
                 }),
             ),
         };
-        const action = new GetGroupMemberInfoAction({
-            groupApi: { uinToUid, uidToUin },
-            groupCache: cache,
-        } as never);
-        const result = await action.handle({ group_id: 808, user_id: 90001 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({
+                groupApi: { uinToUid, uidToUin },
+                groupCache: cache,
+            } as never),
+            "get_group_member_info",
+        ).handle({ group_id: 808, user_id: 90001 });
         expect(result.status).toBe("ok");
         expect(result.data).toMatchObject({
             group_id: 808,
@@ -219,19 +231,23 @@ describe("get_group_member_info", () => {
         const groupApi = {
             uinToUid: vi.fn(async () => new Map<string, string>()),
         };
-        const action = new GetGroupMemberInfoAction({ groupApi } as never);
-        const result = await action.handle({ group_id: 808, user_id: 11111 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_member_info",
+        ).handle({ group_id: 808, user_id: 11111 });
         expect(result.retcode).toBe(102);
     });
 
     it("缓存未命中（成员不在群）→ retcode 102", async () => {
         const { uinToUid, uidToUin } = stubConverters();
         const cache = { getMember: vi.fn(async () => undefined) };
-        const action = new GetGroupMemberInfoAction({
-            groupApi: { uinToUid, uidToUin },
-            groupCache: cache,
-        } as never);
-        const result = await action.handle({ group_id: 808, user_id: 90001 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({
+                groupApi: { uinToUid, uidToUin },
+                groupCache: cache,
+            } as never),
+            "get_group_member_info",
+        ).handle({ group_id: 808, user_id: 90001 });
         expect(result.retcode).toBe(102);
     });
 
@@ -242,8 +258,10 @@ describe("get_group_member_info", () => {
             uidToUin,
             getGroupMemberInfo: vi.fn(async () => [makeMember({ uid: "u90001", uin: "90001" })]),
         };
-        const action = new GetGroupMemberInfoAction({ groupApi } as never);
-        const result = await action.handle({ group_id: 808, user_id: 90001, no_cache: true });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_member_info",
+        ).handle({ group_id: 808, user_id: 90001, no_cache: true });
         expect(result.status).toBe("ok");
         expect(groupApi.getGroupMemberInfo).toHaveBeenCalledWith("808", ["u90001"]);
     });
@@ -260,8 +278,10 @@ describe("get_group_at_all_remain", () => {
                 canNotAtAllMsg: "",
             })),
         };
-        const action = new GetGroupAtAllRemainAction(groupApi as never);
-        const result = await action.handle({ group_id: 808 });
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi } as never),
+            "get_group_at_all_remain",
+        ).handle({ group_id: 808 });
         expect(result.data).toEqual({
             can_at_all: true,
             remain_at_all_count_for_uin: 4,
@@ -270,8 +290,10 @@ describe("get_group_at_all_remain", () => {
     });
 
     it("缺 group_id → retcode 400", async () => {
-        const action = new GetGroupAtAllRemainAction({} as never);
-        const result = await action.handle({});
+        const result = await ob11ActionOf(
+            createGroupQueryActions({ groupApi: {} } as never),
+            "get_group_at_all_remain",
+        ).handle({});
         expect(result.retcode).toBe(400);
     });
 });

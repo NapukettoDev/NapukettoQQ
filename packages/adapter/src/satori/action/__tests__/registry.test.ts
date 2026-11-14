@@ -3,17 +3,17 @@
  *
  * 锁定：
  *  - 注册表完整性：22 个已实现动作 + 13 个 501 动作，全部可 get 到
- *  - NotImplementedAction.run → SatoriActionError(501)（schema 接受任意对象）
- *  - LoginGetAction → toLogin（sn=0 / 在线）
+ *  - 501 占位动作 run → SatoriActionError(501)（schema 接受任意对象）
+ *  - login.get → toLogin（sn=0 / 在线）
  *  - SatoriActionError 状态码语义（base-action 的 run 错误包装契约）
  */
 import { describe, expect, it } from "vitest";
 import { ActionRegistry } from "../../../core/framework/action-registry.js";
+import type { Login } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";
 import { createSatoriActionRegistry, type SatoriActionRegistry } from "../index.js";
-import { LoginGetAction } from "../login.js";
-import { NotImplementedAction } from "../not-implemented.js";
-import { stubSatoriApi } from "./test-support.js";
+import { createLoginActions } from "../login.js";
+import { satoriActionOf, stubSatoriApi } from "./test-support.js";
 
 /** 22 个已实现动作（与 docs/protocols/satori.md §3 对表）。 */
 const IMPLEMENTED = [
@@ -86,18 +86,24 @@ describe("createSatoriActionRegistry", () => {
     });
 });
 
-describe("NotImplementedAction", () => {
+describe("501 占位动作", () => {
     it("run → SatoriActionError(501)，文案含动作名", async () => {
-        const action = new NotImplementedAction("channel.create");
-        const err = await action.run({ anything: 1 }).catch((e: unknown) => e);
+        const registry = createSatoriActionRegistry({ api: stubSatoriApi() as never });
+        const err = await registry
+            .get("channel.create")
+            ?.run({ anything: 1 })
+            .catch((e: unknown) => e);
         expect(err).toBeInstanceOf(SatoriActionError);
         expect((err as SatoriActionError).status).toBe(501);
         expect((err as SatoriActionError).message).toBe("平台不支持该操作: channel.create");
     });
 
     it("schema 接受任意对象（passthrough）", async () => {
-        const action = new NotImplementedAction("reaction.list");
-        const err = await action.run({ x: [1, 2, 3] }).catch((e: unknown) => e);
+        const registry = createSatoriActionRegistry({ api: stubSatoriApi() as never });
+        const err = await registry
+            .get("reaction.list")
+            ?.run({ x: [1, 2, 3] })
+            .catch((e: unknown) => e);
         expect((err as SatoriActionError).status).toBe(501);
     });
 
@@ -112,10 +118,10 @@ describe("NotImplementedAction", () => {
     });
 });
 
-describe("LoginGetAction", () => {
+describe("login.get", () => {
     it("返回 login（sn=0，在线，平台 qq）", async () => {
         const api = stubSatoriApi();
-        const action = new LoginGetAction({ self: api.self });
+        const action = satoriActionOf<Login>(createLoginActions({ self: api.self }), "login.get");
         const login = await action.run({});
         expect(login).toEqual({
             sn: 0,
@@ -129,7 +135,7 @@ describe("LoginGetAction", () => {
 
     it("多余参数被 schema 剥离，不报错", async () => {
         const api = stubSatoriApi();
-        const action = new LoginGetAction({ self: api.self });
+        const action = satoriActionOf<Login>(createLoginActions({ self: api.self }), "login.get");
         await expect(action.run({ junk: 1 })).resolves.toHaveProperty("sn", 0);
     });
 });

@@ -1,5 +1,5 @@
 /**
- * kernel 实体 → Milky 实体翻译（纯函数，ADR-008）
+ * kernel 实体 → Milky 实体翻译（纯函数）
  *
  * Milky 事件/查询输出要求完整实体（GroupEntity/GroupMemberEntity/FriendEntity
  * 的全部字段 required）；kernel 实体字段是超集的子集，缺失字段按最小合法值兜底

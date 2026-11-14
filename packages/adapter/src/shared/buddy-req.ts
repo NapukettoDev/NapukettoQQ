@@ -1,5 +1,5 @@
 /**
- * BuddyReq 防御收窄（OB11 / Milky 共用，P1 2026-10-30 从 onebot11 收敛）
+ * BuddyReq 防御收窄（OB11 / Milky 共用， 从 onebot11 收敛）
  *
  * onBuddyReqChange 回调参数形状未经真实事件校准（wrapper 字符串证据仅有方法名），
  * 仅接受字段形状可用的对象；未知形状返回 null 由调用方打 raw 日志积累校准数据。
