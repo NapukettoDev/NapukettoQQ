@@ -17,6 +17,7 @@
  * milky.md §0.8.6 识别表）+ wrapper.node OnSysMsg* 处理器分类学（原生分发键 =
  * msg_type/sub_type）。翻译纯函数（ADR-008）。
  */
+import type { AdapterLoggerLike } from "./log.js";
 
 // ---------------------------------------------------------------------------
 // wire-format 解码器
@@ -499,4 +500,77 @@ export function toHex(bytes: Uint8Array): string {
         out += b.toString(16).padStart(2, "0");
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// 单条字节块通用管线（OB11 / Milky 同构流程收拢，2026-11-14）
+// ---------------------------------------------------------------------------
+
+/** processSysMsgBlob 装配参数（识别表 / 命中分流 / 校准日志由协议侧注入）。 */
+export interface SysMsgBlobPipelineOptions<TEvent> {
+    /** 日志前缀（协议名："ob11" / "milky"）。 */
+    scope: string;
+    /** 校准日志（缺省静默：解码失败与未识别日志都不输出）。 */
+    logger?: AdapterLoggerLike | undefined;
+    /**
+     * 解码失败日志级别（协议既有口径，刻意不统一：OB11 warn——字节损坏值得
+     * 警示；Milky debug——校准遥测口径）。
+     */
+    decodeFailLevel: "warn" | "debug";
+    /** (msgType, subType) → 识别结果（协议各自绑表）。 */
+    recognize: (msgType: number | null, subType: number | null) => SysMsgRecognition<TEvent>;
+    /**
+     * 已解码块分流（识别结果整体透传，供协议侧做表外触发器，如 OB11 732:1
+     * 精华加速器）：返回 true = 已消费不进校准日志；false = 落入未识别校准
+     * 路径（触发器 / 规则提取失败，不广播半成品）。
+     */
+    onNotice: (
+        tree: readonly SysMsgField[],
+        env: SysMsgEnvelope,
+        rec: SysMsgRecognition<TEvent>,
+    ) => boolean | Promise<boolean>;
+}
+
+/**
+ * 单条 sysmsg 字节块通用管线：解码 → 信封 → 识别 → onNotice 分流；未消费走
+ * 结构化 debug 校准日志（verdict + 信封全字段 + raw hex，协议逆向用遥测）。
+ * OB11 / Milky 共用流程，差异只在识别表、命中处理与解码失败日志级别。
+ */
+export async function processSysMsgBlob<TEvent>(
+    blob: Uint8Array,
+    opts: SysMsgBlobPipelineOptions<TEvent>,
+): Promise<void> {
+    const tree = decodeProtoTree(blob);
+    if (tree === null) {
+        const payload = { raw: toHex(blob).slice(0, 1024) };
+        const message = `${opts.scope}: onRecvSysMsg protobuf 解码失败`;
+        if (opts.decodeFailLevel === "warn") {
+            opts.logger?.warn(payload, message);
+        } else {
+            opts.logger?.debug(payload, message);
+        }
+        return;
+    }
+    const env = extractSysMsgEnvelope(tree);
+    const rec = opts.recognize(env.msgType, env.subType);
+    if (await opts.onNotice(tree, env, rec)) {
+        return;
+    }
+    // 校准遥测（协议逆向用）：info/warn 级不出（2026-10-25 级别重分配），debug
+    // 级保留全量字段（含 raw hex）供校准采集
+    opts.logger?.debug(
+        {
+            verdict: rec.kind,
+            msgType: env.msgType,
+            subType: env.subType,
+            subTypeAlt: env.subTypeAlt,
+            groupCodes: env.groupCodes,
+            time: env.time,
+            actorUin: env.actorUin,
+            actorUid: env.actorUid,
+            strings: env.strings,
+            raw: toHex(blob).slice(0, 1024),
+        },
+        `${opts.scope}: onRecvSysMsg 校准数据（未识别，不广播）`,
+    );
 }

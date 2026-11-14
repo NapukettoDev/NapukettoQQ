@@ -1,13 +1,12 @@
 /**
  * NapukettoKurobotAdapter：kurobridge-ws 协议适配器（KuroBot MVP-3，2026-09-13）
  *
- * 出链路：订阅 kernel 消息事件通道 → 仅群聊 → 富文本降级 → 出站绑定过滤 →
- * kurobridge-ws chat 帧；命令前缀消息 → command 帧。入链路：KurobotConnection
- * 收服务端帧 → 渲染模板 → kernel 群消息纯文本发送；status 仅缓存；command_result
- * 经 pending 表关联回发群。双向事件流在 event-pipeline.ts，本类只做协调
- * （构造装配 / 连接建立与启停 / 公共查询面）。不发协议事件给 network 广播器
- * （kurobot 是纯客户端出向协议，无第三方接入门户）。
+ * 出链路：kernel 群消息 → 降级 → 绑定过滤 → chat/command 帧；入链路：服务端帧
+ * → 模板渲染 → kernel 群文本发送。本类只做协调（构造装配 / 连接建立与启停 /
+ * 公共查询面）：订阅接线在 event-pipeline.ts，域处理在 inbound/，共享状态在
+ * session.ts。纯客户端出向协议，不发协议事件给 network 广播器。
  */
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type { CanonicalElement, MsgEventChannel, Peer } from "@napuketto/kernel";
 import { BaseProtocolAdapter, type ProtocolConfig } from "../core/index.js";
@@ -15,7 +14,11 @@ import type { KurobotConfig } from "./config.js";
 import type { KurobotConnectionOptions } from "./connection.js";
 import { KurobotConnection } from "./connection.js";
 import { KurobotEventPipeline } from "./event-pipeline.js";
-import { PROTOCOL_VERSION, type StatusBody } from "./schema.js";
+import { KurobotMessageHandler } from "./inbound/message.js";
+import { KurobotServerFrameHandler } from "./inbound/server-frames.js";
+import type { StatusBody } from "./schema.js";
+import { PROTOCOL_VERSION } from "./schema.js";
+import { KurobotSession } from "./session.js";
 
 /** 发群消息最小面（kernel MsgApi.sendMessage 的结构子集，便于测试桩替换）。 */
 export interface KurobotMsgApi {
@@ -27,21 +30,22 @@ export interface ReceiveLogFilterHolder {
     current: ((peerUin: string, isGroup: boolean) => boolean) | null;
 }
 
+/** 连接出口面（adapter 持有连接生命周期；未建立连接时 send 恒 false / established 恒 false）。 */
+export interface KurobotConnFace {
+    send: (frame: { type: string; body: unknown; id?: string }) => boolean;
+    isEstablished: () => boolean;
+}
+
 /** 适配器构造参数。 */
 export interface KurobotAdapterOptions {
-    /** 协议配置（zod 校验 + seed 装配）。 */
     config: ProtocolConfig<KurobotConfig>;
-    /** kernel 消息事件通道（QQ 消息收链路入口）。 */
     msgChannel: MsgEventChannel;
-    /** kernel 消息 API（MC → QQ 群文本发送）。 */
     msgApi: KurobotMsgApi;
-    /** 当前登录账号（自消息过滤 + hello peerId）。 */
     self: { uin: string; nickname: string };
     /**
      * 接收行绑定过滤 holder（2026-10-25 P1-7）：握手/绑定表更新时填充 current
-     * （群频道按绑定表判定，私聊恒放行）；停止/终止时清空（null = 不过滤）。
-     * 与 loader msg-log 的 ReceiveLogFilter 结构契约（adapter 包不依赖 loader，
-     * 自研同构描述）。
+     * （群频道按绑定表判定，私聊恒放行），停止/终止时清空；与 loader msg-log
+     * 的 ReceiveLogFilter 结构契约（adapter 包不依赖 loader，自研同构描述）。
      */
     receiveFilter?: ReceiveLogFilterHolder;
     /** 日志（缺省静默）。 */
@@ -57,7 +61,12 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
 
     private readonly selfUin: string;
     private readonly log: KurobotLoggerAlias;
-    /** 双向事件管道（订阅 / 过滤 / 绑定与 pending 状态 / 帧分发，2026-11-14 拆出）。 */
+    /** 会话共享状态（绑定集 / pending 表 / status 快照 / 接收过滤）。 */
+    private readonly session: KurobotSession;
+    /** QQ 消息 → 出站帧域处理（经 pipeline 订阅路由）。 */
+    private readonly message: KurobotMessageHandler;
+    /** 服务端帧 → QQ 文本域处理（连接回调直连）。 */
+    private readonly frames: KurobotServerFrameHandler;
     private readonly pipeline: KurobotEventPipeline;
     private connection: KurobotConnection | null = null;
     /** 当前生效配置（收链路取 commandPrefix 等；onStart/onReload 刷新）。 */
@@ -74,24 +83,36 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         });
         this.selfUin = String(opts.self.uin);
         this.log = opts.logger;
+        const conn: KurobotConnFace = {
+            send: (frame) => this.connection?.send(frame) === true,
+            isEstablished: () => this.connection?.isEstablished() ?? false,
+        };
+        this.session = new KurobotSession({
+            receiveFilter: opts.receiveFilter,
+            logger: opts.logger,
+        });
+        this.message = new KurobotMessageHandler({
+            selfUin: this.selfUin,
+            currentConfig: () => this.currentConfig,
+            conn,
+            session: this.session,
+            logger: opts.logger,
+        });
+        this.frames = new KurobotServerFrameHandler({
+            msgApi: opts.msgApi,
+            requireConfig: () => this.requireConfig(),
+            session: this.session,
+            logger: opts.logger,
+        });
         this.pipeline = new KurobotEventPipeline({
             msgChannel: opts.msgChannel,
-            msgApi: opts.msgApi,
-            selfUin: this.selfUin,
-            ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
-            ...(opts.receiveFilter !== undefined ? { receiveFilter: opts.receiveFilter } : {}),
-            currentConfig: () => this.currentConfig,
-            requireConfig: () => this.requireConfig(),
-            conn: {
-                send: (frame) => this.connection?.send(frame) === true,
-                isEstablished: () => this.connection?.isEstablished() ?? false,
-            },
+            message: this.message,
         });
     }
 
     /** 最近一帧 status 快照（仅缓存；无帧时 null）。 */
     getLastStatus(): StatusBody | null {
-        return this.pipeline.getLastStatus();
+        return this.session.lastStatus;
     }
 
     /** 连接是否已建立（hello_ack ok 后为 true）。 */
@@ -101,17 +122,23 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
 
     /** 发起 query 请求（status/bindings）。MVP 未接 QQ 触发面——预留能力（见 design.md §8）。 */
     query(kind: "status" | "bindings"): boolean {
-        return this.pipeline.query(kind);
+        const conn = this.connection;
+        if (conn === null || !conn.isEstablished()) {
+            return false;
+        }
+        const id = randomUUID();
+        this.session.pendingQueries.set(id, kind);
+        return conn.send({ type: "query", id, body: { kind } });
     }
 
     /** 启动：建连接（异步握手，日志可见）+ 订阅 kernel 消息。 */
     private async startKurobot(config: KurobotConfig): Promise<void> {
         this.currentConfig = config;
-        this.pipeline.resetForStart();
+        this.session.resetForStart();
         const hello: KurobotConnectionOptions["hello"] = {
             peerId: this.selfUin,
             platform: "qq",
-            version: resolveAdapterVersion(),
+            version: resolvePackageVersion() ?? "unknown",
             protocolVersion: PROTOCOL_VERSION,
             client: config.client ?? resolveDefaultClient(),
         };
@@ -125,9 +152,18 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
             helloTimeoutMs: 10_000,
             retryBaseDelayMs: 1_000,
             retryMaxDelayMs: 60_000,
-            onEstablished: (ack) => this.pipeline.onEstablished(ack),
-            onFrame: (msg) => this.pipeline.onServerFrame(msg),
-            onEnded: (reason) => this.pipeline.onEnded(reason),
+            onEstablished: (ack) => {
+                // 握手成功：清上一连接 pending 表 + 绑定集整体替换为服务端快照
+                this.session.clearPending();
+                this.session.applyBindings(ack.channelBindings);
+            },
+            onFrame: (msg) => this.frames.handle(msg),
+            onEnded: (reason) => {
+                // 连接永久停止（1002/1008/hello_ack 拒绝）：清 pending 与接收过滤
+                this.session.clearPending();
+                this.session.clearReceiveFilter();
+                this.log?.error({ reason }, "kurobot: 连接终止");
+            },
         };
         if (this.log !== undefined) {
             connOptions.logger = this.log;
@@ -152,9 +188,11 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         return config;
     }
 
-    /** 停止：退订 + 关连接 + 清 pending 表。 */
+    /** 停止：退订 + 清 pending 表与接收过滤 + 关连接。 */
     private async stopAll(): Promise<void> {
-        this.pipeline.stop();
+        this.pipeline.unsubscribeAll();
+        this.session.clearPending();
+        this.session.clearReceiveFilter();
         this.connection?.stop();
         this.connection = null;
     }
@@ -172,11 +210,6 @@ function resolvePackageVersion(): string | null {
     } catch {
         return null;
     }
-}
-
-/** hello.version：adapter 包版本（取不到用 unknown）。 */
-function resolveAdapterVersion(): string {
-    return resolvePackageVersion() ?? "unknown";
 }
 
 /** hello.client 缺省身份：napukettoqq/<版本>（取不到版本则 napukettoqq）。 */
