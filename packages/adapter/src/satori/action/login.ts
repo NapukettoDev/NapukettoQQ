@@ -2,7 +2,7 @@
  * Satori 登录动作：login.get
  */
 import { z } from "zod";
-import type { SatoriApi } from "../api/index.js";
+import type { SatoriApi } from "../api/satori-api.js";
 import { toLogin } from "../helper/index.js";
 import type { Login } from "../types/index.js";
 import { BaseSatoriAction } from "./base-action.js";

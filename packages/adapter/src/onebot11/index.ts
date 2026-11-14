@@ -7,8 +7,8 @@ export type { AtAllRemainInfo, Ob11ActionDeps } from "./action/index.js";
 export { createOb11ActionRegistry, ob11ErrorCodeMap } from "./action/index.js";
 export type { OneBot11AdapterOptions } from "./adapter.js";
 export { NapukettoOneBot11Adapter } from "./adapter.js";
-export type { OneBotApiOptions, OneBotSystemOptions } from "./api/index.js";
-export { OneBotApi } from "./api/index.js";
+export type { OneBotApiOptions, OneBotSystemOptions } from "./api/one-bot-api.js";
+export { OneBotApi } from "./api/one-bot-api.js";
 export type {
     OB11BaseEvent,
     OB11Event,

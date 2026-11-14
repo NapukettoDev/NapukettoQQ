@@ -8,7 +8,7 @@
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../core/shared/log.js";
-import type { OneBotApi } from "./api/index.js";
+import type { OneBotApi } from "./api/one-bot-api.js";
 import { collectReceiveNeeds, type ReceiveTranslateContext } from "./helper/index.js";
 import type { SysMsgEnvelope, SysMsgField, SysMsgKindRuleOB11 } from "./helper/sysmsg.js";
 

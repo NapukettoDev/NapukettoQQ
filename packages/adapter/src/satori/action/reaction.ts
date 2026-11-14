@@ -3,7 +3,7 @@
  * （reaction.clear / reaction.list：501，见 registry）
  */
 import { z } from "zod";
-import type { SatoriApi } from "../api/index.js";
+import type { SatoriApi } from "../api/satori-api.js";
 import { BaseSatoriAction } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */

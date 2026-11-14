@@ -2,8 +2,7 @@
  * Satori helper 层公共出口
  *
  * 配置 schema（config）+ 错误映射（error）+ ID 翻译（ids）+
- * 消息翻译（translate）。element/ 为消息元素子域（独立 barrel），
- * translate 依赖它，协议外部不绕行。
+ * 消息翻译（translate）。element/ 为消息元素子域，translate 直接引用其模块。
  */
 export type { SatoriConfig } from "./config.js";
 export { satoriConfigSchema } from "./config.js";

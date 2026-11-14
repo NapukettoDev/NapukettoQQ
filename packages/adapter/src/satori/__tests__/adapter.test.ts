@@ -15,7 +15,7 @@ import { WebSocket as WsClient } from "ws";
 import { ProtocolConfig } from "../../core/index.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
-import { SatoriApi } from "../api/index.js";
+import { SatoriApi } from "../api/satori-api.js";
 import { satoriConfigSchema } from "../helper/index.js";
 import type { Event } from "../types/index.js";
 import { Opcode } from "../types/index.js";

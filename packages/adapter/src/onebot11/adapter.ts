@@ -23,8 +23,8 @@ import {
 import type { AdapterLoggerLike } from "../core/shared/log.js";
 import { MS_TO_SEC } from "../core/shared/uid-uin.js";
 import { createOb11ActionRegistry } from "./action/index.js";
-import type { OneBotApiOptions } from "./api/index.js";
-import { OneBotApi } from "./api/index.js";
+import type { OneBotApiOptions } from "./api/one-bot-api.js";
+import { OneBotApi } from "./api/one-bot-api.js";
 import { Ob11EventPipeline } from "./event-pipeline.js";
 import type { OB11Config } from "./helper/index.js";
 import type { Ob11TransportSet } from "./transport.js";

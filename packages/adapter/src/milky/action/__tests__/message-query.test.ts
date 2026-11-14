@@ -1,10 +1,11 @@
 /**
- * Milky P1 消息动作测试：get_history_messages / get_forwarded_messages /
- * mark_message_as_read
+ * Milky 消息查询域动作测试（message-query.ts，2026-11-14 域对齐重组，自
+ * p1-message.test.ts / p3-message.test.ts 查询用例归并）
  *
- * 锁定：seq 锚点（索引命中 / 近段扫描兜底 / NOT_FOUND）、原生新→旧反转成升序、
- * limit 分页的 next_message_seq、群实体回填、转发索引定位与 mention uid→uin、
- * 嵌套转发段注入。
+ * 锁定：get_history_messages 的 seq 锚点（索引命中 / 近段扫描兜底 / NOT_FOUND）、
+ * 原生新→旧反转成升序、limit 分页 next_message_seq、群实体回填、
+ * get_forwarded_messages 转发索引定位与 mention uid→uin、嵌套转发段注入、
+ * get_message 索引命中 + 群实体回填 / 两级 NOT_FOUND。
  */
 import { ChatType, type GroupCache, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../../types.js";
 import { createMilkyActionRegistry } from "../index.js";
+import { buildMilkyApi, indexableMsg, messageApi, registryOf } from "./test-support.js";
 
 /** 原始消息桩（默认群聊文本消息）。 */
 function rawMsg(overrides: Partial<RawMessage> = {}): RawMessage {
@@ -198,6 +200,50 @@ describe("get_history_messages", () => {
             group_member: { user_id: 20002, nickname: "昵称", card: "名片" },
         });
     });
+
+    it("缺 message_scene → -400（P1 schema 补测）", async () => {
+        const { registry } = makeApi({});
+        const result = await registry
+            .get("get_history_messages")
+            ?.handle({ peer_id: 10001, limit: 20 });
+        expect(result?.retcode).toBe(-400);
+    });
+
+    it("群场景 + groupCache → 实体注入（详情 + 成员表，p3 补测）", async () => {
+        const msg2 = indexableMsg("200", "m-h2");
+        const msg1 = indexableMsg("199", "m-h1");
+        const fetchMessages = vi.fn(async () => [msg2, msg1]); // 原生新→旧
+        const api = buildMilkyApi({
+            msgApi: { fetchMessages },
+            groupCache: {
+                getGroupDetail: vi.fn(async () => ({
+                    groupCode: "10001",
+                    groupName: "历史群",
+                    memberNum: 2,
+                    maxMemberNum: 10,
+                })),
+                getMembers: vi.fn(async () => [
+                    { uid: "uid-20002", uin: "20002", nick: "甲", cardName: "名片甲", role: 2 },
+                ]),
+            },
+        });
+        api.seqIndex.record(indexableMsg("199", "m-h1") as never);
+        const registry = registryOf(api);
+        const res = await action(registry, "get_history_messages").handle({
+            message_scene: "group",
+            peer_id: 10001,
+            start_message_seq: 199,
+            limit: 2,
+        });
+        const data = res.data as {
+            messages: Array<{ group?: { group_name: string }; group_member?: { card: string } }>;
+            next_message_seq: number | null;
+        };
+        expect(data.messages).toHaveLength(2);
+        expect(data.messages[0]?.group?.group_name).toBe("历史群");
+        expect(data.messages[0]?.group_member?.card).toBe("名片甲");
+        expect(data.next_message_seq).toBe(199);
+    });
 });
 
 describe("get_forwarded_messages", () => {
@@ -282,17 +328,128 @@ describe("get_forwarded_messages", () => {
         });
         expect(res).toMatchObject({ status: "failed", retcode: -404, data: null });
     });
+
+    it("groupCache 成员名片优先 sender_name，缺省退 uin（p3 补测）", async () => {
+        const fw1 = indexableMsg("301", "m-fw1");
+        const fw2 = { ...indexableMsg("302", "m-fw2"), senderUid: "uid-other" };
+        const api = buildMilkyApi({
+            msgApi: {
+                fetchForwardMessage: vi.fn(async () => [fw1, fw2]),
+            },
+            groupCache: {
+                getMember: vi.fn(async (_peer: string, uid: string) =>
+                    uid === "uid-20002"
+                        ? { uid, uin: "20002", nick: "甲", cardName: "名片甲", role: 2 }
+                        : undefined,
+                ),
+            },
+        });
+        api.seqIndex.recordForward("res-id9", {
+            chatType: ChatType.GROUP,
+            peerUid: "10001",
+            msgId: "m-fw1",
+        });
+        const registry = registryOf(api);
+        const res = await action(registry, "get_forwarded_messages").handle({
+            forward_id: "res-id9",
+        });
+        const data = res.data as {
+            messages: Array<{ sender_name: string; avatar_url: string; time: number }>;
+        };
+        expect(data.messages[0]?.sender_name).toBe("名片甲");
+        expect(data.messages[1]?.sender_name).toBe("20002"); // 成员缺失退 uin
+        expect(data.messages[0]?.avatar_url).toContain("nk=20002");
+    });
 });
 
-describe("mark_message_as_read", () => {
-    it("按会话标记已读（seq 仅兼容 schema）", async () => {
-        const { markRead, registry } = makeApi({});
-        const res = await action(registry, "mark_message_as_read").handle({
+describe("get_message", () => {
+    it("索引命中 + group 场景实体回填（groupCache）", async () => {
+        const detail = {
+            groupCode: "10001",
+            groupName: "实体群",
+            memberNum: 5,
+            maxMemberNum: 100,
+        };
+        const member = {
+            uid: "uid-20002",
+            uin: "20002",
+            nick: "甲",
+            cardName: "名片甲",
+            role: 3,
+        };
+        const api = buildMilkyApi({
+            msgApi: { fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("150")]) },
+            groupCache: {
+                getGroupDetail: vi.fn(async () => detail),
+                getMember: vi.fn(async () => member),
+            },
+        });
+        api.seqIndex.record(indexableMsg("150") as never);
+        const registry = registryOf(api);
+        const res = await action(registry, "get_message").handle({
             message_scene: "group",
             peer_id: 10001,
-            message_seq: 101,
+            message_seq: 150,
         });
-        expect(res).toMatchObject({ status: "ok", data: {} });
-        expect(markRead).toHaveBeenCalledWith({ chatType: ChatType.GROUP, peerUid: "10001" });
+        const data = res.data as {
+            message: {
+                message_scene: string;
+                group: { group_name: string };
+                group_member: { card: string };
+                segments: Array<{ type: string; data: { text: string } }>;
+            };
+        };
+        expect(data.message.message_scene).toBe("group");
+        expect(data.message.group.group_name).toBe("实体群");
+        expect(data.message.group_member.card).toBe("名片甲");
+        expect(data.message.segments[0]).toEqual({ type: "text", data: { text: "hi" } });
+    });
+
+    it("seq 不可解析 → NOT_FOUND", async () => {
+        const registry = messageApi({});
+        const res = await action(registry, "get_message").handle({
+            message_scene: "group",
+            peer_id: 10001,
+            message_seq: 1,
+        });
+        expect(res.retcode).toBe(-404);
+    });
+
+    it("msgId 回查为空 → NOT_FOUND", async () => {
+        const api = buildMilkyApi({ msgApi: { fetchMsgsByMsgId: vi.fn(async () => []) } });
+        api.seqIndex.record(indexableMsg("150") as never);
+        const registry = registryOf(api);
+        const res = await action(registry, "get_message").handle({
+            message_scene: "group",
+            peer_id: 10001,
+            message_seq: 150,
+        });
+        expect(res.retcode).toBe(-404);
+    });
+
+    it("friend 场景：不回填群实体（friend 最小实体）", async () => {
+        const api = buildMilkyApi({
+            msgApi: {
+                fetchMsgsByMsgId: vi.fn(async () => [
+                    { ...indexableMsg("3"), chatType: ChatType.C2C, peerUid: "uid-20002" },
+                ]),
+            },
+        });
+        api.seqIndex.record({
+            ...indexableMsg("3"),
+            chatType: ChatType.C2C,
+            peerUid: "uid-20002",
+        } as never);
+        const registry = registryOf(api);
+        const res = await action(registry, "get_message").handle({
+            message_scene: "friend",
+            peer_id: 20002,
+            message_seq: 3,
+        });
+        const data = res.data as {
+            message: { message_scene: string; friend: { nickname: string } };
+        };
+        expect(data.message.message_scene).toBe("friend");
+        expect(data.message.friend.nickname).toBe("测试群");
     });
 });

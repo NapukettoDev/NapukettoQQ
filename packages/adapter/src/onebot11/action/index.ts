@@ -9,7 +9,7 @@
  * 领域文件的工厂里登记即可。
  */
 import { ActionRegistry, type BaseAction } from "../../core/index.js";
-import type { OneBotApi } from "../api/index.js";
+import type { OneBotApi } from "../api/one-bot-api.js";
 import { createFriendManageActions } from "./friend/manage.js";
 import { createFriendQueryActions } from "./friend/query.js";
 import { createGroupEssenceActions } from "./group/essence.js";

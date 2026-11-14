@@ -7,6 +7,7 @@
  * - `memberStub` / `friendStub` / `detailStub`：kernel 实体最小形状。
  */
 import type { Friend, GroupDetailInfo, GroupMember } from "@napuketto/kernel";
+import { ChatType } from "@napuketto/kernel";
 import { vi } from "vitest";
 import type { ActionRegistry } from "../../../core/index.js";
 import { MilkyApi } from "../../api.js";
@@ -140,4 +141,91 @@ export function actionOf(
         throw new Error(`动作未注册: ${name}`);
     }
     return act;
+}
+
+/**
+ * 群类依赖桩（groupApi 全方法 vi.fn；group 四域测试共用，2026-11-14 自 p3-group
+ * 上移）。groupApi/msgApi/webApi/groupNotifyApi 缺省桩可覆写，其余服务键
+ * （friendApi / richMediaApi / flashTransferApi / recentContactApi / groupCache /
+ * selfUid 等）经 spread 直通 buildMilkyApi。
+ */
+export function groupRegistry(overrides: ApiOverrides = {}): ReturnType<typeof registryOf> {
+    return registryOf(
+        buildMilkyApi({
+            ...overrides,
+            groupApi: {
+                modifyGroupName: vi.fn(async () => undefined),
+                setMemberCardName: vi.fn(async () => undefined),
+                setMemberRole: vi.fn(async () => undefined),
+                setMemberShutUp: vi.fn(async () => undefined),
+                setGroupShutUp: vi.fn(async () => undefined),
+                kickMember: vi.fn(async () => undefined),
+                quitGroup: vi.fn(async () => undefined),
+                getGroupInfo: vi.fn(async () => detailStub()),
+                getGroupMemberList: vi.fn(async () => [memberStub()]),
+                removeGroupEssence: vi.fn(async () => undefined),
+                addGroupEssence: vi.fn(async () => undefined),
+                getGroupAnnouncements: vi.fn(async () => []),
+                publishGroupAnnouncement: vi.fn(async () => undefined),
+                deleteGroupAnnouncement: vi.fn(async () => undefined),
+                setGroupAvatar: vi.fn(async () => undefined),
+                setMemberSpecialTitle: vi.fn(async () => undefined),
+                ...overrides.groupApi,
+            },
+            msgApi: {
+                setMsgEmojiLike: vi.fn(async () => undefined),
+                sendNudge: vi.fn(async () => null),
+                fetchMessages: vi.fn(async () => []),
+                ...overrides.msgApi,
+            },
+            webApi: {
+                getEssenceMsgList: vi.fn(async () => []),
+                ...overrides.webApi,
+            },
+            groupNotifyApi: {
+                getSingleScreenNotifies: vi.fn(async () => []),
+                handleGroupRequest: vi.fn(async () => undefined),
+                ...overrides.groupNotifyApi,
+            },
+        }),
+    );
+}
+
+/**
+ * 消息类依赖桩（msgApi 常用方法 vi.fn；message 三域测试共用，2026-11-14 自
+ * p3-message 上移）。msgApi 缺省桩可覆写，其余服务键经 spread 直通。
+ */
+export function messageApi(overrides: ApiOverrides = {}): ReturnType<typeof registryOf> {
+    return registryOf(
+        buildMilkyApi({
+            ...overrides,
+            msgApi: {
+                sendMessage: vi.fn(async () => ({ msgId: "sent-1" })),
+                fetchMsgsByMsgId: vi.fn(async () => []),
+                fetchMessages: vi.fn(async () => []),
+                recallMessage: vi.fn(async () => undefined),
+                markRead: vi.fn(async () => undefined),
+                queryFavEmojis: vi.fn(async () => ["https://face.example/1.png"]),
+                ...overrides.msgApi,
+            },
+        }),
+    );
+}
+
+/** 可索引的原始消息（群聊文本；msgSeq/msgId 可覆写，seq 索引登记用）。 */
+export function indexableMsg(seq: string, msgId = "m-idx") {
+    return {
+        msgId,
+        msgSeq: seq,
+        msgTime: "1760000000000",
+        msgType: 0,
+        chatType: ChatType.GROUP,
+        peerUid: "10001",
+        peerUin: "10001",
+        senderUid: "uid-20002",
+        senderUin: "20002",
+        peerName: "测试群",
+        sendNickName: "甲",
+        elements: [{ elementType: 1, textElement: { content: "hi" } }],
+    };
 }

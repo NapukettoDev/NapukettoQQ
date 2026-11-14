@@ -1,14 +1,16 @@
 /**
- * Milky 社交类动作测试（social.ts，p3 系列）
+ * Milky 社交类动作测试（social.ts，2026-11-14 域对齐重组，自 p3-social.test.ts
+ * + p2-batch2 / p1-actions 社交用例归并）
  *
  * 锁定：好友/群列表（缓存与直查双路径）、send_profile_like count 缺省、
  * delete_friend、get_friend_requests（words 字段防御 + uid→uin 失败 0 兜底 +
  * limit 截断）、accept/reject_friend_request（NOT_FOUND 路径）、
  * send_friend_nudge（is_self 戳自己）、get_peer_pins（好友/群实体匹配与跳过）、
- * set_peer_pin（is_pinned 缺省）。
+ * set_peer_pin（is_pinned 缺省）、findBuddyReq 匹配（api.js 共享查找）。
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { findBuddyReq } from "../../api.js";
 import {
     type ApiOverrides,
     actionOf,
@@ -269,6 +271,19 @@ describe("send_friend_nudge", () => {
         expect(res.retcode).toBe(-400);
         expect(sendNudge).not.toHaveBeenCalled();
     });
+
+    it("is_self：receiver = 自己 uid（P2 批次二补测）", async () => {
+        const sendNudge = vi.fn(async () => null);
+        const registry = socialRegistry({ msgApi: { sendNudge } });
+        await actionOf(registry, "send_friend_nudge").handle({ user_id: 20002, is_self: true });
+        expect(sendNudge).toHaveBeenCalledTimes(1);
+    });
+
+    it("self.uid 缺失 → -400（P2 批次二补测）", async () => {
+        const registry = socialRegistry({ selfUid: "" });
+        const res = await actionOf(registry, "send_friend_nudge").handle({ user_id: 20002 });
+        expect(res.retcode).toBe(-400);
+    });
 });
 
 describe("get_peer_pins / set_peer_pin", () => {
@@ -357,5 +372,79 @@ describe("get_peer_pins / set_peer_pin", () => {
             peer_id: 10001,
         });
         expect(res.retcode).toBe(-400);
+    });
+
+    it("get_peer_pins：置顶过滤 + 实体套用 + 未命中跳过（P2 批次二补测）", async () => {
+        const registry = socialRegistry({
+            recentContactApi: {
+                getPinnedContacts: vi.fn(async () => [
+                    { peerUid: "uid-20002", scene: "friend" },
+                    { peerUid: "30003", scene: "group" },
+                    { peerUid: "uid-stranger", scene: "friend" },
+                ]),
+            },
+            friendApi: {
+                getFriendList: vi.fn(async () => [
+                    { uid: "uid-20002", uin: "20002", nickname: "甲", remark: "" },
+                ]),
+            },
+            groupCache: {
+                listGroupsRefreshed: vi.fn(async () => [
+                    { groupCode: "30003", groupName: "群", memberCount: 3, maxMember: 500 },
+                ]),
+            },
+        });
+        const res = await actionOf(registry, "get_peer_pins").handle({});
+        expect(res.retcode).toBe(0);
+        expect(res.data).toEqual({
+            friends: [
+                {
+                    user_id: 20002,
+                    nickname: "甲",
+                    sex: "unknown",
+                    qid: "",
+                    remark: "",
+                    category: { category_id: 0, category_name: "" },
+                },
+            ],
+            groups: [
+                {
+                    group_id: 30003,
+                    group_name: "群",
+                    member_count: 3,
+                    max_member_count: 500,
+                    remark: "",
+                    created_time: 0,
+                    description: "",
+                    question: "",
+                    announcement: "",
+                },
+            ],
+        });
+    });
+
+    it("set_peer_pin：is_pinned 缺省 true + 场景透传（P2 批次二补测）", async () => {
+        const setContactTop = vi.fn(async () => null);
+        const registry = socialRegistry({ msgApi: { setContactTop } });
+        await actionOf(registry, "set_peer_pin").handle({
+            message_scene: "group",
+            peer_id: 10001,
+        });
+        expect(setContactTop).toHaveBeenCalledWith({ chatType: 2, peerUid: "10001" }, true);
+    });
+});
+
+describe("findBuddyReq（api.js 共享查找）", () => {
+    it("按 friendUid 匹配；未命中 NOT_FOUND", async () => {
+        const api = buildMilkyApi({});
+        const spy = vi
+            .spyOn(api.friendApi, "getBuddyReqList")
+            .mockResolvedValue([{ reqTime: "1760000000", friendUid: "uid-20002" }] as never);
+        const hit = await findBuddyReq(api, "uid-20002");
+        expect(hit.friendUid).toBe("uid-20002");
+        await expect(findBuddyReq(api, "uid-99999")).rejects.toMatchObject({
+            code: "NOT_FOUND",
+        });
+        expect(spy).toHaveBeenCalledTimes(2);
     });
 });
