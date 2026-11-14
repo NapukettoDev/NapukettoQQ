@@ -55,6 +55,42 @@ function stubConfig(loadImpl: () => Promise<{ enabled: boolean }>): ConfigBase<{
     return stub<ConfigBase<{ enabled: boolean }>>({ load: loadImpl });
 }
 
+/** 钩子时序可控的测试适配器（stop 可挂起，测 start↔stop 交错等待）。 */
+class GatedAdapter extends BaseProtocolAdapter<{ enabled: boolean }> {
+    readonly protocol = "test";
+
+    readonly calls: string[] = [];
+
+    private releaseStop: (() => void) | null = null;
+
+    constructor(config: ConfigBase<{ enabled: boolean }>) {
+        super({
+            config,
+            hooks: {
+                onStart: async () => {
+                    this.calls.push("start");
+                },
+                onStop: async () => {
+                    this.calls.push("stop-enter");
+                    await new Promise<void>((resolve) => {
+                        this.releaseStop = resolve;
+                    });
+                    this.calls.push("stop-exit");
+                },
+                onReload: async () => {
+                    this.calls.push("reload");
+                },
+            },
+        });
+    }
+
+    /** 放行挂起的 onStop（无挂起时 no-op）。 */
+    release(): void {
+        this.releaseStop?.();
+        this.releaseStop = null;
+    }
+}
+
 describe("BaseProtocolAdapter 生命周期", () => {
     it("start：load 配置 → onStart；二次 start 幂等跳过", async () => {
         const config = stubConfig(vi.fn(async () => ({ enabled: true })));
@@ -127,6 +163,19 @@ describe("BaseProtocolAdapter 并发与状态一致性", () => {
         release();
         await Promise.all([startPromise, stopPromise]);
         expect(adapter.calls).toEqual(["start:true", "stop"]);
+    });
+
+    it("start 在 stop 进行中调用：等清理落地后再启动（重启动语义）", async () => {
+        const adapter = new GatedAdapter(stubConfig(async () => ({ enabled: true })));
+        await adapter.start();
+        expect(adapter.calls).toEqual(["start"]);
+        const stopPromise = adapter.stop(); // 挂起在 onStop
+        await vi.waitFor(() => expect(adapter.calls).toContain("stop-enter"));
+        const restartPromise = adapter.start(); // stop 进行中 → 等待而非立即 return
+        adapter.release();
+        await Promise.all([stopPromise, restartPromise]);
+        // 清理完成后 start 才执行（start:true 再次出现 = 重启动语义成立）
+        expect(adapter.calls).toEqual(["start", "stop-enter", "stop-exit", "start"]);
     });
 
     it("reload 未 start：no-op（onReload 不执行、不 load），后续 stop 不空转", async () => {
