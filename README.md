@@ -5,7 +5,6 @@
     <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="900">
   </picture>
 </h1>
-<p><b>基于 QQNT 原生模块的自托管机器人框架 —— 无客户端、无注入、原生直连</b></p>
 <p>
   <a href="https://github.com/NapukettoDev/NapukettoQQ/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/NapukettoDev/NapukettoQQ/ci.yml?style=flat-square&label=CI" alt="CI"></a>&emsp;
   <a href="https://www.npmjs.com/package/create-napukettoqq"><img src="https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837" alt="npm"></a>&emsp;
@@ -14,7 +13,7 @@
 </div>
 
 > [!WARNING]
-> 本项目仅供个人学习与技术研究使用，严禁用于任何违法违规及违反第三方服务条款的行为。使用者需自行承担一切使用风险与法律责任。
+> 　本项目基于 MIT 协议开源，开发初衷仅限于个人技术学习、协议研究与学术交流。使用者在部署、修改或运行时必须严格遵守所在国家或地区的法律法规及《腾讯服务协议》、《QQ软件许可及服务协议》、《QQ号码规则》等平台服务条款。**严禁将本项目用于发送垃圾广告、恶意刷量、未授权数据抓取、网络攻击等任何违法违规或破坏平台正常运营秩序的行为**，由此产生的一切使用风险与法律责任均由使用者自行承担。
 
 ## 支持的协议
 
