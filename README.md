@@ -7,11 +7,14 @@
 </h1>
 <p><b>基于 QQNT 原生模块的自托管机器人框架 —— 无客户端、无注入、原生直连</b></p>
 <p>
-  <a href="https://github.com/NapukettoDev/NapukettoQQ/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/NapukettoDev/NapukettoQQ/ci.yml?style=flat-square&label=CI" alt="CI"></a>
-  <a href="https://www.npmjs.com/package/create-napukettoqq"><img src="https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837" alt="npm"></a>
+  <a href="https://github.com/NapukettoDev/NapukettoQQ/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/NapukettoDev/NapukettoQQ/ci.yml?style=flat-square&label=CI" alt="CI"></a>&emsp;
+  <a href="https://www.npmjs.com/package/create-napukettoqq"><img src="https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837" alt="npm"></a>&emsp;
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
 </p>
 </div>
+
+> [!WARNING]
+> 本项目仅供个人学习与技术研究使用，严禁用于任何违法违规及违反第三方服务条款的行为。使用者需自行承担一切使用风险与法律责任。
 
 ## 支持的协议
 
