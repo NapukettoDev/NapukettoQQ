@@ -23,8 +23,8 @@ git submodule update --init --recursive   # 有权限时
 | 命令 | 作用 |
 |---|---|
 | `pnpm install` | 装依赖；`prepare` 配 hooks 并构建 |
-| `pnpm check` | biome + tsc + 文档检查，提交前必跑 |
-| `pnpm fix` | biome 修复 + tsc + 文档检查 |
+| `pnpm check` | biome + tsc，提交前必跑 |
+| `pnpm fix` | biome 修复 + tsc |
 | `pnpm test` | vitest 全量单测 |
 | `pnpm test:coverage` | `vitest run --coverage` |
 | `pnpm -r build` | 全量 tsdown 构建 |
@@ -32,9 +32,6 @@ git submodule update --init --recursive   # 有权限时
 | `pnpm release:dryrun` | 升版本 + 构建 + dry-run 发布 |
 
 单包 watch 构建：`pnpm --filter @napuketto/kernel dev`。
-
-`pnpm check` 的文档检查（`check:docs`）扫描受治理的文档集：日期/阶段词、手工标题编号、
-死链、行数与行宽。文档格式约束见 [docs/README.md](../../docs/README.md) 的写作规范。
 
 ## 构建顺序
 

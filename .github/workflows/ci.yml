@@ -114,6 +114,9 @@ jobs:
               with:
                   files: coverage/lcov.info
                   token: ${{ secrets.CODECOV_TOKEN }}
+                  # 覆盖率只作客观观测（见根 codecov.yml）：上传失败 / status 未达标
+                  # 不阻塞 CI 与 Merge Queue。
+                  fail_ci_if_error: false
 
     windows:
         name: windows (test)

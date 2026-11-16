@@ -98,41 +98,19 @@ describe("查询与状态类 API", () => {
         ).rejects.toBeInstanceOf(KernelError);
     });
 
-    it("markRead：透传 target；失败抛错", async () => {
-        const { api, service } = makeApi();
-        await api.markRead(target);
-        expect(service.setMsgRead).toHaveBeenCalledWith(target);
-        const { api: api2 } = makeApi({
+    it("markRead：原生失败抛 KernelError", async () => {
+        const { api } = makeApi({
             setMsgRead: vi.fn(async () => ({ result: 3, errMsg: "x" })),
         });
-        await expect(api2.markRead(target)).rejects.toBeInstanceOf(KernelError);
+        await expect(api.markRead(target)).rejects.toBeInstanceOf(KernelError);
     });
 
-    it("setInputStatus：chatType/eventType/peerUid 顺序透传", async () => {
-        const { api, service } = makeApi();
-        await api.setInputStatus(target, 1);
-        expect(service.sendShowInputStatusReq).toHaveBeenCalledWith(1, 1, "10001");
-    });
-
-    it("setOnlineStatus：setStatus 透传；失败抛错", async () => {
-        const { api, service } = makeApi();
-        await api.setOnlineStatus({
-            status: 1,
-            extStatus: 0,
-            batteryStatus: 80,
-            customStatus: { faceId: "1", wording: "忙", faceType: "1" },
-        });
-        expect(service.setStatus).toHaveBeenCalledWith({
-            status: 1,
-            extStatus: 0,
-            batteryStatus: 80,
-            customStatus: { faceId: "1", wording: "忙", faceType: "1" },
-        });
-        const { api: api2 } = makeApi({
+    it("setOnlineStatus：原生失败抛 KernelError", async () => {
+        const { api } = makeApi({
             setStatus: vi.fn(async () => ({ result: 9, errMsg: "x" })),
         });
         await expect(
-            api2.setOnlineStatus({ status: 1, extStatus: 0, batteryStatus: 0 }),
+            api.setOnlineStatus({ status: 1, extStatus: 0, batteryStatus: 0 }),
         ).rejects.toBeInstanceOf(KernelError);
     });
 

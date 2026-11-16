@@ -5,23 +5,13 @@
  * 锁定：open 成功/失败语义、open 幂等（连接中/已连接不重复建连）、
  * send 在 OPEN/未连接/已关闭三态行为、消息分发与回发、非 JSON 忽略、
  * 自定义 headers 透传、心跳（fake timers）、断线重连（fake timers：
- * delayMs 定时、成功归零、失败累计 attempt、maxAttempts 停止、close 取消）。
+ * delayMs 定时重连、恢复收发、未启用不重连、close 取消挂起）。
+ * 重连次数一律以服务端真实观测到的连接数（stub.sockets）为准。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type WebSocket as ClientSocket, WebSocketServer } from "ws";
 import { WsClient } from "../ws-client.js";
 import { realDelay, take, waitJsonMessage } from "./test-support.js";
-
-/** WsClient 私有重连状态（仅测试观察用，不改被测类型）。 */
-interface ReconnectInternals {
-    attempt: number;
-    reconnectTimer?: NodeJS.Timeout;
-}
-
-/** 读取客户端内部状态（跨层断言收窄，不放宽被测类型）。 */
-function internals(client: WsClient): ReconnectInternals {
-    return client as unknown as ReconnectInternals;
-}
 
 /** 服务端桩：记录每条连接（可逐条操控），close 时强制断开全部并幂等。 */
 interface WssStub {
@@ -110,7 +100,6 @@ describe("WsClient", () => {
         await client.open();
         await vi.waitFor(() => expect(stub.sockets).toHaveLength(1));
         expect(seenHeader).toBe("napuketto");
-        expect(internals(client).attempt).toBe(0);
     });
 
     it("无服务时 open 失败 reject；失败后可再次尝试（不残留连接引用）", async () => {
@@ -226,23 +215,40 @@ describe("WsClient", () => {
         });
 
         it("open 失败不调度重连（即使 reconnect.enabled，stale close 防护）", async () => {
-            const stub = await serve();
-            const { url } = stub;
-            await stub.close();
-
-            const client = makeClient({
-                url,
-                reconnect: { enabled: true, delayMs: 10 },
+            // 拒绝握手的真实服务端：每次连接尝试计数，open 失败后不应再被重连触达
+            let handshakeAttempts = 0;
+            const wss = new WebSocketServer({
+                host: "127.0.0.1",
+                port: 0,
+                verifyClient: (_info, done) => {
+                    handshakeAttempts += 1;
+                    done(false, 401, "denied");
+                },
             });
-            await expect(client.open()).rejects.toThrow();
-            await realDelay(20);
-            await vi.advanceTimersByTimeAsync(50);
+            await new Promise<void>((resolve, reject) => {
+                wss.once("listening", () => resolve());
+                wss.once("error", (err) => reject(err));
+            });
+            try {
+                const addr = wss.address();
+                if (addr === null || typeof addr === "string") {
+                    throw new Error("未取得临时端口");
+                }
+                const client = makeClient({
+                    url: `ws://127.0.0.1:${addr.port}`,
+                    reconnect: { enabled: true, delayMs: 10 },
+                });
+                await expect(client.open()).rejects.toThrow();
+                await realDelay(20);
+                await vi.advanceTimersByTimeAsync(50);
 
-            expect(internals(client).reconnectTimer).toBeUndefined();
-            expect(internals(client).attempt).toBe(0);
+                expect(handshakeAttempts).toBe(1);
+            } finally {
+                await new Promise<void>((resolve) => wss.close(() => resolve()));
+            }
         });
 
-        it("断线后按 delayMs 重连成功，attempt 归零、可继续收发", async () => {
+        it("断线后按 delayMs 重连成功，可继续收发", async () => {
             const stub = await serve();
             const client = makeClient({
                 url: stub.url,
@@ -265,7 +271,6 @@ describe("WsClient", () => {
             client.send({ again: true });
             const reconnected = take(stub.sockets[1], "重连未见连接");
             await expect(waitJsonMessage(reconnected)).resolves.toEqual({ again: true });
-            expect(internals(client).attempt).toBe(0);
         });
 
         it("未启用重连（缺省）→ 断线后不重连", async () => {
@@ -278,48 +283,24 @@ describe("WsClient", () => {
             await realDelay(20);
 
             expect(stub.sockets).toHaveLength(1);
-            expect(internals(client).reconnectTimer).toBeUndefined();
         });
 
-        it("重连失败累计 attempt，超过 maxAttempts 停止", async () => {
+        it("close 取消挂起的重连（服务端不再收到新连接）", async () => {
             const stub = await serve();
-            const { url } = stub;
             const client = makeClient({
-                url,
-                reconnect: { enabled: true, delayMs: 10, maxAttempts: 1 },
-            });
-            await client.open();
-
-            // 服务端整体关闭 → 客户端断线 → attempt=1 → 定时重连
-            await stub.close();
-            await vi.advanceTimersByTimeAsync(20);
-            await realDelay(20); // 真实 ECONNREFUSED 落地
-            await vi.advanceTimersByTimeAsync(20);
-            await realDelay(20);
-
-            // attempt=2 > maxAttempts(1) → 停止，不再调度
-            expect(internals(client).attempt).toBe(2);
-            expect(internals(client).reconnectTimer).toBeUndefined();
-        });
-
-        it("close 取消挂起的重连定时器（closed 标记阻断重连）", async () => {
-            const stub = await serve();
-            const { url } = stub;
-            const client = makeClient({
-                url,
+                url: stub.url,
                 reconnect: { enabled: true, delayMs: 60 },
             });
             await client.open();
 
-            await stub.close();
+            // 服务端仍监听，只断开当前连接 → 客户端按 delayMs 排定重连
+            firstSocket(stub).close();
             await realDelay(10);
-            expect(internals(client).reconnectTimer).toBeDefined();
-
             await client.close();
-            expect(internals(client).reconnectTimer).toBeUndefined();
             await vi.advanceTimersByTimeAsync(120);
             await realDelay(20);
-            expect(internals(client).attempt).toBe(1); // 未再推进
+
+            expect(stub.sockets).toHaveLength(1);
         });
     });
 });

@@ -1,8 +1,9 @@
 /**
  * msg-bridge.ts 单测：注册/注销/事件透传。
  *
- * 覆盖目标：MsgBridge 全部 8 个原生回调 → `Msg/*` 通道透传链路、
- * register/unregister 幂等、session 未 init 抛 INVALID_STATE。
+ * 覆盖目标：MsgBridge 注册幂等（register/unregister/re-register）、session 未
+ * init 抛 INVALID_STATE、图片落盘宽限发射（issue #105 防御），以及原生回调 →
+ * `Msg/*` 通道的事件名与参数原样透传（表驱动冒烟，逐个回调一个用例）。
  * 原生 service 以桩注入（捕获 listener 对象后手动触发），不碰真实 wrapper。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -63,16 +64,6 @@ describe("MsgBridge", () => {
         expect(service["removeKernelMsgListener"]).not.toHaveBeenCalled();
     });
 
-    it("onRecvMsg → Msg/onRecvMsg（消息数组透传）", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const onRecvMsg = vi.fn();
-        channel.on("Msg/onRecvMsg", onRecvMsg);
-        bridge.register();
-        const msgs: RawMessage[] = [{ msgId: "100", chatType: 1 } as never];
-        listener()?.onRecvMsg(msgs);
-        expect(onRecvMsg).toHaveBeenCalledWith(msgs);
-    });
-
     it("onRecvMsg 图片路径缺失 → 宽限等待落盘后发射（issue #105 防御）", async () => {
         const { bridge, channel, listener } = makeBridge();
         const onRecvMsg = vi.fn();
@@ -100,82 +91,87 @@ describe("MsgBridge", () => {
         }
     });
 
-    it("onRecvMsgReadReport → Msg/onRecvMsgReadReport", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onRecvMsgReadReport", handler);
-        bridge.register();
-        const reports = [{ peer: {}, readSeq: "9" }];
-        listener()?.onRecvMsgReadReport(reports);
-        expect(handler).toHaveBeenCalledWith(reports);
-    });
-
-    it("onRecvMsgReceipt → Msg/onRecvMsgReceipt", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onRecvMsgReceipt", handler);
-        bridge.register();
-        const receipts = [{ msgId: "1", readSeq: "2" }];
-        listener()?.onRecvMsgReceipt(receipts);
-        expect(handler).toHaveBeenCalledWith(receipts);
-    });
-
-    it("onMsgInfoListUpdate → Msg/onMsgInfoListUpdate", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onMsgInfoListUpdate", handler);
-        bridge.register();
-        const msgs: RawMessage[] = [{ msgId: "5", sendStatus: 2 } as never];
-        listener()?.onMsgInfoListUpdate(msgs);
-        expect(handler).toHaveBeenCalledWith(msgs);
-    });
-
-    it("onRecvOfflineFileMsg → Msg/onRecvOfflineFileMsg", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onRecvOfflineFileMsg", handler);
-        bridge.register();
-        const msgs: RawMessage[] = [{ msgId: "7" } as never];
-        listener()?.onRecvOfflineFileMsg(msgs);
-        expect(handler).toHaveBeenCalledWith(msgs);
-    });
-
-    it("onFileMsgCome → Msg/onFileMsgCome", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onFileMsgCome", handler);
-        bridge.register();
-        const msgs: RawMessage[] = [{ msgId: "8" } as never];
-        listener()?.onFileMsgCome(msgs);
-        expect(handler).toHaveBeenCalledWith(msgs);
-    });
-
-    it("onRecvOnlineFileMsg → Msg/onRecvOnlineFileMsg（unknown 透传）", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onRecvOnlineFileMsg", handler);
-        bridge.register();
-        const arg = { anything: true };
-        listener()?.onRecvOnlineFileMsg(arg);
-        expect(handler).toHaveBeenCalledWith(arg);
-    });
-
-    it("onRecvSysMsg → Msg/onRecvSysMsg（原始字节透传）", () => {
-        const { bridge, channel, listener } = makeBridge();
-        const handler = vi.fn();
-        channel.on("Msg/onRecvSysMsg", handler);
-        bridge.register();
-        // 真实 payload = 原始 protobuf 字节（int8 数组），原样透传
-        const arg = [10, 26, 8, 1];
-        listener()?.onRecvSysMsg(arg as unknown);
-        expect(handler).toHaveBeenCalledWith(arg);
-    });
-
     it("unregister 后再 register 可以重新注册（listenerId 重置）", () => {
         const { bridge, service } = makeBridge();
         bridge.register();
         bridge.unregister();
         bridge.register();
         expect(service["addKernelMsgListener"]).toHaveBeenCalledTimes(2);
+    });
+});
+
+/** 透传样本：同一份数组既作原生回调实参，也作通道侧期望参数。 */
+const recvMsgs: RawMessage[] = [{ msgId: "100", chatType: 1 } as never];
+const readReports = [{ peer: {}, readSeq: "9" }] as never;
+const receipts = [{ msgId: "1", readSeq: "2" }] as never;
+const infoList = [{ msgId: "5", sendStatus: 2 }] as never;
+const offlineFiles = [{ msgId: "7" }] as never;
+const fileMsgs = [{ msgId: "8" }] as never;
+const onlineFile = { anything: true };
+const sysMsg = [10, 26, 8, 1];
+
+describe("原生回调透传（表驱动冒烟）", () => {
+    it.each([
+        {
+            name: "onRecvMsg",
+            event: "Msg/onRecvMsg",
+            invoke: (listener: MsgListener) => listener.onRecvMsg(recvMsgs),
+            args: [recvMsgs],
+        },
+        {
+            name: "onRecvMsgReadReport",
+            event: "Msg/onRecvMsgReadReport",
+            invoke: (listener: MsgListener) => listener.onRecvMsgReadReport(readReports),
+            args: [readReports],
+        },
+        {
+            name: "onRecvMsgReceipt",
+            event: "Msg/onRecvMsgReceipt",
+            invoke: (listener: MsgListener) => listener.onRecvMsgReceipt(receipts),
+            args: [receipts],
+        },
+        {
+            name: "onMsgInfoListUpdate",
+            event: "Msg/onMsgInfoListUpdate",
+            invoke: (listener: MsgListener) => listener.onMsgInfoListUpdate(infoList),
+            args: [infoList],
+        },
+        {
+            name: "onRecvOfflineFileMsg",
+            event: "Msg/onRecvOfflineFileMsg",
+            invoke: (listener: MsgListener) => listener.onRecvOfflineFileMsg(offlineFiles),
+            args: [offlineFiles],
+        },
+        {
+            name: "onFileMsgCome",
+            event: "Msg/onFileMsgCome",
+            invoke: (listener: MsgListener) => listener.onFileMsgCome(fileMsgs),
+            args: [fileMsgs],
+        },
+        {
+            name: "onRecvOnlineFileMsg",
+            event: "Msg/onRecvOnlineFileMsg",
+            invoke: (listener: MsgListener) => listener.onRecvOnlineFileMsg(onlineFile),
+            args: [onlineFile],
+        },
+        {
+            name: "onRecvSysMsg",
+            event: "Msg/onRecvSysMsg",
+            invoke: (listener: MsgListener) => listener.onRecvSysMsg(sysMsg),
+            args: [sysMsg],
+        },
+    ])("$name → $event（参数原样透传）", ({ event, invoke, args }) => {
+        const { bridge, channel, listener } = makeBridge();
+        const seen: Array<{ event: string; args: unknown[] }> = [];
+        channel.onAny((name, ...rest) => {
+            seen.push({ event: name, args: rest });
+        });
+        bridge.register();
+        const native = listener();
+        expect(native).toBeDefined();
+        if (native !== undefined) {
+            invoke(native);
+        }
+        expect(seen).toEqual([{ event, args }]);
     });
 });

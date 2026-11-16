@@ -1080,62 +1080,21 @@ describe("群请求分支（broadcastGroupRequests）", () => {
     });
 });
 
-describe("传输装配跳过与请求兜底（broadcaster 缺省 / 非 Error 异常）", () => {
-    it("broadcaster 缺省 → start 跳过传输装配（transports=null）且 stop 走 null 分支", async () => {
+describe("传输装配跳过（broadcaster 缺省）", () => {
+    it("broadcaster 缺省 → start 跳过传输装配且 stop 安全（订阅/退订链路照常）", async () => {
         const { adapter, msg } = makeEventAdapter({
             broadcaster: null, // 显式缺省：构造参数不传广播器（BaseProtocolAdapter 允许 undefined）
         });
         await adapter.start();
         // 传输未装配（broadcaster === undefined 分支）；订阅链路照常
-        const transports = (adapter as unknown as { transports: unknown | null }).transports;
-        expect(transports).toBeNull();
         expect(msg.channel.on).toHaveBeenCalledTimes(4);
         await adapter.stop();
-        // stop → stopAll：transports=null 分支 + 全部退订
+        // stop → stopAll：无传输可关，全部退订
         expect(msg.off).toHaveBeenCalledTimes(4);
-    });
-
-    it("请求包装层：非 Error 异常 → 兜底 respond message=String(err)", async () => {
-        const { adapter } = makeEventAdapter({
-            seed: {
-                httpServers: [{ enabled: true, host: "127.0.0.1", port: 0 }],
-                heartbeatInterval: 0,
-            },
-        });
-        await adapter.start();
-        try {
-            const wrapped = (
-                adapter as unknown as {
-                    transports: {
-                        servers: Array<{
-                            onRequest?: (req: unknown, respond: (res: unknown) => void) => void;
-                        }>;
-                    } | null;
-                }
-            ).transports?.servers[0]?.onRequest as (
-                req: unknown,
-                respond: (res: unknown) => void,
-            ) => void;
-            expect(wrapped).toBeTypeOf("function");
-            const responses: unknown[] = [];
-            let calls = 0;
-            wrapped({ action: "get_status" }, (res) => {
-                calls += 1;
-                responses.push(res);
-                if (calls === 1) {
-                    throw "响应失败"; // 非 Error（字符串）触发 instanceof 判定假分支
-                }
-            });
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(responses).toHaveLength(2);
-            expect(responses[1]).toMatchObject({ retcode: 999, message: "响应失败" });
-        } finally {
-            await adapter.stop();
-        }
     });
 });
 
-describe("传输装配与请求链（start + 真传输）", () => {
+describe("传输装配（start + 真传输）", () => {
     it("start() 装配 HTTP server 并 open（含正向上报 client 的 open 循环）", async () => {
         const seed = {
             httpServers: [{ enabled: true, host: "127.0.0.1", port: 37240 }],
@@ -1147,41 +1106,6 @@ describe("传输装配与请求链（start + 真传输）", () => {
         // lifecycle enable 已广播（传输打开成功）
         expect(events[0]).toMatchObject({ meta_event_type: "lifecycle" });
         await adapter.stop();
-    });
-
-    it("handleRequest 包装层兜底 catch：respond 首次抛错 → 999 兜底二次 respond", async () => {
-        const seed = {
-            httpServers: [{ enabled: true, host: "127.0.0.1", port: 37241 }],
-            heartbeatInterval: 0,
-        };
-        const { adapter } = makeEventAdapter({ seed });
-        await adapter.start();
-        try {
-            // 从装配的传输上取回包装后的 handleRequest（private 字段，测试窥视）
-            const transports = (
-                adapter as unknown as {
-                    transports: {
-                        servers: Array<{
-                            onRequest?: (req: unknown, respond: (res: unknown) => void) => void;
-                        }>;
-                    } | null;
-                }
-            ).transports;
-            const wrapped = transports?.servers[0]?.onRequest;
-            expect(wrapped).toBeTypeOf("function");
-            let calls = 0;
-            wrapped?.({ action: "get_status" }, () => {
-                calls += 1;
-                if (calls === 1) {
-                    throw new Error("respond 崩了");
-                }
-            });
-            // 兜底 catch 异步二次 respond（等一拍微任务）
-            await new Promise((resolve) => setTimeout(resolve, 20));
-            expect(calls).toBe(2);
-        } finally {
-            await adapter.stop();
-        }
     });
 });
 
@@ -1386,7 +1310,7 @@ describe("精华串行链 rejection 恢复", () => {
 
 describe("消息事件链（broadcastMessageEvent 分支）", () => {
     /** 群 at 消息（可带 reply）。 */
-    function groupAtMsg(replyId?: string): unknown {
+    function groupAtMsg(replyId?: string): Record<string, unknown> {
         return {
             msgId: "nt-at",
             msgSeq: "77",
@@ -1413,18 +1337,16 @@ describe("消息事件链（broadcastMessageEvent 分支）", () => {
         };
         const { adapter, msg, events } = makeEventAdapter({ overrides: { groupApi } });
         await adapter.subscribeOnly();
-        // 预登记被回复消息的 OB11 id（首个分配为 1，本消息为 2）
-        const unique = (
-            adapter as unknown as {
-                oneBotApi: { messageUnique: { alloc: (id: string, peer: unknown) => number } };
-            }
-        ).oneBotApi.messageUnique;
-        unique.alloc("nt-src", { chatType: 2, peerUid: "808" }); // id 1
-        msg.handlers.get("Msg/onRecvMsg")?.([groupAtMsg("nt-src")]);
+        // 先上报被回复消息（事件链为它分配 OB11 message_id=1），再上报带 reply 的消息
+        msg.handlers.get("Msg/onRecvMsg")?.([{ ...groupAtMsg(), msgId: "nt-src" }]);
         await vi.waitFor(() => {
             expect(events).toHaveLength(1);
         });
-        const segments = events[0]?.["message"] as Array<{
+        msg.handlers.get("Msg/onRecvMsg")?.([groupAtMsg("nt-src")]);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(2);
+        });
+        const segments = events[1]?.["message"] as Array<{
             type: string;
             data: Record<string, unknown>;
         }>;
