@@ -10,7 +10,7 @@
 
 import type { GroupApi } from "../apis/index.js";
 import type { GroupEventChannel } from "../bridge/index.js";
-import { waitFor } from "../login/wait.js";
+import { waitFor } from "../infra/index.js";
 import type {
     Group,
     GroupDetailInfo,

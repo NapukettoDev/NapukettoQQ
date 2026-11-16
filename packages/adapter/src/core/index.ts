@@ -13,3 +13,4 @@ export { runAction } from "./framework/action-kernel.js";
 export { ActionRegistry } from "./framework/action-registry.js";
 export type { ProtocolHooks } from "./framework/base-protocol-adapter.js";
 export { BaseProtocolAdapter } from "./framework/base-protocol-adapter.js";
+export { createServerSchema } from "./framework/transport-schema.js";

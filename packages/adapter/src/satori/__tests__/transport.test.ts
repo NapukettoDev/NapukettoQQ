@@ -14,7 +14,7 @@ import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
 import { z } from "zod";
-import { ActionRegistry } from "../../core/framework/action-registry.js";
+import { ActionRegistry } from "../../core/index.js";
 import { stub } from "../../shared/__tests__/stub.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import type { SatoriActionHandler } from "../action/base-action.js";

@@ -203,9 +203,11 @@ function stopAll(ctx: SupervisorCtx): void {
 export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
     // 内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78
-    const { config } = await loadCliConfigWithSource(
-        opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {},
-    );
+    const { config } = await loadCliConfigWithSource({
+        ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
+        // 日志经回调注入：store 不反向 import logger（config <-> logger 解耦）
+        onInfo: (obj, msg) => logger.info(obj, msg),
+    });
     const accounts = resolveAccounts(opts, config);
     if (accounts.length === 0) {
         logger.warn("supervisor：没有启用的账号（主配置 accounts 为空或全部禁用）");

@@ -40,9 +40,10 @@ export type {
     IpcResultPayload,
     IpcStatusMessage,
     IpcStatusPayload,
-} from "./host/ipc/ipc-types.js";
-// IPC 协议契约（koishi 插件 ↔ self-host 子进程，zod 单一来源）。
-// koishi 插件侧 import 同一份 schema/类型，替代原 src/ipc/types.ts 手工镜像。
+} from "./host/ipc/index.js";
+// IPC 协议契约（koishi 插件 ↔ self-host 子进程，zod 单一来源）：
+// 类型 + schema 值统一经 host/ipc/index.js 出口，插件侧 import 同一份定义。
+// wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
 export {
     IPC_VERSION,
     IpcActionPayloadSchema,
@@ -65,9 +66,8 @@ export {
     ipcMessageSchema,
     ipcResultPayloadSchema,
     ipcStatusPayloadSchema,
-} from "./host/ipc/ipc-types.js";
-// wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
-export { isNativeNoiseLine } from "./host/ipc/native-noise.js";
+    isNativeNoiseLine,
+} from "./host/ipc/index.js";
 export { QR_LINE_PREFIX } from "./host/types.js";
 export type { InstanceLockCheck, InstanceLockInfo } from "./lifecycle/instance-lock.js";
 export {

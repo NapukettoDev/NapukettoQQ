@@ -6,6 +6,7 @@
  */
 import { configError } from "@napuketto/kernel";
 import { loadCliConfigWithSource } from "../config/store.js";
+import { logger } from "../logger.js";
 import { runSingleAccount } from "../runtime/boot.js";
 import { runSupervisor } from "../runtime/supervisor.js";
 
@@ -35,9 +36,11 @@ async function runSingleAccountBranch(opts: StartOptions, qqs: string[]): Promis
  * 不再有「配置为空 → 交互式单账号登录」老路径：缺账号直接报错提示编辑模板。
  * 配置加载内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78。 */
 async function autoStart(opts: StartOptions): Promise<void> {
-    const { config } = await loadCliConfigWithSource(
-        opts.dataDir === undefined ? {} : { dataDir: opts.dataDir },
-    );
+    const { config } = await loadCliConfigWithSource({
+        ...(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir }),
+        // 日志经回调注入：store 不反向 import logger（config <-> logger 解耦）
+        onInfo: (obj, msg) => logger.info(obj, msg),
+    });
     if (config.accounts.length === 0) {
         // parseCliConfig 已强制至少一个，此处防御（退出码 78 配置未就绪契约）
         throw configError("主配置没有账号，请编辑 napuketto.toml 填写 [[accounts]] 段");

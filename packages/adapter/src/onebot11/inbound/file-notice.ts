@@ -8,7 +8,7 @@
  */
 import type { BuddyListEntry } from "@napuketto/kernel";
 import { sliceRaw, truncRaw } from "../../shared/log.js";
-import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
+import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import { toFriendAdd } from "../helper/notice.js";
 import { narrowOfflineFiles, toOfflineFileNotice } from "../helper/notice-extra.js";
 

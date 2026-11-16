@@ -24,7 +24,7 @@ import type {
 } from "@napuketto/network";
 import { createSseResponse, HttpClient, HttpServer, isWsOpen } from "@napuketto/network";
 import type { ActionRegistry } from "../core/index.js";
-import type { MilkyAction } from "./action/base-action.js";
+import type { MilkyAction } from "./action/index.js";
 import type { MilkyConfig } from "./config.js";
 
 /** /event 路径（规范固定）。 */

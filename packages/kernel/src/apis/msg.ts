@@ -9,9 +9,8 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import type { MsgEventChannel } from "../bridge/msg-bridge.js";
-import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
-import { sleep } from "../login/wait.js";
+import type { MsgEventChannel } from "../bridge/index.js";
+import { errorMessage, isKernelError, kernelError, sleep } from "../infra/index.js";
 import type {
     CanonicalElement,
     NodeIKernelMsgService,

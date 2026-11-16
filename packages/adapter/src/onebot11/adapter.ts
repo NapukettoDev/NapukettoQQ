@@ -17,7 +17,7 @@ import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
 import type { AdapterLoggerLike } from "../shared/log.js";
 import { MS_TO_SEC } from "../shared/uid-uin.js";
-import type { ActionResult } from "./action/base-action.js";
+import type { ActionResult } from "./action/index.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/onebot-api.js";
 import { OneBotApi } from "./api/onebot-api.js";

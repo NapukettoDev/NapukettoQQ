@@ -19,14 +19,12 @@
  * 依赖，当前未接（明确报错，不静默失败）。
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { z } from "zod";
-import { fileUriToPath } from "../../../shared/media.js";
+import { downloadBufferToFile, fileUriToPath } from "../../../shared/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
-import { defineOb11Action, type Ob11Action } from "../base-action.js";
-import { resolveTargetPeer } from "../message/resolve-peer.js";
+import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 
 /** 路径分隔符（取文件名用）。 */
 const PATH_SEPARATORS = /[\\/]/;
@@ -93,17 +91,12 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
                 }
                 const safeName = pathBasename(new URL(payload.url).pathname) || "download.bin";
                 const filePath = join(cacheDir, `download-${Date.now()}-${safeName}`);
-                mkdirSync(cacheDir, { recursive: true });
                 const init: RequestInit = {};
                 if (payload.headers !== undefined) {
                     init.headers = payload.headers;
                 }
-                const res = await fetch(payload.url, init);
-                if (!res.ok) {
-                    throw kernelError(`下载失败: ${res.status} ${res.statusText}`, "SEND_FAILED");
-                }
-                const buf = new Uint8Array(await res.arrayBuffer());
-                writeFileSync(filePath, buf);
+                // 异步落盘（父目录由 shared/media 递归创建，不再同步阻塞）
+                await downloadBufferToFile(payload.url, filePath, init);
                 return { file: filePath };
             },
         }),

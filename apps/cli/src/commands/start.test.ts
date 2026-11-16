@@ -37,7 +37,9 @@ describe("dispatchMainAction 无 -q 分支（读配置拉起）", () => {
             source: "file",
         });
         await dispatchMainAction({});
-        expect(mocks.loadCliConfigWithSource).toHaveBeenCalledWith({});
+        expect(mocks.loadCliConfigWithSource).toHaveBeenCalledWith({
+            onInfo: expect.any(Function),
+        });
         expect(mocks.runSingleAccount).not.toHaveBeenCalled();
         expect(mocks.runSupervisor).toHaveBeenCalledWith({});
     });
@@ -48,7 +50,10 @@ describe("dispatchMainAction 无 -q 分支（读配置拉起）", () => {
             source: "inline",
         });
         await dispatchMainAction({ dataDir: "d", stubDir: "s" });
-        expect(mocks.loadCliConfigWithSource).toHaveBeenCalledWith({ dataDir: "d" });
+        expect(mocks.loadCliConfigWithSource).toHaveBeenCalledWith({
+            dataDir: "d",
+            onInfo: expect.any(Function),
+        });
         expect(mocks.runSupervisor).toHaveBeenCalledWith({ dataDir: "d", stubDir: "s" });
     });
 

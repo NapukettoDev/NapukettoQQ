@@ -12,8 +12,8 @@ import {
 import { truncRaw } from "../../shared/log.js";
 import type { SysMsgField } from "../../shared/sysmsg.js";
 import { MS_TO_SEC, numericUin } from "../../shared/uid-uin.js";
+import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
-import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 
 export type Ob11InboundEssenceDeps = Ob11EventPipelineDeps & { enrich: Ob11Enrichment };
 

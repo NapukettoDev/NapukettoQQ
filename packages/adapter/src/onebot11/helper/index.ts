@@ -2,16 +2,16 @@
  * OneBot 11 helper：配置 schema+ 翻译层（canonical ↔ OB11）
  */
 
-export type { CqCode } from "./codec/cqcode.js";
+export type { CqCode } from "./codec/index.js";
 export {
     encodeCqCode,
     escapeCqParam,
     escapeCqText,
     parseCqMessage,
+    segmentsToCqMessage,
     serializeCqParts,
     unescapeCqText,
-} from "./codec/cqcode.js";
-export { segmentsToCqMessage } from "./codec/segment.js";
+} from "./codec/index.js";
 export type { OB11Config } from "./config.js";
 export { ob11ConfigSchema } from "./config.js";
 export {

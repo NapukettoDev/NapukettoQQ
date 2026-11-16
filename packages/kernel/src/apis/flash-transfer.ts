@@ -11,13 +11,13 @@
  * 唯一可用的「把文件送到对端」的通道。
  */
 import { errorMessage, kernelError } from "../infra/index.js";
-import type { Peer } from "../types/entities.js";
 import type {
     FlashTransferFileSet,
     FlashTransferTaskInfo,
     FlashTransferUploadListener,
     NodeIKernelFlashTransferService,
     NodeIQQNTWrapperSession,
+    Peer,
 } from "../types/index.js";
 import { checkLooseResult } from "./result.js";
 

@@ -16,8 +16,10 @@ import { dirname } from "node:path";
 import process from "node:process";
 import pino from "pino";
 import { kernelError } from "./errors.js";
-import type { LogFormat, TimestampMode } from "./log-config.js";
+import type { LogFormat, LogLevel, TimestampMode } from "./log-config.js";
 import { createConsoleFormatStream } from "./log-format.js";
+
+export type { LogLevel } from "./log-config.js";
 
 /** 默认 redact 路径：顶层 token/票据 + 任意深度的密码/密钥。 */
 const DEFAULT_REDACT_PATHS = ["token", "ticket", "cookie", "password", "secret"] as const;
@@ -51,9 +53,6 @@ function toSingle(streams: Array<{ stream: pino.DestinationStream }>): pino.Dest
     }
     return only.stream;
 }
-
-/** 日志级别（pino 标准级别 + silent）。 */
-export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
 
 /**
  * 可选属性统一带 `| undefined`（2026-10-25）：exactOptionalPropertyTypes 下

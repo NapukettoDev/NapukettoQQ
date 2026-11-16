@@ -38,3 +38,4 @@ export {
     resolveConfigPath,
     resolveDataRoot,
 } from "./paths.js";
+export { sleep, waitFor } from "./wait.js";

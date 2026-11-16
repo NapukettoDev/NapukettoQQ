@@ -10,10 +10,11 @@
  *   set_qq_profile 的 sex 忽略，头像 URL 需先经 cacheDir 下载
  */
 
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { z } from "zod";
+import { downloadBufferToFile } from "../../../shared/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
@@ -61,13 +62,7 @@ async function downloadAvatarToCache(url: string, cacheDir: string | undefined):
     }
     const safeName = basename(new URL(url).pathname) || "avatar.bin";
     const filePath = join(cacheDir, `avatar-${Date.now()}-${safeName}`);
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw kernelError(`头像下载失败: ${res.status} ${res.statusText}`, "SEND_FAILED");
-    }
-    const buf = new Uint8Array(await res.arrayBuffer());
-    writeFileSync(filePath, buf);
-    return filePath;
+    return await downloadBufferToFile(url, filePath, undefined, "头像下载失败");
 }
 
 /**

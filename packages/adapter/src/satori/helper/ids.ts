@@ -6,7 +6,7 @@
  * - user.id = uin；message.id = NT msgId
  * - login.user.id = 机器人 uin
  */
-import type { Channel, ChannelType, Guild, Login, User } from "../types/resource.js";
+import type { Channel, ChannelType, Guild, Login, User } from "../types/index.js";
 
 /** 平台名（固定 qq）。 */
 export const PLATFORM = "qq";

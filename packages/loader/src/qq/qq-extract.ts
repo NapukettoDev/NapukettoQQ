@@ -24,7 +24,7 @@ import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { packageRoot } from "../internal/package-root.js";
-import type { QqInstallInfo } from "./locate-qq.js";
+import type { QqInstallInfo } from "./qq-types.js";
 
 /** resources/app 下需要提取的文件扩展名（.node 原生模块 + .dll 依赖）。 */
 const EXTRACT_EXTENSIONS = new Set([".node", ".dll"]);

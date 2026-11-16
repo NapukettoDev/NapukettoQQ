@@ -14,12 +14,12 @@
  */
 import { join } from "node:path";
 import process from "node:process";
-import type { KernelServices } from "../core/kernel-services.js";
 import { env } from "../env.js";
 import type {
     AdapterCoreModuleLike,
     CoreContextLike,
     KernelLike,
+    KernelServices,
     NetworkModuleLike,
     Ob11ModuleLike,
 } from "../types.js";

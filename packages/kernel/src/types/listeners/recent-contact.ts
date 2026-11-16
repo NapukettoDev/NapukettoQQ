@@ -6,7 +6,7 @@
  * 用 type 别名（非 interface）：需满足 ListenerShape（Record<string, unknown>）
  * 约束——与 MsgListener 同模式。
  */
-import type { RecentContact } from "../services/recent-contact-service.js";
+import type { RecentContact } from "../services/index.js";
 
 /** 会话列表变更（onRecentContactListChangedVer2 参数项，录制实证形状）。 */
 export interface RecentContactListChanged {

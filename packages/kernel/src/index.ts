@@ -219,8 +219,10 @@ export type {
     WrapperContext,
 } from "./wrapper/wrapper-loader.js";
 export {
+    activateO3MiscService,
     createSession,
     createWrapper,
+    dlopenWrapper,
     electronProcessType,
     initEngine,
     initSession,

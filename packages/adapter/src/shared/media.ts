@@ -7,12 +7,12 @@
  * 都依赖 @napuketto/media，只发生在 adapter 层；kernel 不 import media（红线），
  * 只接收「文件齐全」的 canonical 元素。
  */
-import { mkdtemp, open, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
-import { errorMessage } from "@napuketto/kernel";
+import { errorMessage, kernelError } from "@napuketto/kernel";
 import { encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
 import type { AdapterLoggerLike } from "./log.js";
 
@@ -29,6 +29,32 @@ export function fileUriToPath(uri: string): string {
     } catch {
         return FILE_URI_PREFIX_RE.test(uri) ? uri.replace(FILE_URI_PREFIX_RE, "") : uri;
     }
+}
+
+/**
+ * 远程 URL → 本地文件（异步 mkdir + writeFile，全仓协议层唯一落盘入口）。
+ *
+ * - 父目录不存在时自动创建（替代各协议侧的 mkdirSync / 裸 writeFile）；
+ * - 非 2xx 抛 KernelError SEND_FAILED（`label` 供调用方定制前缀，如「头像下载失败」）；
+ * - 返回落盘路径（便于调用方直接回传）。
+ *
+ * 只在这里碰 `fetch` + `writeFile`：协议动作层不再各写一份同步阻塞 I/O。
+ */
+export async function downloadBufferToFile(
+    url: string,
+    filePath: string,
+    init?: RequestInit,
+    label = "下载失败",
+): Promise<string> {
+    // init 缺省时不传第二参（保留既有调用形态：仅 url 的 fetch 调用）
+    const res = init === undefined ? await fetch(url) : await fetch(url, init);
+    if (!res.ok) {
+        throw kernelError(`${label}: ${res.status} ${res.statusText}`, "SEND_FAILED");
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, buf);
+    return filePath;
 }
 
 /** 读文件头 8 字节（判断 silk 魔数）。 */

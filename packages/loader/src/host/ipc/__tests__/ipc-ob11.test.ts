@@ -3,7 +3,7 @@
  * ipc-ob11.test.ts：OB11 动作桥单测（deps 注入 mock 模块，不依赖真实 adapter/network）。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { KernelServices } from "../../core/kernel-services.js";
+import type { KernelServices } from "../../types.js";
 import { callIpcAction, type IpcActionHandler } from "../ipc-actions.js";
 import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ipc-ob11.js";
 
