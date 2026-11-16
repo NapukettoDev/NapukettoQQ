@@ -226,9 +226,11 @@ describe("BaseProtocolAdapter 广播", () => {
         expect(adapter.readBroadcaster()).toBe(broadcaster);
     });
 
-    it("无 broadcaster：broadcastEvent / getBroadcaster 安全降级", () => {
+    it("无 broadcaster：内部创建默认 EventBroadcaster（嵌入式免装配）", () => {
         const adapter = new TestAdapter(stubConfig(async () => ({ enabled: true })));
         expect(() => adapter.emitTest({ type: "x" })).not.toThrow();
-        expect(adapter.readBroadcaster()).toBeUndefined();
+        const internal = adapter.readBroadcaster();
+        expect(internal).toBeDefined();
+        expect(internal?.constructor.name).toBe("EventBroadcaster");
     });
 });

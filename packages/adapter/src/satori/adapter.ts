@@ -10,7 +10,7 @@
  */
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
 import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
 import { subscribeRawMessages } from "../shared/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
@@ -23,22 +23,23 @@ import {
     toSatoriGrayTipEvent,
     toSatoriMessageEvent,
 } from "./event/translate.js";
-import type { SatoriConfig } from "./helper/index.js";
-import { toLogin, toMinimalLogin } from "./helper/index.js";
+import { type SatoriConfig, satoriConfigSchema, toLogin, toMinimalLogin } from "./helper/index.js";
 import type { SatoriTransportSet } from "./transport.js";
 import { assembleSatoriTransports, toEventSignal } from "./transport.js";
 import type { Event, Login } from "./types/index.js";
 
 /** 适配器构造参数。 */
 export interface SatoriAdapterOptions extends SatoriApiOptions {
-    /** 协议配置（zod 校验 + seed 装配）。 */
-    config: ConfigBase<SatoriConfig>;
-    /** network 事件广播（注册传输后 emit 推给第三方）。 */
-    broadcaster: EventBroadcaster;
+    /**
+     * 协议配置：`ConfigBase` 实例或 Plain Object（可省略 = 空配置缺省值）。
+     */
+    config?: ConfigBase<SatoriConfig> | Partial<SatoriConfig> | undefined;
+    /** network 事件广播（缺省内部 `new EventBroadcaster()`）。 */
+    broadcaster?: EventBroadcaster | undefined;
     /** kernel 消息事件通道（消息收链路入口）。 */
     msgChannel: MsgEventChannel;
     /** 校准日志（可选：翻译失败留痕；缺省静默）。 */
-    logger?: AdapterLoggerLike;
+    logger?: AdapterLoggerLike | undefined;
 }
 
 /** Satori 协议适配器。 */
@@ -54,8 +55,13 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
     private eventSn = 0;
 
     constructor(opts: SatoriAdapterOptions) {
+        const config = resolveProtocolConfig(
+            opts.config,
+            satoriConfigSchema,
+            satoriConfigSchema.parse({}),
+        );
         super({
-            config: opts.config,
+            config,
             broadcaster: opts.broadcaster,
             hooks: {
                 onStart: (config) => this.startTransports(config),

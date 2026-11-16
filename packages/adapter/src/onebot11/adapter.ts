@@ -14,7 +14,7 @@ import type {
     MsgEventChannel,
 } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
 import type { AdapterLoggerLike } from "../shared/log.js";
 import { MS_TO_SEC } from "../shared/uid-uin.js";
 import type { ActionResult } from "./action/index.js";
@@ -22,7 +22,7 @@ import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/onebot-api.js";
 import { OneBotApi } from "./api/onebot-api.js";
 import { Ob11EventPipeline } from "./event-pipeline.js";
-import type { OB11Config } from "./helper/index.js";
+import { type OB11Config, ob11ConfigSchema } from "./helper/index.js";
 import type { Ob11TransportSet } from "./transport.js";
 import { assembleOb11Transports } from "./transport.js";
 
@@ -30,20 +30,23 @@ export type { AdapterLoggerLike } from "../shared/log.js";
 
 /** 适配器构造参数（api 相关字段继承 OneBotApiOptions， 聚合）。 */
 export interface OneBot11AdapterOptions extends OneBotApiOptions {
-    /** 协议配置（zod 校验 + JSON 读写）。 */
-    config: ConfigBase<OB11Config>;
-    /** network 事件广播（注册传输适配器后 emit 推给第三方）。 */
-    broadcaster: EventBroadcaster;
+    /**
+     * 协议配置：`ConfigBase` 实例（loader seed 装配）或 Plain Object
+     * （嵌入式调用方直接传 `{ heartbeatInterval: 0 }`）。可省略 = 空配置缺省值。
+     */
+    config?: ConfigBase<OB11Config> | Partial<OB11Config> | undefined;
+    /** network 事件广播（缺省内部 `new EventBroadcaster()`）。 */
+    broadcaster?: EventBroadcaster | undefined;
     /** kernel 消息事件通道（消息收链路入口）。 */
     msgChannel: MsgEventChannel;
     /** kernel 群事件通道（可选：Group/onGroupNotifiesUpdated → OB11 request 源）。 */
-    groupChannel?: GroupEventChannel;
+    groupChannel?: GroupEventChannel | undefined;
     /** kernel 好友事件通道（可选：Buddy/onBuddyReqChange → OB11 request 源）。 */
-    friendChannel?: BuddyEventChannel;
+    friendChannel?: BuddyEventChannel | undefined;
     /** 好友缓存 diff 通道（可选：BuddyCache/onBuddyAdded → OB11 friend_add 源，）。 */
-    buddyCacheEvents?: BuddyCacheEventChannel;
+    buddyCacheEvents?: BuddyCacheEventChannel | undefined;
     /** 校准日志（可选：未知事件形状 raw JSON；IPC 模式传 loader pino 实例）。 */
-    logger?: AdapterLoggerLike;
+    logger?: AdapterLoggerLike | undefined;
 }
 
 /** OneBot 11 协议适配器。 */
@@ -62,8 +65,13 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
     private subscribedOnly = false;
 
     constructor(opts: OneBot11AdapterOptions) {
+        const config = resolveProtocolConfig(
+            opts.config,
+            ob11ConfigSchema,
+            ob11ConfigSchema.parse({}),
+        );
         super({
-            config: opts.config,
+            config,
             broadcaster: opts.broadcaster,
             hooks: {
                 onStart: (config) => this.startTransports(config),

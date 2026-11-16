@@ -48,17 +48,17 @@ export interface Ob11EventPipelineDeps {
 /** 系统类本地回调（get_version_info / clean_cache / download_file / 进程控制用）。 */
 export interface OneBotSystemOptions {
     /** 运行版本（get_version_info 用，缺省 unknown）。 */
-    appVersion: string;
+    appVersion?: string | undefined;
     /** 缓存清理回调（clean_cache 用，未配置抛错）。 */
-    cleanCache?: () => Promise<void>;
+    cleanCache?: (() => Promise<void>) | undefined;
     /** 缓存目录（download_file 保存路径 / get_image 主动下载落盘）。 */
-    cacheDir?: string;
+    cacheDir?: string | undefined;
     /** QQ NT global 目录（get_image/get_record 解析 NT 相对路径用，）。 */
-    mediaBaseDir?: string;
+    mediaBaseDir?: string | undefined;
     /** 进程退出回调（bot_exit 用）。 */
-    exit?: () => Promise<void>;
+    exit?: (() => Promise<void>) | undefined;
     /** 进程重启回调（set_restart 用，缺省退化为退出）。 */
-    restart?: () => Promise<void>;
+    restart?: (() => Promise<void>) | undefined;
 }
 
 /** OneBotApi 构造参数。 */
@@ -76,12 +76,12 @@ export interface OneBotApiOptions {
     webApi: WebApi;
     /** 登录身份（get_login_info 用）。 */
     self: { uin: string; nickname: string };
-    /** 系统类本地信息。 */
-    system: OneBotSystemOptions;
+    /** 系统类本地信息（可省略 = `{ appVersion: "unknown" }`）。 */
+    system?: OneBotSystemOptions | undefined;
     /** 群/成员缓存（读缓存动作用；未装配时动作直查 api）。 */
-    groupCache?: GroupCache;
+    groupCache?: GroupCache | undefined;
     /** 降级分支可观测出口（缓存/转换失败 warn/debug 留痕；缺省静默）。 */
-    logger?: AdapterLoggerLike;
+    logger?: AdapterLoggerLike | undefined;
 }
 
 /**
@@ -147,12 +147,12 @@ export class OneBotApi {
         this.messageUnique = new MessageUnique();
         this.self = opts.self;
         this.selfUin = opts.self.uin;
-        this.appVersion = opts.system.appVersion;
-        this.cleanCache = opts.system.cleanCache;
-        this.cacheDir = opts.system.cacheDir;
-        this.mediaBaseDir = opts.system.mediaBaseDir;
-        this.exit = opts.system.exit;
-        this.restart = opts.system.restart;
+        this.appVersion = opts.system?.appVersion ?? "unknown";
+        this.cleanCache = opts.system?.cleanCache;
+        this.cacheDir = opts.system?.cacheDir;
+        this.mediaBaseDir = opts.system?.mediaBaseDir;
+        this.exit = opts.system?.exit;
+        this.restart = opts.system?.restart;
         this.logger = opts.logger;
     }
 

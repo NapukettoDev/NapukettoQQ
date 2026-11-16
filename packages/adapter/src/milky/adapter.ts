@@ -17,10 +17,15 @@ import type {
     RecentContactEventChannel,
 } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ConfigBase, type ProtocolHooks } from "../core/index.js";
+import {
+    BaseProtocolAdapter,
+    type ConfigBase,
+    type ProtocolHooks,
+    resolveProtocolConfig,
+} from "../core/index.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
-import type { MilkyConfig } from "./config.js";
+import { type MilkyConfig, milkyConfigSchema } from "./config.js";
 import { MilkyEnrichment } from "./enrichment.js";
 import { MilkyEventPipeline } from "./event-pipeline.js";
 import { MessageSeqIndex } from "./helper/state/seq-index.js";
@@ -34,20 +39,22 @@ import { assembleMilkyTransports, type MilkyLoggerLike } from "./transport.js";
 
 /** 适配器构造参数（api 相关字段继承 MilkyApiOptions）。 */
 export interface MilkyAdapterOptions extends MilkyApiOptions {
-    config: ConfigBase<MilkyConfig>;
-    broadcaster: EventBroadcaster;
+    /** 协议配置：`ConfigBase` 实例或 Plain Object（可省略 = 空配置缺省值）。 */
+    config?: ConfigBase<MilkyConfig> | Partial<MilkyConfig> | undefined;
+    /** network 事件广播（缺省内部 `new EventBroadcaster()`）。 */
+    broadcaster?: EventBroadcaster | undefined;
     /** kernel 消息事件通道（收链路入口）。 */
     msgChannel: MsgEventChannel;
     /** kernel 群事件通道（群请求/邀请推送；缺省不订阅）。 */
-    groupChannel?: GroupEventChannel;
+    groupChannel?: GroupEventChannel | undefined;
     /** kernel 好友事件通道（好友申请推送；缺省不订阅）。 */
-    buddyChannel?: BuddyEventChannel;
+    buddyChannel?: BuddyEventChannel | undefined;
     /** kernel 会话列表事件通道（peer_pin_change；缺省不订阅）。 */
-    recentContactChannel?: RecentContactEventChannel;
+    recentContactChannel?: RecentContactEventChannel | undefined;
     /** kernel 登录状态事件通道（bot_offline；缺省不订阅）。 */
-    loginChannel?: LoginEventChannel;
+    loginChannel?: LoginEventChannel | undefined;
     /** 校准日志（webhook 失败 / 启停提示 / 未知事件形状；IPC 模式传 loader pino 实例）。 */
-    logger?: MilkyLoggerLike;
+    logger?: MilkyLoggerLike | undefined;
 }
 
 export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
@@ -69,8 +76,13 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             onStop: () => this.stopAll(),
             onReload: (config) => this.reloadTransports(config),
         };
+        const config = resolveProtocolConfig(
+            opts.config,
+            milkyConfigSchema,
+            milkyConfigSchema.parse({}),
+        );
         super({
-            config: opts.config,
+            config,
             broadcaster: opts.broadcaster,
             hooks,
         });

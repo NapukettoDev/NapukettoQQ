@@ -10,8 +10,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
-import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
-import type { KurobotConfig } from "./config.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
+import { type KurobotConfig, kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";
 import type { KurobotConnectionOptions, KurobotLogger } from "./connection.js";
 import { KurobotConnection } from "./connection.js";
 import { KurobotEventPipeline } from "./event-pipeline.js";
@@ -27,7 +27,8 @@ export type { KurobotConnFace, KurobotMsgApi, ReceiveLogFilterHolder } from "./t
 
 /** 适配器构造参数。 */
 export interface KurobotAdapterOptions {
-    config: ConfigBase<KurobotConfig>;
+    /** 协议配置：`ConfigBase` 实例或 Plain Object（url 必填由 schema 校验）。 */
+    config: ConfigBase<KurobotConfig> | Partial<KurobotConfig>;
     msgChannel: MsgEventChannel;
     msgApi: KurobotMsgApi;
     self: { uin: string; nickname: string };
@@ -36,9 +37,9 @@ export interface KurobotAdapterOptions {
      * （群频道按绑定表判定，私聊恒放行），停止/终止时清空；与 loader msg-log
      * 的 ReceiveLogFilter 结构契约（adapter 包不依赖 loader，自研同构描述）。
      */
-    receiveFilter?: ReceiveLogFilterHolder;
+    receiveFilter?: ReceiveLogFilterHolder | undefined;
     /** 日志（缺省静默）。 */
-    logger?: KurobotLogger;
+    logger?: KurobotLogger | undefined;
 }
 
 /** kurobot 协议适配器。 */
@@ -59,8 +60,13 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
     private currentConfig: KurobotConfig | null = null;
 
     constructor(opts: KurobotAdapterOptions) {
+        const config = resolveProtocolConfig(
+            opts.config,
+            kurobotConfigSchema,
+            kurobotConfigDefaults(),
+        );
         super({
-            config: opts.config,
+            config,
             hooks: {
                 onStart: (config) => this.startKurobot(config),
                 onStop: () => this.stopAll(),

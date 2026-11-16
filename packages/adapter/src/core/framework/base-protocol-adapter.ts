@@ -6,8 +6,53 @@
  * 事件广播：协议层翻译 kernel 事件后经 `broadcastEvent` 推给 network。
  */
 
-import type { ConfigBase } from "@napuketto/kernel";
-import type { EventBroadcaster } from "@napuketto/network";
+import { ConfigBase, type ConfigSchema } from "@napuketto/kernel";
+import { EventBroadcaster } from "@napuketto/network";
+
+/**
+ * 协议配置输入：`ConfigBase` 实例（loader seed 装配）或 Plain Object（嵌入式
+ * 调用方最常写的形态）。`undefined` = 全空配置（schema 缺省值兜底）。
+ */
+export type ProtocolConfigInput<TConfig> =
+    | ConfigBase<TConfig>
+    | Partial<TConfig>
+    | Record<string, unknown>
+    | undefined;
+
+/** 是否为 ConfigBase 实例/鸭子类型（单测常注入带 `load()` 的 mock）。 */
+function isConfigBaseLike<TConfig>(value: unknown): value is ConfigBase<TConfig> {
+    return (
+        value !== null &&
+        typeof value === "object" &&
+        typeof (value as { load?: unknown }).load === "function"
+    );
+}
+
+/**
+ * 解析协议配置，消除「必须先 new ProtocolConfig(...)」的装配门槛：
+ *  - 传入 ConfigBase 实例（或带 `load()` 的鸭子类型）→ 原样透传；
+ *  - 传入 Plain Object / undefined → 自动包装成内存 seed 的 ConfigBase
+ *    （`path: "<inline>"`，不读盘不写盘，schema 校验 + 缺省值兜底）。
+ *
+ * @param configOrInput 配置实例 / 普通配置对象 / undefined
+ * @param schema 协议 zod schema
+ * @param defaults 缺省值（通常 `schema.parse({})`）
+ */
+export function resolveProtocolConfig<TConfig>(
+    configOrInput: ProtocolConfigInput<TConfig>,
+    schema: ConfigSchema<TConfig>,
+    defaults: TConfig,
+): ConfigBase<TConfig> {
+    if (isConfigBaseLike<TConfig>(configOrInput)) {
+        return configOrInput;
+    }
+    return new ConfigBase<TConfig>({
+        path: "<inline>",
+        schema,
+        defaults,
+        seed: schema.parse(configOrInput ?? {}),
+    });
+}
 
 /**
  * 适配器生命周期钩子：由协议层实现（配置校验、初始化、资源清理）。
@@ -42,11 +87,12 @@ export abstract class BaseProtocolAdapter<TConfig> {
     constructor(opts: {
         config: ConfigBase<TConfig>;
         hooks: ProtocolHooks<TConfig>;
-        broadcaster?: EventBroadcaster;
+        broadcaster?: EventBroadcaster | undefined;
     }) {
         this.config = opts.config;
         this.hooks = opts.hooks;
-        this.broadcaster = opts.broadcaster;
+        // 缺省内部广播器：嵌入式调用方不必显式装配（传输注册后自然生效）。
+        this.broadcaster = opts.broadcaster ?? new EventBroadcaster();
     }
 
     /** 启动：加载配置 → 校验 → 协议层初始化（幂等；并发调用共享同一次初始化）。 */
@@ -121,8 +167,18 @@ export abstract class BaseProtocolAdapter<TConfig> {
         this.broadcaster?.emit(event);
     }
 
-    /** 获取广播器（传输装配等内部使用；未传入返回 undefined）。 */
+    /** 获取广播器（传输装配等内部使用；缺省返回内部实例）。 */
     protected getBroadcaster(): EventBroadcaster | undefined {
         return this.broadcaster;
+    }
+
+    /** 释放：等价 stop（幂等）。 */
+    async dispose(): Promise<void> {
+        await this.stop();
+    }
+
+    /** `await using adapter = ...` 自动释放。 */
+    async [Symbol.asyncDispose](): Promise<void> {
+        await this.stop();
     }
 }
