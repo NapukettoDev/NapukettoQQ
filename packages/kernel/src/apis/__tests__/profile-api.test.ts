@@ -1,7 +1,8 @@
 /**
  * profile.ts ProfileApi + profile-like.ts ProfileLikeApi 测试（此前报告缺失模块）：
  *  - ProfileApi：constructor 空校验 / setLongNick / setNickName（宽松 result）/
- *    setHeader（严格 result）/ getStrangerInfo（uin → uid → 详情扁平化全链路）
+ *    setHeader（严格 result）/ getStrangerInfo（uin → uid → 详情扁平化全链路）/
+ *    getUinByUid（uid → uin 弱身份兜底，缺失 null）
  *  - ProfileLikeApi：constructor 空校验 / sendLike 参数形状（sourceId=71）与失败分支
  */
 import { describe, expect, it, vi } from "vitest";
@@ -127,6 +128,26 @@ describe("ProfileApi", () => {
         expect(result.nickname).toBe("");
         expect(result.sex).toBe("unknown");
         expect(result.is_vip).toBe(false);
+    });
+
+    it("getUinByUid：详情带 uin → 返回；按 uid 查详情", async () => {
+        const { api, service } = makeApi({
+            getUserDetailInfo: vi.fn(async () => ({ detail: { uid: "u-9", uin: "90009" } })),
+        });
+        await expect(api.getUinByUid("u-9")).resolves.toBe("90009");
+        expect(service.getUserDetailInfo).toHaveBeenCalledWith("u-9");
+    });
+
+    it("getUinByUid：detail / uin 缺失或空串 → null（不抛错）", async () => {
+        await expect(makeApi().api.getUinByUid("u-9")).resolves.toBeNull(); // getUserDetailInfo → {}
+        const { api: noDetail } = makeApi({
+            getUserDetailInfo: vi.fn(async () => ({})),
+        });
+        await expect(noDetail.getUinByUid("u-9")).resolves.toBeNull();
+        const { api: emptyUin } = makeApi({
+            getUserDetailInfo: vi.fn(async () => ({ detail: { uid: "u-9", uin: "" } })),
+        });
+        await expect(emptyUin.getUinByUid("u-9")).resolves.toBeNull();
     });
 });
 

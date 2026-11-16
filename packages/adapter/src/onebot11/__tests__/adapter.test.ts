@@ -63,6 +63,12 @@ function stubOptions(
     });
 }
 
+/** 收链路只报订阅后的实时消息（issue #122）：夹具时间戳必须落在启动基准内。 */
+const LIVE_MSG_TIME_MS = String(Date.now());
+
+/** 同上的好友申请口径（`reqTime` 为秒级时间串，flag 同值）。 */
+const LIVE_REQ_TIME = String(Math.floor(Date.now() / 1000));
+
 /** 构造适配器（seed 配置——load() 返回内存初值，不读文件）。 */
 function makeAdapter(channel: MsgEventChannel): NapukettoOneBot11Adapter {
     return new NapukettoOneBot11Adapter({
@@ -138,11 +144,14 @@ describe("NapukettoOneBot11Adapter（IPC 桥面）", () => {
 
 describe("NapukettoOneBot11Adapter（request 事件链）", () => {
     /** 构造带群/好友通道的适配器（broadcaster emit 打桩捕获事件）。 */
-    function makeWithRequestChannels(logger?: {
-        warn(obj: unknown, msg?: string): void;
-        info(obj: unknown, msg?: string): void;
-        debug(obj: unknown, msg?: string): void;
-    }): {
+    function makeWithRequestChannels(
+        logger?: {
+            warn(obj: unknown, msg?: string): void;
+            info(obj: unknown, msg?: string): void;
+            debug(obj: unknown, msg?: string): void;
+        },
+        apis?: Record<string, unknown>,
+    ): {
         adapter: NapukettoOneBot11Adapter;
         msg: ReturnType<typeof captureChannel>;
         group: ReturnType<typeof captureChannel>;
@@ -157,7 +166,7 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         const events: unknown[] = [];
         const broadcaster = stub<EventBroadcaster>({ emit: (e: unknown) => events.push(e) });
         const adapter = new NapukettoOneBot11Adapter({
-            ...stubOptions(),
+            ...stubOptions(apis),
             config: new ConfigBase({
                 path: "ob11-test.toml",
                 schema: ob11ConfigSchema,
@@ -203,13 +212,103 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         });
         // 好友申请 → friend request 事件
         friend.handlers.get("Buddy/onBuddyReqChange")?.({
-            buddyReqs: [{ reqTime: "1725800000", friendUid: "u1", words: "hi" }],
+            buddyReqs: [{ reqTime: LIVE_REQ_TIME, friendUid: "u1", words: "hi" }],
         });
         await vi.waitFor(() => {
             expect(
                 events.some((e) => (e as { request_type?: string }).request_type === "friend"),
             ).toBe(true);
         });
+    });
+
+    it("onBuddyReqChange 历史积压 / 已读 / 自己发起 → 不广播（issue #122）", async () => {
+        const { adapter, friend, events } = makeWithRequestChannels();
+        await adapter.subscribeOnly();
+        const tenDaysAgo = String(Math.floor(Date.now() / 1000) - 864_000);
+        friend.handlers.get("Buddy/onBuddyReqChange")?.({
+            buddyReqs: [
+                { reqTime: tenDaysAgo, friendUid: "u-old", words: "老申请" },
+                { reqTime: LIVE_REQ_TIME, friendUid: "u-read", isUnread: false },
+                { reqTime: LIVE_REQ_TIME, friendUid: "u-self", isInitiator: true },
+                { reqTime: LIVE_REQ_TIME, friendUid: "u-done", isDecide: true, reqType: 1 },
+            ],
+        });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+
+    it("onBuddyReqChange 同一申请重复回调 → 只广播一次（去重）", async () => {
+        const { adapter, friend, events } = makeWithRequestChannels();
+        await adapter.subscribeOnly();
+        const arg = {
+            buddyReqs: [{ reqTime: LIVE_REQ_TIME, friendUid: "u1", words: "hi" }],
+        };
+        friend.handlers.get("Buddy/onBuddyReqChange")?.(arg);
+        friend.handlers.get("Buddy/onBuddyReqChange")?.(arg);
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        adapter.unsubscribeOnly();
+    });
+
+    it("onBuddyReqChange 批级 unreadNums=0 → 整批短路", async () => {
+        const { adapter, friend, events } = makeWithRequestChannels();
+        await adapter.subscribeOnly();
+        friend.handlers.get("Buddy/onBuddyReqChange")?.({
+            buddyReqs: [{ reqTime: LIVE_REQ_TIME, friendUid: "u1", words: "hi" }],
+            unreadNums: 0,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(events).toHaveLength(0);
+        adapter.unsubscribeOnly();
+    });
+
+    it("onBuddyReqChange comment 取 extWords，空则回退 words", async () => {
+        const { adapter, friend, events } = makeWithRequestChannels();
+        await adapter.subscribeOnly();
+        friend.handlers.get("Buddy/onBuddyReqChange")?.({
+            buddyReqs: [
+                {
+                    reqTime: LIVE_REQ_TIME,
+                    friendUid: "u-ext",
+                    extWords: "来自 ext",
+                    words: "来自 words",
+                },
+                {
+                    reqTime: String(Number(LIVE_REQ_TIME) + 1),
+                    friendUid: "u-words",
+                    words: "只有 words",
+                },
+            ],
+        });
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(2);
+        });
+        expect(events.map((e) => (e as { comment?: string }).comment)).toEqual([
+            "来自 ext",
+            "只有 words",
+        ]);
+        adapter.unsubscribeOnly();
+    });
+
+    it("onBuddyReqChange 陌生人 uid 群口径查不到 → 资料详情兜底 user_id（issue #122）", async () => {
+        const groupApi = { uidToUin: vi.fn(async () => new Map<string, string>()) };
+        const profileApi = { getUinByUid: vi.fn(async () => "99009") };
+        const { adapter, friend, events } = makeWithRequestChannels(undefined, {
+            groupApi,
+            profileApi,
+        });
+        await adapter.subscribeOnly();
+        friend.handlers.get("Buddy/onBuddyReqChange")?.({
+            buddyReqs: [{ reqTime: LIVE_REQ_TIME, friendUid: "u-stranger", words: "你好" }],
+        });
+        await vi.waitFor(() => {
+            expect(events).toHaveLength(1);
+        });
+        expect(events[0]).toMatchObject({ request_type: "friend", user_id: 99009 });
+        expect(profileApi.getUinByUid).toHaveBeenCalledWith("u-stranger");
+        adapter.unsubscribeOnly();
     });
 
     it("onBuddyReqChange 未知参数形状静默跳过（校准 logger 可选）", async () => {
@@ -327,7 +426,7 @@ describe("NapukettoOneBot11Adapter（group_upload 报形式开关）", () => {
         return stub<Parameters<ReturnType<typeof captureChannel>["channel"]["on"]>[1]>({
             msgId: "9100",
             msgSeq: "9",
-            msgTime: "1700000000000",
+            msgTime: LIVE_MSG_TIME_MS,
             msgType: 2,
             chatType: 2,
             peerUid: "808",
@@ -844,7 +943,7 @@ function textMsg(chatType: number): Record<string, unknown> {
     return {
         msgId: "nt-text",
         msgSeq: "5",
-        msgTime: "1700000000000",
+        msgTime: LIVE_MSG_TIME_MS,
         chatType,
         peerUid: "808",
         senderUin: "90009",
@@ -1314,7 +1413,7 @@ describe("消息事件链（broadcastMessageEvent 分支）", () => {
         return {
             msgId: "nt-at",
             msgSeq: "77",
-            msgTime: "1700000000000",
+            msgTime: LIVE_MSG_TIME_MS,
             chatType: 2,
             peerUid: "808",
             senderUin: "90009",

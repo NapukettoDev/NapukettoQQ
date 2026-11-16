@@ -78,6 +78,10 @@ profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
   `sendMsg` 时兜底 `SEND_FAILED`）。
 - `ConfigError extends KernelError`（`code` 恒 `INVALID_PARAM`）标记「配置未就绪」一族，
   CLI 与 self-host 以 `EXIT_CONFIG_INVALID = 78` 退出，与运行时崩溃区分，宿主免重启。
+- `ProfileApi.getUinByUid(uid)` 是 uid → uin 的弱身份兜底：好友申请的申请人未必在群里，
+  `GroupApi.uidToUin`（`getUinByUids`，群成员口径）查不到，改由
+  `getUserDetailInfo(uid).detail.uin` 反查。查不到 `detail.uin` 返回 `null` 而不抛错——
+  这是"可能没有值"的读操作，调用方 fail-soft（adapter 退化为 0 并打校准日志）。
 
 ### 类型层来自运行时探测
 
@@ -192,6 +196,8 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
   形状仍在 adapter 侧校准，未实证字段保持 `unknown`，由订阅方防御收窄。
 - `msg_emoji_like` 没有推送回调；读取面是否经 `onMsgInfoListUpdate` 携带或需轮询
   `getMsgEmojiLikesList` 尚未观测。
+- `getUserDetailInfo(uid)` 是否稳定回填 `detail.uin` 未实测（`getUinByUid` 的兜底依据）；
+  缺失时返回 `null`，adapter 侧退化为 0，不引入假成功。
 - 群文件「列表式上传」没有原生入口；文件投递只走闪传（见上）。
 
 ## 跨包契约

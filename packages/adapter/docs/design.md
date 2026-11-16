@@ -53,8 +53,11 @@
   essence 的 `EssenceListSync`（列表缓存 + 串行链 + diff，OB11 / Milky adapter 共用）、
   raw-message 的数组规范化与 `toUnixSeconds`（Windows 毫秒 / Linux 秒归一）、
   log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
-  面）；协议目录只留形状差异（事件翻译、识别表、错误口径——NOT_FOUND 抛错类型与
-  消息归调用方）。
+  面）、text 的 `firstNonEmptyString`/`stringOrUndefined`（NT 原生字段「空串 vs 省略」
+  择一取值）、startup-cutoff 的 `STARTUP_GRACE_SEC`/`startupBaselineSec`（启动 / 重连的
+  历史积压基准，四协议共用）、buddy-req 的 `isActionableBuddyReq`/`filterBuddyReqs`/
+  `BuddyReqDedup`（好友申请可处理性判定与实例级去重）；协议目录只留形状差异（事件翻译、
+  识别表、错误口径——NOT_FOUND 抛错类型与消息归调用方）。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
   `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与
@@ -86,6 +89,13 @@
   决定 `message` 字段与 `raw_message` 的呈现。
 - request：GroupNotify type 1/5=invite、7=add，只推未处理（KUNHANDLE），flag=seq；
   doubt 可疑通知跳过。BuddyReq flag=reqTime；未知形状打 raw 日志。
+- 好友申请只推「实时待处理」项（issue #122）：`isInitiator=true`（自己发起）、
+  `isUnread=false`（已读）、`unreadNums=0`（显式 `isUnread=true` 的项除外，防错杀）、
+  `isDecide=true`（reqType 13 `KMEINITIATORWAITPEERCONFIRM` 除外）与启动前历史积压
+  （`reqTime < 订阅基准 −5s`）一律丢弃；批级 `unreadNums=0` 整批短路。剩余项按
+  `${friendUid}:${reqTime}` 实例级去重（cache 上限 512，跨 `reloadTransports` 保留）
+  ——否则「全量重放 → 自动同意 → 再次全量重放」会成死循环。`comment` 取
+  `extWords ?? words`（QQNT 实际字段是 `extWords`）。
 - notice：grayTip REVOKE → group_recall / friend_recall；aioOp → notify.poke（字段口径
   待真实事件校准，路径恒打 raw 日志）；群成员变动/管理/禁言走 TipGroupElement。
   `groupUploadAsNotice=false` 时文件消息报 message + file 段，true 时报 group_upload。
@@ -97,6 +107,7 @@
 
 - 事件：`message-created`、`message-deleted`、`guild-member-added/removed`；sn 从 1
   递增，启停广播 `login-updated`（在线/离线）。非登录事件只带最小 login 字段。
+  消息订阅与 OB11 / Milky 共用 `subscribeRawMessages`（启动前历史消息同样拦截）。
 - 消息 content 是 XML 风格字符串：`parseElements` 容错解析（注释、实体、无值属性、
   未配对标签），`renderElements` 序列化；canonical 双向转换在 `element-convert.ts` /
   `canonical.ts`。
@@ -119,6 +130,7 @@
   pending UUID 找回发群；绑定集来自 hello_ack + bindings_updated（全量替换），非绑定群
   不发。发往 QQ 的文本 1500 字符截断。
 - 纯出向协议：不向 broadcaster 发事件。
+- 收向订阅同样走 `subscribeRawMessages`：启动前历史群消息不触发向服务端的回帧。
 
 ### Milky 单端口传输
 
@@ -208,6 +220,11 @@
 - 缓存只读（ADR-008）：diff / baseline / 首帧抑制属 kernel 缓存层，adapter 不写缓存；精华列表拉取用串行链（并发回写会把新列表覆盖成旧列表）。
 - 元素存在性一律 `!= null`：Linux 原生对象把未命中的变体显式置 null，`!== undefined` 会误判（直读字段抛错或普通消息误入分支）。
 - 时间统一经 `toUnixSeconds`：兼容 Windows 毫秒与 Linux 秒，禁止在翻译里直接 `/1000`。
+- 启动前历史积压一律拦截（issue #122）：QQNT 在登录 / 重连时会把历史消息与旧好友申请
+  全量重放，收链路只报「实时」数据。消息侧在 `subscribeRawMessages` 统一按订阅时刻
+  （−`STARTUP_GRACE_SEC` 5s 容差）过滤，四协议共用同一入口；好友申请侧按 `reqTime`
+  同口径过滤。`msgTime` / `reqTime` 缺失或非法（归一为 0）时**放行**——宁可多报不可错杀。
+  拦截条数以 debug 留痕，不逐条刷屏。
 - 自身消息默认不广播（OB11 / Milky 一致）；无法表达的段/元素静默跳过；未知 CQ 码保留原文，保证往返不丢数据。
 - 协议隔离：一协议一 broadcaster；adapter 不跨协议共享事件、不向别的协议端口写数据。
 - 文件投递语义降级是明示契约，不得改回「假 fileUuid」实现（静默假成功）。

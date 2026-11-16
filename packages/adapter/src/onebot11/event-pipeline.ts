@@ -58,9 +58,13 @@ export class Ob11EventPipeline {
         if (this.unsubscribes.length > 0) {
             return;
         }
+        // 启动 / 重连基准：早于此刻的历史消息与旧好友申请不再上报（issue #122）
+        this.request.markStartup();
         const { msgChannel, groupChannel, friendChannel, buddyCacheEvents } = this.deps;
         this.unsubscribes.push(
-            subscribeRawMessages(msgChannel, (msg) => this.message.handleRawMessage(msg)),
+            subscribeRawMessages(msgChannel, (msg) => this.message.handleRawMessage(msg), {
+                logger: this.deps.logger,
+            }),
             msgChannel.on("Msg/onRecvOfflineFileMsg", (a) => this.fileNotice.offlineFile(a)),
             msgChannel.on("Msg/onRecvSysMsg", (a) => this.sysMsg.handleRawArg(a)),
             msgChannel.on("Msg/onRecvOnlineFileMsg", (a) => this.fileNotice.onlineFile(a)),

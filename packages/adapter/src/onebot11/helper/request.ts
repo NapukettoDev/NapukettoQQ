@@ -20,6 +20,7 @@ import {
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
 } from "@napuketto/kernel";
+import { firstNonEmptyString, stringOrUndefined } from "../../shared/text.js";
 import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../shared/uid-uin.js";
 
 export type { RequestTranslateContext } from "../../shared/uid-uin.js";
@@ -71,20 +72,23 @@ export { isBuddyReqLike, narrowBuddyReqs } from "../../shared/buddy-req.js";
 
 /**
  * BuddyReq → OB11 好友请求事件（friend）。
- * comment 取 words 字段（验证留言，形状待校准，缺省空串）；flag = reqTime。
+ * comment 取验证留言：QQNT 实际字段是 `extWords`，`words` 为旧口径兜底（都缺省空串）；
+ * flag = reqTime。
  */
 export function toOb11FriendRequestEvent(
     req: BuddyReq,
     ctx: RequestTranslateContext,
 ): OB11FriendRequestEvent {
-    const words = req["words"];
+    const comment =
+        firstNonEmptyString(stringOrUndefined(req["extWords"]), stringOrUndefined(req["words"])) ??
+        "";
     return {
         time: Math.floor(Date.now() / MS_TO_SEC),
         self_id: Number(ctx.selfUin),
         post_type: "request",
         request_type: "friend",
         user_id: toUin(req.friendUid, ctx),
-        comment: typeof words === "string" ? words : "",
+        comment,
         flag: req.reqTime,
     };
 }

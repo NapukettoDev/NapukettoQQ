@@ -41,12 +41,18 @@ import type { MilkyConfig } from "../config.js";
 import { milkyConfigSchema } from "../config.js";
 import { MessageSeqIndex } from "../helper/state/seq-index.js";
 
+/** 收链路只报订阅后的实时消息（issue #122）：夹具时间戳必须落在启动基准内。 */
+export const LIVE_MSG_TIME_MS = String(Date.now());
+
+/** 好友申请的 `reqTime`（秒级实时时间串，与消息同基准口径）。 */
+export const LIVE_REQ_TIME = String(Math.floor(Date.now() / 1000));
+
 /** RawMessage 最小桩（群聊文本消息；overrides 深合并 elements 整体替换）。 */
 export function rawMsg(overrides: Partial<RawMessage> = {}): RawMessage {
     return {
         msgId: "m-1",
         msgSeq: "101",
-        msgTime: "1760000000000",
+        msgTime: LIVE_MSG_TIME_MS,
         msgType: 0,
         chatType: ChatType.GROUP,
         peerUid: "10001",
@@ -93,6 +99,7 @@ export interface EnvOptions {
     configFile?: boolean;
     msgApi?: Record<string, unknown>;
     groupApi?: Record<string, unknown>;
+    profileApi?: Record<string, unknown>;
     friendApi?: Record<string, unknown>;
     webApi?: Record<string, unknown>;
     recentContactApi?: Record<string, unknown>;
@@ -168,7 +175,7 @@ export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
                 getBuddyReqList: vi.fn(async () => []),
                 ...opts.friendApi,
             }),
-            profileApi: stub<ProfileApi>({}),
+            profileApi: stub<ProfileApi>({ ...opts.profileApi }),
             profileLikeApi: stub<ProfileLikeApi>({}),
             ticketApi: stub<TicketApi>({}),
             webApi: stub<WebApi>({

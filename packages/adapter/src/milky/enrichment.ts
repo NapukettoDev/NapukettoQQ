@@ -16,6 +16,15 @@ export interface MilkyEnrichmentDeps {
     api: MilkyApi;
 }
 
+/** 资料详情兜底的单批上限（好友申请批通常只有个位数，超限多为历史积压）。 */
+const MAX_PROFILE_LOOKUPS = 10;
+
+/** uid→uin 解析选项。 */
+export interface ResolveUidToUinOptions {
+    /** 群口径未命中时用资料详情兜底（好友申请等弱身份场景；issue #122）。 */
+    profileFallback?: boolean;
+}
+
 /** Milky 收链路异步回填器。 */
 export class MilkyEnrichment {
     private readonly api: MilkyApi;
@@ -24,19 +33,60 @@ export class MilkyEnrichment {
         this.api = deps.api;
     }
 
-    /** uid 批量 → uin（空集/失败返回 undefined 语义：调用方用空 Map）。 */
-    resolveUidToUin(uids: string[]): Promise<Map<string, string> | undefined> {
+    /**
+     * uid 批量 → uin（空集/失败返回 undefined 语义：调用方用空 Map）。
+     *
+     * `profileFallback` 时才做资料详情兜底（issue #122）：好友申请的申请人通常不在
+     * 任何群里，群口径必然命中不了；而 grayTip 一类高频路径不做兜底——群口径整体失败
+     * 时逐 uid 打 IPC 会把收链路拖垮。
+     */
+    async resolveUidToUin(
+        uids: string[],
+        options: ResolveUidToUinOptions = {},
+    ): Promise<Map<string, string> | undefined> {
         const unique = [...new Set(uids.filter((uid) => uid !== ""))];
         if (unique.length === 0) {
-            return Promise.resolve(undefined);
+            return undefined;
         }
-        return this.api.uidToUin(unique).catch((err) => {
+        const map = await this.api.uidToUin(unique).catch((err) => {
             this.api.logger?.warn(
                 { count: unique.length, error: err instanceof Error ? err.message : String(err) },
                 "milky: uid→uin 批量转换失败，事件退用 uid",
             );
-            return undefined;
+            return new Map<string, string>();
         });
+        if (options.profileFallback === true) {
+            await this.fillMissingUins(unique, map);
+        }
+        return map;
+    }
+
+    /**
+     * 群口径未命中的 uid 逐个走 `profileApi.getUinByUid` 兜底（原地补 map）。
+     * fail-soft：单条失败 / 查不到保持未命中（翻译层退 0）；条数设上限，防历史积压
+     * 批次把逐条 IPC 打满。
+     */
+    private async fillMissingUins(uids: string[], map: Map<string, string>): Promise<void> {
+        const missing = uids.filter((uid) => !map.has(uid));
+        for (const uid of missing.slice(0, MAX_PROFILE_LOOKUPS)) {
+            try {
+                const uin = await this.api.profileApi.getUinByUid(uid);
+                if (uin !== null) {
+                    map.set(uid, uin);
+                }
+            } catch (err) {
+                this.api.logger?.debug(
+                    { error: err instanceof Error ? err.message : String(err) },
+                    "milky: uid→uin 资料兜底失败（该 uid 退 0）",
+                );
+            }
+        }
+        if (missing.length > MAX_PROFILE_LOOKUPS) {
+            this.api.logger?.debug(
+                { missing: missing.length, limit: MAX_PROFILE_LOOKUPS },
+                "milky: 待兜底 uid 超上限，其余保持未命中",
+            );
+        }
     }
 
     /** at uid → uin 批量转换（mention.user_id 用；失败 mention 段跳过）。 */

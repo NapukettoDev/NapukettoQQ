@@ -9,12 +9,15 @@
 import { ChatType, type MsgEventChannel, type RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 
+/** 收链路只报订阅后的实时消息（issue #122）：夹具时间戳必须落在启动基准内。 */
+export const LIVE_MSG_TIME_SEC = Math.floor(Date.now() / 1000);
+
 /** 最小合法 RawMessage（元素可注入）。 */
 export function makeRawMsg(overrides: Partial<RawMessage> = {}): RawMessage {
     return {
         msgId: "m1",
         msgSeq: "5",
-        msgTime: "1700000000",
+        msgTime: String(LIVE_MSG_TIME_SEC),
         msgType: 0,
         chatType: ChatType.GROUP,
         peerUid: "peer-uid-1",

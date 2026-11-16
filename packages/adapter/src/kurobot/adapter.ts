@@ -107,6 +107,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
         this.pipeline = new KurobotEventPipeline({
             msgChannel: opts.msgChannel,
             message: this.message,
+            logger: opts.logger,
         });
     }
 

@@ -53,13 +53,18 @@ export class MilkyEventPipeline {
         if (this.unsubscribes.length > 0) {
             return;
         }
+        // 启动 / 重连基准：早于此刻的历史消息与旧好友申请不再上报（issue #122）
+        this.deps.request.markStartup();
         const { msgChannel, groupChannel, buddyChannel, recentContactChannel, loginChannel } =
             this.deps;
         this.unsubscribes.push(
-            subscribeRawMessages(msgChannel, (msg) =>
-                this.deps.message.handle(msg).catch((err: unknown) => {
-                    this.logFailure("message_receive", err);
-                }),
+            subscribeRawMessages(
+                msgChannel,
+                (msg) =>
+                    this.deps.message.handle(msg).catch((err: unknown) => {
+                        this.logFailure("message_receive", err);
+                    }),
+                { logger: this.deps.logger },
             ),
             msgChannel.on("Msg/onRecvSysMsg", (a) => this.deps.sysMsg.handleRawArg(a)),
             msgChannel.on("Msg/onRecvOfflineFileMsg", (m) => this.deps.fileNotice.fileMessages(m)),
