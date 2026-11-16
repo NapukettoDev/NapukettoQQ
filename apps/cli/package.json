@@ -43,7 +43,7 @@
         "@napuketto/kernel": "workspace:*",
         "@napuketto/loader": "workspace:*",
         "@napuketto/network": "workspace:*",
-        "commander": "^15.0.0",
+        "commander": "^15.1.0",
         "uqr": "^0.1.3"
     }
 }

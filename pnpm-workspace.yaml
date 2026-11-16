@@ -13,9 +13,9 @@ engineStrict: true
 # （CI 的 node-version 口径），不再用 26。
 catalog:
   zod: ^4.6.7
-  hono: ^4.13.16
-  "@hono/node-server": ^2.1.6
-  ws: ^8.22.1
+  hono: ^4.13.18
+  "@hono/node-server": ^2.1.8
+  ws: ^8.23.0
   "@types/ws": ^8.18.2
   "@types/node": ^24.13.4
   tsdown: ^0.23.7
