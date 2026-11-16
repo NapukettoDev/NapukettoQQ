@@ -36,9 +36,9 @@ export interface VideoInfo {
 
 /** 视频转码选项。 */
 export interface TranscodeOptions {
-    width?: number;
-    height?: number;
-    fps?: number;
+    width?: number | undefined;
+    height?: number | undefined;
+    fps?: number | undefined;
 }
 
 /** SILK 解码产物（pcm_s16le）。 */
