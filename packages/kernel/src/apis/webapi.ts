@@ -6,7 +6,7 @@
  * 零 NapCat 代码：接口契约（URL/参数/返回形状）是 qun.qq.com 外部系统的事实，
  * 自研描述。
  */
-import { kernelError } from "../infra/index.js";
+import { errorMessage, kernelError } from "../infra/index.js";
 import { TicketApi } from "./ticket.js";
 
 /** 群空间域名（Cookie 归属）。 */
@@ -225,7 +225,7 @@ async function fetchQunJson(
             data: json.data as { msg_list?: EssenceMsgItem[]; is_end?: boolean },
         };
     } catch (err) {
-        throw kernelError(`qun.qq.com 请求失败: ${String(err)}`, "UNKNOWN");
+        throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
     }
 }
 
@@ -238,7 +238,7 @@ async function fetchQunText(url: string, cookie: Record<string, string>): Promis
         }
         return await res.text();
     } catch (err) {
-        throw kernelError(`qun.qq.com 请求失败: ${String(err)}`, "UNKNOWN");
+        throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
     }
 }
 

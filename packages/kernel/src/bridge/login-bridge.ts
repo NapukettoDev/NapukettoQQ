@@ -10,11 +10,11 @@
  * 单例 get() 兜底的既有实例，与 QrLoginSession 同源，见 core.ts loginByQr）。
  *
  * 方法名证据：wrapper.node 二进制字符串提取（types/wrapper.ts
- * IKernelLoginListener）；⚠️ 参数形状零样本（三轮录制无下线操作）——透传
+ * KernelLoginListener）；⚠️ 参数形状零样本（三轮录制无下线操作）——透传
  * unknown，订阅方防御性收窄 + 校准日志。
  *
  * 用法：
- *   const channel = new NTEventChannel<IKernelLoginListener, "Login">("Login");
+ *   const channel = new NTEventChannel<KernelLoginListener, "Login">("Login");
  *   const bridge = new LoginBridge(loginService, channel);
  *   bridge.register();
  *   bridge.unregister();

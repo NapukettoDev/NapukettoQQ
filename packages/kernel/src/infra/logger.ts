@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import process from "node:process";
 import pino from "pino";
-import { KernelError } from "./errors.js";
+import { kernelError } from "./errors.js";
 import type { LogFormat, TimestampMode } from "./log-config.js";
 import { createConsoleFormatStream } from "./log-format.js";
 
@@ -47,7 +47,7 @@ function toSingle(streams: Array<{ stream: pino.DestinationStream }>): pino.Dest
     const [only] = streams;
     if (only === undefined) {
         // 不可达：调用方已保证 streams 非空
-        throw new KernelError("logger 内部错误：目的地列表为空", "UNKNOWN");
+        throw kernelError("logger 内部错误：目的地列表为空", "UNKNOWN");
     }
     return only.stream;
 }
@@ -155,7 +155,7 @@ export function createLogger(opts: LoggerOptions = {}): pino.Logger {
         buildFileTarget(opts, opts.fileLevel ?? consoleLevel),
     ].filter((target): target is OutputTarget => target !== null);
     if (targets.length === 0) {
-        throw new KernelError("logger 至少需要一个输出目标：console 或 file", "INVALID_PARAM");
+        throw kernelError("logger 至少需要一个输出目标：console 或 file", "INVALID_PARAM");
     }
 
     // 时间戳恒记数值（单调墙钟），local/iso8601/elapsed 的差异全部由渲染层决定：

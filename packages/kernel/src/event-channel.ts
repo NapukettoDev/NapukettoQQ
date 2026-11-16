@@ -14,7 +14,7 @@
  * `{ name, fn }` 联合精确提取 handler / 参数类型，保证实例化后签名精确。
  */
 import { EventEmitter } from "node:events";
-import { KernelError } from "./infra/index.js";
+import { kernelError } from "./infra/index.js";
 
 /** waitFor 默认超时（毫秒）。 */
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
@@ -110,7 +110,7 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
             };
             const timer = setTimeout(() => {
                 cleanup();
-                reject(new KernelError(`等待事件超时: ${event as string}`, "TIMEOUT"));
+                reject(kernelError(`等待事件超时: ${event as string}`, "TIMEOUT"));
             }, timeoutMs);
             const cleanup = (): void => {
                 clearTimeout(timer);

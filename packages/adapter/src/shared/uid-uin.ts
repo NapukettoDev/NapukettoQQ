@@ -49,8 +49,8 @@ export function toUinString(uid: string, uidToUin: ReadonlyMap<string, string>):
     return uidToUin.get(uid) ?? uid;
 }
 
-/** 数字串判别（uin）。 */
-const NUMERIC_RE = /^\d+$/;
+/** 数字串判别（uin / 群号 / faceId 等协议数字标识）。 */
+export const NUMERIC_RE = /^\d+$/;
 
 /**
  * 数字串 uin → number（缺失/非法 → null，调用方按口径省略或跳过；

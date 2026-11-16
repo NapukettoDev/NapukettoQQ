@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toChannelById } from "../helper/index.js";
 import type { Channel, List } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type ChannelActionDeps = Pick<
@@ -15,7 +15,7 @@ export type ChannelActionDeps = Pick<
 >;
 
 /** 频道动作工厂（channel.get / channel.list）。 */
-export function createChannelActions(deps: ChannelActionDeps): SatoriAction[] {
+export function createChannelActions(deps: ChannelActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "channel.get",

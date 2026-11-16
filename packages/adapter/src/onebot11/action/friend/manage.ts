@@ -10,7 +10,7 @@
  */
 import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action, resolveUid } from "../base-action.js";
 
 /** 好友管理域动作工厂（friend_add_request / friend_remark / delete_friend /

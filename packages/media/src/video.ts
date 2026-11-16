@@ -9,7 +9,7 @@
 import { existsSync } from "node:fs";
 import { execa } from "execa";
 import type { TranscodeOptions, VideoInfo } from "./types.js";
-import { MediaError } from "./types.js";
+import { MediaError, replaceExt } from "./types.js";
 
 const MS_PER_SECOND = 1000;
 
@@ -17,30 +17,6 @@ const MS_PER_SECOND = 1000;
 interface FfprobeParse {
     streams?: Array<{ width?: number; height?: number; ["codec_type"]?: string }>;
     format?: { duration?: string };
-}
-
-/** 替换扩展名（保持目录，父目录由调用方保证存在）。 */
-function replaceExt(input: string, ext: string): string {
-    const slash = input.lastIndexOf("/");
-    const backslash = input.lastIndexOf("\\");
-    const dirEnd = Math.max(slash, backslash);
-    let dir: string;
-    let base: string;
-    if (dirEnd >= 0) {
-        dir = input.slice(0, dirEnd + 1);
-        base = input.slice(dirEnd + 1);
-    } else {
-        dir = "";
-        base = input;
-    }
-    const dot = base.lastIndexOf(".");
-    let stem: string;
-    if (dot > 0) {
-        stem = base.slice(0, dot);
-    } else {
-        stem = base;
-    }
-    return `${dir}${stem}${ext}`;
 }
 
 /** 转码：按选项输出到替换扩展名后的路径（.mp4）。ffmpeg 缺失/失败抛 MediaError。 */

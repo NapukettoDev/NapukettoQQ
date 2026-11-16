@@ -560,9 +560,9 @@ describe("sendNudge / setContactTop 错误语义", () => {
         ).rejects.toMatchObject({ code: "UNKNOWN", message: /sendNudge 失败/ });
     });
 
-    it("sendNudge：非 Error 异常 → UNKNOWN 包装（errMsgString 兜底）", async () => {
+    it("sendNudge：非 Error 异常 → UNKNOWN 包装（errorMessage 兜底）", async () => {
         const { api } = makeApi({
-            // 原生偶发抛非 Error 值（字符串等），errMsgString 需兜底 String()
+            // 原生偶发抛非 Error 值（字符串等），errorMessage 需兜底 String()
             sendNudge: vi.fn(async () => {
                 throw "raw-string-boom";
             }),

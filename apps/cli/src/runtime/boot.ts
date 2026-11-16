@@ -19,7 +19,7 @@ import path from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { resolveConfigPath, resolveDataRoot } from "@napuketto/kernel";
+import { errorMessage, resolveConfigPath, resolveDataRoot } from "@napuketto/kernel";
 import {
     checkInstanceLock,
     defaultStubDir,
@@ -28,6 +28,7 @@ import {
     type LaunchResult,
     launchSelfHost,
     type QqInstallInfo,
+    QR_LINE_PREFIX,
     resolveQqFiles,
     watchStopSentinel,
     writeStopSentinel,
@@ -54,9 +55,6 @@ async function packageEntry(pkg: string): Promise<string> {
     const url = await import.meta.resolve(pkg);
     return fileURLToPath(url);
 }
-
-/** QR 透出标记行前缀（loader bootstrap-core 非 IPC 模式输出，cli 解析终端渲染）。 */
-const QR_LINE_PREFIX = "NAPUTO_QR ";
 
 /** 优雅停等待上限（毫秒）：超时 kill 兜底（Windows 下为硬杀）。 */
 const GRACEFUL_STOP_TIMEOUT_MS = 10_000;
@@ -120,14 +118,14 @@ async function resolvePackageEntries(): Promise<PackageEntries> {
     };
 }
 
-/** stub QQNT.dll 目录（--stub-dir > NAPUTO_STUB_DIR > loader 包内闭源 submodule 默认）。 */
+/** stub QQNT.dll 目录（--stub-dir > NAPUKETTO_STUB_DIR > NAPUTO_STUB_DIR > loader 包内闭源 submodule 默认）。 */
 function resolveStubDir(opts: BootOptions): string {
-    return opts.stubDir ?? process.env["NAPUTO_STUB_DIR"] ?? defaultStubDir();
-}
-
-/** 错误文案提取（Error 用 message，其余字符串化——保留旧日志文案语义）。 */
-function errorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
+    return (
+        opts.stubDir ??
+        process.env["NAPUKETTO_STUB_DIR"] ??
+        process.env["NAPUTO_STUB_DIR"] ??
+        defaultStubDir()
+    );
 }
 
 /** QQ 原生文件多级来源 + 自动下载（本机未装 QQ 时走下载管线）。
@@ -197,11 +195,11 @@ interface SelfHostLaunchContext {
 }
 
 /** launchSelfHost 调用参数构造（唯一启动路径：自建宿主，2026-08-07 用户拍板）。
- * configPath：全局配置文件（项目根 napuketto.toml），注入 NAPKETTO_CONFIG 供装配链读取；
- *   内联配置生效（NAPKETTO_CONFIG_JSON）时不解析、不注入——子进程经 env 继承
+ * configPath：全局配置文件（项目根 napuketto.toml），注入 NAPUKETTO_CONFIG 供装配链读取；
+ *   内联配置生效（NAPUKETTO_CONFIG_JSON）时不解析、不注入——子进程经 env 继承
  *   内联文本，装配链按同一优先级读取；避免项目根探测出无关路径注入孙进程。
  * extraEnv：传播有效控制台渲染决策（子进程 stdout 恒 pipe，TTY 判定失真）+
- *   数据根（NAPUTO_DATA_ROOT，self-host 停止哨兵目录）。
+ *   数据根（NAPUKETTO_DATA_ROOT，self-host 停止哨兵目录）。
  * cwd：子进程 cwd 指向数据根——QQ 原生层 fallback 落盘（guild1.db 等）落在专门
  *   的数据目录，不污染项目根（实测 08-07）。 */
 function buildLaunchOptions(ctx: SelfHostLaunchContext): LaunchOptions {
@@ -218,7 +216,7 @@ function buildLaunchOptions(ctx: SelfHostLaunchContext): LaunchOptions {
         stdio: ["inherit", "pipe", "pipe"],
         extraEnv: {
             ...effectiveConsoleEnv(resolveCliLogConfig(opts.dataDir)),
-            NAPUTO_DATA_ROOT: dataRoot,
+            NAPUKETTO_DATA_ROOT: dataRoot,
         },
         ...(opts.qq !== undefined ? { quickUin: opts.qq } : {}),
         stubDir,

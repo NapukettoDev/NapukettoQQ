@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { ActionRegistry } from "../../core/framework/action-registry.js";
 import type { SatoriApi } from "../api/satori-api.js";
-import { defineSatoriAction, type SatoriAction, SatoriActionError } from "./base-action.js";
+import { defineSatoriAction, SatoriActionError, type SatoriActionHandler } from "./base-action.js";
 import { createChannelActions } from "./channel.js";
 import { createFriendActions } from "./friend.js";
 import { createGuildActions } from "./guild.js";
@@ -39,12 +39,12 @@ const NOT_IMPLEMENTED = [
     "reaction.list",
 ] as const;
 
-/** Satori 动作注册表（core 泛型注册表按 SatoriAction 实例化）。 */
-export type SatoriActionRegistry = ActionRegistry<SatoriAction<unknown, unknown>>;
+/** Satori 动作注册表（core 泛型注册表按 SatoriActionHandler 实例化）。 */
+export type SatoriActionRegistry = ActionRegistry<SatoriActionHandler<unknown, unknown>>;
 
 /** 创建 Satori 动作注册表。 */
 export function createSatoriActionRegistry(deps: SatoriActionDeps): SatoriActionRegistry {
-    const registry = new ActionRegistry<SatoriAction<unknown, unknown>>();
+    const registry = new ActionRegistry<SatoriActionHandler<unknown, unknown>>();
     const { api } = deps;
     for (const action of [
         ...createMessageActions(api),

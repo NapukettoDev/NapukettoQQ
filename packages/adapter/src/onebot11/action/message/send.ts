@@ -10,10 +10,11 @@
  */
 
 import type { CanonicalElement } from "@napuketto/kernel";
+import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
 import type { AdapterLoggerLike } from "../../../shared/log.js";
 import { ensureSilk, prepareVideoElements } from "../../../shared/media.js";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
@@ -72,7 +73,7 @@ async function sendOb11Message(
         } catch (err) {
             // uin 解析失败：at 原样（uin），交给 QQ 端判断（warn 留痕）
             deps.logger?.warn(
-                { count: atUins.length, error: err instanceof Error ? err.message : String(err) },
+                { count: atUins.length, error: errorMessage(err) },
                 "ob11: at uin→uid 失败，at 段原样发送",
             );
         }

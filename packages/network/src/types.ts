@@ -5,6 +5,7 @@
  * SSE 事件流原语。不 import 任何协议包；事件类型完全泛型化。
  * 路由分发外置为 `onRequest` 注入点，由协议层（onebot 等）提供。
  */
+import type { IncomingMessage } from "node:http";
 import type { WebSocket } from "ws";
 
 /**
@@ -14,6 +15,18 @@ import type { WebSocket } from "ws";
 export interface RequestContext {
     url: string;
     headers: Record<string, string | undefined>;
+}
+
+/**
+ * Node 原生 IncomingMessage → RequestContext（headers 展平，url 含查询串）。
+ * HTTP upgrade 与反向 WS 握手共用同一转换口径。
+ */
+export function incomingMessageToRequestContext(req: IncomingMessage): RequestContext {
+    const headers: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+        headers[key] = Array.isArray(value) ? value.join(", ") : value;
+    }
+    return { url: req.url ?? "", headers };
 }
 
 /** 鉴权钩子：由协议层决定具体校验规则（token 等）。 */

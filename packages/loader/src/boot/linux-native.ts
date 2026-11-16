@@ -19,7 +19,7 @@ import process from "node:process";
 import { packageRoot } from "../internal/package-root.js";
 
 /** 行拆分（ldconfig -p / which 输出兼容）。 */
-const LINE_SPLIT = /\r?\n/;
+export const LINE_SPLIT = /\r?\n/;
 
 /** 数据根下受管 HOME 的目录名（Linux 原生宿主专用）。 */
 export const LINUX_HOME_DIRNAME = "home";

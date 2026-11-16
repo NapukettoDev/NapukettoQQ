@@ -10,9 +10,26 @@
 import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
+import { errorMessage } from "@napuketto/kernel";
 import { encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
 import type { AdapterLoggerLike } from "./log.js";
+
+/** file:// 前缀（fileURLToPath 解析失败时的裸剥离兜底）。 */
+export const FILE_URI_PREFIX_RE = /^file:\/\//;
+
+/**
+ * file:// URI → 平台路径（Windows 盘符 / 百分号编码兼容）。
+ * fileURLToPath 解析失败时退化为裸剥离前缀（历史兜底行为，协议侧共用）。
+ */
+export function fileUriToPath(uri: string): string {
+    try {
+        return fileURLToPath(uri);
+    } catch {
+        return FILE_URI_PREFIX_RE.test(uri) ? uri.replace(FILE_URI_PREFIX_RE, "") : uri;
+    }
+}
 
 /** 读文件头 8 字节（判断 silk 魔数）。 */
 async function readFileHead(path: string): Promise<string> {
@@ -39,10 +56,7 @@ export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Prom
         }
         return await encodePcmToSilk(path);
     } catch (err) {
-        logger?.warn(
-            { path, error: err instanceof Error ? err.message : String(err) },
-            "语音 silk 转码失败，原样透传",
-        );
+        logger?.warn({ path, error: errorMessage(err) }, "语音 silk 转码失败，原样透传");
         return path;
     }
 }

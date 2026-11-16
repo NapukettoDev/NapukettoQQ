@@ -20,6 +20,7 @@ import {
 import { chmod, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { errorMessage } from "../host/util.js";
 import { resolveDataRoot } from "../internal/data-root.js";
 import { packageRoot } from "../internal/package-root.js";
 import { downloadFile } from "./qq-download.js";
@@ -432,7 +433,7 @@ export async function ensureLinuxSevenZip(
         try {
             execFileSync("tar", ["-xJf", archive, "-C", cacheDir], { stdio: "pipe" });
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = errorMessage(err);
             throw new Error(
                 `7z linux 解压失败: ${message}（需 tar + xz-utils；或设 NAPUTO_7Z_PATH 指定系统 7z）`,
             );

@@ -3,7 +3,7 @@
  * 绑定集维护（bindings_updated / query_result）、command_result 关联回发群。
  * 共享状态在 session.ts。
  */
-import { ChatType } from "@napuketto/kernel";
+import { ChatType, errorMessage } from "@napuketto/kernel";
 import type { KurobotMsgApi } from "../adapter.js";
 import type { KurobotConfig } from "../config.js";
 import type { KurobotConnectionOptions, ServerEventMessage } from "../connection.js";
@@ -101,10 +101,7 @@ export class KurobotServerFrameHandler {
                 this.log?.debug({ channel }, "kurobot: 群消息已发送");
             })
             .catch((err: unknown) => {
-                this.log?.error(
-                    { channel, err: err instanceof Error ? err.message : String(err) },
-                    "kurobot: 群消息发送失败",
-                );
+                this.log?.error({ channel, err: errorMessage(err) }, "kurobot: 群消息发送失败");
             });
     }
 }

@@ -13,7 +13,7 @@
 
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { toOb11MessageInfo } from "../../helper/index.js";
 import { type MessageUnique, resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import { defineOb11Action, type Ob11Action, resolveUid } from "../base-action.js";

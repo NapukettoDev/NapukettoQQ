@@ -2,12 +2,13 @@
  * Satori 消息动作：message.create / get / list / delete
  * （message.update：QQ 不支持编辑 → 501，见 registry）
  */
+import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { parseContentToCanonical } from "../helper/element/element-convert.js";
 import { toChannelById, toSatoriMessage } from "../helper/index.js";
 import type { BidiList, Message } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type MessageActionDeps = Pick<
@@ -27,7 +28,7 @@ const messageCreateSchema = z.object({
 });
 
 /** 消息动作工厂（create / get / list / delete）。 */
-export function createMessageActions(deps: MessageActionDeps): SatoriAction[] {
+export function createMessageActions(deps: MessageActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "message.create",
@@ -60,7 +61,7 @@ export function createMessageActions(deps: MessageActionDeps): SatoriAction[] {
                 const msgs = await deps.msgApi.fetchMsgsByMsgId(peer, [messageId]);
                 const first = msgs[0];
                 if (first === undefined) {
-                    throw new Error("消息不存在");
+                    throw kernelError("消息不存在", "NOT_FOUND");
                 }
                 deps.setChannelType(channelId, peer.chatType === 2);
                 return toSatoriMessage(first, {
@@ -86,7 +87,7 @@ export function createMessageActions(deps: MessageActionDeps): SatoriAction[] {
             handle: async (payload): Promise<BidiList<Message>> => {
                 const { channel_id: channelId, next, direction, limit, order } = payload;
                 if (direction === "around") {
-                    throw new Error("暂不支持 around 方向");
+                    throw kernelError("暂不支持 around 方向", "INVALID_PARAM");
                 }
                 const peer = await deps.resolvePeer(channelId);
                 const count = limit ?? DEFAULT_LIST_LIMIT;

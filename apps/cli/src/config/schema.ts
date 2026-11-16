@@ -8,7 +8,13 @@
  * 全部校验错误为 ConfigError（2026-10-25 嵌入式退出码契约：CLI exit 78 一族，
  * 内联与文件两形态共用本校验器）。
  */
-import { configError, type LogConfig, parseLogConfig, resolveDataRoot } from "@napuketto/kernel";
+import {
+    configError,
+    errorMessage,
+    type LogConfig,
+    parseLogConfig,
+    resolveDataRoot,
+} from "@napuketto/kernel";
 
 /** 保留占位 QQ 号（模板默认值）：必须替换为真实 QQ 号，否则启动校验报错。 */
 export const RESERVED_PLACEHOLDER_QINS = ["123456", "654321"] as const;
@@ -228,7 +234,7 @@ function parseLogSection(input: unknown): LogConfig {
     try {
         return parseLogConfig(input);
     } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
+        const detail = errorMessage(err);
         throw configError(`主配置 [log] 段非法: ${detail}`, { cause: err });
     }
 }

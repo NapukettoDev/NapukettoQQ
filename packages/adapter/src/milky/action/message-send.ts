@@ -6,7 +6,7 @@
  * forward 段走专用组装链（sendForwardComposition，临时消息法，见 milky.md §0.6）。
  */
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
-import { kernelError } from "@napuketto/kernel";
+import { errorMessage, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
 import type { MilkyApi } from "../api.js";
 import { resolveMediaUri } from "../helper/message/media-uri.js";
@@ -147,7 +147,7 @@ async function recallTempMessages(peer: Peer, msgIds: string[], api: MilkyApi): 
             {
                 peer: peer.peerUid,
                 count: msgIds.length,
-                error: e instanceof Error ? e.message : String(e),
+                error: errorMessage(e),
             },
             "milky: forward 临时消息撤回失败（转发已发出）",
         );
@@ -183,7 +183,7 @@ async function resolveAtUins(
     } catch (err) {
         // at 解析失败退 uin 原样（warn 留痕，消息照发）
         api.logger?.warn(
-            { count: atUins.length, error: err instanceof Error ? err.message : String(err) },
+            { count: atUins.length, error: errorMessage(err) },
             "milky: at uin→uid 失败，at 段原样发送",
         );
         return undefined;

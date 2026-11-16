@@ -1,5 +1,5 @@
 /**
- * log-cfg.test.ts：自建宿主日志配置解析单测（2026-10-25 日志可配置化）。
+ * log-config.test.ts：自建宿主日志配置解析单测（2026-10-25 日志可配置化）。
  *
  * 覆盖：kernel 无 parseLogConfig（老版本）回退缺省、配置读取失败回退缺省、
  * 正常路径（parseToml → parseLogConfig 透传 [log] 段）、resolveLogFilePath
@@ -12,7 +12,7 @@ import { isAbsolute, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KernelLike } from "../types.js";
 
-type LogCfgModule = typeof import("../log-cfg.js");
+type LogCfgModule = typeof import("../log-config.js");
 
 /** 本用例涉及的 env 键（用例内显式置空，隔离宿主环境残留）。 */
 const ENV_KEYS = [
@@ -30,13 +30,13 @@ function freshDir(): string {
     return tmp;
 }
 
-/** 设定 env 快照后重载 log-cfg 模块。 */
+/** 设定 env 快照后重载 log-config 模块。 */
 async function freshLogCfg(env: Record<string, string | undefined>): Promise<LogCfgModule> {
     for (const key of ENV_KEYS) {
         setEnv(key, env[key]);
     }
     vi.resetModules();
-    return await import("../log-cfg.js");
+    return await import("../log-config.js");
 }
 
 function setEnv(key: string, value: string | undefined): void {

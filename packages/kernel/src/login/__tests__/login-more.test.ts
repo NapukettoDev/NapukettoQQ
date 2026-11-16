@@ -9,15 +9,15 @@
  *  - start 非 idle 幂等 / stop 注销监听
  */
 import { describe, expect, it, vi } from "vitest";
-import type { IKernelLoginListener } from "../../types/index.js";
+import type { KernelLoginListener } from "../../types/index.js";
 import { QrLoginSession } from "../login.js";
 
 /** 构造假 loginService（捕获 listener）。 */
 function createFakeLoginService(overrides: Partial<Record<string, unknown>> = {}) {
-    let captured: IKernelLoginListener | undefined;
+    let captured: KernelLoginListener | undefined;
     const svc = {
         addKernelLoginListener: vi.fn((listener: unknown) => {
-            captured = listener as IKernelLoginListener;
+            captured = listener as KernelLoginListener;
             return 1;
         }),
         removeKernelLoginListener: vi.fn(),

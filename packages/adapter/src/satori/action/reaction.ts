@@ -2,9 +2,10 @@
  * Satori 表态动作：reaction.create / reaction.delete
  * （reaction.clear / reaction.list：501，见 registry）
  */
+import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type ReactionActionDeps = Pick<SatoriApi, "msgApi" | "resolvePeer">;
@@ -13,7 +14,7 @@ export type ReactionActionDeps = Pick<SatoriApi, "msgApi" | "resolvePeer">;
 const EMOJI_TYPE = "1";
 
 /** 表态动作工厂（reaction.create / reaction.delete）。 */
-export function createReactionActions(deps: ReactionActionDeps): SatoriAction[] {
+export function createReactionActions(deps: ReactionActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "reaction.create",
@@ -52,7 +53,7 @@ export function createReactionActions(deps: ReactionActionDeps): SatoriAction[] 
                     user_id: userId,
                 } = payload;
                 if (userId !== undefined) {
-                    throw new Error("暂不支持删除他人表态");
+                    throw kernelError("暂不支持删除他人表态", "INVALID_PARAM");
                 }
                 const peer = await deps.resolvePeer(channelId);
                 await deps.msgApi.setMsgEmojiLike(peer, {

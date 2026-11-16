@@ -140,11 +140,11 @@ describe("guild.approve / guild.member.approve（共用应答实现）", () => {
         );
     });
 
-    it("seq 未匹配任何通知：抛普通 Error（run 包装为 500）", async () => {
+    it("seq 未匹配任何通知：抛「群通知不存在」（404）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<void>(api, "guild.approve");
         await expect(action.run({ message_id: "missing", approve: true })).rejects.toMatchObject({
-            status: 500,
+            status: 404,
             message: "群通知不存在",
         });
     });
@@ -177,14 +177,14 @@ describe("guild.member.get", () => {
         expect(api.groupApi.getGroupMemberInfo).toHaveBeenCalledWith("10001", ["uid_123"]);
     });
 
-    it("直查也没有该成员：抛「群成员不存在」（500）", async () => {
+    it("直查也没有该成员：抛「群成员不存在」（404）", async () => {
         const api = stubSatoriApi();
         vi.mocked(api.groupApi.getGroupMemberInfo).mockResolvedValueOnce([
             makeMember("uid_other", "888", "别人"),
         ] as never);
         const action = actionOf<GuildMember>(api, "guild.member.get");
         await expect(action.run({ guild_id: "10001", user_id: "123" })).rejects.toMatchObject({
-            status: 500,
+            status: 404,
             message: "群成员不存在",
         });
     });

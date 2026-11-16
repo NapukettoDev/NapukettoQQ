@@ -59,6 +59,11 @@ export function isKernelError(err: unknown): err is KernelError {
     return err instanceof KernelError;
 }
 
+/** 提取未知异常的文本消息（Error 取 message，其余转字符串）。 */
+export function errorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * 配置校验失败（INVALID_PARAM 子型，2026-10-25 嵌入式宿主契约）：仅用于
  * 「配置未就绪」一族——主配置校验/反序列化、内联配置、协议段 seed 校验。

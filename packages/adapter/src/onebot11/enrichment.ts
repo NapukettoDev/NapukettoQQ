@@ -6,9 +6,9 @@
  * 除 notice 路径（失败上抛 → 调用方丢弃整个事件，原语义）外查询均 fail-soft。
  */
 import type { RawMessage } from "@napuketto/kernel";
-import { ChatType, toCanonicalElements } from "@napuketto/kernel";
+import { ChatType, errorMessage, toCanonicalElements } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../shared/log.js";
-import type { OneBotApi } from "./api/one-bot-api.js";
+import type { OneBotApi } from "./api/onebot-api.js";
 import { collectReceiveNeeds, type ReceiveTranslateContext } from "./helper/index.js";
 import type { SysMsgEnvelope, SysMsgField, SysMsgKindRuleOB11 } from "./helper/sysmsg.js";
 
@@ -46,7 +46,7 @@ export class Ob11Enrichment {
             map = await this.api.uidToUin(uids);
         } catch (err) {
             this.calibLogger?.warn(
-                { count: uids.length, error: err instanceof Error ? err.message : String(err) },
+                { count: uids.length, error: errorMessage(err) },
                 "ob11: 请求 uid→uin 批量转换失败，退用 uid",
             );
             map = new Map();
@@ -70,7 +70,7 @@ export class Ob11Enrichment {
                 }
             } catch (err) {
                 this.calibLogger?.debug(
-                    { error: err instanceof Error ? err.message : String(err) },
+                    { error: errorMessage(err) },
                     "ob11: uid→uin 资料兜底失败（该 uid 退 0）",
                 );
             }
@@ -110,7 +110,7 @@ export class Ob11Enrichment {
                 this.calibLogger?.warn(
                     {
                         count: atUids.length,
-                        error: err instanceof Error ? err.message : String(err),
+                        error: errorMessage(err),
                     },
                     "ob11: 消息 at uid→uin 失败，at 原样",
                 );
@@ -149,7 +149,7 @@ export class Ob11Enrichment {
                     msgType: env.msgType,
                     subType: env.subType,
                     count: uids.length,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: errorMessage(err),
                 },
                 "ob11: sysmsg uid→uin 失败，实体 uin 恒 0",
             );
@@ -166,7 +166,7 @@ export class Ob11Enrichment {
         const peer = { chatType: ChatType.GROUP, peerUid: groupCode };
         const msgs = await this.api.msgApi.fetchMessages(peer, { count: 60 }).catch((err) => {
             this.calibLogger?.debug(
-                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, error: errorMessage(err) },
                 "ob11: 精华反查近段历史拉取失败",
             );
             return [];

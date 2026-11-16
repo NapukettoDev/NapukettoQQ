@@ -87,11 +87,11 @@ describe("friend.approve", () => {
         expect(api.friendApi.handleFriendRequest).toHaveBeenCalledWith(req, false);
     });
 
-    it("空申请列表：抛「好友申请不存在」（500）", async () => {
+    it("空申请列表：抛「好友申请不存在」（404）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<void>(api, "friend.approve");
         await expect(action.run({ message_id: "101", approve: true })).rejects.toMatchObject({
-            status: 500,
+            status: 404,
             message: "好友申请不存在",
         });
     });
@@ -104,7 +104,7 @@ describe("friend.approve", () => {
         api.uidToUin.mockResolvedValueOnce(new Map([["uid_101", "101"]]));
         const action = actionOf<void>(api, "friend.approve");
         await expect(action.run({ message_id: "999", approve: true })).rejects.toMatchObject({
-            status: 500,
+            status: 404,
             message: "好友申请不存在",
         });
     });

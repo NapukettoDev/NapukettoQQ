@@ -10,7 +10,7 @@ import type {
 } from "@napuketto/kernel";
 import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
 import { subscribeRawMessages } from "../shared/raw-message.js";
-import type { OneBotApi } from "./api/one-bot-api.js";
+import type { OneBotApi } from "./api/onebot-api.js";
 import { Ob11Enrichment } from "./enrichment.js";
 import type { OB11Config } from "./helper/index.js";
 import { Ob11InboundEssence } from "./inbound/essence.js";

@@ -19,7 +19,7 @@ import {
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../../shared/__tests__/stub.js";
-import { OneBotApi } from "../one-bot-api.js";
+import { OneBotApi } from "../onebot-api.js";
 
 /** 构造 GroupMember（缺省最小合法值，overrides 覆盖）。 */
 function makeMember(overrides: Partial<GroupMember> = {}): GroupMember {

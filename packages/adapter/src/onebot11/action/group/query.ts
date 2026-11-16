@@ -7,7 +7,7 @@
  */
 import { type GroupMember, kernelError } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     toOb11GroupInfo,
     toOb11GroupInfoDetail,

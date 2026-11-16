@@ -18,6 +18,7 @@
  * 不需要声明 `ws` 依赖（ws 归 network 所有），发布依赖面少一个包。
  */
 import { randomUUID } from "node:crypto";
+import { errorMessage } from "@napuketto/kernel";
 import {
     type BindingsUpdatedBody,
     bindingsUpdatedFrame,
@@ -230,7 +231,7 @@ export class KurobotConnection {
         try {
             ws = new WebSocket(this.opts.url, WS_SUBPROTOCOL);
         } catch (err: unknown) {
-            const detail = err instanceof Error ? err.message : String(err);
+            const detail = errorMessage(err);
             this.log.error(
                 { err: detail, url: this.opts.url },
                 "kurobot: WebSocket 构造失败（非法 URL），永久停止",

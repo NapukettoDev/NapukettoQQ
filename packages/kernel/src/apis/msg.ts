@@ -10,7 +10,8 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import type { MsgEventChannel } from "../bridge/msg-bridge.js";
-import { isKernelError, kernelError } from "../infra/index.js";
+import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
+import { sleep } from "../login/wait.js";
 import type {
     CanonicalElement,
     NodeIKernelMsgService,
@@ -23,7 +24,7 @@ import type {
     SendMessageElement,
     VideoElement,
 } from "../types/index.js";
-import { ChatType, ElementType, toSendElements } from "../types/index.js";
+import { ChatType, ElementType, toSendElements, VIDEO_THUMB_KEY } from "../types/index.js";
 import { checkLooseResult, unwrapResult } from "./result.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */
@@ -77,8 +78,6 @@ const VIDEO_STORE_ID = 1;
 const VIDEO_ORIGINAL = true;
 const VIDEO_FROM = 0;
 const VIDEO_SOURCE_CODEC_FORMAT = 0;
-/** 视频缩略图在 thumbPath Map 中的 key（收向实测 Map<0, path>）。 */
-const VIDEO_THUMB_KEY = 0;
 /** getRichMediaFilePathForGuild 的 downloadType：1 = 原文件，2 = 缩略图。 */
 const RICH_MEDIA_DOWNLOAD_TYPE_ORIGIN = 1;
 const RICH_MEDIA_DOWNLOAD_TYPE_THUMB = 2;
@@ -89,18 +88,6 @@ const THUMB_SIZE_NONE = 0;
 /** 语音下载轮询参数（300ms × 34 ≈ 10s；返回 void 只能经重拉元素观察完成）。 */
 const PTT_POLL_INTERVAL_MS = 300;
 const PTT_POLL_TIMES = 34;
-
-/** sleep（下载轮询间隔）。 */
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
-
-/** 未知异常 → 消息字符串。 */
-function errMsgString(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
-}
 
 /** 语音下载完成判定：有路径且（传输完成或末次轮询）才返回元素，否则 null。 */
 function pttDownloadResult(latest: PttElement | undefined, isLastPoll: boolean): PttElement | null {
@@ -665,7 +652,7 @@ export class MsgApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`sendNudge 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`sendNudge 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -683,7 +670,7 @@ export class MsgApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`setContactLocalTop 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`setContactLocalTop 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -693,7 +680,7 @@ export class MsgApi {
         try {
             raw = (await this.service.queryFavEmojiByDesc("")) as typeof raw;
         } catch (e) {
-            throw kernelError(`queryFavEmojiByDesc 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`queryFavEmojiByDesc 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
         checkLooseResult("queryFavEmojiByDesc", raw);
         const list = raw.emojiInfoList;

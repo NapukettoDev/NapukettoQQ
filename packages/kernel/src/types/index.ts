@@ -21,7 +21,7 @@ export type {
     TipGroupElement,
     VideoElement,
 } from "./entities.js";
-export { ChatType, GrayTipSubType, TipGroupElementType } from "./entities.js";
+export { ChatType, GrayTipSubType, TipGroupElementType, VIDEO_THUMB_KEY } from "./entities.js";
 export type {
     BuddyListener,
     GroupListener,
@@ -91,6 +91,7 @@ export type {
     DeviceInfo,
     EnginInitDesktopConfig,
     IKernelLoginListener,
+    KernelLoginListener,
     NodeIDependsAdapter,
     NodeIDispatcherAdapter,
     NodeIGlobalAdapter,

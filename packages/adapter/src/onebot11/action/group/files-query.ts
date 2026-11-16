@@ -2,16 +2,16 @@
  * 群文件查询动作：get_group_root_files / get_group_files_by_folder /
  * get_group_file_system_info
  */
-import type { GroupFileItemInfo, GroupFolderInfo as KernelFolderInfo } from "@napuketto/kernel";
+import type { GroupFileItemInfo, GroupFolderInfo } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
 /** 默认文件数量。 */
 const DEFAULT_FILE_COUNT = 50;
 
-/** 文件条目 OB11 结构。 */
-interface GroupFileInfo {
+/** 文件条目 OB11 结构（命名加 `Ob11` 前缀避免与协议事件 / kernel 类型同名异构）。 */
+interface Ob11GroupFileEntry {
     file_id: string;
     file_name: string;
     file_size: string;
@@ -20,24 +20,24 @@ interface GroupFileInfo {
     modify_time?: number;
 }
 
-/** 文件夹条目 OB11 结构。 */
-interface GroupFolderInfo {
+/** 文件夹条目 OB11 结构（同上）。 */
+interface Ob11GroupFolderEntry {
     folder_id: string;
     folder_name: string;
 }
 
 /** 群文件列表返回。 */
 interface GroupFilesResult {
-    files: GroupFileInfo[];
-    folders: GroupFolderInfo[];
+    files: Ob11GroupFileEntry[];
+    folders: Ob11GroupFolderEntry[];
 }
 
 /** 列表拆分 files/folders（fileInfo/folderInfo 取其一，纯函数）。 */
 function splitFilesAndFolders(
-    list: Array<{ fileInfo?: GroupFileItemInfo; folderInfo?: KernelFolderInfo }>,
+    list: Array<{ fileInfo?: GroupFileItemInfo; folderInfo?: GroupFolderInfo }>,
 ): GroupFilesResult {
-    const files: GroupFileInfo[] = [];
-    const folders: GroupFolderInfo[] = [];
+    const files: Ob11GroupFileEntry[] = [];
+    const folders: Ob11GroupFolderEntry[] = [];
     for (const item of list) {
         const file = item.fileInfo;
         if (file === undefined) {
@@ -54,8 +54,8 @@ function splitFilesAndFolders(
 }
 
 /** GroupFileItemInfo → OB11 文件结构（纯函数）。 */
-function toGroupFileInfo(file: GroupFileItemInfo): GroupFileInfo {
-    const out: GroupFileInfo = {
+function toGroupFileInfo(file: GroupFileItemInfo): Ob11GroupFileEntry {
+    const out: Ob11GroupFileEntry = {
         file_id: file.fileId,
         file_name: file.fileName,
         file_size: file.fileSize,
@@ -72,8 +72,8 @@ function toGroupFileInfo(file: GroupFileItemInfo): GroupFileInfo {
     return out;
 }
 
-/** KernelFolderInfo → OB11 文件夹结构（纯函数）。 */
-function toGroupFolderInfo(folder: KernelFolderInfo): GroupFolderInfo {
+/** GroupFolderInfo → OB11 文件夹结构（纯函数）。 */
+function toGroupFolderInfo(folder: GroupFolderInfo): Ob11GroupFolderEntry {
     return {
         folder_id: folder.folderId,
         folder_name: folder.folderName,

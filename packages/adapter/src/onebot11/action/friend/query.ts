@@ -7,7 +7,7 @@
  */
 import type { DoubtFriendRequestInfo, FriendCategory, StrangerInfo } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import type { FriendInfo } from "../../types/index.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 

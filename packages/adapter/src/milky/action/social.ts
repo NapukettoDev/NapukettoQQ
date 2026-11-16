@@ -4,9 +4,9 @@
  * send_friend_nudge / get_peer_pins / set_peer_pin。
  */
 import type { Peer } from "@napuketto/kernel";
-import { kernelError } from "@napuketto/kernel";
+import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
-import { findBuddyReq, type MilkyApi } from "../api.js";
+import { findBuddyReq, type MilkyApi, requireSelfUid } from "../api.js";
 import { groupListToEntity, toFriendEntity } from "../helper/message/entities.js";
 import type {
     FriendRequestEntity,
@@ -16,9 +16,7 @@ import type {
     GetPeerPinsOutput,
 } from "../types.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
-
-/** 可选布尔（nudge / pin 入参共用口径）。 */
-const optBool = z.boolean().nullable().optional();
+import { optBool } from "./group-query.js";
 
 /** 社交类动作工厂（好友/群列表、赞、删好友、申请处理、戳一戳、会话置顶）。 */
 export function createSocialActions(api: MilkyApi): MilkyAction[] {
@@ -87,7 +85,7 @@ export function createSocialActions(api: MilkyApi): MilkyAction[] {
                         api.logger?.warn(
                             {
                                 count: reqs.length,
-                                error: err instanceof Error ? err.message : String(err),
+                                error: errorMessage(err),
                             },
                             "milky: 好友申请 uid→uin 失败，initiator_id 兜底 0",
                         );
@@ -217,13 +215,4 @@ async function pinnedGroupEntities(
         const g = byCode.get(code);
         return g !== undefined ? [groupListToEntity(g)] : [];
     });
-}
-
-/** self.uid 必备（nudge 发送的 callerUid）。 */
-function requireSelfUid(api: MilkyApi): string {
-    const uid = api.self.uid;
-    if (uid === undefined || uid === "") {
-        throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
-    }
-    return uid;
 }

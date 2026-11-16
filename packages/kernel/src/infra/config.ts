@@ -12,7 +12,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
-import { ConfigError } from "./errors.js";
+import { configError } from "./errors.js";
 
 /** 配置文本格式。 */
 export type ConfigFormat = "json" | "toml";
@@ -101,7 +101,7 @@ export class ConfigBase<T> {
                 await this.save(this.defaults);
                 return this.value;
             }
-            throw new ConfigError(`读取配置文件失败: ${this.path}`, { cause: err });
+            throw configError(`读取配置文件失败: ${this.path}`, { cause: err });
         }
         this.value = this.parse(raw);
         return this.value;
@@ -148,14 +148,14 @@ export class ConfigBase<T> {
         try {
             input = this.deserialize(raw);
         } catch (err) {
-            throw new ConfigError(`配置文件 ${this.format.toUpperCase()} 解析失败: ${this.path}`, {
+            throw configError(`配置文件 ${this.format.toUpperCase()} 解析失败: ${this.path}`, {
                 cause: err,
             });
         }
         try {
             return this.schema.parse(input);
         } catch (err) {
-            throw new ConfigError(`配置文件校验失败: ${this.path}`, { cause: err });
+            throw configError(`配置文件校验失败: ${this.path}`, { cause: err });
         }
     }
 }

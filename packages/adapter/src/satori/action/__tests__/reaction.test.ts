@@ -56,7 +56,7 @@ describe("reaction.delete", () => {
         );
     });
 
-    it("带 user_id：抛「暂不支持删除他人表态」（500）", async () => {
+    it("带 user_id：抛「暂不支持删除他人表态」（400）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<void>(api, "reaction.delete");
         await expect(
@@ -66,7 +66,7 @@ describe("reaction.delete", () => {
                 emoji_id: "178",
                 user_id: "123",
             }),
-        ).rejects.toMatchObject({ status: 500, message: "暂不支持删除他人表态" });
+        ).rejects.toMatchObject({ status: 400, message: "暂不支持删除他人表态" });
         expect(api.msgApi.setMsgEmojiLike).not.toHaveBeenCalled();
     });
 });

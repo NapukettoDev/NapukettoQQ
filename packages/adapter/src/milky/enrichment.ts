@@ -6,7 +6,7 @@
  * fail-soft，不阻塞事件上报。
  */
 import type { CanonicalElement, RawMessage } from "@napuketto/kernel";
-import { ChatType } from "@napuketto/kernel";
+import { ChatType, errorMessage } from "@napuketto/kernel";
 import type { MilkyApi } from "./api.js";
 import type { ReceiveTranslateContext } from "./helper/event/translate.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/message/entities.js";
@@ -50,7 +50,7 @@ export class MilkyEnrichment {
         }
         const map = await this.api.uidToUin(unique).catch((err) => {
             this.api.logger?.warn(
-                { count: unique.length, error: err instanceof Error ? err.message : String(err) },
+                { count: unique.length, error: errorMessage(err) },
                 "milky: uid→uin 批量转换失败，事件退用 uid",
             );
             return new Map<string, string>();
@@ -76,7 +76,7 @@ export class MilkyEnrichment {
                 }
             } catch (err) {
                 this.api.logger?.debug(
-                    { error: err instanceof Error ? err.message : String(err) },
+                    { error: errorMessage(err) },
                     "milky: uid→uin 资料兜底失败（该 uid 退 0）",
                 );
             }
@@ -105,7 +105,7 @@ export class MilkyEnrichment {
         } catch (err) {
             // 转换失败：mention 段跳过（warn 留痕）
             this.api.logger?.warn(
-                { count: atUids.length, error: err instanceof Error ? err.message : String(err) },
+                { count: atUids.length, error: errorMessage(err) },
                 "milky: at uid→uin 失败，mention 段跳过",
             );
         }
@@ -121,7 +121,7 @@ export class MilkyEnrichment {
                 this.api.logger?.warn(
                     {
                         group: msg.peerUid,
-                        error: err instanceof Error ? err.message : String(err),
+                        error: errorMessage(err),
                     },
                     "milky: 群详情缓存读取失败，实体回填退化",
                 );
@@ -132,7 +132,7 @@ export class MilkyEnrichment {
                     {
                         group: msg.peerUid,
                         member: msg.senderUid,
-                        error: err instanceof Error ? err.message : String(err),
+                        error: errorMessage(err),
                     },
                     "milky: 群成员缓存读取失败，实体回填退化",
                 );

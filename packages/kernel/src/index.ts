@@ -82,6 +82,7 @@ export {
     createLogger,
     DEFAULT_DATA_ROOT_NAME,
     EXIT_CONFIG_INVALID,
+    errorMessage,
     isKernelError,
     KERNEL_ERROR_CODES,
     KernelError,
@@ -213,6 +214,7 @@ export {
 export type {
     BootEnv,
     QQVersionContext,
+    QqVersionContext,
     StartNapukettoOptions,
     WrapperContext,
 } from "./wrapper/wrapper-loader.js";
@@ -226,5 +228,5 @@ export {
     startNapuketto,
     startSession,
 } from "./wrapper/wrapper-loader.js";
-export type { QQVersionInfo } from "./wrapper/wrapper-version.js";
+export type { QQVersionInfo, QqVersionInfo } from "./wrapper/wrapper-version.js";
 export { listQQVersions, resolveQQVersion, resolveWrapperPath } from "./wrapper/wrapper-version.js";

@@ -55,9 +55,20 @@ export {
     IpcMessageSchema,
     IpcResultPayloadSchema,
     IpcStatusPayloadSchema,
+    ipcActionPayloadSchema,
+    ipcBootPhaseSchema,
+    ipcControlPayloadSchema,
+    ipcEventPayloadSchema,
+    ipcLoginPayloadSchema,
+    ipcLogLevelSchema,
+    ipcLogPayloadSchema,
+    ipcMessageSchema,
+    ipcResultPayloadSchema,
+    ipcStatusPayloadSchema,
 } from "./host/ipc/ipc-types.js";
 // wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
 export { isNativeNoiseLine } from "./host/ipc/native-noise.js";
+export { QR_LINE_PREFIX } from "./host/types.js";
 export type { InstanceLockCheck, InstanceLockInfo } from "./lifecycle/instance-lock.js";
 export {
     acquireInstanceLock,

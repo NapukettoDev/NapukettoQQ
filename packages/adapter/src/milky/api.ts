@@ -22,7 +22,7 @@ import type {
     TicketApi,
     WebApi,
 } from "@napuketto/kernel";
-import { ChatType, kernelError } from "@napuketto/kernel";
+import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
 import { toUnixSeconds } from "../shared/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
@@ -159,7 +159,7 @@ export class MilkyApi {
         } catch (err) {
             // 转换失败：退 uin 原样（warn 留痕，QQ 端发送时判断）
             this.logger?.warn(
-                { uin, error: err instanceof Error ? err.message : String(err) },
+                { uin, error: errorMessage(err) },
                 "milky: uin→uid 转换失败，peer 退用 uin 原样",
             );
         }
@@ -187,7 +187,7 @@ export class MilkyApi {
                 {
                     peer: peer.peerUid,
                     seq,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: errorMessage(err),
                 },
                 "milky: msgSeq 反查近段历史失败",
             );
@@ -219,7 +219,16 @@ export class MilkyApi {
 }
 
 /** 通知查找默认搜索数量（单屏全量，OB11 DEFAULT_COUNT 同值）。 */
-const NOTIFY_SEARCH_COUNT = 100;
+export const NOTIFY_SEARCH_COUNT = 100;
+
+/** self.uid 必备（nudge 发送的 callerUid；缺配置报 INVALID_PARAM）。 */
+export function requireSelfUid(api: MilkyApi): string {
+    const uid = api.self.uid;
+    if (uid === undefined || uid === "") {
+        throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
+    }
+    return uid;
+}
 
 /**
  * 按通知 seq 查找群通知（先非可疑后可疑两屏依序，OB11 set_group_add_request
