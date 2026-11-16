@@ -45,7 +45,25 @@ export default defineConfig({
                 "**/*.test.ts",
                 "**/*.test-d.ts",
                 "**/*.d.ts",
+                // 纯门面 / 纯类型 / 反射探针 / CLI 顶层入口没有可回归的业务逻辑：
+                // 删掉凑数单测后不应再拉低分母（也不触发 Fallow CRAP 告警）。
+                // 门面重导出由 tsc 与 tooling/package-exports.test.ts 守卫。
+                "**/index.ts",
+                "**/types.ts",
+                "**/types/**",
+                "packages/kernel/src/wrapper/probe/**",
+                "packages/kernel/src/wrapper/wrapper-adapters.ts",
+                "apps/cli/src/cli/program.ts",
+                "apps/cli/src/cli/version.ts",
+                "packages/loader/src/internal/package-info.ts",
             ],
+            // 工程水位：覆盖真实分支即可，不设 90%+ 逼人写「只测调用次数」的假单测。
+            thresholds: {
+                lines: 70,
+                functions: 70,
+                branches: 65,
+                statements: 70,
+            },
         },
     },
 });

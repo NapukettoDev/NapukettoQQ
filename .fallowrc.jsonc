@@ -162,7 +162,12 @@
         "packages/network/src/**/*.test.ts",
         "packages/media/src/**/*.test.ts",
         "apps/**/*.test.ts",
-        "tooling/**/*.test.ts"
+        "tooling/**/*.test.ts",
+        // 测试目录整体豁免（2026-11 覆盖率门禁降噪）：删掉纯覆盖率凑数单测后，
+        // `__tests__/test-support.ts` / `stub.ts` 中部分导出可能不再被外部引用，
+        // 不豁免会让 CI 的 `fallow audit --base` 增量门禁误报 unused-export /
+        // unused-file。测试支撑不是发布产物，也不参与死代码治理。
+        "**/__tests__/**"
     ],
     // 测试文件豁免大函数检查（fallow 官方推荐）：长 describe/it 块会被误计为
     // ">60 LOC 大函数"，污染 unit size 扣分（unit size = per_k 大函数数 × 0.5）。

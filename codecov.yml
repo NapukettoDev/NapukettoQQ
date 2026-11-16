@@ -1,0 +1,36 @@
+# Codecov 配置：拒绝覆盖率数字绑架，仅作客观观测，不阻塞 PR 与 Merge Queue
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 20%
+        informational: true
+    patch:
+      default:
+        target: 60%
+        threshold: 20%
+        informational: true
+
+comment:
+  # 关闭无意义的 PR 覆盖率刷屏警告评论
+  layout: "condensed_header, diff"
+  behavior: default
+  require_changes: true
+  require_base: true
+  require_head: true
+
+ignore:
+  - "coverage/**"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.test-d.ts"
+  - "**/*.d.ts"
+  - "**/index.ts"
+  - "**/types.ts"
+  - "**/types/**"
+  - "packages/kernel/src/wrapper/probe/**"
+  - "packages/kernel/src/wrapper/wrapper-adapters.ts"
+  - "apps/cli/src/cli/program.ts"

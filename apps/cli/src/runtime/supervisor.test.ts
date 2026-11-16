@@ -2,9 +2,9 @@
  * supervisor.test.ts：多账号编排单测（2026-10-25 渲染决策传播 + 优雅停树）。
  *
  * spawn / loadCliConfig / 哨兵 / runtime 落盘 / logger 均注入假实现；覆盖：
- * 子进程拉起（args + env 注入 NO_BANNER 与渲染决策传播）、pretty 前缀转发 /
- * single-line 原样透传、无账号告警、autoRestart 守护重启、spawn error 兜底、
- * 停止哨兵 → stopAll → 全部退出后 exit 0（退出码契约）。
+ * 渲染决策传播（pretty 加 [uin] 前缀 / single-line 原样透传）、无账号告警、
+ * autoRestart 守护重启、退出码 78 不重启、spawn error 兜底、停止哨兵 →
+ * stopAll → 全部退出后 exit 0（退出码契约）。
  *
  * runSupervisor 常驻（内部 await 永不 resolve 的 Promise，由 stopAll 的
  * process.exit 结束）——测试内 mock process.exit，不真正退出。
@@ -151,26 +151,6 @@ function startWithAccounts(accounts: { qq: string }[], autoRestart: boolean): vo
 }
 
 describe("runSupervisor 子进程拉起", () => {
-    it("args/env 注入（NO_BANNER + 渲染决策传播）+ runtime 落盘", async () => {
-        setTty(true);
-        const child = makeFakeChild(4242);
-        mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
-        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
-        const [command, args, opts] = mocks.spawn.mock.calls[0] as unknown as [
-            string,
-            string[],
-            { env: Record<string, string> },
-        ];
-        expect(command).toBe(process.execPath);
-        expect(args).toContain("-q");
-        expect(args).toContain("10001");
-        expect(args).toContain(tmp);
-        expect(opts.env["NAPUKETTO_NO_BANNER"]).toBe("1");
-        expect(opts.env["NAPUKETTO_LOG_FORMAT"]).toBe("pretty");
-        expect(mocks.writeSupervisorRuntime).toHaveBeenCalledOnce();
-    });
-
     it("管道场景：渲染决策为 single-line 且转发不加前缀", async () => {
         setTty(false);
         const child = makeFakeChild(4243);

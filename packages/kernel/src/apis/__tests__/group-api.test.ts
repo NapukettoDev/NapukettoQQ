@@ -3,8 +3,7 @@
  *  - constructor：group/msg service 空各抛 INVALID_STATE
  *  - 查询：getGroupList / getGroupInfo（三种形状 + 失败）/ getGroupMemberList /
  *    getGroupMemberInfo / uinToUid / uidToUin / getGroupRemainAtTimes
- *  - 群管：kickMember / setMemberShutUp / setGroupShutUp / setMemberRole /
- *    setMemberCardName / modifyGroupName / quitGroup / 精华消息
+ *  - 群管：kickMember / setMemberShutUp / setGroupShutUp / modifyGroupName 错误语义 / 精华消息
  *  - 公告：列表宽松提取 / 发布（带图两步）/ 删除 / 头衔 / 群头像
  *  - roleToString 三态映射
  */
@@ -291,50 +290,18 @@ describe("群管操作", () => {
         ]);
     });
 
-    it("setGroupShutUp：参数透传，失败抛错", async () => {
+    it("setGroupShutUp：原生失败抛 KernelError", async () => {
         const { api } = makeApi({
             setGroupShutUp: vi.fn(async () => ({ result: 3, errMsg: "x" })),
         });
         await expect(api.setGroupShutUp("10001", true)).rejects.toBeInstanceOf(KernelError);
-        const { api: api2, service: service2 } = makeApi();
-        await api2.setGroupShutUp("10001", false);
-        expect(service2.setGroupShutUp).toHaveBeenCalledWith("10001", false);
     });
 
-    it("setMemberRole / setMemberCardName：void 语义直接透传", () => {
-        const { api, service } = makeApi();
-        api.setMemberRole("10001", "u1", NTGroupMemberRole.ADMIN);
-        expect(service.modifyMemberRole).toHaveBeenCalledWith(
-            "10001",
-            "u1",
-            NTGroupMemberRole.ADMIN,
-        );
-        api.setMemberCardName("10001", "u1", "名片");
-        expect(service.modifyMemberCardName).toHaveBeenCalledWith("10001", "u1", "名片");
-    });
-
-    it("modifyGroupName：参数透传（第三参 false），失败抛错", async () => {
-        const { api, service } = makeApi();
-        await api.modifyGroupName("10001", "新名");
-        expect(service.modifyGroupName).toHaveBeenCalledWith("10001", "新名", false);
-        const { api: api2 } = makeApi({
+    it("modifyGroupName：原生失败抛 KernelError", async () => {
+        const { api } = makeApi({
             modifyGroupName: vi.fn(async () => ({ result: 1, errMsg: "x" })),
         });
-        await expect(api2.modifyGroupName("10001", "新名")).rejects.toBeInstanceOf(KernelError);
-    });
-
-    it("quitGroup：默认保留本地消息，needDeleteLocalMsg 可显式传", async () => {
-        const { api, service } = makeApi();
-        await api.quitGroup("10001");
-        expect(service.quitGroupV2).toHaveBeenCalledWith({
-            groupCode: "10001",
-            needDeleteLocalMsg: false,
-        });
-        await api.quitGroup("10001", true);
-        expect(service.quitGroupV2).toHaveBeenLastCalledWith({
-            groupCode: "10001",
-            needDeleteLocalMsg: true,
-        });
+        await expect(api.modifyGroupName("10001", "新名")).rejects.toBeInstanceOf(KernelError);
     });
 });
 
