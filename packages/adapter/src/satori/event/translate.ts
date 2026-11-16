@@ -15,7 +15,7 @@ import { collectGrayTipUids } from "../../shared/gray-tip.js";
 import { toUnixSeconds } from "../../shared/raw-message.js";
 import { MS_TO_SEC, toUinString } from "../../shared/uid-uin.js";
 import { type SatoriTranslateDeps, toSatoriMessage, toUser } from "../helper/index.js";
-import type { Channel, Guild, GuildMember, Message, User } from "../types/resource.js";
+import type { Channel, Guild, GuildMember, Message, User } from "../types/index.js";
 
 /** 事件内容（不含 sn/login，由 adapter 包一层完整 Event）。 */
 export interface SatoriEventContent {

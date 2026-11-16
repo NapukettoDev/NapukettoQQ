@@ -117,7 +117,10 @@ describe("loadCliConfigWithSource 优先级矩阵", () => {
         const cfgPath = join(tmp, "napuketto.toml");
         process.env["NAPKETTO_CONFIG_JSON"] = JSON.stringify(inlineDoc("10086"));
         process.env["NAPKETTO_CONFIG"] = cfgPath;
-        const { config, source, path } = await loadCliConfigWithSource({ dataDir: tmp });
+        const { config, source, path } = await loadCliConfigWithSource({
+            dataDir: tmp,
+            onInfo: mocks.logger.info,
+        });
         expect(source).toBe("inline");
         expect(config.accounts[0]?.qq).toBe("10086");
         expect(path).toBeUndefined();

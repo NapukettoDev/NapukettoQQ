@@ -7,7 +7,7 @@
 import { ChatType, type RawMessage, toCanonicalElements } from "@napuketto/kernel";
 import { toUnixSeconds } from "../../shared/raw-message.js";
 import { MS_TO_SEC } from "../../shared/uid-uin.js";
-import type { Channel, Message } from "../types/resource.js";
+import type { Channel, Message } from "../types/index.js";
 import { canonicalToSatoriElements } from "./element/canonical.js";
 import { renderElements } from "./element/element.js";
 import { toDirectChannel, toGroupChannel, toGuild, toUser } from "./ids.js";

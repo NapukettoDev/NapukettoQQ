@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { ActionRegistry } from "../../core/framework/action-registry.js";
+import { ActionRegistry } from "../../core/index.js";
 import type { SatoriApi } from "../api/satori-api.js";
 import { defineSatoriAction, SatoriActionError, type SatoriActionHandler } from "./base-action.js";
 import { createChannelActions } from "./channel.js";
@@ -21,6 +21,8 @@ import { createUserActions } from "./user.js";
 export interface SatoriActionDeps {
     api: SatoriApi;
 }
+
+export { SatoriActionError } from "./base-action.js";
 
 /** QQ 平台不支持的 Satori 标准动作（501）。 */
 const NOT_IMPLEMENTED = [

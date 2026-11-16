@@ -7,10 +7,9 @@
  *   T3 单步超时兜底——底层 promise 永久挂起时按登录失败抛出）
  */
 
-import { kernelError } from "../infra/index.js";
+import { kernelError, sleep, waitFor } from "../infra/index.js";
 import { createLoginListener } from "../wrapper/wrapper-adapters.js";
 import type { WrapperContext } from "../wrapper/wrapper-loader.js";
-import { sleep, waitFor } from "./wait.js";
 
 /** 登录结果（QR 或快速登录）。 */
 export interface LoginResult {

@@ -6,10 +6,12 @@
  * echo 透传）两个入口；执行骨架走 core runAction（zod safeParse → 执行 →
  * isKernelError 统一映射，映射表收拢为本文件 ob11ErrorCodeMap）。
  */
-import { kernelError } from "@napuketto/kernel";
+import { ChatType, kernelError, type Peer, type RawMessage } from "@napuketto/kernel";
 import type { ZodType } from "zod";
 import type { ErrorCodeMap } from "../../core/index.js";
 import { runAction } from "../../core/index.js";
+import type { MessageUnique } from "../helper/message-unique.js";
+import { resolveMsgIdAndPeer } from "../helper/message-unique.js";
 
 /** 校验失败 retcode：HTTP 入口。 */
 const INVALID_RETCODE_HTTP = 400;
@@ -94,4 +96,40 @@ export async function resolveUid(
         throw kernelError(`用户 ${uin} 的 uid 解析失败`, "INVALID_PARAM");
     }
     return uid;
+}
+
+/** 解析目标 Peer（group_id 直通；user_id 经 uin→uid）。 */
+export async function resolveTargetPeer(
+    payload: { group_id?: number | undefined; user_id?: number | undefined },
+    deps: { uinToUid: (uins: string[]) => Promise<Map<string, string>> },
+    missingHint: string,
+): Promise<Peer> {
+    if (payload.group_id !== undefined) {
+        return { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
+    }
+    if (payload.user_id !== undefined) {
+        return {
+            chatType: ChatType.C2C,
+            peerUid: await resolveUid(String(payload.user_id), deps.uinToUid),
+        };
+    }
+    throw kernelError(missingHint, "INVALID_PARAM");
+}
+
+/**
+ * 按 message_id（OB11 int32 或 NT msgId）拉取单条消息。
+ * 消息不存在/已被撤回 → 抛 KernelError NOT_FOUND。
+ */
+export async function fetchMsgById(
+    messageId: number | string,
+    messageUnique: MessageUnique,
+    msgApi: { fetchMsgsByMsgId: (peer: Peer, msgIds: string[]) => Promise<RawMessage[]> },
+): Promise<{ msg: RawMessage; peer: Peer; msgId: string }> {
+    const { msgId, peer } = resolveMsgIdAndPeer(messageId, messageUnique);
+    const msgs = await msgApi.fetchMsgsByMsgId(peer, [msgId]);
+    const [msg] = msgs;
+    if (msg === undefined) {
+        throw kernelError(`消息 ${messageId} 不存在或已被撤回`, "NOT_FOUND");
+    }
+    return { msg, peer, msgId };
 }

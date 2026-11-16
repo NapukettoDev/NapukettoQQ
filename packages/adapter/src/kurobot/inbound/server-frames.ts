@@ -4,7 +4,6 @@
  * 共享状态在 session.ts。
  */
 import { ChatType, errorMessage } from "@napuketto/kernel";
-import type { KurobotMsgApi } from "../adapter.js";
 import type { KurobotConfig } from "../config.js";
 import type { KurobotConnectionOptions, ServerEventMessage } from "../connection.js";
 import type { KurobotSession } from "../session.js";
@@ -14,6 +13,7 @@ import {
     renderTemplate,
     truncateForGroup,
 } from "../translate.js";
+import type { KurobotMsgApi } from "../types.js";
 
 export interface KurobotServerFrameDeps {
     msgApi: KurobotMsgApi;

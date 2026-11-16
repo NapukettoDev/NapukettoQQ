@@ -17,9 +17,9 @@ import {
     type SysMsgRecognition,
 } from "../../shared/sysmsg.js";
 import { MS_TO_SEC } from "../../shared/uid-uin.js";
+import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { OB11NoticeEvent } from "../event/index.js";
-import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 import { recognizeOb11SysMsg } from "../helper/sysmsg.js";
 import type { Ob11InboundEssence } from "./essence.js";
 

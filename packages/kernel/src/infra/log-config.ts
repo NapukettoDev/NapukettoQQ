@@ -13,7 +13,9 @@
  *     渲染决策用；toml 不暴露此键）
  */
 import { kernelError } from "./errors.js";
-import type { LogLevel } from "./logger.js";
+
+/** 日志级别（pino 标准级别 + silent）。 */
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
 
 /** 控制台输出格式。 */
 export type LogFormat = "pretty" | "single-line" | "json";

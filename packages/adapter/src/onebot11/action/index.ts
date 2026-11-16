@@ -30,6 +30,7 @@ import { createSystemFileActions } from "./system/file.js";
 import { createSystemInfoActions } from "./system/info.js";
 import { createSystemStatusActions } from "./system/status.js";
 
+export type { ActionResult, Ob11Action } from "./base-action.js";
 export { ob11ErrorCodeMap, resolveUid } from "./base-action.js";
 export type { AtAllRemainInfo } from "./group/query.js";
 

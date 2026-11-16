@@ -20,8 +20,8 @@ import {
 import { logEventFailure, truncRaw } from "../../shared/log.js";
 import { startupBaselineSec } from "../../shared/startup-cutoff.js";
 import type { RequestTranslateContext } from "../../shared/uid-uin.js";
+import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
-import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
 import { toOb11FriendRequestEvent, toOb11GroupRequestEvent } from "../helper/request.js";
 
 /** 请求域处理装配参数（event-pipeline 注入；enrich 为共享实例）。 */

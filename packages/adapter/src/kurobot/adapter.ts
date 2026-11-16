@@ -7,8 +7,8 @@
  * session.ts。纯客户端出向协议，不发协议事件给 network 广播器。
  */
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
-import type { CanonicalElement, MsgEventChannel, Peer } from "@napuketto/kernel";
+import { readFileSync } from "node:fs";
+import type { MsgEventChannel } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
 import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
 import type { KurobotConfig } from "./config.js";
@@ -20,22 +20,10 @@ import { KurobotServerFrameHandler } from "./inbound/server-frames.js";
 import type { StatusBody } from "./schema.js";
 import { PROTOCOL_VERSION } from "./schema.js";
 import { KurobotSession } from "./session.js";
+import type { KurobotConnFace, KurobotMsgApi, ReceiveLogFilterHolder } from "./types.js";
 
-/** 发群消息最小面（kernel MsgApi.sendMessage 的结构子集，便于测试桩替换）。 */
-export interface KurobotMsgApi {
-    sendMessage(target: Peer, elements: CanonicalElement[]): Promise<{ msgId: string }>;
-}
-
-/** 接收行绑定过滤 holder（loader ReceiveLogFilter 同构契约）。 */
-export interface ReceiveLogFilterHolder {
-    current: ((peerUin: string, isGroup: boolean) => boolean) | null;
-}
-
-/** 连接出口面（adapter 持有连接生命周期；未建立连接时 send 恒 false / established 恒 false）。 */
-export interface KurobotConnFace {
-    send: (frame: { type: string; body: unknown; id?: string }) => boolean;
-    isEstablished: () => boolean;
-}
+// 契约再导出（保持 adapter.ts 既有导入坐标不变）：三型同时由协议 barrel 对外导出。
+export type { KurobotConnFace, KurobotMsgApi, ReceiveLogFilterHolder } from "./types.js";
 
 /** 适配器构造参数。 */
 export interface KurobotAdapterOptions {
@@ -200,8 +188,11 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
 /** best-effort 读取 adapter 包版本（dist 与 src 双布局相对包根一致；失败 debug 留痕）。 */
 function resolvePackageVersion(log?: KurobotLogger): string | null {
     try {
-        const require = createRequire(import.meta.url);
-        const pkg = require("../../package.json") as { version?: unknown };
+        const pkg = JSON.parse(
+            readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+        ) as {
+            version?: unknown;
+        };
         if (typeof pkg.version === "string" && pkg.version !== "") {
             return pkg.version;
         }

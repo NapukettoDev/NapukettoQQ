@@ -16,8 +16,7 @@ import {
     toOb11MessageInfo,
 } from "../../helper/index.js";
 import type { OB11MessageInfo } from "../../types/index.js";
-import { defineOb11Action, type Ob11Action, resolveUid } from "../base-action.js";
-import { fetchMsgById } from "./resolve-peer.js";
+import { defineOb11Action, fetchMsgById, type Ob11Action, resolveUid } from "../base-action.js";
 
 const getMsgSchema = z.object({
     message_id: z.union([z.number(), z.string()]),

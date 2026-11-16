@@ -6,8 +6,7 @@
  * 返回停止函数（进程退出时清理）。
  */
 
-import type { KernelServices } from "../core/kernel-services.js";
-import type { CoreLike } from "../types.js";
+import type { CoreLike, KernelServices } from "../types.js";
 import {
     createIpcActions,
     type IpcActionHandler,

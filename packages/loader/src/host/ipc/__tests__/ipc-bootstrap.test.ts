@@ -11,7 +11,7 @@
  * "Service/method" 拆分、无斜杠兜底、onAny 缺失跳过、stop 退订。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { KernelServices } from "../../core/kernel-services.js";
+import type { KernelServices } from "../../types.js";
 import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../ipc-actions.js";
 import { attachIpcServices, createIpcActionsForCore } from "../ipc-bootstrap.js";
 

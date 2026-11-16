@@ -11,7 +11,7 @@ import type {
     GroupMember,
     GroupNotify,
     ShutUpGroupMember,
-} from "../services/group-service.js";
+} from "../services/index.js";
 
 /** 群列表更新类型（说明书参考，值待探测校准）。 */
 export const GroupListUpdateType = {

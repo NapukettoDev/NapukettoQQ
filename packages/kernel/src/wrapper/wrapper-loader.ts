@@ -453,3 +453,48 @@ export interface StartNapukettoOptions {
     /** QQ 的 loginService 实例（boot.cjs 拦截 new 捕获）。 */
     qqLoginService?: unknown;
 }
+
+/**
+ * 加载 wrapper.node 原生模块并校验核心导出（自建宿主引导原语，2026-11 从
+ * loader self-host.ts 下沉：原生 `dlopen` 是 kernel 的唯一原生层职责，loader
+ * 只编排流程）。
+ *
+ * @param wrapperPath wrapper.node 绝对路径（QQ 安装目录 / 缓存文件根）
+ * @returns NAPI exports（含 NodeIKernelLoginService 等构造器）
+ * @throws KernelError exports 缺 NodeIKernelLoginService（stub 环境异常）或 dlopen 失败
+ */
+export function dlopenWrapper(wrapperPath: string): Record<string, unknown> {
+    // { exports: {} } 是 process.dlopen 的最小载体（wrapper 向其中填充 NAPI exports）
+    const m: { exports: Record<string, unknown> } = { exports: {} };
+    process.dlopen(m as object, wrapperPath);
+    const keys = Object.keys(m.exports ?? {});
+    if (!keys.includes("NodeIKernelLoginService")) {
+        throw kernelError("exports 无 NodeIKernelLoginService（stub 环境异常？）", "INVALID_STATE");
+    }
+    return m.exports;
+}
+
+/**
+ * 激活自建宿主 O3MiscService 事件分发（三要素之二，V6 实测决定性）：
+ * 不激活则 getLoginList 永不 resolve（挂起）。listener 用普通对象
+ * （getOnAmgomDataPiece 空实现，wrapper 契约回调）。
+ *
+ * @param wrapperExports dlopen 产出的 exports（缺失/版本变化时返回 false）
+ * @returns 是否成功激活
+ */
+export function activateO3MiscService(
+    wrapperExports: Record<string, unknown> | undefined,
+): boolean {
+    const O3 = wrapperExports?.["NodeIO3MiscService"] as
+        | { get?(): { addO3MiscListener(listener: unknown): void } }
+        | undefined;
+    if (O3 && typeof O3.get === "function") {
+        O3.get().addO3MiscListener({
+            getOnAmgomDataPiece() {
+                // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
+            },
+        });
+        return true;
+    }
+    return false;
+}

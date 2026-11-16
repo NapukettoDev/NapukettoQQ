@@ -2,15 +2,9 @@
  * OB11 收链路订阅接线板：管理 unsubscribes 与 kernel 频道 → 领域处理器路由；
  * 域处理在 inbound/，异步回填在 enrichment.ts。
  */
-import type {
-    BuddyCacheEventChannel,
-    BuddyEventChannel,
-    GroupEventChannel,
-    MsgEventChannel,
-} from "@napuketto/kernel";
-import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
+import { logEventFailure } from "../shared/log.js";
 import { subscribeRawMessages } from "../shared/raw-message.js";
-import type { OneBotApi } from "./api/onebot-api.js";
+import type { Ob11EventPipelineDeps } from "./api/onebot-api.js";
 import { Ob11Enrichment } from "./enrichment.js";
 import type { OB11Config } from "./helper/index.js";
 import { Ob11InboundEssence } from "./inbound/essence.js";
@@ -19,16 +13,7 @@ import { Ob11InboundMessage } from "./inbound/message.js";
 import { Ob11InboundRequest } from "./inbound/request.js";
 import { Ob11InboundSysMsg } from "./inbound/sysmsg.js";
 
-export interface Ob11EventPipelineDeps {
-    selfUin: string;
-    api: OneBotApi;
-    broadcast: (event: unknown) => void;
-    logger?: AdapterLoggerLike | undefined;
-    msgChannel: MsgEventChannel;
-    groupChannel?: GroupEventChannel | undefined;
-    friendChannel?: BuddyEventChannel | undefined;
-    buddyCacheEvents?: BuddyCacheEventChannel | undefined;
-}
+export type { Ob11EventPipelineDeps } from "./api/onebot-api.js";
 
 export class Ob11EventPipeline {
     private readonly deps: Ob11EventPipelineDeps;

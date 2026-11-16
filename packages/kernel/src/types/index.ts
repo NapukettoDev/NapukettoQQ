@@ -5,6 +5,12 @@
  * 子域类型（listeners / services，各有独立 barrel）。
  * 全部类型为运行时探测产物（packages/kernel/scripts/probe/），非拍脑袋定义。
  */
+
+export {
+    picLocalCandidates,
+    toCanonicalElements,
+    toSendElements,
+} from "../codec/message-element.js";
 export type {
     FaceElement,
     FileElement,
@@ -35,7 +41,6 @@ export type {
 } from "./listeners/index.js";
 export { GroupListUpdateType, GroupMemberDataSource } from "./listeners/index.js";
 export type { CanonicalElement } from "./message-element.js";
-export { toCanonicalElements, toSendElements } from "./message-element.js";
 export type {
     BuddyCategory,
     BuddyCoreInfo,

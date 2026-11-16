@@ -3,9 +3,8 @@
  * 公共面：类型 + 动作注册表 + 配置 schema + 传输装配 + 适配器。
  */
 
-export { SatoriActionError } from "./action/base-action.js";
 export type { SatoriActionDeps } from "./action/index.js";
-export { createSatoriActionRegistry } from "./action/index.js";
+export { createSatoriActionRegistry, SatoriActionError } from "./action/index.js";
 export type { SatoriAdapterOptions } from "./adapter.js";
 export { NapukettoSatoriAdapter } from "./adapter.js";
 export type { SatoriApiOptions } from "./api/satori-api.js";

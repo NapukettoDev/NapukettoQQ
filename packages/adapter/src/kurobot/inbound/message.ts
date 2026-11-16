@@ -8,11 +8,11 @@
 import { randomUUID } from "node:crypto";
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType } from "@napuketto/kernel";
-import type { KurobotConnFace } from "../adapter.js";
 import type { KurobotConfig } from "../config.js";
 import type { KurobotConnectionOptions } from "../connection.js";
 import type { KurobotSession } from "../session.js";
 import { degradeMessage, resolveSenderName } from "../translate.js";
+import type { KurobotConnFace } from "../types.js";
 
 /** 消息域处理装配参数（adapter 注入）。 */
 export interface KurobotMessageHandlerDeps {

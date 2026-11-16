@@ -8,11 +8,11 @@ import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
 import { senderNickname, toUnixSeconds } from "../../shared/raw-message.js";
 import type {
+    GroupSender,
     OB11GroupMessageEvent,
     OB11MessageEvent,
     OB11PrivateMessageEvent,
 } from "../event/index.js";
-import type { GroupSender } from "../event/message.js";
 import type { Sender } from "../types/index.js";
 import {
     applyReceiveContext,

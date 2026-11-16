@@ -3,7 +3,12 @@
  * 公共面：镜像协议 schema + 配置 schema + 连接层 + 适配器。
  */
 
-export type { KurobotAdapterOptions, KurobotMsgApi } from "./adapter.js";
+export type {
+    KurobotAdapterOptions,
+    KurobotConnFace,
+    KurobotMsgApi,
+    ReceiveLogFilterHolder,
+} from "./adapter.js";
 export { NapukettoKurobotAdapter } from "./adapter.js";
 export type { KurobotConfig } from "./config.js";
 export { kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";

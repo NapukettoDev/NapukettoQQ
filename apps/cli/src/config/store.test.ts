@@ -149,7 +149,9 @@ describe("loadCliConfigWithSource 文件形态补充", () => {
     it("文件缺失 → ensureConfigTemplate 生成模板（落盘）再解析报 ConfigError（占位号在 cause）", async () => {
         const configPath = join(tmp, "napuketto.toml");
         process.env["NAPKETTO_CONFIG"] = configPath;
-        await expect(loadCliConfigWithSource({ dataDir: tmp })).rejects.toThrow(/配置文件校验失败/);
+        await expect(
+            loadCliConfigWithSource({ dataDir: tmp, onInfo: mocks.logger.info }),
+        ).rejects.toThrow(/配置文件校验失败/);
         // 模板已生成（首次启动自动落盘），内容含占位账号与引导注释
         expect(existsSync(configPath)).toBe(true);
         const generated = readFileSync(configPath, "utf8");

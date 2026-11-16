@@ -16,9 +16,13 @@ import { z } from "zod";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { toOb11MessageInfo } from "../../helper/index.js";
 import { type MessageUnique, resolveMsgIdAndPeer } from "../../helper/message-unique.js";
-import { defineOb11Action, type Ob11Action, resolveUid } from "../base-action.js";
+import {
+    defineOb11Action,
+    type Ob11Action,
+    resolveTargetPeer,
+    resolveUid,
+} from "../base-action.js";
 import { MAX_FORWARD_NODES } from "../limits.js";
-import { resolveTargetPeer } from "./resolve-peer.js";
 
 const forwardNodeSchema = z.object({
     type: z.literal("node").optional(),

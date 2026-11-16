@@ -16,6 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { errorMessage, kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
@@ -85,7 +86,6 @@ async function downloadImageToCache(
         return null;
     }
     const mediaDir = join(cacheDir, "media");
-    const { mkdir } = await import("node:fs/promises");
     await mkdir(mediaDir, { recursive: true });
     const dest = join(mediaDir, `${randomUUID()}${inferExtension(null, url)}`);
     try {

@@ -17,9 +17,8 @@ import { ensureSilk, prepareVideoElements } from "../../../shared/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
 import type { OB11MessageSegment } from "../../types/index.js";
-import { defineOb11Action, type Ob11Action } from "../base-action.js";
+import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
-import { resolveTargetPeer } from "./resolve-peer.js";
 
 const sendMsgSchema = z.object({
     message_type: z.enum(["group", "private"]).optional(),

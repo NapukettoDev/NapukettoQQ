@@ -5,9 +5,10 @@
  * 全量替换；空集 = 全部不发）、pending 命令/查询表（UUID 关联）、最近 status
  * 快照与接收行绑定过滤 holder 同步。生命周期由 adapter 协调。
  */
-import type { ReceiveLogFilterHolder } from "./adapter.js";
+
 import type { KurobotConnectionOptions } from "./connection.js";
 import type { StatusBody } from "./schema.js";
+import type { ReceiveLogFilterHolder } from "./types.js";
 
 /** 会话状态装配参数（adapter 注入）。 */
 export interface KurobotSessionDeps {

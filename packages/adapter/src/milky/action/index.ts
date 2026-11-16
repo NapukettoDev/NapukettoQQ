@@ -19,6 +19,8 @@ import { createProfileActions } from "./profile.js";
 import { createSocialActions } from "./social.js";
 import { createSystemActions } from "./system.js";
 
+export type { MilkyAction } from "./base-action.js";
+
 /** Milky 动作域工厂（注册顺序即列表顺序：system → message → social/profile → group）。 */
 const ACTION_FACTORIES: Array<(api: MilkyApi) => MilkyAction[]> = [
     createSystemActions,

@@ -9,11 +9,15 @@
  */
 
 import type {
+    BuddyCacheEventChannel,
+    BuddyEventChannel,
     FlashTransferApi,
     FriendApi,
     GroupCache,
+    GroupEventChannel,
     GroupNotifyApi,
     MsgApi,
+    MsgEventChannel,
     ProfileApi,
     ProfileLikeApi,
     RichMediaApi,
@@ -24,6 +28,22 @@ import { errorMessage, GroupApi } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../../shared/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
+
+/**
+ * 事件管道装配依赖（从 event-pipeline.ts 下沉）。
+ *
+ * inbound/* 处理器只需本契约，无需反向 import `event-pipeline.ts`（切断类型环）。
+ */
+export interface Ob11EventPipelineDeps {
+    selfUin: string;
+    api: OneBotApi;
+    broadcast: (event: unknown) => void;
+    logger?: AdapterLoggerLike | undefined;
+    msgChannel: MsgEventChannel;
+    groupChannel?: GroupEventChannel | undefined;
+    friendChannel?: BuddyEventChannel | undefined;
+    buddyCacheEvents?: BuddyCacheEventChannel | undefined;
+}
 
 /** 系统类本地回调（get_version_info / clean_cache / download_file / 进程控制用）。 */
 export interface OneBotSystemOptions {

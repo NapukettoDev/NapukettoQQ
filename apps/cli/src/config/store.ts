@@ -11,7 +11,6 @@ import { access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ConfigSchema } from "@napuketto/kernel";
 import { ConfigBase, resolveConfigPath, resolveDataRoot } from "@napuketto/kernel";
-import { logger } from "../logger.js";
 import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "./inline.js";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 import { configTemplate } from "./template.js";
@@ -27,14 +26,24 @@ export function defaultCliConfig(dataRoot: string): CliConfig {
     };
 }
 
+/** 配置加载日志回调（注入式：store 不 import logger，避免 config <-> logger 双向值依赖）。 */
+export type ConfigInfoLogger = (msgOrObj: unknown, msg?: string) => void;
+
+/** loadCliConfigWithSource 选项。 */
+export interface LoadCliConfigOptions {
+    dataDir?: string;
+    /** 来源/模板落盘提示（调用方传 logger.info；缺省静默）。 */
+    onInfo?: ConfigInfoLogger;
+}
+
 /** 配置文件缺失 → 生成带注释模板（首次启动自动生成默认配置）。 */
-async function ensureConfigTemplate(path: string): Promise<void> {
+async function ensureConfigTemplate(path: string, onInfo?: ConfigInfoLogger): Promise<void> {
     try {
         await access(path);
     } catch {
         mkdirSync(dirname(path), { recursive: true });
         await writeFile(path, `${configTemplate()}\n`, "utf8");
-        logger.info({ path }, "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）");
+        onInfo?.({ path }, "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）");
     }
 }
 
@@ -51,9 +60,9 @@ export class CliConfigStore extends ConfigBase<CliConfig> {
 }
 
 /** 读取主配置（缺失自动落模板；loadCliConfigWithSource 文件分支内部用）。 */
-async function loadCliConfig(dataRoot: string): Promise<CliConfig> {
+async function loadCliConfig(dataRoot: string, onInfo?: ConfigInfoLogger): Promise<CliConfig> {
     const store = new CliConfigStore(dataRoot);
-    await ensureConfigTemplate(store.path);
+    await ensureConfigTemplate(store.path, onInfo);
     return await store.load();
 }
 
@@ -93,17 +102,17 @@ let sourceLogged = false;
  * 同为 ConfigError（exit 78），文案区别只在来源标注。
  */
 export async function loadCliConfigWithSource(
-    opts: { dataDir?: string } = {},
+    opts: LoadCliConfigOptions = {},
 ): Promise<LoadedCliConfig> {
     const resolved = resolveCliConfigSource(opts);
     if (resolved.source === "inline") {
         const config = parseInlineConfig(resolved.text);
         if (!sourceLogged) {
             sourceLogged = true;
-            logger.info("配置来源: inline（NAPKETTO_CONFIG_JSON）");
+            opts.onInfo?.("配置来源: inline（NAPKETTO_CONFIG_JSON）");
         }
         return { config, source: "inline" };
     }
-    const config = await loadCliConfig(resolved.dataRoot);
+    const config = await loadCliConfig(resolved.dataRoot, opts.onInfo);
     return { config, source: "file", path: resolved.path };
 }

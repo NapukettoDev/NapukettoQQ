@@ -3,10 +3,10 @@
  *
  * - resolveAsset：internal: 路径 / http(s) 下载 / 本地路径原样
  * - ensureSilk 已上移到 adapter core（core/media.ts，onebot11/satori 共用）
+ * - 下载落盘统一走 shared/media.ts 的 downloadBufferToFile（异步 I/O 单一入口）
  */
-import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { kernelError } from "@napuketto/kernel";
+import { downloadBufferToFile } from "../../../shared/media.js";
 
 /** internal:{platform}/{user.id}/{path} → 本地路径（取 _tmp 之后的路径，回落 cacheDir）。 */
 function resolveInternalPath(src: string): string {
@@ -45,15 +45,7 @@ export async function resolveAsset(src: string, cacheDir: string): Promise<strin
 
 /** 下载 URL 资源到缓存目录（返回本地路径）。 */
 async function downloadAsset(url: string, cacheDir: string): Promise<string> {
-    await mkdir(cacheDir, { recursive: true });
-    const res = await fetch(url);
-    if (!res.ok) {
-        throw kernelError(`下载资源失败: ${url}`, "SEND_FAILED");
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
     const rawName = url.split("/").pop() ?? `asset-${Date.now()}`;
     const safeName = rawName.replace(UNSAFE_NAME_RE, "_") || `asset-${Date.now()}`;
-    const filePath = join(cacheDir, safeName);
-    await writeFile(filePath, buf);
-    return filePath;
+    return await downloadBufferToFile(url, join(cacheDir, safeName), undefined, "下载资源失败");
 }

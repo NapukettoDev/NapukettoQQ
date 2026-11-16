@@ -129,6 +129,10 @@ if (!wrapperPath) {
 }
 
 // 1. dlopen wrapper.node（stub QQNT.dll 转发 napi_*/uv_* → node.exe，标准 node 可注册）
+//    原生 dlopen/O3 契约的权威原语在 @napuketto/kernel
+//    （dlopenWrapper / activateO3MiscService，经 kernel index 导出）：本文件是
+//    被 spawn 的 CJS 引导入口，loader 编译期仅依赖 zod，无法静态 import kernel，
+//    故此处保留同步内联实现（行为与原语一致），供没有 kernel 模块可加载的极早期阶段使用。
 log(`[self-host] dlopen wrapper.node: ${wrapperPath}`);
 if (ipcMode) {
     sendStatus("dlopening");
