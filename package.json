@@ -24,6 +24,7 @@
         "check:docs": "node tooling/check-docs.ts",
         "fix": "biome check --write . && tsc --noEmit && pnpm check:docs",
         "test": "vitest run",
+        "test:quiet": "vitest run --reporter=dot --silent",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
