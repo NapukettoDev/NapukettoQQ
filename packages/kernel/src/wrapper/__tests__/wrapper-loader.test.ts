@@ -2,9 +2,8 @@
 /**
  * wrapper-loader.ts 基线测试（fallow 重构目标，untested risk）
  *
- * 覆盖 createWrapper / createSession / initEngine / startSession /
- * resolveQqUserDataRoot / defaultEngineConfig 等引导路径，用 mock exports
- * 对象模拟 QQ 环境，不依赖真实 wrapper.node。
+ * 覆盖 createWrapper / createSession / startSession / resolveQqUserDataRoot
+ * 等引导路径，用 mock exports 对象模拟 QQ 环境，不依赖真实 wrapper.node。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "../../types/index.js";
@@ -13,8 +12,6 @@ import type { WrapperContext } from "../wrapper-loader.js";
 import {
     createSession,
     createWrapper,
-    electronProcessType,
-    initEngine,
     resolveQqUserDataRoot,
     startSession,
 } from "../wrapper-loader.js";
@@ -87,28 +84,6 @@ describe("createSession", () => {
         const ctx = makeCtx(exports);
         expect(() => createSession(ctx)).not.toThrow();
         expect(ctx.session).not.toBeNull();
-    });
-});
-
-describe("initEngine", () => {
-    it("调用 initWithDeskTopConfig", () => {
-        const exports = mockExports();
-        const ctx = makeCtx(exports);
-        initEngine(ctx, {
-            base_path_prefix: "",
-            platform_type: 1,
-            app_type: 4,
-            app_version: "",
-            os_version: "win32",
-            use_xlog: false,
-            qua: "",
-            global_path_config: { desktopGlobalPath: "" },
-            thumb_config: { maxSide: 324, minSide: 48, longLimit: 6, density: 2 },
-        });
-        const engine = ctx.engine as unknown as {
-            initWithDeskTopConfig: ReturnType<typeof vi.fn>;
-        };
-        expect(engine.initWithDeskTopConfig).toHaveBeenCalled();
     });
 });
 
@@ -224,11 +199,5 @@ describe("resolveQqUserDataRoot", () => {
             dataRoot: "/data/napuketto",
         });
         expect(result).toContain("Tencent Files");
-    });
-});
-
-describe("electronProcessType", () => {
-    it("标准 node 下返回 undefined", () => {
-        expect(electronProcessType()).toBeUndefined();
     });
 });

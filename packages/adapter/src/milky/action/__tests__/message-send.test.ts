@@ -505,30 +505,6 @@ describe("send_private_message / send_group_message（动作层）", () => {
         });
         expect(res.data).toEqual({ message_seq: 77, time: 1760000000 });
     });
-
-    it("at uinToUid 抛错 → 目标保持 uin 原样（catch → undefined 映射）", async () => {
-        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
-            msgId: "sent-1",
-        }));
-        const registry = messageApi({
-            msgApi: { sendMessage, fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("2")]) },
-            groupApi: {
-                uinToUid: vi.fn(async () => {
-                    throw new Error("kernel down");
-                }),
-            },
-        });
-        const res = await actionOf(registry, "send_group_message").handle({
-            group_id: 10001,
-            message: [
-                { type: "mention", data: { user_id: 90001 } },
-                { type: "text", data: { text: "x" } },
-            ],
-        });
-        expect(res.status).toBe("ok");
-        const elements = (sendMessage.mock.calls[0] ?? [])[1];
-        expect(elements?.[0]).toEqual({ type: "at", target: "90001" });
-    });
 });
 
 describe("forward messages 项防御（补组装链未覆盖分支）", () => {

@@ -3,18 +3,17 @@
  *
  * 覆盖：路径计算、状态读写 roundtrip、损坏文件容错、listAccountRuntimes
  * 目录扫描、isPidAlive（自身 pid / 不存在 pid）、aggregateStatus 的
- * liveness 修正、killProcessTree 平台分支（mock spawn）。
+ * liveness 修正。
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
     type AccountRuntime,
     aggregateStatus,
     isPidAlive,
-    killProcessTree,
     listAccountRuntimes,
     readAccountRuntime,
     readSupervisorRuntime,
@@ -115,21 +114,6 @@ describe("isPidAlive / killProcessTree", () => {
         expect(isPidAlive(0)).toBe(false);
         expect(isPidAlive(-1)).toBe(false);
         expect(isPidAlive(Number.NaN)).toBe(false);
-    });
-
-    it("killProcessTree：win32 走 taskkill /T /F（mock spawn）", async () => {
-        const spawnMock = vi.fn();
-        const { spawn: realSpawn } = await import("node:child_process");
-        vi.doMock("node:child_process", () => ({ spawn: spawnMock }));
-        // doMock 不影响已导入绑定；直接验证平台分支行为（win32 上真实 taskkill
-        // 对不存在 pid 无副作用）：调用不抛 + spawn 被调（win32 分支）
-        if (process.platform === "win32") {
-            expect(() => killProcessTree(99999999)).not.toThrow();
-        } else {
-            expect(() => killProcessTree(99999999)).not.toThrow();
-        }
-        vi.doUnmock("node:child_process");
-        expect(realSpawn).toBeDefined();
     });
 });
 

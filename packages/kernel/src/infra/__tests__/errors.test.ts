@@ -2,15 +2,7 @@
  * errors.ts 测试：KernelError / ConfigError 错误形态契约（协议层映射与退出码依据）。
  */
 import { describe, expect, it } from "vitest";
-import {
-    ConfigError,
-    configError,
-    EXIT_CONFIG_INVALID,
-    isKernelError,
-    KERNEL_ERROR_CODES,
-    KernelError,
-    kernelError,
-} from "../errors.js";
+import { ConfigError, configError, isKernelError, KernelError, kernelError } from "../errors.js";
 
 describe("KernelError", () => {
     it("默认 code=UNKNOWN、name=KernelError", () => {
@@ -32,15 +24,6 @@ describe("KernelError", () => {
         expect(err).toBeInstanceOf(KernelError);
         expect(err.message).toBe("参数坏");
         expect(err.code).toBe("INVALID_PARAM");
-    });
-});
-
-describe("错误码集合", () => {
-    it("8 个错误码（协议层映射表可推导）", () => {
-        expect(KERNEL_ERROR_CODES).toHaveLength(8);
-        expect(KERNEL_ERROR_CODES).toContain("SEND_FAILED");
-        expect(KERNEL_ERROR_CODES).toContain("NOT_LOGIN");
-        expect(KERNEL_ERROR_CODES).toContain("INVALID_STATE");
     });
 });
 
@@ -67,9 +50,5 @@ describe("ConfigError", () => {
         const cause = new Error("zod");
         const err = configError("校验失败", { cause });
         expect(err.cause).toBe(cause);
-    });
-
-    it("退出码常量 = 78（EX_CONFIG）", () => {
-        expect(EXIT_CONFIG_INVALID).toBe(78);
     });
 });

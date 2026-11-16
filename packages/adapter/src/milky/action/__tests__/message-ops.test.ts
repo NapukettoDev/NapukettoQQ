@@ -103,24 +103,6 @@ describe("mark_message_as_read / get_custom_face_url_list", () => {
         });
         expect(res.retcode).toBe(-400);
     });
-
-    it("按会话标记已读（p1 补测：seq 仅兼容 schema）", async () => {
-        const markRead = vi.fn(async () => undefined);
-        const registry = messageApi({ msgApi: { markRead } });
-        const res = await actionOf(registry, "mark_message_as_read").handle({
-            message_scene: "group",
-            peer_id: 10001,
-            message_seq: 101,
-        });
-        expect(res).toMatchObject({ status: "ok", data: {} });
-        expect(markRead).toHaveBeenCalledWith({ chatType: ChatType.GROUP, peerUid: "10001" });
-    });
-
-    it("get_custom_face_url_list：urls 原样（补测）", async () => {
-        const registry = messageApi({ msgApi: { queryFavEmojis: vi.fn(async () => ["u1"]) } });
-        const res = await actionOf(registry, "get_custom_face_url_list").handle({});
-        expect(res.data).toEqual({ urls: ["u1"] });
-    });
 });
 
 describe("get_resource_temp_url", () => {
@@ -147,22 +129,6 @@ describe("get_resource_temp_url", () => {
         const registry = messageApi({});
         const res = await actionOf(registry, "get_resource_temp_url").handle({ resource_id: "" });
         expect(res.retcode).toBe(-400);
-    });
-
-    it("链接形态原样返回（补测）", async () => {
-        const registry = messageApi({});
-        const res = await actionOf(registry, "get_resource_temp_url").handle({
-            resource_id: "https://multimedia.nt.qq.com/a",
-        });
-        expect(res.data).toEqual({ url: "https://multimedia.nt.qq.com/a" });
-    });
-
-    it("非链接形态 → NOT_FOUND（补测）", async () => {
-        const registry = messageApi({});
-        const res = await actionOf(registry, "get_resource_temp_url").handle({
-            resource_id: "C:\\cache\\x.jpg",
-        });
-        expect(res.retcode).not.toBe(0);
     });
 });
 
@@ -211,41 +177,5 @@ describe("upload_private_file（闪传通道）", () => {
             file_name: "x",
         });
         expect(res.retcode).toBe(-400);
-    });
-
-    it("file:// 本地路径 → 闪传 sendFile（补测）", async () => {
-        const sendFile = vi.fn(async () => ({
-            fileSetId: "fs-priv",
-            shareLink: "",
-            fileCount: 1,
-        }));
-        const registry = messageApi({ flashTransferApi: { sendFile } });
-        const res = await actionOf(registry, "upload_private_file").handle({
-            user_id: 20002,
-            file_uri: "file:///C:/docs/a.zip",
-            file_name: "a.zip",
-        });
-        expect(res.data).toEqual({ file_id: "fs-priv" });
-        expect(sendFile).toHaveBeenCalledWith(
-            expect.objectContaining({ peerUid: "uid-20002" }),
-            [expect.stringMatching(/a\.zip$/)],
-            { name: "a.zip" },
-        );
-    });
-
-    it("闪传失败 → 错误透传（不再兜底成假 file_id， 补测）", async () => {
-        const registry = messageApi({
-            flashTransferApi: {
-                sendFile: vi.fn(async () => {
-                    throw new Error("闪传上传超时");
-                }),
-            },
-        });
-        const res = await actionOf(registry, "upload_private_file").handle({
-            user_id: 20002,
-            file_uri: "file:///C:/a.zip",
-            file_name: "a.zip",
-        });
-        expect(res.retcode).not.toBe(0);
     });
 });

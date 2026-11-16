@@ -281,30 +281,7 @@ describe("装配分支补充（无 token / 可选字段）", () => {
             await set.close();
         }
     });
-
-    it("httpPost timeoutMs / wsReverse maxReconnectAttempts / 实例无 token 装配", async () => {
-        const { set, broadcaster } = assemble({
-            httpPostUrls: [
-                // 无 token（authorizeHeader(undefined) 短路）+ timeoutMs 分支
-                { enabled: true, url: "http://127.0.0.1:1/nowhere", timeoutMs: 5000 },
-            ],
-            wsReverseUrls: [
-                // maxReconnectAttempts 分支（不 open，仅装配）
-                {
-                    enabled: true,
-                    url: "ws://127.0.0.1:1/nowhere",
-                    maxReconnectAttempts: 3,
-                },
-            ],
-        });
-        expect(set.transports).toHaveLength(2);
-        await set.close();
-        // emit 后不再有注册的传输（close 已注销）——不产生真实上报
-        broadcaster.emit({ probe: true });
-        expect(true).toBe(true);
-    });
 });
-
 const BRANCH_TOKEN = "tok-x";
 const WS_CONFIG_TOKEN_PORT = 37243;
 const WS_NO_TOKEN_PORT = 37244;

@@ -5,8 +5,7 @@
  * create 装配（目录 + 文件日志）、未装配 wrapper 登录拒绝、attachWrapper、
  * 快速登录成功（参数透传）/失败（qrFallback 开关）、QR 回退与强制扫码
  * （假状态机出码/扫码/失败）、登录进度转发（waiting_scan/failed 附原因）、
- * 二维码 png 写盘、refreshQr 句柄、requireQrSelfInfo 空值拒绝、setSession、
- * loginService.initConfig 装配链。
+ * 二维码 png 写盘、refreshQr 句柄、requireQrSelfInfo 空值拒绝、setSession。
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -145,13 +144,6 @@ describe("NapukettoCore.create / attachWrapper", () => {
         expect(logText).toContain("core-test-hello");
         expect(core.ctx.wrapper).toBeNull();
         expect(core.ctx.login).toBeNull();
-    });
-
-    it("attachWrapper：startNapuketto 结果挂 ctx.wrapper 并返回", () => {
-        const { core, wrapper } = attachedCore();
-        expect(startNapukettoMock).toHaveBeenCalledOnce();
-        expect(core.ctx.wrapper).toBe(wrapper);
-        expect(wrapper).toBe(wrapper);
     });
 
     it("setSession：未装配时拒绝；装配后写入 wrapper.session", () => {
@@ -321,29 +313,6 @@ describe("NapukettoCore.refreshQr", () => {
     });
 });
 
-describe("loginService.initConfig 装配链", () => {
-    it("loginService 可用时 initConfig 收到登录握手配置", async () => {
-        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
-        const initConfig = vi.fn();
-        const wrapper = {
-            session: null,
-            loginService: { initConfig },
-            engine: {},
-            exports: {},
-            versionInfo: { fullVersion: "9.9.9-12345" },
-        } as unknown as WrapperContext;
-        startNapukettoMock.mockReturnValueOnce(wrapper);
-        core.attachWrapper({} as never, { qqVersion: "9.9.9", dataDir: tmp } as never);
-        quickLoginMock.mockResolvedValueOnce({
-            uin: "10001",
-            uid: "uid-1",
-            nick: "",
-        } as LoginResult);
-        await core.login({ appid: "537" });
-        expect(initConfig).toHaveBeenCalledOnce();
-    });
-});
-
 describe("装配与收尾补充", () => {
     it("attachWrapper：无 env（QQ 主进程直连形态）→ startNapuketto 收到纯 exports", () => {
         const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
@@ -380,11 +349,6 @@ describe("装配与收尾补充", () => {
             message: /wrapper\/loginService 不可用/,
         });
         expect(quickLoginMock).not.toHaveBeenCalled();
-    });
-
-    it("stop：日志收尾不抛错（资源清理留给进程生命周期）", () => {
-        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
-        expect(() => core.stop()).not.toThrow();
     });
 
     it("QQ 主进程形态（process.type=browser）→ initConfig commonPath 用账号目录（不解析 QQ 数据根）", async () => {

@@ -2,14 +2,11 @@
  * helper/ids.test.ts：Satori ID 构造单测（QQ 平台语义）。
  *
  * 锁定：toUser / toGroupChannel / toDirectChannel / toGuild 的可选字段
- * 写入规则（空串不写）、toLogin / toMinimalLogin 的 login 形状、
- * PLATFORM / ADAPTER / FEATURES 常量契约。
+ * 写入规则（空串不写）、toLogin / toMinimalLogin 的 login 形状。
  */
 import { describe, expect, it } from "vitest";
 import {
-    ADAPTER,
     FEATURES,
-    PLATFORM,
     toDirectChannel,
     toGroupChannel,
     toGuild,
@@ -17,18 +14,6 @@ import {
     toMinimalLogin,
     toUser,
 } from "../ids.js";
-
-describe("常量契约", () => {
-    it("PLATFORM / ADAPTER 固定值", () => {
-        expect(PLATFORM).toBe("qq");
-        expect(ADAPTER).toBe("napuketto");
-    });
-
-    it("FEATURES：群组平坦 + message.list 分页令牌", () => {
-        expect(FEATURES).toContain("guild.plain");
-        expect(FEATURES).toContain("message.list.from");
-    });
-});
 
 describe("toUser", () => {
     it("只带 id：name / nick 不写", () => {

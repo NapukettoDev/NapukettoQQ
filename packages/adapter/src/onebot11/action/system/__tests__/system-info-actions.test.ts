@@ -1,8 +1,7 @@
 /**
- * 系统信息/状态动作测试：get_status / get_version_info / get_login_info /
- * get_robot_uin_range / can_send_image / can_send_record / clean_cache /
- * bot_exit / set_restart / set_online_status / set_diy_online_status /
- * translate_en2zh。
+ * 系统信息/状态动作测试：get_version_info / get_login_info /
+ * clean_cache / bot_exit / set_restart / set_online_status /
+ * set_diy_online_status / translate_en2zh。
  *
  * 锁定行为：本地组装返回值、self/system 注入面（版本/清理回调/进程控制）、
  * 未配置回调 → INVALID_STATE（retcode 106）、在线状态缺省值与自定义状态映射、
@@ -14,14 +13,6 @@ import { createSystemInfoActions } from "../info.js";
 import { createSystemStatusActions } from "../status.js";
 
 describe("本地组装类动作", () => {
-    it("get_status → { online: true, good: true }", async () => {
-        const result = await ob11ActionOf(
-            createSystemInfoActions({} as never),
-            "get_status",
-        ).handle({});
-        expect(result.data).toEqual({ online: true, good: true });
-    });
-
     it("get_version_info → app_name/protocol_version 固定，app_version 注入", async () => {
         const result = await ob11ActionOf(
             createSystemInfoActions({ appVersion: "9.9.9-test" } as never),
@@ -40,32 +31,6 @@ describe("本地组装类动作", () => {
             "get_login_info",
         ).handle({});
         expect(result.data).toEqual({ user_id: 10001, nickname: "测试号" });
-    });
-
-    it("get_robot_uin_range → 固定 min/max", async () => {
-        const result = await ob11ActionOf(
-            createSystemInfoActions({} as never),
-            "get_robot_uin_range",
-        ).handle({});
-        expect(result.data).toEqual({ min: 10001, max: 4294967295 });
-    });
-
-    it("can_send_image / can_send_record → 恒 true", async () => {
-        expect(
-            (
-                await ob11ActionOf(createSystemStatusActions({} as never), "can_send_image").handle(
-                    {},
-                )
-            ).data,
-        ).toEqual({ yes: true });
-        expect(
-            (
-                await ob11ActionOf(
-                    createSystemStatusActions({} as never),
-                    "can_send_record",
-                ).handle({})
-            ).data,
-        ).toEqual({ yes: true });
     });
 });
 

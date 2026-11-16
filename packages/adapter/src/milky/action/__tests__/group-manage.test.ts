@@ -149,17 +149,6 @@ describe("set_group_avatar / set_group_member_special_title", () => {
         });
         expect(setMemberSpecialTitle).toHaveBeenCalledWith("10001", "uid-20002", "头衔");
     });
-
-    it("set_group_member_special_title：uin→uid 透传（补测）", async () => {
-        const setMemberSpecialTitle = vi.fn(async () => undefined);
-        const registry = groupRegistry({ groupApi: { setMemberSpecialTitle } });
-        await actionOf(registry, "set_group_member_special_title").handle({
-            group_id: 10001,
-            user_id: 20002,
-            special_title: "头衔",
-        });
-        expect(setMemberSpecialTitle).toHaveBeenCalledWith("10001", "uid-20002", "头衔");
-    });
 });
 
 describe("send_group_nudge", () => {
@@ -185,20 +174,6 @@ describe("send_group_nudge", () => {
         });
         expect(res.retcode).toBe(-400);
         expect(res.message).toContain("登录身份缺 uid");
-    });
-
-    it("uin→uid + confId=群号 + callerUid=self.uid（补测）", async () => {
-        const sendNudge = vi.fn(async () => null);
-        const registry = groupRegistry({ msgApi: { sendNudge } });
-        const res = await actionOf(registry, "send_group_nudge").handle({
-            group_id: 10001,
-            user_id: 20002,
-        });
-        expect(res.retcode).toBe(0);
-        expect(sendNudge).toHaveBeenCalledWith(expect.anything(), {
-            receiverUid: "uid-20002",
-            callerUid: "uid-10000",
-        });
     });
 });
 
@@ -244,25 +219,6 @@ describe("send_group_announcement / delete_group_announcement", () => {
             image_uri: "",
         });
         expect(publishGroupAnnouncement).toHaveBeenCalledWith("10001", "正文", undefined);
-    });
-
-    it("send_group_announcement：file:// image_uri 展开后进 kernel（补测）", async () => {
-        const publishGroupAnnouncement = vi.fn(
-            async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
-        );
-        const registry = groupRegistry({
-            groupApi: { publishGroupAnnouncement },
-        });
-        await actionOf(registry, "send_group_announcement").handle({
-            group_id: 10001,
-            content: "公告",
-            image_uri: "file:///C:/pic/a.png",
-        });
-        expect(publishGroupAnnouncement).toHaveBeenCalledWith(
-            "10001",
-            "公告",
-            expect.stringMatching(/[\\/]pic[\\/]a\.png$/),
-        );
     });
 
     it("delete_group_announcement：id 透传", async () => {

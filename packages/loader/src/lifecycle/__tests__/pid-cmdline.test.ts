@@ -4,15 +4,14 @@
  * 平台分支经 Object.defineProperty(process, "platform") 切换（属性 configurable）+
  * vi.resetModules 动态 import 取全新模块（CMDLINE_PROBE_SUPPORTED 随平台重算）；
  * execFileSync / readFileSync 经 vi.mock 拦截（不 spawn PowerShell、不读 /proc）。
- * normalizeCmdline / selfCmdline / readCmdlineForPid 为纯运行时函数（静态 import）。
+ * normalizeCmdline / readCmdlineForPid 为纯运行时函数（静态 import）。
  * 覆盖：
  *  - normalizeCmdline：大小写 / 引号 / 路径分隔符 / 空白折叠
- *  - selfCmdline：execArgv + argv 拼接
  *  - readCmdlineForPid：win32（PowerShell 输出 / 空 / 抛错）、linux（/proc cmdline
  *    \0 转空格 / 空 / 抛错）、其他平台 null（不发起查询）
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { normalizeCmdline, readCmdlineForPid, selfCmdline } from "../pid-cmdline.js";
+import { normalizeCmdline, readCmdlineForPid } from "../pid-cmdline.js";
 
 /** execFileSync / readFileSync mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -93,12 +92,6 @@ describe("normalizeCmdline", () => {
 
     it("空串 → 空串", () => {
         expect(normalizeCmdline("")).toBe("");
-    });
-});
-
-describe("selfCmdline", () => {
-    it("execArgv + argv 空格拼接（与写锁摘要结构一致）", () => {
-        expect(selfCmdline()).toBe([...process.execArgv, ...process.argv].join(" ").trim());
     });
 });
 

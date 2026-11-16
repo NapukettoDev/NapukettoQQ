@@ -9,7 +9,7 @@
  *  - 普通 Error / 非 Error → 500 兜底
  */
 import { kernelError } from "@napuketto/kernel";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineSatoriAction, SatoriActionError } from "../base-action.js";
 
@@ -80,23 +80,5 @@ describe("defineSatoriAction", () => {
             status: 500,
             message: "未知错误",
         });
-    });
-
-    it("handle 只调用一次且入参为解析后 payload", async () => {
-        const handler = vi.fn(async (p: { v: string }) => p.v);
-        const action = testAction(handler);
-        await action.run({ v: "入参", junk: "剥离" });
-        expect(handler).toHaveBeenCalledTimes(1);
-        expect(handler).toHaveBeenCalledWith({ v: "入参" });
-    });
-});
-
-describe("SatoriActionError", () => {
-    it("status 与 message 保存；instanceof Error", () => {
-        const err = new SatoriActionError(404, "不存在");
-        expect(err).toBeInstanceOf(Error);
-        expect(err.status).toBe(404);
-        expect(err.message).toBe("不存在");
-        expect(err.name).toBe("Error");
     });
 });

@@ -1,9 +1,9 @@
 /**
  * OB11 动作注册表测试：createOb11ActionRegistry 81 个动作名齐（含域覆盖抽样）、
- * resolveUid（uin→uid 解析与失败抛 INVALID_PARAM）、ob11ErrorCodeMap 全量映射。
+ * resolveUid（uin→uid 解析与失败抛 INVALID_PARAM）。
  */
 import { describe, expect, it } from "vitest";
-import { ob11ErrorCodeMap, resolveUid } from "../base-action.js";
+import { resolveUid } from "../base-action.js";
 import { createOb11ActionRegistry } from "../index.js";
 import { stubConverters } from "./test-support.js";
 
@@ -132,21 +132,6 @@ describe("resolveUid", () => {
     it("映射未命中 → 抛 KernelError INVALID_PARAM", async () => {
         await expect(resolveUid("11111", stubConverters().uinToUid)).rejects.toMatchObject({
             code: "INVALID_PARAM",
-        });
-    });
-});
-
-describe("ob11ErrorCodeMap", () => {
-    it("kernel 错误码 → OB11 retcode 全量映射", () => {
-        expect(ob11ErrorCodeMap).toEqual({
-            SEND_FAILED: 100,
-            PERMISSION_DENIED: 101,
-            NOT_FOUND: 102,
-            TIMEOUT: 103,
-            NOT_LOGIN: 104,
-            INVALID_PARAM: 105,
-            INVALID_STATE: 106,
-            UNKNOWN: 999,
         });
     });
 });

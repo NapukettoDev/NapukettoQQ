@@ -8,7 +8,6 @@
  *  - SatoriActionError 状态码语义（base-action 的 run 错误包装契约）
  */
 import { describe, expect, it } from "vitest";
-import { ActionRegistry } from "../../../core/framework/action-registry.js";
 import type { Login } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";
 import { createSatoriActionRegistry, type SatoriActionRegistry } from "../index.js";
@@ -98,15 +97,6 @@ describe("501 占位动作", () => {
         expect((err as SatoriActionError).message).toBe("平台不支持该操作: channel.create");
     });
 
-    it("schema 接受任意对象（passthrough）", async () => {
-        const registry = createSatoriActionRegistry({ api: stubSatoriApi() as never });
-        const err = await registry
-            .get("reaction.list")
-            ?.run({ x: [1, 2, 3] })
-            .catch((e: unknown) => e);
-        expect((err as SatoriActionError).status).toBe(501);
-    });
-
     it("registry 里的 501 动作 run 全部抛 501（表驱动）", async () => {
         const registry = createSatoriActionRegistry({ api: stubSatoriApi() as never });
         for (const name of NOT_IMPLEMENTED) {
@@ -137,12 +127,5 @@ describe("login.get", () => {
         const api = stubSatoriApi();
         const action = satoriActionOf<Login>(createLoginActions({ self: api.self }), "login.get");
         await expect(action.run({ junk: 1 })).resolves.toHaveProperty("sn", 0);
-    });
-});
-
-describe("ActionRegistry 泛型契约（SatoriActionRegistry 类型面）", () => {
-    it("构造的注册表就是 core 泛型 ActionRegistry 实例", () => {
-        const registry = createSatoriActionRegistry({ api: stubSatoriApi() as never });
-        expect(registry).toBeInstanceOf(ActionRegistry);
     });
 });

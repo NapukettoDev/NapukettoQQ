@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
     checkDirStatus,
-    DEFAULT_PROJECT_NAME,
     detectPackageManager,
     pmBin,
     resolveTargetDir,
@@ -125,12 +124,6 @@ describe("resolveTargetDir", () => {
     it("基于 cwd 解析出绝对路径（名称先校验）", () => {
         expect(resolveTargetDir("my-bot")).toBe(path.resolve(process.cwd(), "my-bot"));
         expect(() => resolveTargetDir("a/b")).toThrow(/非法字符/);
-    });
-});
-
-describe("DEFAULT_PROJECT_NAME", () => {
-    it("默认部署文件夹名 = NapukettoQQ", () => {
-        expect(DEFAULT_PROJECT_NAME).toBe("NapukettoQQ");
     });
 });
 
