@@ -95,7 +95,10 @@ export function startSessionProbe(
             log(`BOOT: session 探测失败: ${errMsg(e)}`);
         }
     }, 5000);
-    setTimeout(() => clearInterval(sessionProbe), durationMs);
+    // 探测定时器不阻塞进程自然退出
+    sessionProbe.unref?.();
+    const cleanupTimer = setTimeout(() => clearInterval(sessionProbe), durationMs);
+    cleanupTimer.unref?.();
     return sessionProbe;
 }
 

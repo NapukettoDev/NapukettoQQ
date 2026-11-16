@@ -14,7 +14,7 @@ import { z } from "zod";
 export const IPC_VERSION = 1;
 
 /** 引导阶段（status 消息）。 */
-export const ipcBootPhaseSchema = z.enum([
+const ipcBootPhaseSchema = z.enum([
     "booting", // 子进程已启动（spawn 成功）
     "dlopening", // dlopen wrapper.node
     "logging", // 登录流程进行中
@@ -24,7 +24,7 @@ export const ipcBootPhaseSchema = z.enum([
 ]);
 
 /** 结构化日志级别（pino level）。 */
-export const ipcLogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
+const ipcLogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 
 /** 登录状态（与 kernel LoginState 结构等价）。 */
 const loginStateSchema = z.enum(["idle", "waiting_scan", "scanned", "logged_in", "failed"]);
@@ -37,14 +37,14 @@ const selfInfoSchema = z.object({
 });
 
 /** status 消息 payload。 */
-export const ipcStatusPayloadSchema = z.object({
+const ipcStatusPayloadSchema = z.object({
     phase: ipcBootPhaseSchema,
     message: z.string().optional(),
     error: z.object({ code: z.string(), message: z.string() }).optional(),
 });
 
 /** login 消息 payload。 */
-export const ipcLoginPayloadSchema = z.object({
+const ipcLoginPayloadSchema = z.object({
     state: loginStateSchema,
     selfInfo: selfInfoSchema.optional(),
     /** 失败原因（state=failed 时；如「登录超时，请刷新页面重试」）。 */
@@ -52,32 +52,32 @@ export const ipcLoginPayloadSchema = z.object({
 });
 
 /** event 消息 payload（kernel 事件通道形状，翻译层按 service/name 断言具体类型）。 */
-export const ipcEventPayloadSchema = z.object({
+const ipcEventPayloadSchema = z.object({
     service: z.string(),
     name: z.string(),
     args: z.array(z.unknown()),
 });
 
 /** log 消息 payload。 */
-export const ipcLogPayloadSchema = z.object({
+const ipcLogPayloadSchema = z.object({
     level: ipcLogLevelSchema,
     message: z.string(),
 });
 
 /** 动作响应 payload（result 消息）。 */
-export const ipcResultPayloadSchema = z.union([
+const ipcResultPayloadSchema = z.union([
     z.object({ ok: z.literal(true), value: z.unknown().optional() }),
     z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
 ]);
 
 /** 动作请求 payload（action 消息）。 */
-export const ipcActionPayloadSchema = z.object({
+const ipcActionPayloadSchema = z.object({
     action: z.string(),
     params: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** 控制指令 payload（control 消息，父→子）。 */
-export const ipcControlPayloadSchema = z.union([
+const ipcControlPayloadSchema = z.union([
     z.object({ command: z.literal("stop") }), // 优雅退出
     z.object({ command: z.literal("restart") }), // 退出并期望驱动层重启
     z.object({
@@ -151,7 +151,7 @@ const ipcControlMessageSchema = z.object({
 });
 
 /** IPC 消息判别联合（协议边界，运行时经 safeParse 校验）。 */
-export const ipcMessageSchema = z.discriminatedUnion("type", [
+const ipcMessageSchema = z.discriminatedUnion("type", [
     ipcStatusMessageSchema,
     ipcLoginMessageSchema,
     ipcQrMessageSchema,
@@ -191,13 +191,33 @@ export type IpcMessage = z.infer<typeof ipcMessageSchema>;
 
 export {
     ipcActionPayloadSchema as IpcActionPayloadSchema,
+    /** @deprecated 请使用 `IpcActionPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcActionPayloadSchema,
     ipcBootPhaseSchema as IpcBootPhaseSchema,
+    /** @deprecated 请使用 `IpcBootPhaseSchema`（保留以兼容外部 Koishi 插件） */
+    ipcBootPhaseSchema,
     ipcControlPayloadSchema as IpcControlPayloadSchema,
+    /** @deprecated 请使用 `IpcControlPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcControlPayloadSchema,
     ipcEventPayloadSchema as IpcEventPayloadSchema,
+    /** @deprecated 请使用 `IpcEventPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcEventPayloadSchema,
     ipcLoginPayloadSchema as IpcLoginPayloadSchema,
+    /** @deprecated 请使用 `IpcLoginPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcLoginPayloadSchema,
     ipcLogLevelSchema as IpcLogLevelSchema,
+    /** @deprecated 请使用 `IpcLogLevelSchema`（保留以兼容外部 Koishi 插件） */
+    ipcLogLevelSchema,
     ipcLogPayloadSchema as IpcLogPayloadSchema,
+    /** @deprecated 请使用 `IpcLogPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcLogPayloadSchema,
     ipcMessageSchema as IpcMessageSchema,
+    /** @deprecated 请使用 `IpcMessageSchema`（保留以兼容外部 Koishi 插件） */
+    ipcMessageSchema,
     ipcResultPayloadSchema as IpcResultPayloadSchema,
+    /** @deprecated 请使用 `IpcResultPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcResultPayloadSchema,
     ipcStatusPayloadSchema as IpcStatusPayloadSchema,
+    /** @deprecated 请使用 `IpcStatusPayloadSchema`（保留以兼容外部 Koishi 插件） */
+    ipcStatusPayloadSchema,
 };

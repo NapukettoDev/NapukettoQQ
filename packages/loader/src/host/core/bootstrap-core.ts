@@ -288,7 +288,7 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
         return;
     }
     probeOnce(kernel, ctx);
-    setTimeout(() => {
+    const lateProbeTimer = setTimeout(() => {
         try {
             if (typeof kernel.probeRuntime !== "function") {
                 return;
@@ -301,6 +301,8 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
             log(`bootstrap: probe-late error: ${errMsg(e2)}`);
         }
     }, 35000);
+    // 晚探测定时器不阻塞进程自然退出
+    lateProbeTimer.unref?.();
 }
 
 /**

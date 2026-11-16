@@ -21,7 +21,14 @@ export const QR_LINE_PREFIX = "NAPUTO_QR ";
 
 /** adapter core 子路径最小面（ProtocolConfig 框架，动态 import）。 */
 export interface AdapterCoreModuleLike {
-    ProtocolConfig: new (options: Record<string, unknown>) => unknown;
+    /** 历史别名（= ConfigBase，loader 动态 import 主用路径）。 */
+    ProtocolConfig: new (
+        options: Record<string, unknown>,
+    ) => unknown;
+    /** 新名字（与 ProtocolConfig 同值；保留可选以兼容旧 dist）。 */
+    ConfigBase?: new (
+        options: Record<string, unknown>,
+    ) => unknown;
 }
 
 /** network 包最小面（EventBroadcaster，动态 import；register/unregister 为事件桥所需）。 */

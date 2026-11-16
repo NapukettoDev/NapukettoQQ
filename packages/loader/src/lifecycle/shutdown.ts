@@ -118,11 +118,21 @@ type ShutdownHook = () => void | Promise<void>;
 const shutdownHooks: ShutdownHook[] = [];
 let shutdownStarted = false;
 
-/** 注册关停钩子（按注册逆序执行）。 */
-export function registerShutdownHook(hook: ShutdownHook): void {
-    if (!shutdownStarted) {
-        shutdownHooks.push(hook);
+/**
+ * 注册关停钩子（按注册逆序执行）。
+ * @returns 退订函数（从钩子表移除该 hook；重复调用幂等）。
+ */
+export function registerShutdownHook(hook: ShutdownHook): () => void {
+    if (shutdownStarted) {
+        return () => undefined;
     }
+    shutdownHooks.push(hook);
+    return () => {
+        const index = shutdownHooks.indexOf(hook);
+        if (index !== -1) {
+            shutdownHooks.splice(index, 1);
+        }
+    };
 }
 
 /**
@@ -155,11 +165,23 @@ export async function requestShutdown(reason: string): Promise<void> {
  * Windows CTRL_BREAK_EVENT 以 SIGBREAK 到达（宿主 CREATE_NEW_PROCESS_GROUP +
  * GenerateConsoleCtrlEvent 可优雅停整树）；终端 Ctrl+C 以 SIGINT 到达。
  */
-export function installSignalShutdown(): void {
-    const handler = (signal: string): void => {
-        void requestShutdown(`信号 ${signal}`);
+export function installSignalShutdown(): () => void {
+    const onSigint = (): void => {
+        void requestShutdown("信号 SIGINT");
     };
-    process.on("SIGINT", () => handler("SIGINT"));
-    process.on("SIGTERM", () => handler("SIGTERM"));
-    process.on("SIGBREAK", () => handler("SIGBREAK"));
+    const onSigterm = (): void => {
+        void requestShutdown("信号 SIGTERM");
+    };
+    const onSigbreak = (): void => {
+        void requestShutdown("信号 SIGBREAK");
+    };
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
+    process.on("SIGBREAK", onSigbreak);
+    // 返回退订函数：重复安装不会污染宿主信号表（嵌入式场景必须可撤销）。
+    return () => {
+        process.off("SIGINT", onSigint);
+        process.off("SIGTERM", onSigterm);
+        process.off("SIGBREAK", onSigbreak);
+    };
 }
