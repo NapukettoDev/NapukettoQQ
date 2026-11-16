@@ -12,6 +12,7 @@
  */
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
+import { firstNonEmptyString, stringOrUndefined } from "../../../shared/text.js";
 import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../shared/uid-uin.js";
 import type {
     FriendRequestData,
@@ -21,12 +22,17 @@ import type {
     MilkyEvent,
 } from "../../types.js";
 
-/** BuddyReq → friend_request 事件（comment 取 words 字段，形状待校准，缺省空串）。 */
+/**
+ * BuddyReq → friend_request 事件。
+ * comment 取验证留言：QQNT 实际字段是 `extWords`，`words` 为旧口径兜底（都缺省空串）。
+ */
 export function toFriendRequestEvent(
     req: BuddyReq,
     ctx: RequestTranslateContext,
 ): MilkyEvent<FriendRequestData> {
-    const words = req["words"];
+    const comment =
+        firstNonEmptyString(stringOrUndefined(req["extWords"]), stringOrUndefined(req["words"])) ??
+        "";
     return {
         time: Math.floor(Date.now() / MS_TO_SEC),
         self_id: Number(ctx.selfUin),
@@ -34,7 +40,7 @@ export function toFriendRequestEvent(
         data: {
             initiator_id: toUin(req.friendUid, ctx),
             initiator_uid: req.friendUid,
-            comment: typeof words === "string" ? words : "",
+            comment,
             via: req.sourceName ?? "",
         },
     };

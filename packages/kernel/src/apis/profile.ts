@@ -5,6 +5,7 @@
  * - setNickName：set_qq_profile
  * - setHeader：set_qq_avatar
  * - getStrangerInfo：get_stranger_info（uin → uid → 详情扁平化）
+ * - getUinByUid：uid → uin 弱身份兜底（好友申请等「不在群里」的 uid）
  */
 import { kernelError } from "../infra/index.js";
 import type { NodeIKernelProfileService, NodeIQQNTWrapperSession } from "../types/index.js";
@@ -58,5 +59,19 @@ export class ProfileApi {
         }
         const info = await this.service.getUserDetailInfo(uid);
         return flattenStrangerInfo(uin, uid, byUin, info);
+    }
+
+    /**
+     * uid → uin（弱身份兜底；issue #122）。
+     *
+     * `GroupApi.uidToUin` 走群成员口径（getUinByUids），好友申请 / 陌生人这类不在任何群
+     * 的 uid 必然解析失败，此处用资料详情反查 `detail.uin`。查不到返回 `null`（不抛错：
+     * 「可能没有值」的读操作，调用方 fail-soft）；`detail.uin` 未经真实样本确认，见
+     * docs/design.md「已知边界」。
+     */
+    async getUinByUid(uid: string): Promise<string | null> {
+        const info = await this.service.getUserDetailInfo(uid);
+        const uin = info.detail?.uin;
+        return typeof uin === "string" && uin !== "" ? uin : null;
     }
 }

@@ -1,22 +1,30 @@
 /**
- * shared/raw-message.test.ts：RawMessage 规范化 + msgTime 归一单测（跨协议共用）。
+ * shared/raw-message.test.ts：RawMessage 规范化 + msgTime 归一 + 启动前历史消息
+ * 拦截单测（跨协议共用）。
  *
  * 锁定：数组/单对象/null/非对象项的规范化语义；subscribeRawMessages
- * 订阅包装与退订。
+ * 订阅包装与退订；启动基准（订阅时刻 −5s 容差）内的实时消息放行、早于基准的
+ * 历史积压丢弃、msgTime 缺失/非法放行（issue #122）。
  */
 
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { ChatType, type RawMessage } from "@napuketto/kernel";
-import { describe, expect, it, vi } from "vitest";
-import { forEachRawMessage, subscribeRawMessages, toUnixSeconds } from "../raw-message.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+    forEachRawMessage,
+    isLiveMessage,
+    subscribeRawMessages,
+    toUnixSeconds,
+} from "../raw-message.js";
+import { STARTUP_GRACE_SEC } from "../startup-cutoff.js";
 import { stub } from "./stub.js";
 
 /** 构造最小合法 RawMessage。 */
-function makeMsg(msgId: string): RawMessage {
+function makeMsg(msgId: string, msgTime = "0"): RawMessage {
     return {
         msgId,
         msgSeq: "1",
-        msgTime: "0",
+        msgTime,
         msgType: 0,
         chatType: ChatType.GROUP,
         peerUid: "g1",
@@ -90,6 +98,112 @@ describe("subscribeRawMessages", () => {
         const result = subscribeRawMessages(channel, () => undefined);
         result();
         expect(unsub).toHaveBeenCalledTimes(1);
+    });
+
+    describe("启动前历史消息拦截（issue #122）", () => {
+        /** 当前时刻（固定，便于构造基准附近的样本）。 */
+        const NowSec = 1_794_307_394;
+
+        /** 捕获订阅回调。 */
+        function captureChannel(): {
+            channel: MsgEventChannel;
+            emit: (msgs: unknown) => void;
+        } {
+            let callback: ((msgs: unknown) => void) | undefined;
+            const channel = stub<MsgEventChannel>({
+                on: vi.fn((_event: string, cb: (msgs: unknown) => void) => {
+                    callback = cb;
+                    return () => undefined;
+                }),
+            });
+            return {
+                channel,
+                emit: (msgs) => callback?.(msgs),
+            };
+        }
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it("早于基准（含 QQNT 重连重放的历史消息）→ 丢弃，不交给 handler", () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(NowSec * 1000);
+            const { channel, emit } = captureChannel();
+            const handler = vi.fn();
+            subscribeRawMessages(channel, handler);
+            // 几天前的离线消息 + 昨天的消息，均在容差外
+            emit([
+                makeMsg("old-1", String((NowSec - 86_400) * 1000)),
+                makeMsg("old-2", String(NowSec - 3 * 86_400)),
+            ]);
+            expect(handler).not.toHaveBeenCalled();
+        });
+
+        it("基准时刻 / 容差内的消息 → 放行（握手期到达的实时消息不错杀）", () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(NowSec * 1000);
+            const { channel, emit } = captureChannel();
+            const handler = vi.fn();
+            subscribeRawMessages(channel, handler);
+            emit([
+                makeMsg("now-ms", String(NowSec * 1000)),
+                makeMsg("grace", String(NowSec - STARTUP_GRACE_SEC)),
+            ]);
+            expect(handler.mock.calls.map((c) => (c[0] as RawMessage).msgId)).toEqual([
+                "now-ms",
+                "grace",
+            ]);
+        });
+
+        it("msgTime 缺失 / 非法（归一为 0）→ 放行（宁可多报不错杀）", () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(NowSec * 1000);
+            const { channel, emit } = captureChannel();
+            const handler = vi.fn();
+            subscribeRawMessages(channel, handler);
+            emit([makeMsg("zero", "0"), makeMsg("nan", "abc")]);
+            expect(handler).toHaveBeenCalledTimes(2);
+        });
+
+        it("同批混有历史与实时消息：只报实时那条", () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(NowSec * 1000);
+            const { channel, emit } = captureChannel();
+            const handler = vi.fn();
+            subscribeRawMessages(channel, handler);
+            emit([
+                makeMsg("old", String((NowSec - 3_600) * 1000)),
+                makeMsg("live", String(NowSec * 1000)),
+                makeMsg("old2", String((NowSec - 60) * 1000)),
+            ]);
+            expect(handler.mock.calls.map((c) => (c[0] as RawMessage).msgId)).toEqual(["live"]);
+        });
+
+        it("拦截条数按 debug 留痕（一次回调一条日志，不逐条刷屏）", () => {
+            vi.useFakeTimers();
+            vi.setSystemTime(NowSec * 1000);
+            const { channel, emit } = captureChannel();
+            const debug = vi.fn();
+            subscribeRawMessages(channel, () => undefined, {
+                logger: { warn: vi.fn(), info: vi.fn(), debug },
+            });
+            emit([makeMsg("o1", "1600000000"), makeMsg("o2", "1600000001")]);
+            expect(debug).toHaveBeenCalledTimes(1);
+            expect(debug).toHaveBeenCalledWith(
+                { skipped: 2, minMsgTimeSec: NowSec - STARTUP_GRACE_SEC },
+                expect.stringContaining("历史消息"),
+            );
+        });
+    });
+
+    describe("isLiveMessage", () => {
+        it("0（缺失/非法）→ 放行；早于基准 → 丢；不早于基准 → 放行", () => {
+            const baseline = 1_794_307_394;
+            expect(isLiveMessage(makeMsg("a", "0"), baseline)).toBe(true);
+            expect(isLiveMessage(makeMsg("b", "1794307393"), baseline)).toBe(false);
+            expect(isLiveMessage(makeMsg("c", "1794307394"), baseline)).toBe(true);
+        });
     });
 });
 

@@ -12,7 +12,7 @@ import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
 import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
-import { forEachRawMessage } from "../shared/raw-message.js";
+import { subscribeRawMessages } from "../shared/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
 import type { SatoriApiOptions } from "./api/satori-api.js";
 import { SatoriApi } from "./api/satori-api.js";
@@ -125,13 +125,14 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
         this.broadcastLoginUpdated(false);
     }
 
-    /** 订阅 kernel 消息事件（幂等）。 */
+    /** 订阅 kernel 消息事件（幂等；启动前历史消息由共享订阅拦截）。 */
     private subscribe(): void {
         if (this.unsubscribe !== null) {
             return;
         }
-        this.unsubscribe = this.msgChannel.on("Msg/onRecvMsg", (msgs) => {
-            forEachRawMessage(msgs, (msg) => {
+        this.unsubscribe = subscribeRawMessages(
+            this.msgChannel,
+            (msg) => {
                 // grayTip（系统事件）→ 撤回/群成员变动事件；否则 → 消息事件。
                 // 翻译失败 warn 留痕（收链路结构探测期宽容，不打断后续消息）
                 if (hasSatoriGrayTip(msg)) {
@@ -143,8 +144,9 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
                 this.broadcastMessageCreated(msg).catch((err: unknown) => {
                     logEventFailure(this.logger, "satori: 消息翻译失败，事件跳过", err);
                 });
-            });
-        });
+            },
+            { logger: this.logger },
+        );
     }
 
     /** 广播消息事件（message-created）。 */

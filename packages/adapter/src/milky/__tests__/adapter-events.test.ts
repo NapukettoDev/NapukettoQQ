@@ -21,6 +21,7 @@ import {
     adapterEnv,
     cleanupEnvDirs,
     flushAsync,
+    LIVE_REQ_TIME,
     ProtoWriter,
     rawMsg,
 } from "./test-support.js";
@@ -977,7 +978,7 @@ describe("群通知 / 好友请求通道", () => {
 
     it("Buddy/onBuddyReqChange → friend_request", async () => {
         await env.buddyCh?.emit("Buddy/onBuddyReqChange", [
-            { reqTime: "1760000000", friendUid: "uid-20002", words: "加我", sourceName: "群" },
+            { reqTime: LIVE_REQ_TIME, friendUid: "uid-20002", words: "加我", sourceName: "群" },
         ]);
         await flushAsync();
         expect(events()).toHaveLength(1);
@@ -988,6 +989,73 @@ describe("群通知 / 好友请求通道", () => {
             initiator_uid: "uid-20002",
             comment: "加我",
         });
+    });
+
+    it("Buddy/onBuddyReqChange 历史积压 / 已读 / 自己发起 → 不广播（issue #122）", async () => {
+        const tenDaysAgo = String(Math.floor(Date.now() / 1000) - 864_000);
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", [
+            { reqTime: tenDaysAgo, friendUid: "uid-old", words: "老申请" },
+            { reqTime: LIVE_REQ_TIME, friendUid: "uid-read", isUnread: false },
+            { reqTime: LIVE_REQ_TIME, friendUid: "uid-self", isInitiator: true },
+            { reqTime: LIVE_REQ_TIME, friendUid: "uid-decided", isDecide: true, reqType: 1 },
+        ]);
+        await flushAsync();
+        expect(events()).toHaveLength(0);
+    });
+
+    it("同一申请重复回调 → 只广播一次（去重，issue #122）", async () => {
+        const req = { reqTime: LIVE_REQ_TIME, friendUid: "uid-dup", words: "加我" };
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", [req]);
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", [req]);
+        await flushAsync();
+        expect(events()).toHaveLength(1);
+    });
+
+    it("批级 unreadNums=0 → 整批短路", async () => {
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", {
+            buddyReqs: [{ reqTime: LIVE_REQ_TIME, friendUid: "uid-x", words: "hi" }],
+            unreadNums: 0,
+        });
+        await flushAsync();
+        expect(events()).toHaveLength(0);
+    });
+
+    it("comment 取 extWords（QQNT 实际字段），空则回退 words", async () => {
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", [
+            {
+                reqTime: LIVE_REQ_TIME,
+                friendUid: "uid-e1",
+                extWords: "来自 ext",
+                words: "来自 words",
+            },
+        ]);
+        await env.buddyCh?.emit("Buddy/onBuddyReqChange", [
+            { reqTime: String(Number(LIVE_REQ_TIME) + 1), friendUid: "uid-e2", extWords: "" },
+        ]);
+        await flushAsync();
+        const comments = events().map(
+            (e) => (e as { data: { comment?: string } }).data.comment ?? "",
+        );
+        expect(comments).toEqual(["来自 ext", ""]);
+    });
+
+    it("陌生人 uid 群口径查不到 → 资料详情兜底 initiator_id（issue #122）", async () => {
+        const envStranger = await adapterEnv({
+            withBuddyChannel: true,
+            groupApi: { uidToUin: vi.fn(async () => new Map<string, string>()) },
+            profileApi: { getUinByUid: vi.fn(async () => "99009") },
+        });
+        try {
+            await envStranger.adapter.start();
+            await envStranger.buddyCh?.emit("Buddy/onBuddyReqChange", [
+                { reqTime: LIVE_REQ_TIME, friendUid: "uid-stranger", words: "你好" },
+            ]);
+            await flushAsync();
+            const event = envStranger.captures[0] as { data: { initiator_id: number } };
+            expect(event.data.initiator_id).toBe(99009);
+        } finally {
+            await envStranger.adapter.stop();
+        }
     });
 
     it("Buddy/onBuddyReqChange 未知形状 → warn 日志", async () => {

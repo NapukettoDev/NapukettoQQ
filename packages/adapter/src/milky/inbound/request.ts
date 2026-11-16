@@ -2,10 +2,19 @@
  * Milky inbound 请求域：群通知（入群请求 / 成员邀请 / 邀请自身，doubt 透传给
  * 翻译函数）与好友申请（防御收窄，未知形状 raw warn）。uid→uin 边界批量回填
  * （enrichment，fail-soft），翻译函数纯函数。
+ *
+ * 好友申请额外过两道闸（issue #122，与 OB11 同源）：启动前历史积压 / 已读 /
+ * 已处理 / 自己发起的项丢弃，剩余项按 `${friendUid}:${reqTime}` 去重。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import { narrowBuddyReqs } from "../../shared/buddy-req.js";
+import {
+    BuddyReqDedup,
+    batchUnreadNums,
+    filterBuddyReqs,
+    narrowBuddyReqs,
+} from "../../shared/buddy-req.js";
 import { logEventFailure, sliceRaw } from "../../shared/log.js";
+import { startupBaselineSec } from "../../shared/startup-cutoff.js";
 import type { RequestTranslateContext } from "../../shared/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import type { MilkyEnrichment } from "../enrichment.js";
@@ -21,9 +30,18 @@ export type MilkyInboundRequestDeps = MilkyInboundBase & { enrich: MilkyEnrichme
 /** Milky 请求域处理器（群通知 / 好友申请的 uid 回填与广播）。 */
 export class MilkyInboundRequest {
     private readonly deps: MilkyInboundRequestDeps;
+    /** 已广播申请的 `${friendUid}:${reqTime}`（实例级，跨 reloadTransports 保留）。 */
+    private readonly dedup = new BuddyReqDedup();
+    /** 历史积压基准（订阅时刷新：重连后以此刻为界）。 */
+    private baselineSec = startupBaselineSec();
 
     constructor(deps: MilkyInboundRequestDeps) {
         this.deps = deps;
+    }
+
+    /** 刷新启动基准（pipeline subscribe 时调用）。 */
+    markStartup(): void {
+        this.baselineSec = startupBaselineSec();
     }
 
     /** 群通知通道：入群请求 / 成员邀请 / 邀请自身（uid→uin 批量后翻译）。 */
@@ -46,6 +64,11 @@ export class MilkyInboundRequest {
     }
 
     private async broadcastBuddyReqs(arg: unknown): Promise<void> {
+        // 批级 unreadNums=0：整批没有未处理项（登录同步的旧列表），无需逐条判定
+        if (batchUnreadNums(arg) === 0) {
+            this.deps.logger?.debug({}, "milky: onBuddyReqChange unreadNums=0（整批跳过）");
+            return;
+        }
         const reqs = narrowBuddyReqs(arg);
         if (reqs === null) {
             this.deps.logger?.warn(
@@ -54,15 +77,28 @@ export class MilkyInboundRequest {
             );
             return;
         }
-        const ctx = await this.requestCtx(reqs.map((req) => req.friendUid));
-        for (const req of reqs) {
+        // 历史积压 / 已读 / 已处理 / 自己发起 → 丢弃；剩余项去重后才是待推申请
+        const fresh = filterBuddyReqs(reqs, this.baselineSec).filter((req) =>
+            this.dedup.claim(req),
+        );
+        if (fresh.length < reqs.length) {
+            this.deps.logger?.debug(
+                { total: reqs.length, kept: fresh.length },
+                "milky: 好友申请过滤（历史积压 / 已读 / 已处理 / 重复）",
+            );
+        }
+        if (fresh.length === 0) {
+            return;
+        }
+        const ctx = await this.requestCtx(fresh.map((req) => req.friendUid));
+        for (const req of fresh) {
             this.deps.broadcast(toFriendRequestEvent(req, ctx));
         }
     }
 
-    /** request 翻译上下文（uid→uin 批量转换；失败退空 Map）。 */
+    /** request 翻译上下文（uid→uin 批量转换 + 资料兜底；失败退空 Map）。 */
     private async requestCtx(uids: string[]): Promise<RequestTranslateContext> {
-        const uidToUin = await this.deps.enrich.resolveUidToUin(uids);
+        const uidToUin = await this.deps.enrich.resolveUidToUin(uids, { profileFallback: true });
         return {
             selfUin: this.deps.api.self.uin,
             ...(uidToUin !== undefined ? { uidToUin } : { uidToUin: new Map() }),

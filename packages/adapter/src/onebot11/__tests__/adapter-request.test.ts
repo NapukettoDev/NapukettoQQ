@@ -32,6 +32,9 @@ import {
 
 import { ob11ConfigSchema } from "../helper/index.js";
 
+/** 收链路只报订阅后的实时消息（issue #122）：夹具时间戳必须落在启动基准内。 */
+const LIVE_MSG_TIME_MS = String(Date.now());
+
 /** 桩 kernel apis（可注入 groupApi 覆盖）。 */
 function stubOptions(
     groupApi?: Record<string, unknown>,
@@ -249,7 +252,7 @@ describe("reportSelfMessage（自消息上报开关）", () => {
         return {
             msgId: "nt-self",
             msgSeq: "1",
-            msgTime: "1700000000000",
+            msgTime: LIVE_MSG_TIME_MS,
             chatType: 2,
             peerUid: "808",
             senderUin: "10001",
@@ -489,7 +492,7 @@ describe("grayTip notice 广播链（broadcastNotice）", () => {
             {
                 msgId: "6800",
                 msgSeq: "42",
-                msgTime: "1700000000000",
+                msgTime: LIVE_MSG_TIME_MS,
                 chatType: 2,
                 peerUid: "808",
                 senderUin: "90009",

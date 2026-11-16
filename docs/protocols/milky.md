@@ -105,10 +105,10 @@ HTTP 语义与错误码：
 
 | event_type | 原生源 | 备注 |
 |---|---|---|
-| message_receive | Msg/onRecvMsg | 已接；自消息不上报 |
+| message_receive | Msg/onRecvMsg | 已接；自消息不上报；启动前历史消息不上报（5s 容差） |
 | message_recall | grayTip revokeElement | 已接 |
 | peer_pin_change | RecentContact 会话列表变更 | 已接；需校准 |
-| friend_request | Buddy/onBuddyReqChange | 已接 |
+| friend_request | Buddy/onBuddyReqChange | 已接；只推实时待处理项（已读/已处理/历史积压过滤 + 去重，issue #122） |
 | group_join_request | Group/onGroupNotifiesUpdated | 已接 |
 | group_invited_join_request | 同上 | 已接 |
 | group_invitation | 同上 | 已接 |

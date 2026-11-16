@@ -92,7 +92,12 @@ port = 3001
   `group_ban`、`group_recall` / `friend_recall`、`friend_add`、`notify`（poke）、
   `offline_file`、`group_essence`（列表 diff 为唯一发射路径）。
 - **请求**：群邀请/申请来自 `Group/onGroupNotifiesUpdated`；好友申请来自
-  `Buddy/onBuddyReqChange`；未处理项才推送，未知形状只打校准日志。
+  `Buddy/onBuddyReqChange`。群通知只推未处理项（`KUNHANDLE`）；好友申请只推**实时待处理**
+  项——已读 / 已处理 / 自己发起 / 启动前历史积压（重连时的整批重放）都不上报，剩余项按
+  `friendUid:reqTime` 去重（issue #122）。`comment` 取 `extWords`，缺省回退 `words`。
+  未知形状只打校准日志。
+- **收向过滤**：`Msg/onRecvMsg` 早于启动时刻（含 5s 容差）的消息视为历史积压丢弃，
+  登录 / 重连时同步的离线消息不再当实时消息上报。
 - **元事件**：启动广播一次 `lifecycle/enable`；`heartbeat` 按间隔广播，`0` 关闭。
 
 未接线：`group_title` / `group_sign`（sysmsg 判别值缺样本）、`msg_emoji_like`（无推送回调）、

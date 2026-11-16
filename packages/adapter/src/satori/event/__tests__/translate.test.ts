@@ -12,7 +12,12 @@
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { stub } from "../../../shared/__tests__/stub.js";
-import { makeMemberChangeMsg, makeRawMsg, makeRevokeMsg } from "../../__tests__/test-support.js";
+import {
+    LIVE_MSG_TIME_SEC,
+    makeMemberChangeMsg,
+    makeRawMsg,
+    makeRevokeMsg,
+} from "../../__tests__/test-support.js";
 import {
     collectSatoriGrayTipUids,
     hasSatoriGrayTip,
@@ -32,7 +37,7 @@ describe("toSatoriMessageEvent", () => {
         const content = await toSatoriMessageEvent(makeRawMsg(), { selfUin: "10001" });
         expect(content.type).toBe("message-created");
         // 10 位秒级 msgTime（Linux）→ Satori 规范毫秒级 timestamp
-        expect(content.timestamp).toBe(1700000000000);
+        expect(content.timestamp).toBe(LIVE_MSG_TIME_SEC * 1000);
         expect(content.guild).toEqual({ id: "10001", name: "测试群" });
         expect(content.channel).toEqual({ id: "10001", type: 0, name: "测试群" });
         expect(content.user).toEqual({ id: "90001", name: "小明" });
