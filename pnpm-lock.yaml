@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     '@hono/node-server':
-      specifier: ^2.1.6
-      version: 2.1.6
+      specifier: ^2.1.8
+      version: 2.1.8
     '@types/ws':
       specifier: ^8.18.2
       version: 8.18.2
@@ -174,8 +174,8 @@ catalogs:
       specifier: ^5.1.0
       version: 5.1.0
     hono:
-      specifier: ^4.13.16
-      version: 4.13.16
+      specifier: ^4.13.18
+      version: 4.13.18
     tsdown:
       specifier: ^0.23.7
       version: 0.23.7
@@ -183,8 +183,8 @@ catalogs:
       specifier: ^5.1.0
       version: 5.1.0
     ws:
-      specifier: ^8.22.1
-      version: 8.22.1
+      specifier: ^8.23.0
+      version: 8.23.0
     zod:
       specifier: ^4.6.7
       version: 4.6.7
@@ -234,8 +234,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/network
       commander:
-        specifier: ^15.0.0
-        version: 15.0.0
+        specifier: ^15.1.0
+        version: 15.1.0
       uqr:
         specifier: ^0.1.3
         version: 0.1.3
@@ -247,8 +247,8 @@ importers:
   apps/napuketto-create:
     dependencies:
       '@clack/prompts':
-        specifier: ^1.8.1
-        version: 1.8.1
+        specifier: ^1.9.0
+        version: 1.9.0
     devDependencies:
       '@napuketto/cli':
         specifier: workspace:*
@@ -280,7 +280,7 @@ importers:
         version: 0.23.7(typescript@7.0.2)
       ws:
         specifier: 'catalog:'
-        version: 8.22.1
+        version: 8.23.0
 
   packages/kernel:
     dependencies:
@@ -328,13 +328,13 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.1.6(hono@4.13.16)
+        version: 2.1.8(hono@4.13.18)
       hono:
         specifier: 'catalog:'
-        version: 4.13.16
+        version: 4.13.18
       ws:
         specifier: 'catalog:'
-        version: 8.22.1
+        version: 8.23.0
     devDependencies:
       '@types/ws':
         specifier: 'catalog:'
@@ -499,12 +499,12 @@ packages:
     resolution: {integrity: sha512-q/ThtP9gcnEP6xlv7LrY26C2mHqdGBti/MmOVngt/M/oIGYkssmQGxPK9WzBNt2juVcH/vml2WQ+ra8LXYOTaA==}
     engines: {node: ^22.11 || ^24 || >=26}
 
-  '@clack/core@1.5.1':
-    resolution: {integrity: sha512-iHTrHA8MtVuLl2TfZySmcKv1qO2PoyC9Z7pfSDozEuV5vtY3/wcOPKJXlqJ5Oq2Cx5DDGQGAMVx6HZfRRoVEbQ==}
+  '@clack/core@1.6.0':
+    resolution: {integrity: sha512-4GZynIB2IIe431odxesswvWTCP6orvqd6e2b07b3VFWBQRqUqIHc/EPIZwFoKS692QBp+ooPuXKaJV8g4kXuYA==}
     engines: {node: '>= 20.12.0'}
 
-  '@clack/prompts@1.8.1':
-    resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
+  '@clack/prompts@1.9.0':
+    resolution: {integrity: sha512-tEj8X2No2A1c9NDnZECxiiJ8TP3vmFlN9tLlLeSaMqVW4tUmVG2R4qpv/eP4zymWxnymYLkLcIYVV0VcWj3RCQ==}
     engines: {node: '>= 20.12.0'}
 
   '@emnapi/core@2.0.0-beta.2':
@@ -556,8 +556,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@2.1.6':
-    resolution: {integrity: sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==}
+  '@hono/node-server@2.1.8':
+    resolution: {integrity: sha512-jdf7FHh6A1lzjpHHQUgxsg2GeER2vMetnAOfeActzcoli6jamlK+NAwL6Dsr5Fl3BS3tYUQzCdtZjU8Qxv7bEA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -1039,8 +1039,8 @@ packages:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
 
-  commander@15.0.0:
-    resolution: {integrity: sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg==}
+  commander@15.1.0:
+    resolution: {integrity: sha512-cgnQ88TRrWcC7pVq46RzJVRMktu3W2RcbnoidnfBsl1bmDCBwJS/udcIZpKoCrbAYYaCqsz1yZCVIgbIaU3ddQ==}
     engines: {node: '>=22.12.0'}
 
   debug@4.4.3:
@@ -1140,8 +1140,8 @@ packages:
     resolution: {integrity: sha512-X6fBC0pmImC70gvX2zm56go9hx0MyoGVdG0tUCkg/D+Xnh5TJsOZ7iDbOdI3PvmtrDxnu1YdDufpK2QJX1Meqw==}
     engines: {node: '>=20.20.0'}
 
-  hono@4.13.16:
-    resolution: {integrity: sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==}
+  hono@4.13.18:
+    resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.2:
@@ -1398,8 +1398,9 @@ packages:
     resolution: {integrity: sha512-mXPwLRtZxrYV3TZx41jMAeKc80wvmyrcXIcs8HctFxK15Ahz2OJQENYhNgEPeCEOdI6Mbx1NxQsqxzwc3DKerw==}
     engines: {node: '>=16.11.0'}
 
-  sisteransi@1.0.5:
-    resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
+  sisteransi@2.0.0:
+    resolution: {integrity: sha512-2WCqLdt12eN6ehLI50S2/ZxoowXU3DD1KVPRyVP0WEsFahrGZZmCdq1K59qjJljMRIDTwx1D9YaRK+hDneBUMg==}
+    engines: {node: '>=20'}
 
   smol-toml@1.9.1:
     resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
@@ -1611,8 +1612,8 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+  ws@8.23.0:
+    resolution: {integrity: sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -1743,7 +1744,7 @@ snapshots:
       '@changesets/should-skip-package': 1.0.0
       '@changesets/types': 7.0.0
       '@changesets/write': 1.0.1
-      '@clack/prompts': 1.8.1
+      '@clack/prompts': 1.9.0
       '@manypkg/get-packages': 3.1.0
       '@pnpm/deps.graph-sequencer': 1100.0.1
       cac: 7.1.0
@@ -1810,17 +1811,18 @@ snapshots:
       '@changesets/types': 7.0.0
       human-id: 4.2.2
 
-  '@clack/core@1.5.1':
+  '@clack/core@1.6.0':
     dependencies:
-      fast-wrap-ansi: 0.2.2
-      sisteransi: 1.0.5
-
-  '@clack/prompts@1.8.1':
-    dependencies:
-      '@clack/core': 1.5.1
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
-      sisteransi: 1.0.5
+      sisteransi: 2.0.0
+
+  '@clack/prompts@1.9.0':
+    dependencies:
+      '@clack/core': 1.6.0
+      fast-string-width: 3.0.2
+      fast-wrap-ansi: 0.2.2
+      sisteransi: 2.0.0
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
@@ -1862,9 +1864,9 @@ snapshots:
   '@fallow-cli/win32-x64-msvc@3.40.0':
     optional: true
 
-  '@hono/node-server@2.1.6(hono@4.13.16)':
+  '@hono/node-server@2.1.8(hono@4.13.18)':
     dependencies:
-      hono: 4.13.16
+      hono: 4.13.18
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -2165,7 +2167,7 @@ snapshots:
 
   chai@6.3.0: {}
 
-  commander@15.0.0: {}
+  commander@15.1.0: {}
 
   debug@4.4.3:
     dependencies:
@@ -2262,7 +2264,7 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  hono@4.13.16: {}
+  hono@4.13.18: {}
 
   hookable@6.1.2: {}
 
@@ -2483,7 +2485,7 @@ snapshots:
 
   silk-wasm@3.7.1: {}
 
-  sisteransi@1.0.5: {}
+  sisteransi@2.0.0: {}
 
   smol-toml@1.9.1: {}
 
@@ -2631,7 +2633,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  ws@8.22.1: {}
+  ws@8.23.0: {}
 
   yaml@2.9.1: {}
 
