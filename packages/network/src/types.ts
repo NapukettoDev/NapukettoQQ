@@ -102,9 +102,9 @@ export interface ServerOptions {
     host: string;
     port: number;
     /** 监听路径；缺省监听全部路径。 */
-    path?: string;
+    path?: string | undefined;
     /** 鉴权钩子；缺省不鉴权。 */
-    authorize?: AuthorizeHook;
+    authorize?: AuthorizeHook | undefined;
 }
 
 /**
@@ -128,47 +128,49 @@ export const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 /** 反向 HTTP server 选项。 */
 export interface HttpServerOptions extends ServerOptions {
     /** 处理超时（毫秒）；缺省不超时。 */
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
     /** 请求体上限（字节）；缺省 DEFAULT_MAX_BODY_BYTES。 */
-    bodyLimitBytes?: number;
+    bodyLimitBytes?: number | undefined;
     /** 同端口 WS 升级的单消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
-    wsMaxPayloadBytes?: number;
+    wsMaxPayloadBytes?: number | undefined;
 }
 
 /** 正向 HTTP 客户端（事件上报）选项。 */
 export interface HttpClientOptions {
     /** 上报地址（完整 URL）。 */
     url: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | undefined;
     /** 请求超时（毫秒）；缺省不超时。 */
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
     /** 上报失败回调（网络错误 / 非 2xx / 超时）。 */
-    onError?: (err: unknown) => void;
+    onError?: ((err: unknown) => void) | undefined;
 }
 
 /** 反向 WS server 选项。 */
 export interface WsServerOptions extends ServerOptions {
     /** 心跳：按间隔向所有客户端 ping。缺省不心跳。 */
-    heartbeat?: { intervalMs: number };
+    heartbeat?: { intervalMs: number } | undefined;
     /** 单条消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
-    maxPayloadBytes?: number;
+    maxPayloadBytes?: number | undefined;
 }
 
 /** 正向 WS 客户端（主动连接 / 反向连接）选项。 */
 export interface WsClientOptions {
     /** 服务端地址（完整 URL，含 ws:// 或 wss://）。 */
     url: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | undefined;
     /** 心跳：按间隔 ping，缺省不心跳。 */
-    heartbeat?: { intervalMs: number };
+    heartbeat?: { intervalMs: number } | undefined;
     /** 断线重连策略，缺省不重连。 */
-    reconnect?: {
-        enabled: boolean;
-        /** 重连延迟（毫秒）。 */
-        delayMs: number;
-        /** 最大重连次数；缺省无限。 */
-        maxAttempts?: number;
-    };
+    reconnect?:
+        | {
+              enabled: boolean;
+              /** 重连延迟（毫秒）。 */
+              delayMs: number;
+              /** 最大重连次数；缺省无限。 */
+              maxAttempts?: number | undefined;
+          }
+        | undefined;
     /** wss:// 是否校验证书链（缺省 undefined = Node 默认严格校验；自签证书场景设 false，对齐 NapCat enableSelfSigned）。 */
-    rejectUnauthorized?: boolean;
+    rejectUnauthorized?: boolean | undefined;
 }
