@@ -112,6 +112,8 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
                 cleanup();
                 reject(kernelError(`等待事件超时: ${event as string}`, "TIMEOUT"));
             }, timeoutMs);
+            // 不阻塞进程自然退出（等待方若被丢弃，定时器不应吊住事件循环）。
+            timer.unref?.();
             const cleanup = (): void => {
                 clearTimeout(timer);
                 this.emitter.removeListener(
@@ -144,7 +146,8 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         // 全事件订阅（IPC 转发）：单个订阅者异常不打断派发，统一走 error 兜底
         for (const anyHandler of this.anyHandlers) {
             try {
-                anyHandler(event as string, ...args);
+                const ret = anyHandler(event as string, ...args);
+                this.catchAsyncListenerError(ret);
             } catch (err) {
                 this.notifyError(err);
             }
@@ -152,7 +155,8 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         const listeners = this.emitter.listeners(event as string);
         for (const listener of listeners) {
             try {
-                (listener as (...a: unknown[]) => void)(...args);
+                const ret = (listener as (...a: unknown[]) => unknown)(...args);
+                this.catchAsyncListenerError(ret);
             } catch (err) {
                 // error 兜底：单个订阅者异常不打断派发，统一通知 onError
                 this.notifyError(err);
@@ -160,10 +164,30 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         }
     }
 
-    /** 通知所有错误处理器（单个异常不打断其他处理器）。 */
+    /**
+     * 下游 async 监听器的 Promise 拒绝不会被 try/catch 捕获（会变成进程级
+     * UnhandledRejection）——这里统一挂 catch 转发到 onError 兜底。
+     */
+    private catchAsyncListenerError(ret: unknown): void {
+        if (
+            ret !== null &&
+            typeof ret === "object" &&
+            typeof (ret as { catch?: unknown }).catch === "function"
+        ) {
+            (ret as Promise<unknown>).catch((err: unknown) => {
+                this.notifyError(err);
+            });
+        }
+    }
+
+    /** 通知所有错误处理器（单个处理器异常不打断其他处理器）。 */
     private notifyError(err: unknown): void {
         for (const handler of this.errorHandlers) {
-            handler(err);
+            try {
+                handler(err);
+            } catch {
+                // 隔离单个错误处理器异常（错误兜底自身不得再炸）
+            }
         }
     }
 
@@ -173,5 +197,17 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         return () => {
             this.errorHandlers.delete(handler);
         };
+    }
+
+    /** 清空全部监听器与错误处理器（幂等；Runtime 销毁时调用）。 */
+    dispose(): void {
+        this.emitter.removeAllListeners();
+        this.errorHandlers.clear();
+        this.anyHandlers.clear();
+    }
+
+    /** `using channel = ...` 自动清理。 */
+    [Symbol.dispose](): void {
+        this.dispose();
     }
 }

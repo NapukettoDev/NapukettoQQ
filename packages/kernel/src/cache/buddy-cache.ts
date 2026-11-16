@@ -110,6 +110,16 @@ export class BuddyCache {
         this.bootstrapped = false;
     }
 
+    /** 释放（等价 unregister，幂等）。 */
+    dispose(): void {
+        this.unregister();
+    }
+
+    /** `using cache = ...` 自动释放。 */
+    [Symbol.dispose](): void {
+        this.unregister();
+    }
+
     /** 应用全量快照：首帧建 baseline，之后 diff 发布归一化事件。 */
     private applySnapshot(entries: BuddyListEntry[]): void {
         if (!this.bootstrapped) {

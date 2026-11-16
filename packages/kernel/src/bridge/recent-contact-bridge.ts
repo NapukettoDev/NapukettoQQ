@@ -74,4 +74,14 @@ export class RecentContactBridge {
         this.service.removeKernelRecentContactListener(this.listenerId);
         this.listenerId = null;
     }
+
+    /** 释放（等价 unregister，幂等）。 */
+    dispose(): void {
+        this.unregister();
+    }
+
+    /** `using bridge = ...` 自动释放。 */
+    [Symbol.dispose](): void {
+        this.unregister();
+    }
 }

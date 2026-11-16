@@ -22,7 +22,11 @@
 
 import { kernelError, waitFor } from "../infra/index.js";
 import type { NodeIKernelSessionListener, WrapperSessionInitConfig } from "../types/index.js";
-import { DependsAdapter, DispatcherAdapter } from "../wrapper/wrapper-adapters.js";
+import {
+    createSessionListener,
+    DependsAdapter,
+    DispatcherAdapter,
+} from "../wrapper/wrapper-adapters.js";
 import type { WrapperContext } from "../wrapper/wrapper-loader.js";
 
 export type { LoginAccountInfo, LoginResult, QuickLoginOptions } from "./login-connect.js";
@@ -47,7 +51,7 @@ const SESSION_READY_POLL_MS = 1000;
  */
 export async function waitSessionReady(
     ctx: WrapperContext,
-    opts: { timeoutMs?: number },
+    opts: { timeoutMs?: number | undefined } = {},
 ): Promise<void> {
     const { session } = ctx;
     if (session === null || session === undefined) {
@@ -76,8 +80,8 @@ export async function waitSessionReady(
 export async function initAndStartSession(
     ctx: WrapperContext,
     config: WrapperSessionInitConfig,
-    listener: NodeIKernelSessionListener,
-    opts: { timeoutMs?: number },
+    listener: NodeIKernelSessionListener = createSessionListener(),
+    opts: { timeoutMs?: number | undefined } = {},
 ): Promise<void> {
     const { session } = ctx;
     if (session === null || session === undefined) {

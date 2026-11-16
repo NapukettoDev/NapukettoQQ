@@ -21,9 +21,9 @@ export interface LoginResult {
 /** 登录列表项（getLoginList 返回，说明书参考）。 */
 export interface LoginAccountInfo {
     uin: string;
-    uid?: string;
-    nickName?: string;
-    isQuickLogin?: boolean;
+    uid?: string | undefined;
+    nickName?: string | undefined;
+    isQuickLogin?: boolean | undefined;
 }
 
 /** 登录服务形状（getLoginList / quickLoginWithUin / getMsfStatus，自研描述）。 */
@@ -135,19 +135,31 @@ function waitLoginConnected(
     raw: {
         connect?: () => void;
         addKernelLoginListener?: (listener: unknown) => number;
+        removeKernelLoginListener?: (listenerId: number) => void;
     },
-    timeoutMs?: number,
+    timeoutMs?: number | undefined,
 ): Promise<void> {
     return new Promise<void>((resolve) => {
         let settled = false;
+        let listenerId: number | null = null;
+        let timer: ReturnType<typeof setTimeout> | null = null;
         const finish = (): void => {
-            if (!settled) {
-                settled = true;
-                resolve();
+            if (settled) {
+                return;
             }
+            settled = true;
+            if (timer !== null) {
+                clearTimeout(timer);
+                timer = null;
+            }
+            removeConnectListener(raw, listenerId);
+            listenerId = null;
+            resolve();
         };
-        tryRegisterConnectListener(raw, finish);
-        setTimeout(finish, timeoutMs ?? NETWORK_READY_TIMEOUT_MS);
+        listenerId = tryRegisterConnectListener(raw, finish);
+        timer = setTimeout(finish, timeoutMs ?? NETWORK_READY_TIMEOUT_MS);
+        // 不阻塞进程自然退出
+        timer.unref?.();
         try {
             raw.connect?.();
         } catch {
@@ -156,26 +168,43 @@ function waitLoginConnected(
     });
 }
 
-/** 注册临时登录连接监听（失败不阻塞连接）。 */
+/**
+ * 注册临时登录连接监听（失败不阻塞连接）。返回 listenerId（不可注册时为 null）。
+ * 连接确认或超时后由 finish 统一 remove——软重登/多实例下不会堆积原生监听器。
+ */
 function tryRegisterConnectListener(
     raw: {
-        connect?: () => void;
         addKernelLoginListener?: (listener: unknown) => number;
     },
     finish: () => void,
-): void {
+): number | null {
     try {
-        // 临时监听等 onLoginConnected；保留不 remove——登录后续回调
-        // （onQRCodeLoginSucceed 等）仍可能触发，且进程内只登录一次，无泄漏风险。
         const listener = createLoginListener();
         listener.onLoginConnected = () => {
             finish();
         };
         if (typeof raw.addKernelLoginListener === "function") {
-            raw.addKernelLoginListener(listener);
+            return raw.addKernelLoginListener(listener);
         }
+        return null;
     } catch {
         // 监听注册失败不阻塞连接
+        return null;
+    }
+}
+
+/** 移除临时登录连接监听（无 remove 方法 / 抛错时静默——监听器随后续登录覆盖）。 */
+function removeConnectListener(
+    raw: { removeKernelLoginListener?: (listenerId: number) => void },
+    listenerId: number | null,
+): void {
+    if (listenerId === null || typeof raw.removeKernelLoginListener !== "function") {
+        return;
+    }
+    try {
+        raw.removeKernelLoginListener(listenerId);
+    } catch {
+        // 移除失败不阻塞登录（原生侧最多残留一个临时监听）
     }
 }
 
@@ -247,7 +276,7 @@ async function loginWithNetworkRetry(
     ctx: WrapperContext,
     loginService: LoginServiceShape,
     target: LoginAccountInfo,
-    opts: { uin?: string; timeoutMs?: number },
+    opts: { uin?: string | undefined; timeoutMs?: number | undefined },
     quickTimeoutMs: number,
 ): Promise<LoginResult> {
     let lastErrMsg = "";
@@ -303,11 +332,11 @@ export function isNetworkError(errMsg: string): boolean {
 /** quickLogin 参数（uin 指定账号；timeoutMs 网络就绪等待；quickLoginTimeoutMs 单步超时）。 */
 export interface QuickLoginOptions {
     /** 指定快速登录账号（缺省遍历历史列表，优先 isQuickLogin）。 */
-    uin?: string;
+    uin?: string | undefined;
     /** 网络就绪等待超时（毫秒，P2-1 既有语义），默认 15s。 */
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
     /** 单步快速登录超时（毫秒，T3 挂起兜底），默认 {@link QUICK_LOGIN_TIMEOUT_MS}。 */
-    quickLoginTimeoutMs?: number;
+    quickLoginTimeoutMs?: number | undefined;
 }
 
 /**
