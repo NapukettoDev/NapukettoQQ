@@ -50,7 +50,7 @@ export interface DoubtFriendRequestInfo {
 /** FriendApi 构造选项。 */
 export interface FriendApiOptions {
     /** uid→uin 转换器（通常注入 GroupApi.uidToUin）；缺省 uin 退化为 uid。 */
-    uidToUin?: (uids: string[]) => Promise<Map<string, string>>;
+    uidToUin?: ((uids: string[]) => Promise<Map<string, string>>) | undefined;
 }
 
 /** 好友 API：从 session 拿 buddy service，包装成语义化方法。 */

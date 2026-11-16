@@ -55,7 +55,7 @@ export class DispatcherAdapter implements NodeIDispatcherAdapter {
 /** 会话监听器选项。 */
 export interface SessionListenerOptions {
     /** 事件日志回调（默认静默——boot 阶段事件对用户是噪音；调试时可传回调观察）。 */
-    onEvent?: (name: string, ...args: unknown[]) => void;
+    onEvent?: ((name: string, ...args: unknown[]) => void) | undefined;
 }
 
 /**

@@ -5,6 +5,9 @@
  * 实体 JSON 形状。probe.ts（probeRuntime，一次性 dump）与 probe-listener.ts
  * （startListenerRecording，长驻回调录制）是对外入口，其余为内部实现。
  */
+
+/** @internal 运行时反射探测工具 */
 export { probeRuntime } from "./probe.js";
 export type { ListenerRecordEvent, ListenerRecordingResult } from "./probe-listener.js";
+/** @internal 运行时反射探测工具 */
 export { createRecordingListener, startListenerRecording } from "./probe-listener.js";

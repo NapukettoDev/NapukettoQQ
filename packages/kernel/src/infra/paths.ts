@@ -29,9 +29,9 @@ export const MAIN_CONFIG_FILE = "napuketto.toml";
 
 export interface PathOptions {
     /** 显式数据根（cli `--data-dir` 传入，优先级最高）。 */
-    dataRoot?: string;
+    dataRoot?: string | undefined;
     /** QQ 号，用于多账号隔离；缺省时直接使用数据根本身。 */
-    account?: string;
+    account?: string | undefined;
 }
 
 /** `~` 前缀展开为用户主目录（跨平台配置文件写法 `dataDir = "~/.napuketto"`）。 */
@@ -95,7 +95,7 @@ function findProjectRoot(startDir: string, marker: string): string | undefined {
 
 export interface ConfigPathOptions {
     /** 兜底数据根（探测全部失败时用 `<dataRoot>/napuketto.toml`，保持旧行为）。 */
-    dataRoot?: string;
+    dataRoot?: string | undefined;
 }
 
 /**

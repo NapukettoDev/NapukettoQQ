@@ -185,14 +185,15 @@ export type NodeIQQNTStartupSessionWrapperCtor = new () => NodeIQQNTStartupSessi
 export interface NodeIKernelLoginService {
     addKernelLoginListener(listener: unknown): number;
     removeKernelLoginListener(listener: number): void;
-    initConfig(config: unknown): void;
+    /** 初始化登录配置（老版本 wrapper 可能缺此方法，调用方需按可选处理）。 */
+    initConfig?(config: unknown): void;
     connect(): void;
     getLoginList(): Promise<{ result: number; LocalLoginInfoList: unknown[] }>;
     quickLoginWithUin(uin: string): Promise<unknown>;
     getQRCodePicture(): boolean;
     getMsfStatus(): number;
-    /** 设备指纹 guid（wrapper.node 字符串分析实证，2026-08-12；无 getMachineId）。 */
-    getMachineGuid(): string;
+    /** 设备指纹 guid（wrapper.node 字符串分析实证，2026-08-12；无 getMachineId；可选）。 */
+    getMachineGuid?(): string;
 }
 
 /** NodeIKernelLoginService 构造器（含静态 get）。 */

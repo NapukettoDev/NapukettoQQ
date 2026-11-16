@@ -13,7 +13,10 @@ export type {
     FlashTransferUploadOptions,
     FlashTransferUploadResult,
     Friend,
+    FriendApiOptions,
     FriendCategory,
+    GroupFileListItem,
+    GroupFileSystemInfo,
     GroupHonorWebInfo,
     HonorListItem,
     PinnedContact,
@@ -63,7 +66,9 @@ export { NTEventChannel } from "./event-channel.js";
 export type {
     ConfigFormat,
     ConfigOptions,
+    ConfigPathOptions,
     ConfigSchema,
+    ConsoleFormatStreamOptions,
     KernelErrorCode,
     LogConfig,
     LogEnvSource,
@@ -79,6 +84,7 @@ export {
     ConfigBase,
     ConfigError,
     configError,
+    createConsoleFormatStream,
     createLogger,
     DEFAULT_DATA_ROOT_NAME,
     EXIT_CONFIG_INVALID,
@@ -93,7 +99,9 @@ export {
     parseToml,
     resolveConfigPath,
     resolveDataRoot,
+    sleep,
     stringifyToml,
+    waitFor,
 } from "./infra/index.js";
 export type {
     LoginAccountInfo,
@@ -101,6 +109,7 @@ export type {
     LoginResult,
     LoginState,
     QrCodeData,
+    QuickLoginOptions,
     SelfInfo,
 } from "./login/index.js";
 export {
@@ -111,17 +120,28 @@ export {
     waitForNetworkConnection,
     waitSessionReady,
 } from "./login/index.js";
+export type { KernelRuntime, KernelRuntimeOptions } from "./runtime.js";
+export { createKernelRuntime } from "./runtime.js";
 export type {
     BuddyCategory,
     BuddyCoreInfo,
     BuddyListEntry,
     BuddyListener,
+    BuddyProfileLikeResult,
     BuddyReq,
     CanonicalElement,
     DesktopPathConfig,
     DeviceInfo,
     DoubtBuddyReq,
     EnginInitDesktopConfig,
+    FaceElement,
+    FileElement,
+    FlashTransferFileSet,
+    FlashTransferFileStatus,
+    FlashTransferPermission,
+    FlashTransferTarget,
+    FlashTransferTaskInfo,
+    FlashTransferUploadListener,
     ForceFetchClientKeyRetType,
     GeneralCallResult,
     GetFileListParam,
@@ -134,11 +154,18 @@ export type {
     GroupFolderInfo,
     GroupListener,
     GroupMember,
-    GroupMemberDataSource,
     GroupMemberListChange,
     GroupNotify,
+    GroupRemainAtTimes,
     GroupSpaceInfo,
+    IKernelLoginListener,
+    KernelLoginListener,
+    KickMemberInfo,
+    KickMemberV2Req,
+    LoginListener,
     MsgListener,
+    MsgReadReportItem,
+    MsgReceipt,
     NodeIDependsAdapter,
     NodeIDispatcherAdapter,
     NodeIGlobalAdapter,
@@ -158,7 +185,9 @@ export type {
     NodeQQNTWrapperUtil,
     NudgeParam,
     Peer,
+    PicElement,
     PlatformType,
+    PttElement,
     RawElement,
     RawMessage,
     RDeliveryConfig,
@@ -166,12 +195,15 @@ export type {
     RecentContactFetchParam,
     RecentContactListChanged,
     RecentContactListener,
+    ReplyElement,
     SendMessageElement,
     ShutUpGroupMember,
+    TextElement,
     TipAioOpGrayTipElement,
     TipGroupElement,
     UserDetailInfoByUin,
     VendorType,
+    VideoElement,
     WrapperNodeApi,
     WrapperSessionInitConfig,
 } from "./types/index.js";
@@ -180,6 +212,7 @@ export {
     ElementType,
     GrayTipSubType,
     GroupListUpdateType,
+    GroupMemberDataSource,
     GroupNotifyMsgStatus,
     GroupNotifyMsgType,
     NTGroupMemberRole,
@@ -187,20 +220,33 @@ export {
     TipGroupElementType,
     toCanonicalElements,
     toSendElements,
+    VIDEO_THUMB_KEY,
 } from "./types/index.js";
 export {
+    /** @internal 运行时反射探测工具 */
     createRecordingListener,
     type ListenerRecordEvent,
     type ListenerRecordingResult,
+    /** @internal 运行时反射探测工具 */
     probeRuntime,
+    /** @internal 运行时反射探测工具 */
     startListenerRecording,
 } from "./wrapper/probe/index.js";
 export { resolveQqGlobalPath } from "./wrapper/qq-data-path.js";
-export { getExistingSession, getMainSession } from "./wrapper/session-resolver.js";
+export {
+    /** @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用 */
+    getExistingSession,
+    /** @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用 */
+    getMainSession,
+} from "./wrapper/session-resolver.js";
+export type { SessionListenerOptions } from "./wrapper/wrapper-adapters.js";
 export {
     createLoginListener,
     createSessionListener,
     createSessionListener as createLifecycleSessionListener,
+    DependsAdapter,
+    DispatcherAdapter,
+    GlobalAdapter,
 } from "./wrapper/wrapper-adapters.js";
 export type { SessionConfigOptions } from "./wrapper/wrapper-config.js";
 export {
@@ -214,6 +260,7 @@ export {
 export type {
     BootEnv,
     QQVersionContext,
+    QqDataRootOptions,
     QqVersionContext,
     StartNapukettoOptions,
     WrapperContext,

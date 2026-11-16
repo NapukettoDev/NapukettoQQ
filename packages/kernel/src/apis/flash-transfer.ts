@@ -40,11 +40,11 @@ export interface FlashTransferUploadResult {
 /** 上传选项。 */
 export interface FlashTransferUploadOptions {
     /** 文件集名称（对端卡片标题）；缺省取首个文件名。 */
-    name?: string;
+    name?: string | undefined;
     /** 分享权限码（permission.code，实测 0 = 链接可直接打开）。 */
-    permissionCode?: number;
+    permissionCode?: number | undefined;
     /** 超时毫秒（缺省 10 分钟）。 */
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
 }
 
 /** 闪传 API：从 session 拿 flash transfer service，包装成语义化方法。 */

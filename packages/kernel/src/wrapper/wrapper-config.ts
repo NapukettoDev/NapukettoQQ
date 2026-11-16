@@ -270,9 +270,9 @@ export interface SessionConfigOptions {
     accountPath: string;
     downloadPath: string;
     /** 设备指纹 guid（来自 loginService.getMachineGuid()；缺省空串）。 */
-    machineGuid?: string;
+    machineGuid?: string | undefined;
     /** 平台（缺省按 process.platform 探测；测试/联调可显式覆盖）。 */
-    platform?: PlatformTypeValue;
+    platform?: PlatformTypeValue | undefined;
 }
 
 /** 生成 session 初始化配置（登录成功后调用）。 */
