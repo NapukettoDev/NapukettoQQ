@@ -5,7 +5,7 @@
  * group_upload notice）、其余翻译 message 事件。回填走 Ob11Enrichment。
  */
 import type { RawMessage } from "@napuketto/kernel";
-import { ChatType } from "@napuketto/kernel";
+import { ChatType, errorMessage } from "@napuketto/kernel";
 import { logEventFailure } from "../../shared/log.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { Ob11EventPipelineDeps } from "../event-pipeline.js";
@@ -50,7 +50,7 @@ export class Ob11InboundMessage {
                 // uid 查询炸掉丢弃整个 notice 是原语义（enrichment.noticeUidMap
                 // 上抛）；补 debug 日志，不再静默吞
                 this.deps.logger?.debug(
-                    { err: err instanceof Error ? err.message : String(err) },
+                    { err: errorMessage(err) },
                     "ob11: notice 翻译失败（整个事件丢弃）",
                 );
             });

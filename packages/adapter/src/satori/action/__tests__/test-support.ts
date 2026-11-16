@@ -17,7 +17,7 @@ import type {
 } from "@napuketto/kernel";
 import { vi } from "vitest";
 import { stub } from "../../../shared/__tests__/stub.js";
-import type { SatoriAction } from "../base-action.js";
+import type { SatoriActionHandler } from "../base-action.js";
 
 /**
  * 测试视角的 Satori 动作（run 返回 `R`；由用例按动作签名标注，恢复强类型
@@ -29,7 +29,10 @@ export interface SatoriTestAction<R> {
 }
 
 /** 按动作名从领域工厂产物中取动作（未注册即抛错，防静默漏测）。 */
-export function satoriActionOf<R>(actions: SatoriAction[], name: string): SatoriTestAction<R> {
+export function satoriActionOf<R>(
+    actions: SatoriActionHandler[],
+    name: string,
+): SatoriTestAction<R> {
     const action = actions.find((a) => a.name === name);
     if (action === undefined) {
         throw new Error(`动作未注册: ${name}`);

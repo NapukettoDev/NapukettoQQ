@@ -5,7 +5,7 @@
  * 方法面（P2-4 + P2-10）：群列表 / 群详情 / 成员列表 / 成员详情 / uin↔uid +
  * 群管操作（踢人 / 禁言 / 管理员 / 名片 / 群名 / 退群 / 精华消息 / @all 剩余）。
  */
-import { isKernelError, kernelError } from "../infra/index.js";
+import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
 import type {
     Group,
     GroupBulletin,
@@ -262,7 +262,7 @@ export class GroupApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`getGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`getGroupBulletin 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
         unwrap("getGroupBulletin", toResultNumber(raw.result), raw.errMsg as string | undefined);
         return extractBulletins(raw.result);
@@ -294,7 +294,7 @@ export class GroupApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`publishGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`publishGroupBulletin 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -312,7 +312,7 @@ export class GroupApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`deleteGroupBulletin 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`deleteGroupBulletin 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -330,7 +330,7 @@ export class GroupApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`setIdentityTitleInfo 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`setIdentityTitleInfo 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -348,7 +348,7 @@ export class GroupApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`setHeader(group) 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`setHeader(group) 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
     }
 
@@ -405,11 +405,6 @@ function extractBulletins(result: unknown): GroupBulletin[] {
         }
     }
     return [];
-}
-
-/** 未知异常 → 消息字符串。 */
-function errMsgString(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
 }
 
 /**

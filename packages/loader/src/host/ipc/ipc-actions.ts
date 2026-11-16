@@ -8,7 +8,7 @@
  * ⚠️ 不自研 kernel 依赖（loader 运行时 file:// 动态 import kernel，编译期不建
  * workspace 依赖——见 types.ts 注释）。错误码提取用宽松结构判断。
  */
-import { log } from "../util.js";
+import { errorMessage, log } from "../util.js";
 
 /** 宽松 Peer 最小面（kernel Peer：chatType + peerUid）。 */
 export interface IpcPeer {
@@ -374,7 +374,7 @@ async function callDiagnosticMethod(
         const r = await (fn as (...a: unknown[]) => unknown).apply(obj, args);
         return { ok: true, ret: r };
     } catch (e) {
-        return { ok: false, err: e instanceof Error ? e.message : String(e) };
+        return { ok: false, err: errorMessage(e) };
     }
 }
 
@@ -394,7 +394,7 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
             try {
                 tmp[name] = await (fn as () => unknown).call(svc);
             } catch (e) {
-                tmp[name] = `调用失败: ${e instanceof Error ? e.message : String(e)}`;
+                tmp[name] = `调用失败: ${errorMessage(e)}`;
             }
         } else {
             tmp[name] = "方法缺失";
@@ -422,7 +422,7 @@ async function probeFlashSideEffects(flash: unknown): Promise<Record<string, unk
             } catch (e) {
                 sideEffects[name] = {
                     ok: false,
-                    err: e instanceof Error ? e.message : String(e),
+                    err: errorMessage(e),
                 };
             }
         } else {
@@ -477,7 +477,7 @@ export async function callIpcAction(
     } catch (err) {
         // 诊断（2026-08-09）：错误消息传回 koishi 会丢堆栈，先落 boot 日志
         // 便于定位真实错误位置（QQ 原生内部抛错时消息难以反查）。
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         const stack = err instanceof Error && err.stack !== undefined ? err.stack : "";
         log(`[ipc] action=${action} 失败: ${message}\n${stack}`);
         return { ok: false, error: { code: errorCodeOf(err), message } };

@@ -20,7 +20,7 @@ import type {
     TicketApi,
     WebApi,
 } from "@napuketto/kernel";
-import { GroupApi } from "@napuketto/kernel";
+import { errorMessage, GroupApi } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../../shared/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
@@ -164,7 +164,7 @@ export class OneBotApi {
             return member === undefined ? undefined : GroupApi.roleToString(member.role);
         } catch (err) {
             this.logger?.warn(
-                { group: groupCode, uid, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, uid, error: errorMessage(err) },
                 "ob11: 群成员缓存读取失败，sender.role 回退 member",
             );
             return undefined;
@@ -187,7 +187,7 @@ export class OneBotApi {
             return out;
         } catch (err) {
             this.logger?.warn(
-                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, error: errorMessage(err) },
                 "ob11: 群成员表缓存读取失败，历史 role 回退 member",
             );
             return undefined;

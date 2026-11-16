@@ -18,6 +18,7 @@ import {
     DEFAULT_MAX_PAYLOAD_BYTES,
     type HttpRouteContext,
     type HttpServerOptions,
+    incomingMessageToRequestContext,
     type RequestContext,
     type Respond,
     type TransportAdapter,
@@ -48,13 +49,6 @@ function toRequestContext(c: Context): RequestContext {
 }
 
 /** 原生 upgrade 请求 → RequestContext（headers 展平，url 含查询串）。 */
-function toUpgradeRequestContext(req: IncomingMessage): RequestContext {
-    const headers: Record<string, string | undefined> = {};
-    for (const [key, value] of Object.entries(req.headers)) {
-        headers[key] = Array.isArray(value) ? value.join(", ") : value;
-    }
-    return { url: req.url ?? "", headers };
-}
 
 export class HttpServer implements TransportAdapter {
     private readonly app: Hono;
@@ -195,7 +189,7 @@ export class HttpServer implements TransportAdapter {
         const upgradeable = server as unknown as UpgradeableServer;
         upgradeable.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
             this.onUpgrade?.(
-                toUpgradeRequestContext(req),
+                incomingMessageToRequestContext(req),
                 (accept) => {
                     wss.handleUpgrade(req, socket, head, (client) => accept(client));
                 },

@@ -10,7 +10,7 @@
  * 不含 UI 渲染（cli 只做二维码渲染/URL 打印）。
  */
 import { kernelError } from "../infra/index.js";
-import type { IKernelLoginListener } from "../types/index.js";
+import type { KernelLoginListener } from "../types/index.js";
 import { createLoginListener } from "../wrapper/wrapper-adapters.js";
 
 /** 登录状态。 */
@@ -167,7 +167,7 @@ export class QrLoginSession {
     }
 
     /** 构建登录监听（普通 JS 对象，NAPI 反射）。 */
-    private buildListener(): IKernelLoginListener {
+    private buildListener(): KernelLoginListener {
         const listener = createLoginListener();
         listener.onQRCodeGetPicture = ({ pngBase64QrcodeData, qrcodeUrl }) => {
             const realBase64 = pngBase64QrcodeData.replace(DATA_URI_PREFIX_RE, "");

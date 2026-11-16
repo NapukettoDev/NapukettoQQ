@@ -8,7 +8,7 @@ import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
     DEFAULT_MAX_PAYLOAD_BYTES,
-    type RequestContext,
+    incomingMessageToRequestContext,
     type Respond,
     type TransportAdapter,
     type WsServerOptions,
@@ -17,18 +17,6 @@ import {
 const WS_CLOSE_CODE = {
     unauthorized: 4401,
 } as const;
-
-function toRequestContext(req: IncomingMessage): RequestContext {
-    const headers: Record<string, string | undefined> = {};
-    for (const [key, value] of Object.entries(req.headers)) {
-        if (Array.isArray(value)) {
-            headers[key] = value.join(", ");
-        } else {
-            headers[key] = value;
-        }
-    }
-    return { url: req.url ?? "", headers };
-}
 
 export class WsServer implements TransportAdapter {
     private readonly opts: WsServerOptions;
@@ -121,7 +109,7 @@ export class WsServer implements TransportAdapter {
     }
 
     private onConnection(socket: WebSocket, req: IncomingMessage): void {
-        if (this.opts.authorize && !this.opts.authorize(toRequestContext(req))) {
+        if (this.opts.authorize && !this.opts.authorize(incomingMessageToRequestContext(req))) {
             socket.close(WS_CLOSE_CODE.unauthorized, "unauthorized");
             return;
         }

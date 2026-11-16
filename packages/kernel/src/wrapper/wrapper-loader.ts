@@ -48,7 +48,8 @@ import { buildQua, detectPlatformType, parseQuaFromMajor } from "./wrapper-confi
 function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginInitDesktopConfig {
     const platform = detectPlatformType();
     const fullVersion = env.qqVersion ?? "";
-    const wrapperPath = process.env["NAPUTO_WRAPPER_PATH"] ?? "";
+    const wrapperPath =
+        process.env["NAPUKETTO_WRAPPER_PATH"] ?? process.env["NAPUTO_WRAPPER_PATH"] ?? "";
     const majorPath = wrapperPath !== "" ? join(dirname(wrapperPath), "major.node") : "";
     const scanned = majorPath !== "" ? parseQuaFromMajor(majorPath) : null;
     const qua = scanned ?? (fullVersion !== "" ? buildQua(fullVersion, platform) : "");
@@ -104,7 +105,13 @@ export function resolveQqUserDataRoot(
 ): string | null {
     const platform = opts.platform ?? detectPlatformType();
     if (platform === PlatformType.KLINUX) {
-        const dataRoot = opts.dataRoot ?? process.env["NAPUTO_DATA_ROOT"] ?? "";
+        const dataRoot =
+            opts.dataRoot ??
+            process.env["NAPUKETTO_DATA_ROOT"] ??
+            process.env["NAPUTO_DATA_ROOT"] ??
+            process.env["NAPUKETTO_DATA"] ??
+            process.env["NAPKETTO_DATA"] ??
+            "";
         if (dataRoot !== "") {
             return dataRoot;
         }
@@ -133,10 +140,13 @@ function extractUserDataRoot(exports: WrapperNodeApi): string | null {
 // ---------------------------------------------------------------
 
 /** QQ 版本信息（登录握手用）。 */
-export interface QQVersionContext {
+export interface QqVersionContext {
     fullVersion: string;
     buildVersion: string;
 }
+
+/** @deprecated 使用 `QqVersionContext`（缩写大小写统一为 `Qq`）。 */
+export type QQVersionContext = QqVersionContext;
 
 /** 已引导的 wrapper 上下文（运行在 QQ Electron 主进程内）。 */
 export interface WrapperContext {
@@ -145,7 +155,7 @@ export interface WrapperContext {
     /** engine 单例（get() 已调用）。 */
     engine: NodeIQQNTWrapperEngine;
     /** 版本信息（供登录握手等使用）。 */
-    versionInfo: QQVersionContext;
+    versionInfo: QqVersionContext;
     /** 会话（QQ 拦截捕获 / createSession 后填充）。 */
     session: NodeIQQNTWrapperSession | null;
     /** 启动会话包装（NapCat 同款：StartupSessionWrapper.create()，start() 替代 startNT）。 */
@@ -160,7 +170,7 @@ export interface WrapperContext {
  */
 export function createWrapper(
     exports: WrapperNodeApi,
-    versionInfo: QQVersionContext,
+    versionInfo: QqVersionContext,
 ): WrapperContext {
     const engineMaybe = exports.NodeIQQNTWrapperEngine as unknown as {
         get?: () => NodeIQQNTWrapperEngine;
@@ -294,7 +304,7 @@ export function startSession(ctx: WrapperContext): void {
  */
 export function startNapuketto(options: StartNapukettoOptions): WrapperContext {
     const { env, engineConfig, sessionConfig, wrapperExports, qqSession, qqLoginService } = options;
-    const versionInfo: QQVersionContext = {
+    const versionInfo: QqVersionContext = {
         fullVersion: env?.qqVersion ?? "",
         buildVersion: env?.qqVersion ?? "",
     };

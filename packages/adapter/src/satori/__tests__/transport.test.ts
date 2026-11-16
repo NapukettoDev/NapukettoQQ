@@ -17,7 +17,7 @@ import { z } from "zod";
 import { ActionRegistry } from "../../core/framework/action-registry.js";
 import { stub } from "../../shared/__tests__/stub.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
-import type { SatoriAction } from "../action/base-action.js";
+import type { SatoriActionHandler } from "../action/base-action.js";
 import { createSatoriActionRegistry } from "../action/index.js";
 import { satoriConfigSchema, toLogin } from "../helper/index.js";
 import { assembleSatoriTransports, type SatoriTransportSet, toEventSignal } from "../transport.js";
@@ -191,12 +191,12 @@ describe("HTTP RPC 分发", () => {
         expect(json).toEqual({ error: "无权限撤回" });
     });
 
-    it("意外异常 → 500（message.get 消息不存在兜底）", async () => {
+    it("kernelError NOT_FOUND → 404（message.get 消息不存在）", async () => {
         const { status, json } = await postRpc(PORT_HTTP_A, "message.get", {
             channel_id: "10001",
             message_id: "gone",
         });
-        expect(status).toBe(500);
+        expect(status).toBe(404);
         expect(json).toEqual({ error: "消息不存在" });
     });
 
@@ -391,9 +391,9 @@ const setD = buildSet({
     httpPort: 36247,
     wsPort: 36248,
     registry: (() => {
-        const reg = new ActionRegistry<SatoriAction>();
+        const reg = new ActionRegistry<SatoriActionHandler>();
         reg.register(
-            stub<SatoriAction>({
+            stub<SatoriActionHandler>({
                 name: "boom.action",
                 schema: z.object({}).passthrough(),
                 run: async () => {
@@ -402,7 +402,7 @@ const setD = buildSet({
             }),
         );
         reg.register(
-            stub<SatoriAction>({
+            stub<SatoriActionHandler>({
                 name: "boom2.action",
                 schema: z.object({}).passthrough(),
                 run: async () => {

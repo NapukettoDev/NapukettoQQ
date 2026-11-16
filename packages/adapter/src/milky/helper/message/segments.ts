@@ -9,9 +9,9 @@
  * 发送方向：OutgoingSegment → canonical（10 种全映射；forward 顶层段不走本转换器，
  * 由 sendMilkyMessage 分流到组装链——本转换器内 forward 报错只拦截混发/嵌套）。
  */
-import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { kernelError } from "@napuketto/kernel";
+import { fileUriToPath } from "../../../shared/media.js";
 import type { IncomingSegment, OutgoingSegment } from "../../types.js";
 
 /** reply 段回填元信息（广播/action 路径异步取得，翻译纯函数消费）。 */
@@ -300,16 +300,4 @@ function resolveUriToPathPlaceholder(uri: string): string {
     }
     // 裸路径（go-cqhttp 惯例）：按本地路径处理
     return uri;
-}
-
-/** file:// 前缀（fileURLToPath 失败时的裸剥离兜底）。 */
-const FILE_URI_PREFIX_RE = /^file:\/\//;
-
-/** file:// URI → 平台路径（Windows 盘符兼容）。 */
-function fileUriToPath(uri: string): string {
-    try {
-        return fileURLToPath(uri);
-    } catch {
-        return uri.replace(FILE_URI_PREFIX_RE, "");
-    }
 }

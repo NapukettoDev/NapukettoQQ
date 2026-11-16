@@ -108,11 +108,11 @@ describe("message.get", () => {
         );
     });
 
-    it("消息不存在（空列表）：抛「消息不存在」（500）", async () => {
+    it("消息不存在（空列表）：抛「消息不存在」（404）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<Message>(api, "message.get");
         await expect(action.run({ channel_id: "10001", message_id: "gone" })).rejects.toMatchObject(
-            { status: 500, message: "消息不存在" },
+            { status: 404, message: "消息不存在" },
         );
     });
 });
@@ -165,12 +165,12 @@ describe("message.list", () => {
         expect(result.next).toBeUndefined();
     });
 
-    it("direction=around：抛「暂不支持 around 方向」（500）", async () => {
+    it("direction=around：抛「暂不支持 around 方向」（400）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<BidiList<Message>>(api, "message.list");
         await expect(
             action.run({ channel_id: "10001", direction: "around" }),
-        ).rejects.toMatchObject({ status: 500, message: "暂不支持 around 方向" });
+        ).rejects.toMatchObject({ status: 400, message: "暂不支持 around 方向" });
     });
 
     it("direction=before：合法方向", async () => {

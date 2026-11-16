@@ -11,6 +11,8 @@
  *
  * 事件推送统一经 MilkyEventHub（注册到 EventBroadcaster，send → SSE/WS 客户端）。
  */
+
+import { errorMessage } from "@napuketto/kernel";
 import type {
     AuthorizeHook,
     EventBroadcaster,
@@ -228,7 +230,7 @@ function handleMilkyHttpRequest(
         .catch((err) => {
             // runAction 之外的意外异常：warn 留痕后统一回 -500（响应面不变）
             logger?.warn(
-                { path: ctx.path, error: err instanceof Error ? err.message : String(err) },
+                { path: ctx.path, error: errorMessage(err) },
                 "milky: 动作分发异常，已回 -500",
             );
             respond({ status: "failed", retcode: -500, data: null, message: "internal error" });
@@ -251,7 +253,7 @@ function tokenMatches(ctx: RequestContext, token: string, logger?: MilkyLoggerLi
         return url.searchParams.get("access_token") === token;
     } catch (err) {
         logger?.debug(
-            { url: ctx.url, error: err instanceof Error ? err.message : String(err) },
+            { url: ctx.url, error: errorMessage(err) },
             "milky: 鉴权 URL 解析失败，按未授权拒绝",
         );
         return false;

@@ -6,6 +6,8 @@
  * 零额外依赖（Node 18+ 内建 fetch）。
  */
 
+import { MediaError } from "./types.js";
+
 /** 下载选项。 */
 export interface DownloadUrlOptions {
     /** 超时毫秒（缺省 15s）。 */
@@ -40,15 +42,15 @@ export async function downloadUrl(
         signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new MediaError(`HTTP ${response.status}`);
     }
     const declared = Number(response.headers.get("content-length") ?? "0");
     if (declared > maxBytes) {
-        throw new Error(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
+        throw new MediaError(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
     }
     const body = response.body;
     if (body === null) {
-        throw new Error("响应无 body");
+        throw new MediaError("响应无 body");
     }
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
@@ -64,12 +66,12 @@ export async function downloadUrl(
         total += value.byteLength;
         if (total > maxBytes) {
             await reader.cancel().catch(() => undefined);
-            throw new Error(`文件超过大小上限（>${maxBytes} 字节）`);
+            throw new MediaError(`文件超过大小上限（>${maxBytes} 字节）`);
         }
         chunks.push(value);
     }
     if (total === 0) {
-        throw new Error("下载内容为空");
+        throw new MediaError("下载内容为空");
     }
     const { writeFile } = await import("node:fs/promises");
     await writeFile(dest, Buffer.concat(chunks));

@@ -1,18 +1,18 @@
 /**
  * Satori 好友动作：friend.list / friend.delete / friend.approve
  */
-import type { BuddyReq } from "@napuketto/kernel";
+import { type BuddyReq, kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toUser } from "../helper/index.js";
 import type { Friend, List } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type FriendActionDeps = Pick<SatoriApi, "friendApi" | "uinToUid" | "uidToUin">;
 
 /** 好友动作工厂（friend.list / friend.delete / friend.approve）。 */
-export function createFriendActions(deps: FriendActionDeps): SatoriAction[] {
+export function createFriendActions(deps: FriendActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "friend.list",
@@ -61,13 +61,13 @@ export function createFriendActions(deps: FriendActionDeps): SatoriAction[] {
 async function findBuddyReq(deps: FriendActionDeps, messageId: string): Promise<BuddyReq> {
     const reqs = await deps.friendApi.getBuddyReqList();
     if (reqs.length === 0) {
-        throw new Error("好友申请不存在");
+        throw kernelError("好友申请不存在", "NOT_FOUND");
     }
     // 批量 uid → uin（friendUid 为 uid，message_id 为 uin）
     const uinMap = await deps.uidToUin(reqs.map((r) => r.friendUid));
     const found = reqs.find((req) => uinMap.get(req.friendUid) === messageId);
     if (found === undefined) {
-        throw new Error("好友申请不存在");
+        throw kernelError("好友申请不存在", "NOT_FOUND");
     }
     return found;
 }

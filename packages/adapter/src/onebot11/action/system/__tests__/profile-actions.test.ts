@@ -142,7 +142,7 @@ describe("set_qq_avatar", () => {
         }
     });
 
-    it("URL 头像：HTTP 非 200 → 抛错（retcode 999 未知错误）", async () => {
+    it("URL 头像：HTTP 非 200 → 抛错（retcode 100 发送失败）", async () => {
         const dir = ensureTmp();
         vi.stubGlobal(
             "fetch",
@@ -156,7 +156,7 @@ describe("set_qq_avatar", () => {
                 } as never),
                 "set_qq_avatar",
             ).handle({ file: "https://example.com/a.png" });
-            expect(result.retcode).toBe(999);
+            expect(result.retcode).toBe(100);
             expect(result.message).toContain("头像下载失败");
         } finally {
             vi.unstubAllGlobals();
@@ -216,7 +216,7 @@ describe("download_file", () => {
         }
     });
 
-    it("HTTP 非 200 → 抛错（retcode 999）", async () => {
+    it("HTTP 非 200 → 抛错（retcode 100 发送失败）", async () => {
         const dir = ensureTmp();
         vi.stubGlobal(
             "fetch",
@@ -229,7 +229,7 @@ describe("download_file", () => {
             ).handle({
                 url: "https://example.com/pkg.bin",
             });
-            expect(result.retcode).toBe(999);
+            expect(result.retcode).toBe(100);
             expect(result.message).toContain("下载失败");
         } finally {
             vi.unstubAllGlobals();

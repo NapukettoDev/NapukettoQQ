@@ -8,11 +8,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
-import { createGroupFileOpActions } from "../group-files-op.js";
-import { createGroupFileQueryActions } from "../group-files-query.js";
+import { createGroupFileOpActions } from "../files-op.js";
+import { createGroupFileQueryActions } from "../files-query.js";
 
 /**
- * 与 group-files-query.ts 的 GroupFileInfo / GroupFolderInfo / GroupFilesResult
+ * 与 files-query.ts 的 GroupFileInfo / GroupFolderInfo / GroupFilesResult
  * 同构（生产侧未导出，仅供断言类型标注）。
  */
 interface GroupFileInfo {

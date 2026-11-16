@@ -1,5 +1,5 @@
 /**
- * 内联配置（NAPKETTO_CONFIG_JSON，2026-10-25 嵌入式宿主契约）。
+ * 内联配置（NAPKETTO_CONFIG_JSON 旧前缀，2026-11 起规范前缀 NAPUKETTO_CONFIG_JSON）。
  *
  * KuroBridge 等嵌入式宿主每次拉起前整体生成配置，经环境变量喂 JSON 文本
  * （与 napuketto.toml 同构：parseCliConfig 直接吃 JSON.parse 产物），消除托管
@@ -18,20 +18,24 @@
  * logger（logger.ts 反向依赖本模块判内联来源）。
  */
 import process from "node:process";
-import { configError } from "@napuketto/kernel";
+import { configError, errorMessage } from "@napuketto/kernel";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 
-/** 内联配置 env 键（读取为精确键访问；Windows 上 process.env 本身大小写不敏感）。 */
-const INLINE_CONFIG_ENV = "NAPKETTO_CONFIG_JSON";
+/** 内联配置 env 键（规范前缀；读取为精确键访问，Windows 上 process.env 本身大小写不敏感）。 */
+const INLINE_CONFIG_ENV = "NAPUKETTO_CONFIG_JSON";
+
+/** 旧前缀兼容键（2026-11 前缀统一前已发布，双读回退）。 */
+const LEGACY_INLINE_CONFIG_ENV = "NAPKETTO_CONFIG_JSON";
 
 /** 配置来源。 */
 export type ConfigSource = "inline" | "file";
 
 /**
- * 读取内联配置文本（未设置 / 空串 / 纯空白 → undefined，回退文件形态）。
+ * 读取内联配置文本（新前缀优先、旧前缀回退；未设置 / 空串 / 纯空白 → undefined，
+ * 回退文件形态）。
  */
 export function readInlineConfigText(): string | undefined {
-    const raw = process.env[INLINE_CONFIG_ENV];
+    const raw = process.env[INLINE_CONFIG_ENV] ?? process.env[LEGACY_INLINE_CONFIG_ENV];
     if (raw === undefined || raw.trim() === "") {
         return undefined;
     }
@@ -79,7 +83,7 @@ function parseJsonObject(text: string): Record<string, unknown> {
     try {
         doc = JSON.parse(text);
     } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
+        const detail = errorMessage(err);
         throw configError(`内联配置 JSON 解析失败: ${detail}`, { cause: err });
     }
     const object = asConfigObject(doc);

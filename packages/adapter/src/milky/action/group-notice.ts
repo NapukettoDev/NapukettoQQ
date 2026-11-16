@@ -7,18 +7,13 @@
  * - 应答：seq → getSingleScreenNotifies 匹配（先非可疑后可疑）→ handleGroupRequest。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import { NTGroupRequestOperateTypes } from "@napuketto/kernel";
+import { errorMessage, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { z } from "zod";
-import { findGroupNotify, type MilkyApi } from "../api.js";
+import { findGroupNotify, type MilkyApi, NOTIFY_SEARCH_COUNT } from "../api.js";
 import { collectNotifyUids } from "../helper/event/request.js";
 import type { GetGroupNotificationsOutput, GroupNotificationEntity } from "../types.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
-import { groupIdField, optBool } from "./group-query.js";
-
-const optStr = z.string().nullable().optional();
-
-/** 通知查找数量（单屏全量，OB11 DEFAULT_COUNT 同值）。 */
-const NOTIFY_SEARCH_COUNT = 100;
+import { groupIdField, optBool, optStr } from "./group-query.js";
 
 /** get_group_notifications 默认 limit（规范 default 20）。 */
 const NOTIFICATIONS_DEFAULT_LIMIT = 20;
@@ -49,7 +44,7 @@ export function createGroupNoticeActions(api: MilkyApi): MilkyAction[] {
                     (n) => start === undefined || start === null || Number(n.seq) < start,
                 );
                 // 通知涉及的 uid → uin 批量转换（实体 user 字段都是 uin）
-                const uidToUin = await collectUidToUin(api, filtered);
+                const uidToUin = await collectNotifyUidToUin(api, filtered);
                 const entities = filtered
                     .map((n) => notifyToEntity(n, payload.is_filtered === true, uidToUin))
                     .filter((e): e is GroupNotificationEntity => e !== null);
@@ -154,7 +149,7 @@ async function respondGroupNotify(
 }
 
 /** 通知 user1/user2 uid → uin 批量转换（失败退空 Map，实体 id 兜底 0）。 */
-async function collectUidToUin(
+async function collectNotifyUidToUin(
     api: MilkyApi,
     notifies: GroupNotify[],
 ): Promise<Map<string, string>> {
@@ -164,7 +159,7 @@ async function collectUidToUin(
     }
     return await api.uidToUin(uids).catch((err) => {
         api.logger?.warn(
-            { count: uids.length, error: err instanceof Error ? err.message : String(err) },
+            { count: uids.length, error: errorMessage(err) },
             "milky: 通知 uid→uin 失败，实体 id 兜底 0",
         );
         return new Map<string, string>();

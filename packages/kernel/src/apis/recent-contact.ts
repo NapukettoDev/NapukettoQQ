@@ -5,7 +5,7 @@
  * setContactListTop 等方法；返回形状待探测校准（宽松提取）。
  * 置顶数据源：isTop 过滤（ChatType 区分 friend/group 场景）。
  */
-import { isKernelError, kernelError } from "../infra/index.js";
+import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
 import type {
     NodeIKernelRecentContactService,
     NodeIQQNTWrapperSession,
@@ -54,7 +54,7 @@ export class RecentContactApi {
             if (isKernelError(e)) {
                 throw e;
             }
-            throw kernelError(`getRecentContactList 调用失败: ${errMsgString(e)}`, "UNKNOWN");
+            throw kernelError(`getRecentContactList 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
         checkLooseResult("getRecentContactList", raw);
         return extractPinnedContacts(raw);
@@ -116,9 +116,4 @@ function pinnedItem(contact: RecentContact, scene: "friend" | "group"): PinnedCo
             ? { peerUin: contact.peerUin }
             : {};
     return [{ peerUid: contact.peerUid, ...peerUin, scene }];
-}
-
-/** 未知异常 → 消息字符串。 */
-function errMsgString(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
 }

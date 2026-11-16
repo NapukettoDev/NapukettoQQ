@@ -52,19 +52,20 @@ export function loadQqReleases(): QqReleasesFile {
     } catch {
         throw new QqReleasesError(`版本清单缺失: ${file}（@napuketto/loader 包安装不完整？）`);
     }
+    let parsed: Partial<QqReleasesFile>;
     try {
-        const parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
-        if (
-            parsed.schema !== QQ_RELEASES_SCHEMA ||
-            !Array.isArray(parsed.known) ||
-            parsed.known.length === 0
-        ) {
-            throw new Error("结构不合法");
-        }
-        return parsed as QqReleasesFile;
+        parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
     } catch {
         throw new QqReleasesError(`版本清单解析失败: ${file}`);
     }
+    if (
+        parsed.schema !== QQ_RELEASES_SCHEMA ||
+        !Array.isArray(parsed.known) ||
+        parsed.known.length === 0
+    ) {
+        throw new QqReleasesError(`版本清单解析失败: ${file}`);
+    }
+    return parsed as QqReleasesFile;
 }
 
 /** latestRelease 选项（缺省当前进程平台/架构）。 */

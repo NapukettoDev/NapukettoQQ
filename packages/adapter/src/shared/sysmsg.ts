@@ -469,6 +469,16 @@ export type SysMsgRecognition<TEvent> =
     | { readonly kind: "unknown" };
 
 /**
+ * 已观测但未命名的原生分发键（OB11 / Milky 共用）：不广播，仅进校准日志。
+ * 键 = `"${msgType}:${subType}"`。
+ */
+export const OBSERVED_UNNAMED_SYSMSG_KEYS: ReadonlySet<string> = new Set([
+    "528:382",
+    "528:349",
+    "528:381",
+]);
+
+/**
  * (msgType, subType) → 识别结果。table / observedUnnamed 由各协议注入
  * （键 = `"${msgType}:${subType}"`，原生分发键）。
  */

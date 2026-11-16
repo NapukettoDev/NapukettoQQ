@@ -5,7 +5,7 @@
  * 本模块只保留 OB11 侧内容：
  *  - SysMsgNoticeKind：sysmsg 可映射的 OB11 notice 种类（event/notice.ts 既有类型）
  *  - KIND_TABLE：(msgType, subType) → 规则（键 = 原生分发键）
- *  - OBSERVED_UNNAMED：已观测但未命名的键（不广播，防校准日志噪音）
+ *  - OBSERVED_UNNAMED_SYSMSG_KEYS：已观测但未命名的键（不广播，防校准日志噪音）
  *  - recognizeSysMsg：绑定 OB11 表的识别入口
  *
  * 解码原语（decodeProtoTree / extractSysMsgEnvelope / narrowSysMsgBlobs 等）
@@ -13,14 +13,13 @@
  */
 
 import {
+    OBSERVED_UNNAMED_SYSMSG_KEYS,
     recognizeSysMsg as recognizeSysMsgCore,
     type SysMsgKindRule,
     type SysMsgRecognition,
 } from "../../shared/sysmsg.js";
+import { NUMERIC_RE } from "../../shared/uid-uin.js";
 import type { OB11GroupCardNoticeEvent, OB11NoticeEvent } from "../event/index.js";
-
-/** 群号判别（strings[0] 必须是数字串）。 */
-const NUMERIC_RE = /^\d+$/;
 
 export type {
     SysMsgEnvelope,
@@ -82,14 +81,11 @@ const GROUP_CARD_RULE: SysMsgKindRuleOB11 = {
  */
 const KIND_TABLE: ReadonlyMap<string, SysMsgKindRuleOB11> = new Map([["732:21", GROUP_CARD_RULE]]);
 
-/** 已观测但未命名的 (msgType, subType)（语义未知，不广播）。 */
-const OBSERVED_UNNAMED: ReadonlySet<string> = new Set(["528:382", "528:349", "528:381"]);
-
 /** (msgType, subType) → 识别结果（绑定 OB11 表；table 参数供单测注入合成规则）。 */
 export function recognizeOb11SysMsg(
     msgType: number | null,
     subType: number | null,
     table: ReadonlyMap<string, SysMsgKindRuleOB11> = KIND_TABLE,
 ): SysMsgRecognition<OB11NoticeEvent> {
-    return recognizeSysMsgCore(msgType, subType, table, OBSERVED_UNNAMED);
+    return recognizeSysMsgCore(msgType, subType, table, OBSERVED_UNNAMED_SYSMSG_KEYS);
 }

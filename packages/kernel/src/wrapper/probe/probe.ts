@@ -16,6 +16,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { errorMessage } from "../../infra/index.js";
 import { getMainSession } from "../session-resolver.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize } from "./probe-serialize.js";
@@ -77,7 +78,7 @@ function tryMsgService(
         const svc = (rec["getMsgService"] as () => unknown).call(thisCtx);
         return { service: svc ?? null, error: null };
     } catch (e) {
-        return { service: null, error: e instanceof Error ? e.message : String(e) };
+        return { service: null, error: errorMessage(e) };
     }
 }
 
@@ -127,11 +128,6 @@ function sessionFace(session: unknown): Record<string, unknown> | null {
         : null;
 }
 
-/** 未知异常 → 错误消息字符串。 */
-function errMsgString(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
-}
-
 /** try getNTWrapperSession(id) → session 方法面（fn 缺失记 null，失败记 error）。 */
 function trySessionFace(ctx: WrapperContext, id: string): unknown {
     const fn = getNTWrapperSessionFn(ctx);
@@ -141,7 +137,7 @@ function trySessionFace(ctx: WrapperContext, id: string): unknown {
     try {
         return sessionFace(fn.call(ctx.exports.NodeIQQNTWrapperSession, id));
     } catch (e) {
-        return { error: errMsgString(e) };
+        return { error: errorMessage(e) };
     }
 }
 
@@ -352,12 +348,13 @@ export function probeRuntime(
 /** 探测结果落盘（增量与最终共用；最终写入后记 probeFile 路径）。 */
 function writeProbeFile(result: Record<string, unknown>, file: string): void {
     try {
-        const dir = process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
+        const dir =
+            process.env["NAPUKETTO_CFG_DIR"] ?? process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
         mkdirSync(dir, { recursive: true });
         const full = join(dir, file);
         writeFileSync(full, JSON.stringify(result, null, 2), "utf8");
         result["probeFile"] = full;
     } catch (e) {
-        result["probeFileError"] = errMsgString(e);
+        result["probeFileError"] = errorMessage(e);
     }
 }

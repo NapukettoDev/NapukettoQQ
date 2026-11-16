@@ -17,10 +17,10 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { kernelError, type Peer, type RawElement } from "@napuketto/kernel";
+import { errorMessage, kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
@@ -94,7 +94,7 @@ async function downloadImageToCache(
     } catch (err) {
         // 下载失败退原始 url（QQ 端自行拉取；warn 留痕）
         deps.logger?.warn(
-            { url, error: err instanceof Error ? err.message : String(err) },
+            { url, error: errorMessage(err) },
             "ob11: 图片主动下载失败，get_image 退原始 url",
         );
         return null;
@@ -191,7 +191,7 @@ async function downloadPttFallback(
         }
     } catch (err) {
         deps.logger?.warn(
-            { message_id: id, error: err instanceof Error ? err.message : String(err) },
+            { message_id: id, error: errorMessage(err) },
             "ob11: 语音原生下载失败，get_record 回退原始路径",
         );
     }

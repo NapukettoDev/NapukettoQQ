@@ -5,13 +5,13 @@ import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toLogin } from "../helper/index.js";
 import type { Login } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖。 */
 export type LoginActionDeps = Pick<SatoriApi, "self">;
 
 /** 登录动作工厂（login.get）。 */
-export function createLoginActions(deps: LoginActionDeps): SatoriAction[] {
+export function createLoginActions(deps: LoginActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "login.get",

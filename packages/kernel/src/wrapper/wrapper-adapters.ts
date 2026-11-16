@@ -16,7 +16,7 @@
  */
 
 import type {
-    IKernelLoginListener,
+    KernelLoginListener,
     NodeIDependsAdapter,
     NodeIDispatcherAdapter,
     NodeIGlobalAdapter,
@@ -81,6 +81,6 @@ export function createSessionListener(
 }
 
 /** 创建登录监听器（占位，登录器接入时填充）。 */
-export function createLoginListener(): IKernelLoginListener {
+export function createLoginListener(): KernelLoginListener {
     return {};
 }

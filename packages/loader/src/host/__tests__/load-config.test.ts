@@ -4,7 +4,7 @@
  * 覆盖：内联优先级矩阵（NAPKETTO_CONFIG_JSON > NAPKETTO_CONFIG > NAPUTO_CFG_DIR
  * 兜底）、内联生效不读任何 toml 文件（cfgFile = "<inline>" 哨兵）、按登录 uin
  * 取协议段、内联 JSON 坏值宽松回退文件形态、空串/纯空白/大小写别名不识别。
- * env 是模块加载期快照——每用例 resetModules 后重导（与 log-cfg.test.ts 同法）。
+ * env 是模块加载期快照——每用例 resetModules 后重导（与 log-config.test.ts 同法）。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

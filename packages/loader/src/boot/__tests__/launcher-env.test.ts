@@ -82,8 +82,8 @@ describe("launchSelfHost 环境注入（win32 本机 node）", () => {
             expect(env["NAPUKETTO_LOG_FORMAT"]).toBe("json");
             expect(env["NAPUKETTO_LOG_COLORIZE"]).toBe("0");
             expect(env["NAPUTO_DATA_ROOT"]).toBe(tmp);
-            expect(env["NAPUTO_CFG_DIR"]).toBe(join(tmp, "acct-10001"));
-            expect(env["NAPKETTO_CONFIG"]).toBe(join(tmp, "napuketto.toml"));
+            expect(env["NAPUKETTO_CFG_DIR"]).toBe(join(tmp, "acct-10001"));
+            expect(env["NAPUKETTO_CONFIG"]).toBe(join(tmp, "napuketto.toml"));
             expect((env["PATH"] ?? "").includes(stubDir)).toBe(true);
         },
     );

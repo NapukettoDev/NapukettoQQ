@@ -16,6 +16,7 @@
 import { extractEssenceSetSysMsg } from "../../../shared/essence.js";
 import {
     nodeAt,
+    OBSERVED_UNNAMED_SYSMSG_KEYS,
     recognizeSysMsg as recognizeSysMsgCore,
     type SysMsgField,
     type SysMsgKindRule,
@@ -24,10 +25,8 @@ import {
     varintAt,
     varintOf,
 } from "../../../shared/sysmsg.js";
+import { NUMERIC_RE } from "../../../shared/uid-uin.js";
 import type { GroupEssenceMessageChangeData, GroupMessageReactionData } from "../../types.js";
-
-/** 数字串判别（faceId 实证为数字字符串）。 */
-const NUMERIC_RE = /^\d+$/;
 
 export type { SysMsgKindRule, SysMsgRecognition } from "../../../shared/sysmsg.js";
 
@@ -121,14 +120,11 @@ const KIND_TABLE: ReadonlyMap<string, SysMsgKindRuleMilky> = new Map([
     ["732:1", ESSENCE_RULE],
 ]);
 
-/** 已观测但未命名的键（多端设备同步族等，不广播只走校准日志）。 */
-const OBSERVED_UNNAMED: ReadonlySet<string> = new Set(["528:382", "528:349", "528:381"]);
-
 /** (msgType, subType) → 识别结果（绑定 Milky 表；table 参数供单测注入）。 */
 export function recognizeMilkySysMsg(
     msgType: number | null,
     subType: number | null,
     table: ReadonlyMap<string, SysMsgKindRuleMilky> = KIND_TABLE,
 ): SysMsgRecognition<unknown> {
-    return recognizeSysMsgCore(msgType, subType, table, OBSERVED_UNNAMED);
+    return recognizeSysMsgCore(msgType, subType, table, OBSERVED_UNNAMED_SYSMSG_KEYS);
 }

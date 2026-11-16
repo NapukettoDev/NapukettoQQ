@@ -28,10 +28,9 @@ import type {
     UploadFileOutput,
 } from "../types.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
-import { groupIdField } from "./group-query.js";
+import { groupIdField, optStr } from "./group-query.js";
 
 const fileIdField = { file_id: z.string().min(1) } as const;
-const optStr = z.string().nullable().optional();
 
 /** 群文件域动作工厂（列表 / 移动 / 重命名 / 删除 / 转存 / 文件夹 / 闪传上传 / 下载链接）。 */
 export function createGroupFileActions(api: MilkyApi): MilkyAction[] {

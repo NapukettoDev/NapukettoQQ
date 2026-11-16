@@ -11,13 +11,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-/** file:// 前缀（fileURLToPath 失败时的裸剥离兜底）。 */
-const FILE_URI_PREFIX_RE = /^file:\/\//;
-
 import { kernelError } from "@napuketto/kernel";
 import { detectFileType, downloadUrl, inferExtension } from "@napuketto/media";
+import { fileUriToPath } from "../../../shared/media.js";
 
 /** 解析远程媒体 URI 为本地绝对路径（base64:// / http(s)://；file:// 走同步面）。 */
 export async function resolveMediaUri(uri: string, mediaDir: string | undefined): Promise<string> {
@@ -42,11 +38,7 @@ export async function resolveMediaUri(uri: string, mediaDir: string | undefined)
  */
 export async function resolveUriToPath(uri: string, mediaDir: string | undefined): Promise<string> {
     if (uri.startsWith("file://")) {
-        try {
-            return fileURLToPath(uri);
-        } catch {
-            return uri.replace(FILE_URI_PREFIX_RE, "");
-        }
+        return fileUriToPath(uri);
     }
     if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("base64://")) {
         return await resolveMediaUri(uri, mediaDir);

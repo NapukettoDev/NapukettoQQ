@@ -6,9 +6,9 @@
  *   拉取历史消息 → at uid 批量转换 → OB11 消息信息数组（共享 fetchAndTranslateHistory）
  */
 
-import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
+import { ChatType, errorMessage, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     collectReceiveNeeds,
     type GroupSenderRole,
@@ -93,7 +93,7 @@ async function fetchAndTranslateHistory(
         } catch (err) {
             // uid 解析失败：at 原样（uid），warn 留痕
             deps.logger?.warn(
-                { count: atUids.size, error: err instanceof Error ? err.message : String(err) },
+                { count: atUids.size, error: errorMessage(err) },
                 "ob11: 历史消息 at uid→uin 失败，at 原样",
             );
         }
@@ -151,7 +151,7 @@ export function createHistoryActions(api: OneBotApi): Ob11Action[] {
                         api.logger?.warn(
                             {
                                 count: atUids.length,
-                                error: err instanceof Error ? err.message : String(err),
+                                error: errorMessage(err),
                             },
                             "ob11: get_msg at uid→uin 失败，at 原样",
                         );

@@ -101,6 +101,9 @@ export interface ReplyElement {
     senderUin?: string;
 }
 
+/** 视频缩略图在 thumbPath Map 中的 key（收向实测 Map<0, path>）。 */
+export const VIDEO_THUMB_KEY = 0;
+
 /** 视频元素（接收 + 发送）。 */
 export interface VideoElement {
     filePath?: string;

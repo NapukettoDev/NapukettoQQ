@@ -6,6 +6,54 @@
  * 因此这里用「最小接口」描述 kernel 的契约（类型层自研，与 kernel 实现解耦，
  * 由运行时行为实证维护，勿臆造成员）。
  */
+
+/** Windows 反斜杠（file:// URL 化时替换）。 */
+export const BACKSLASH_RE = /\\/g;
+
+/** adapter 入口 index.mjs 后缀（子路径导出替换用）。 */
+export const INDEX_MJS_RE = /index\.mjs$/;
+
+/**
+ * QR 透出标记行前缀（loader bootstrap-core 非 IPC 模式输出 stdout，
+ * cli 解析后终端渲染二维码；loader 与 apps/cli 共享单一来源）。
+ */
+export const QR_LINE_PREFIX = "NAPUTO_QR ";
+
+/** adapter core 子路径最小面（ProtocolConfig 框架，动态 import）。 */
+export interface AdapterCoreModuleLike {
+    ProtocolConfig: new (options: Record<string, unknown>) => unknown;
+}
+
+/** network 包最小面（EventBroadcaster，动态 import；register/unregister 为事件桥所需）。 */
+export interface NetworkModuleLike {
+    EventBroadcaster: new () => {
+        register(adapter: { send: <T>(payload: T) => void }): unknown;
+        unregister(adapter: { send: <T>(payload: T) => void }): void;
+    };
+}
+
+/** OB11 动作最小面（handle 返回 OB11 信封 {status,retcode,data,message}，永不抛）。 */
+export interface Ob11ActionLike {
+    handle(payload: unknown): Promise<unknown>;
+}
+
+/** adapter 包 onebot11 子路径最小面（@napuketto/adapter，动态 import）。 */
+export interface Ob11ModuleLike {
+    ob11ConfigSchema: { parse(input: unknown): unknown };
+    NapukettoOneBot11Adapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+        subscribeOnly(): Promise<void>;
+        unsubscribeOnly(): void;
+        registry: {
+            names: string[];
+            get(name: string): Ob11ActionLike | undefined;
+        };
+    };
+}
+
 /** 消息事件通道（NTEventChannel 的最小面）。 */
 export interface EventChannelLike {
     on(event: string, handler: (payload: unknown) => void): unknown;

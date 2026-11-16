@@ -8,7 +8,7 @@
  *    kernel 服务），返回 KernelServices 由 bootstrap 装配 ipc-server。
  *  - 非 IPC（cli pnpm start）：照旧装配 OB11/Satori 网络传输。
  */
-import { env } from "../env.js";
+import { env, isEnvEnabled } from "../env.js";
 import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
 import { errMsg, isConfigError, log } from "../util.js";
 import { assembleOb11AndSatori } from "./assemble-protocols.js";
@@ -34,7 +34,7 @@ export async function startProtocols(
     if (services === null) {
         return null;
     }
-    if (env.NAPUTO_IPC === "1") {
+    if (isEnvEnabled(env.NAPUTO_IPC)) {
         log("bootstrap: IPC 模式，跳过 OB11/Satori 装配（koishi 插件直接消费 kernel 服务）");
         return services;
     }

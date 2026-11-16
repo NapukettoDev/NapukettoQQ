@@ -2,7 +2,14 @@
  * errors.ts 测试：KernelError / ConfigError 错误形态契约（协议层映射与退出码依据）。
  */
 import { describe, expect, it } from "vitest";
-import { ConfigError, configError, isKernelError, KernelError, kernelError } from "../errors.js";
+import {
+    ConfigError,
+    configError,
+    errorMessage,
+    isKernelError,
+    KernelError,
+    kernelError,
+} from "../errors.js";
 
 describe("KernelError", () => {
     it("默认 code=UNKNOWN、name=KernelError", () => {
@@ -34,6 +41,13 @@ describe("isKernelError 类型守卫", () => {
         expect(isKernelError(new Error("z"))).toBe(false);
         expect(isKernelError("str")).toBe(false);
         expect(isKernelError(null)).toBe(false);
+    });
+});
+
+describe("errorMessage 错误消息提取", () => {
+    it("Error → message；非 Error → String()", () => {
+        expect(errorMessage(new Error("x"))).toBe("x");
+        expect(errorMessage("raw")).toBe("raw");
     });
 });
 

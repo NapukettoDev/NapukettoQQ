@@ -17,6 +17,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { errorMessage } from "../../infra/index.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize } from "./probe-serialize.js";
 import { listMethods } from "./probe-utils.js";
@@ -147,7 +148,7 @@ export function startListenerRecording(
     ctx: WrapperContext,
     file = "napuketto-listener-record.jsonl",
 ): ListenerRecordingResult {
-    const dir = process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
+    const dir = process.env["NAPUKETTO_CFG_DIR"] ?? process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
     mkdirSync(dir, { recursive: true });
     const full = join(dir, file);
     // JSONL 语义：本次录制起全新文件（截断），此后逐行 append（崩溃保留断点）
@@ -188,7 +189,7 @@ function recordService(
         }
         return attachRecordingListener(name, service, emit);
     } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false, error: errorMessage(e) };
     }
 }
 
@@ -211,7 +212,7 @@ function recordLoginService(
         }
         return attachRecordingListener("Login", service, emit);
     } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false, error: errorMessage(e) };
     }
 }
 

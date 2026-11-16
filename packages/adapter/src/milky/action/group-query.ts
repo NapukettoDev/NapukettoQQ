@@ -5,7 +5,7 @@
  * 直查路径按 uin 匹配）、群公告列表（bulletin 形状待校准，宽松映射）。
  */
 import type { GroupBulletin, GroupMember } from "@napuketto/kernel";
-import { kernelError } from "@napuketto/kernel";
+import { errorMessage, kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import type { MilkyApi } from "../api.js";
 import { toGroupEntity, toGroupMemberEntity } from "../helper/message/entities.js";
@@ -22,6 +22,7 @@ import { defineMilkyAction, type MilkyAction } from "./base-action.js";
 export const groupIdField = { group_id: z.number().int().min(10001) } as const;
 export const userIdField = { user_id: z.number().int().min(10001) } as const;
 export const optBool = z.boolean().nullable().optional();
+export const optStr = z.string().nullable().optional();
 
 /** 群查询域动作工厂（群信息 / 成员列表 / 成员单查 / 公告列表）。 */
 export function createGroupQueryActions(api: MilkyApi): MilkyAction[] {
@@ -111,7 +112,7 @@ async function memberOf(api: MilkyApi, groupId: number, userId: number): Promise
         const uid = await api.resolveUidFromUin(userId).catch((err) => {
             // uin→uid 失败退 uin 查缓存（大概率 NOT_FOUND，debug 留痕）
             api.logger?.debug(
-                { group: groupCode, uin, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, uin, error: errorMessage(err) },
                 "milky: 成员 uin→uid 失败，退用 uin 查缓存",
             );
             return uin;
@@ -154,7 +155,7 @@ async function senderUinOf(b: GroupBulletin, api: MilkyApi): Promise<number> {
     }
     const uins = await api.uidToUin([uid]).catch((err) => {
         api.logger?.debug(
-            { uid, error: err instanceof Error ? err.message : String(err) },
+            { uid, error: errorMessage(err) },
             "milky: 公告发送者 uid→uin 失败，兜底 0",
         );
         return undefined;

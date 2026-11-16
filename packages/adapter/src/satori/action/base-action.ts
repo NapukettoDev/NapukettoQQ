@@ -20,14 +20,23 @@ export class SatoriActionError extends Error {
     }
 }
 
-/** Satori 动作对象（工厂产出；HTTP / WS 入口共用）。 */
-export interface SatoriAction<TPayload = unknown, TReturn = unknown> {
+/** Satori 动作处理器对象（工厂产出；HTTP / WS 入口共用）。 */
+export interface SatoriActionHandler<TPayload = unknown, TReturn = unknown> {
     /** 动作名（resource.method，如 "message.create"）。 */
     readonly name: string;
     readonly schema: ZodType<TPayload>;
     /** 校验并执行：成功返回资源对象，失败抛 SatoriActionError。 */
     run(payload: unknown): Promise<TReturn>;
 }
+
+/**
+ * @deprecated 使用 `SatoriActionHandler`（避免与协议动作名联合类型
+ * `satori/types/api.ts` 的 `SatoriAction` 同名异构）。
+ */
+export type SatoriAction<TPayload = unknown, TReturn = unknown> = SatoriActionHandler<
+    TPayload,
+    TReturn
+>;
 
 /** 校验失败默认状态码。 */
 const INVALID_PARAM_STATUS = 400;
@@ -37,7 +46,7 @@ export function defineSatoriAction<TPayload, TReturn>(spec: {
     name: string;
     schema: ZodType<TPayload>;
     handle: (payload: TPayload) => Promise<TReturn>;
-}): SatoriAction<TPayload, TReturn> {
+}): SatoriActionHandler<TPayload, TReturn> {
     return {
         name: spec.name,
         schema: spec.schema,

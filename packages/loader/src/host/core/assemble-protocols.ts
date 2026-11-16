@@ -5,14 +5,16 @@
 import { join } from "node:path";
 import { env } from "../env.js";
 import { loadProtocolSections } from "../load-config.js";
-import type { KernelLike, LoginResultLike } from "../types.js";
+import type {
+    AdapterCoreModuleLike,
+    KernelLike,
+    LoginResultLike,
+    NetworkModuleLike,
+    Ob11ModuleLike,
+} from "../types.js";
+import { BACKSLASH_RE, INDEX_MJS_RE } from "../types.js";
 import { ConfigError, errMsg, log } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
-
-/** Windows 反斜杠（file:// URL 化时替换）。 */
-const BACKSLASH_RE = /\\/g;
-/** adapter 入口 index.mjs 后缀（子路径导出替换用）。 */
-const INDEX_MJS_RE = /index\.mjs$/;
 
 /**
  * 协议段 seed 校验（zod 错误 → ConfigError，2026-10-25 嵌入式退出码契约）：
@@ -32,22 +34,6 @@ function parseSeed(
         const detail = errMsg(e).replace(/\s+/g, " ").trim();
         throw new ConfigError(`协议配置 ${label} 段校验失败: ${detail}`, { cause: e });
     }
-}
-
-/** network 包最小面（@napuketto/network，动态 import）。 */
-interface NetworkModuleLike {
-    EventBroadcaster: new () => unknown;
-}
-
-/** adapter 包 onebot11 子路径最小面（@napuketto/adapter，动态 import）。 */
-interface Onebot11ModuleLike {
-    ob11ConfigSchema: { parse(input: unknown): unknown };
-    NapukettoOneBot11Adapter: new (
-        options: Record<string, unknown>,
-    ) => {
-        start(): Promise<unknown>;
-        stop(): Promise<void>;
-    };
 }
 
 /** adapter 包 milky 子路径最小面（@napuketto/adapter，动态 import）。 */
@@ -82,11 +68,6 @@ interface KurobotModuleLike {
         start(): Promise<unknown>;
         stop(): Promise<void>;
     };
-}
-
-/** adapter core 子路径最小面（ProtocolConfig 框架）。 */
-interface AdapterCoreModuleLike {
-    ProtocolConfig: new (options: Record<string, unknown>) => unknown;
 }
 
 /** 可选协议 adapter 生命周期最小面（start/stop）。 */
@@ -190,7 +171,7 @@ export async function assembleOb11AndSatori(
         const coreEntry = adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
         const adapter = (await import(
             `file://${onebot11Entry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as Onebot11ModuleLike;
+        )) as unknown as Ob11ModuleLike;
         const satoriAdapter = (await import(
             `file://${satoriEntry.replace(BACKSLASH_RE, "/")}`
         )) as unknown as SatoriModuleLike;

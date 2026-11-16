@@ -14,7 +14,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
 /** URL 前缀（头像在线文件识别）。 */
@@ -63,7 +63,7 @@ async function downloadAvatarToCache(url: string, cacheDir: string | undefined):
     const filePath = join(cacheDir, `avatar-${Date.now()}-${safeName}`);
     const res = await fetch(url);
     if (!res.ok) {
-        throw new Error(`头像下载失败: ${res.status} ${res.statusText}`);
+        throw kernelError(`头像下载失败: ${res.status} ${res.statusText}`, "SEND_FAILED");
     }
     const buf = new Uint8Array(await res.arrayBuffer());
     writeFileSync(filePath, buf);

@@ -20,6 +20,7 @@ import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "../qq/locate-qq.js";
 import {
     defaultLinuxStubPath,
+    LINE_SPLIT,
     linuxHomeEnv,
     linuxPreload,
     resolveGnutls,
@@ -266,9 +267,6 @@ export interface SystemNodeInfo {
     version: string;
 }
 
-/** 行拆分（where 输出 \r\n / \n 兼容）。 */
-const LINE_SPLIT = /\r?\n/;
-
 /** 探测系统 PATH 上的 node（win32；where node 首条 + --version 校验可执行）。 */
 export function findSystemNode(): SystemNodeInfo | undefined {
     const probe = spawnSync("where", ["node"], {
@@ -407,33 +405,39 @@ function buildLaunchEnv(options: LaunchOptions): Record<string, string> {
     return merged;
 }
 
-/** 环境变量名（self-host.cjs 与 kernel 引导读取）。 */
+/** 环境变量名（self-host.cjs 与 kernel 引导读取）。前缀统一 `NAPUKETTO_*`。 */
 export const ENV = {
-    QQ_PATH: "NAPUTO_QQ_PATH",
-    KERNEL_ENTRY: "NAPUTO_KERNEL_ENTRY",
-    CFG_DIR: "NAPUTO_CFG_DIR",
-    QQ_VERSION: "NAPUTO_QQ_VERSION",
-    WRAPPER_PATH: "NAPUTO_WRAPPER_PATH",
+    QQ_PATH: "NAPUKETTO_QQ_PATH",
+    KERNEL_ENTRY: "NAPUKETTO_KERNEL_ENTRY",
+    CFG_DIR: "NAPUKETTO_CFG_DIR",
+    QQ_VERSION: "NAPUKETTO_QQ_VERSION",
+    WRAPPER_PATH: "NAPUKETTO_WRAPPER_PATH",
     /** 自建宿主：标准 node + stub QQNT.dll 引导（self-host.cjs 分支）。 */
-    SELF_HOST: "NAPUTO_SELF_HOST",
+    SELF_HOST: "NAPUKETTO_SELF_HOST",
     /** stub QQNT.dll 目录（launchSelfHost 注入，self-host.cjs 诊断用）。 */
-    STUB_DIR: "NAPUTO_STUB_DIR",
+    STUB_DIR: "NAPUKETTO_STUB_DIR",
     /** adapter 包入口（协议装配用）。 */
-    ADAPTER_ENTRY: "NAPUTO_ADAPTER_ENTRY",
+    ADAPTER_ENTRY: "NAPUKETTO_ADAPTER_ENTRY",
     /** network 包入口（协议装配用）。 */
-    NETWORK_ENTRY: "NAPUTO_NETWORK_ENTRY",
+    NETWORK_ENTRY: "NAPUKETTO_NETWORK_ENTRY",
     /** 全局配置文件路径（项目根 napuketto.toml，boot-protocols 读取）。 */
-    CONFIG_PATH: "NAPKETTO_CONFIG",
+    CONFIG_PATH: "NAPUKETTO_CONFIG",
     /** 强制指定快速登录账号（cli `-q <uin>` 透传，bootstrap 登录用）。 */
-    QUICK_UIN: "NAPUTO_QUICK_UIN",
+    QUICK_UIN: "NAPUKETTO_QUICK_UIN",
     /** 强制扫码登录（跳过快速登录直接 QR；koishi 面板「扫码登录」重启路径用）。 */
-    QR_ONLY: "NAPUTO_QR_ONLY",
+    QR_ONLY: "NAPUKETTO_QR_ONLY",
     /** IPC 子进程模式（koishi 插件驱动：stdout JSON 行 + stdin action/control）。 */
-    IPC: "NAPUTO_IPC",
+    IPC: "NAPUKETTO_IPC",
     /** 数据根（cli 注入：停止哨兵目录解析用，self-host 不再从 CFG_DIR 反推）。 */
-    DATA_ROOT: "NAPUTO_DATA_ROOT",
-    /** 入站图片自动下载补丁 killswitch（=1 时 stub 跳过全部内存操作）。 */
+    DATA_ROOT: "NAPUKETTO_DATA_ROOT",
+    /**
+     * 入站图片自动下载补丁 killswitch（=1 时 stub 跳过全部内存操作）。
+     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_DISABLE_MEDIA_PATCH`，禁止改名。
+     */
     MEDIA_PATCH_DISABLE: "NAPUTO_DISABLE_MEDIA_PATCH",
-    /** 入站图片自动下载补丁状态文件路径（stub 后台线程写 JSON，self-host 读后记日志）。 */
+    /**
+     * 入站图片自动下载补丁状态文件路径（stub 后台线程写 JSON，self-host 读后记日志）。
+     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_MEDIA_PATCH_STATUS`，禁止改名。
+     */
     MEDIA_PATCH_STATUS: "NAPUTO_MEDIA_PATCH_STATUS",
 } as const;

@@ -3,7 +3,7 @@
  * delete_group_folder / rename_group_file / move_group_file / trans_group_file
  */
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 import { MAX_FILE_IDS } from "../limits.js";
 

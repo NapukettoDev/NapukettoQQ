@@ -12,7 +12,7 @@
  *  - 登录前置：NAPUTO_QR_ONLY 强制扫码 / 登录回调 QR 透出（cli NAPUTO_QR 标记行、
  *    IPC sendQr）/ core.login 缺失 / 登录失败 → failed(NOT_LOGIN)
  *
- * vi.mock ipc/index + protocols + log-cfg（bootstrap-relogin.test.ts 同套路）；
+ * vi.mock ipc/index + protocols + log-config（bootstrap-relogin.test.ts 同套路）；
  * env 快照每用例独立（stubEnv + resetModules + 动态 import）；假定时器隔离
  * startSessionProbe 与 35s 晚探测。
  */
@@ -111,7 +111,7 @@ vi.mock("../protocols.js", () => ({
     }),
 }));
 
-vi.mock("../../log-cfg.js", () => ({
+vi.mock("../../log-config.js", () => ({
     resolveLoaderLogConfig: vi.fn(() => ({
         level: "info",
         banner: true,

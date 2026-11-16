@@ -9,7 +9,7 @@
  */
 import { ChatType, type GroupHonorWebInfo, kernelError, WebHonorType } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import type { OB11MessageSegment } from "../../types/index.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";

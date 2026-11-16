@@ -80,7 +80,7 @@ export function listQQVersions(installDir: string): string[] {
 }
 
 /** QQ 版本信息。 */
-export interface QQVersionInfo {
+export interface QqVersionInfo {
     /** 完整版本号，如 "9.9.31-49919"。 */
     fullVersion: string;
     /** 构建号，如 "49919"。 */
@@ -92,3 +92,6 @@ export interface QQVersionInfo {
     /** 登录握手参数（P1 探测脚本产出，暂为空串）。 */
     qua: string;
 }
+
+/** @deprecated 使用 `QqVersionInfo`（缩写大小写统一为 `Qq`）。 */
+export type QQVersionInfo = QqVersionInfo;

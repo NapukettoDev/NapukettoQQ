@@ -4,12 +4,12 @@
  * （role.set / role.unset / guild.role.*：501，见 registry）
  */
 import type { GroupMember, GroupNotify } from "@napuketto/kernel";
-import { NTGroupRequestOperateTypes } from "@napuketto/kernel";
+import { kernelError, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toGuild, toUser } from "../helper/index.js";
 import type { Guild, GuildMember, List } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type GuildActionDeps = Pick<
@@ -28,7 +28,7 @@ const groupApproveSchema = z.object({
 });
 
 /** 群组动作工厂（guild.get / list / approve + member 五动作）。 */
-export function createGuildActions(deps: GuildActionDeps): SatoriAction[] {
+export function createGuildActions(deps: GuildActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "guild.get",
@@ -80,7 +80,7 @@ export function createGuildActions(deps: GuildActionDeps): SatoriAction[] {
                 const list = await deps.groupApi.getGroupMemberInfo(guildId, [uid]);
                 const found = list.find((m) => m.uid === uid);
                 if (found === undefined) {
-                    throw new Error("群成员不存在");
+                    throw kernelError("群成员不存在", "NOT_FOUND");
                 }
                 return toGuildMember(found, userId);
             },
@@ -184,7 +184,7 @@ async function findGroupNotify(deps: GuildActionDeps, messageId: string): Promis
         (item) => item.seq === messageId,
     );
     if (found === undefined) {
-        throw new Error("群通知不存在");
+        throw kernelError("群通知不存在", "NOT_FOUND");
     }
     return found;
 }

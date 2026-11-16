@@ -8,7 +8,7 @@
 
 import { existsSync } from "node:fs";
 
-import { kernelError } from "../infra/index.js";
+import { errorMessage, kernelError } from "../infra/index.js";
 import type {
     FaceElement,
     FileElement,
@@ -20,6 +20,7 @@ import type {
     TextElement,
     VideoElement,
 } from "./entities.js";
+import { VIDEO_THUMB_KEY } from "./entities.js";
 import { ElementType, type SendMessageElement } from "./services/msg-service.js";
 
 /** 文本 at 类型（QQ wrapper 契约，自研描述）。 */
@@ -27,10 +28,8 @@ const AtType = { ALL: 1, ONE: 2, ME: 4 } as const;
 
 /**
  * 视频缩略图在 thumbPath 中的 key（收向实测 Map<0, path>；平面对象形态下
- * 数字 key 经序列化变字符串 "0"。apis/msg.ts 发送侧有同名常量，types 层
- * 不能反向 import apis（依赖方向），此处独立定义）。
+ * 数字 key 经序列化变字符串 "0"。权威定义在 types/entities.ts，此处复用）。
  */
-const VIDEO_THUMB_KEY = 0;
 
 /**
  * 读视频缩略图路径（接收方向形态不唯一，防御读取）：
@@ -270,7 +269,7 @@ function jsonToArkBytes(raw: unknown): string {
     try {
         return JSON.stringify(raw) ?? "";
     } catch (err) {
-        throw kernelError(`json 元素序列化失败: ${String(err)}`, "INVALID_PARAM");
+        throw kernelError(`json 元素序列化失败: ${errorMessage(err)}`, "INVALID_PARAM");
     }
 }
 

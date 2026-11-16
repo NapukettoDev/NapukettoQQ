@@ -9,9 +9,10 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type { CanonicalElement, MsgEventChannel, Peer } from "@napuketto/kernel";
+import { errorMessage, kernelError } from "@napuketto/kernel";
 import { BaseProtocolAdapter, type ConfigBase } from "../core/index.js";
 import type { KurobotConfig } from "./config.js";
-import type { KurobotConnectionOptions } from "./connection.js";
+import type { KurobotConnectionOptions, KurobotLogger } from "./connection.js";
 import { KurobotConnection } from "./connection.js";
 import { KurobotEventPipeline } from "./event-pipeline.js";
 import { KurobotMessageHandler } from "./inbound/message.js";
@@ -49,18 +50,15 @@ export interface KurobotAdapterOptions {
      */
     receiveFilter?: ReceiveLogFilterHolder;
     /** 日志（缺省静默）。 */
-    logger?: KurobotLoggerAlias;
+    logger?: KurobotLogger;
 }
-
-/** 适配器日志面（复用连接层最小面）。 */
-type KurobotLoggerAlias = KurobotConnectionOptions["logger"];
 
 /** kurobot 协议适配器。 */
 export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> {
     readonly protocol = "kurobot";
 
     private readonly selfUin: string;
-    private readonly log: KurobotLoggerAlias;
+    private readonly log: KurobotLogger | undefined;
     /** 会话共享状态（绑定集 / pending 表 / status 快照 / 接收过滤）。 */
     private readonly session: KurobotSession;
     /** QQ 消息 → 出站帧域处理（经 pipeline 订阅路由）。 */
@@ -184,7 +182,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
     private requireConfig(): KurobotConfig {
         const config = this.currentConfig;
         if (config === null) {
-            throw new Error("kurobot: 配置未初始化（适配器未启动）");
+            throw kernelError("kurobot: 配置未初始化（适配器未启动）", "INVALID_STATE");
         }
         return config;
     }
@@ -200,7 +198,7 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
 }
 
 /** best-effort 读取 adapter 包版本（dist 与 src 双布局相对包根一致；失败 debug 留痕）。 */
-function resolvePackageVersion(log?: KurobotLoggerAlias): string | null {
+function resolvePackageVersion(log?: KurobotLogger): string | null {
     try {
         const require = createRequire(import.meta.url);
         const pkg = require("../../package.json") as { version?: unknown };
@@ -210,7 +208,7 @@ function resolvePackageVersion(log?: KurobotLoggerAlias): string | null {
         return null;
     } catch (err) {
         log?.debug(
-            { error: err instanceof Error ? err.message : String(err) },
+            { error: errorMessage(err) },
             "kurobot: package.json 版本探测失败，hello 降级 unknown/napukettoqq",
         );
         return null;
@@ -218,7 +216,7 @@ function resolvePackageVersion(log?: KurobotLoggerAlias): string | null {
 }
 
 /** hello.client 缺省身份：napukettoqq/<版本>（取不到版本则 napukettoqq）。 */
-function resolveDefaultClient(log?: KurobotLoggerAlias): string {
+function resolveDefaultClient(log?: KurobotLogger): string {
     const version = resolvePackageVersion(log);
     return version === null ? "napukettoqq" : `napukettoqq/${version}`;
 }

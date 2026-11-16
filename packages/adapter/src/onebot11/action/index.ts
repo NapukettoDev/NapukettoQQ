@@ -9,17 +9,17 @@
  * 领域文件的工厂里登记即可。
  */
 import { ActionRegistry } from "../../core/index.js";
-import type { OneBotApi } from "../api/one-bot-api.js";
+import type { OneBotApi } from "../api/onebot-api.js";
 import type { Ob11Action } from "./base-action.js";
 import { createFriendManageActions } from "./friend/manage.js";
 import { createFriendQueryActions } from "./friend/query.js";
 import { createGroupEssenceActions } from "./group/essence.js";
-import { createGroupSystemMsgActions } from "./group/get-group-system-msg.js";
-import { createGroupFileOpActions } from "./group/group-files-op.js";
-import { createGroupFileQueryActions } from "./group/group-files-query.js";
+import { createGroupFileOpActions } from "./group/files-op.js";
+import { createGroupFileQueryActions } from "./group/files-query.js";
 import { createGroupManageActions } from "./group/manage.js";
 import { createGroupNotifyActions } from "./group/notify.js";
 import { createGroupQueryActions } from "./group/query.js";
+import { createGroupSystemMsgActions } from "./group/system-msg.js";
 import { createForwardActions } from "./message/forward.js";
 import { createHistoryActions } from "./message/history.js";
 import { createMediaActions } from "./message/media.js";

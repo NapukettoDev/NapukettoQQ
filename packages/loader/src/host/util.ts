@@ -23,9 +23,13 @@ export function log(msg: string): void {
 }
 
 /** 错误信息提取（保留 JS 原语义：message 存在用 message，否则用错误对象本身）。 */
-export function errMsg(e: unknown): string {
-    return `${(e as { message?: unknown } | null | undefined)?.message ?? e}`;
+export function errorMessage(e: unknown): string {
+    const record = e as { message?: unknown } | null | undefined;
+    return `${record?.message ?? e}`;
 }
+
+/** @deprecated 使用 `errorMessage`（全仓统一命名）。 */
+export const errMsg = errorMessage;
 
 /**
  * 配置校验失败标记错误（2026-10-25 嵌入式退出码契约）。

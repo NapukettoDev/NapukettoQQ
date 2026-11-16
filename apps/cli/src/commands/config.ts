@@ -41,6 +41,7 @@ import type { ConfigSchema } from "@napuketto/kernel";
 import {
     ConfigBase,
     configError,
+    errorMessage,
     kernelError,
     parseToml,
     resolveDataRoot,
@@ -144,11 +145,7 @@ export async function cmdConfigApply(file: string, opts: { dataDir?: string }): 
     try {
         rawText = await readFile(file, "utf8");
     } catch (err) {
-        let message = String(err);
-        if (err instanceof Error) {
-            const { message: errMessage } = err;
-            message = errMessage;
-        }
+        const message = errorMessage(err);
         throw kernelError(`读取外部配置失败 ${file}: ${message}`, "INVALID_PARAM", { cause: err });
     }
     const partial = parseExternalConfig(file, rawText);

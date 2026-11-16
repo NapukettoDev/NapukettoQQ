@@ -16,26 +16,10 @@ import { dirname, join } from "node:path";
 import { execa } from "execa";
 import { decode, encode, getDuration, getWavFileInfo, isSilk, isWav } from "silk-wasm";
 import type { AudioInfo, DecodedAudio } from "./types.js";
-import { MediaError } from "./types.js";
+import { MediaError, replaceExt } from "./types.js";
 
 /** SILK 默认采样率（Hz）。 */
 export const SILK_SAMPLE_RATE = 24_000;
-
-/** 替换文件扩展名（保持目录不变，父目录存在性由调用方保证）。 */
-function replaceExt(input: string, ext: string): string {
-    const dir = dirname(input);
-    const base = input.slice(dir.length + 1);
-    const dot = base.lastIndexOf(".");
-    let stem: string;
-    if (dot > 0) {
-        stem = base.slice(0, dot);
-    } else {
-        stem = base;
-    }
-    const out = `${dir}/${stem}${ext}`;
-    mkdirSync(dirname(out), { recursive: true });
-    return out;
-}
 
 /** 解码 SILK 音频为 PCM（pcm_s16le）。 */
 export async function decodeSilkToPcm(
@@ -48,6 +32,7 @@ export async function decodeSilkToPcm(
     }
     const result = await decode(buffer, sampleRate);
     const pcmPath = replaceExt(input, ".pcm");
+    mkdirSync(dirname(pcmPath), { recursive: true });
     await writeFile(pcmPath, result.data);
     return { pcmPath, durationMs: result.duration };
 }
@@ -156,6 +141,7 @@ export async function encodePcmToSilk(input: string, sampleRate = 0): Promise<st
     }
 
     const silkPath = replaceExt(input, ".silk");
+    mkdirSync(dirname(silkPath), { recursive: true });
     await writeFile(silkPath, result.data);
     return silkPath;
 }

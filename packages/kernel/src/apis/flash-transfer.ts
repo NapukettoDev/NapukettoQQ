@@ -10,7 +10,7 @@
  * 也不进群文件列表。文件消息路线被服务端传输命令拒（§15.3/§15.4），故本 API 是当前
  * 唯一可用的「把文件送到对端」的通道。
  */
-import { kernelError } from "../infra/index.js";
+import { errorMessage, kernelError } from "../infra/index.js";
 import type { Peer } from "../types/entities.js";
 import type {
     FlashTransferFileSet,
@@ -115,11 +115,9 @@ export class FlashTransferApi {
         } catch (e) {
             clearTimer(state.timer);
             this.detachQuietly(listener);
-            throw kernelError(
-                `createFlashTransferUploadTask 失败: ${e instanceof Error ? e.message : String(e)}`,
-                "UNKNOWN",
-                { cause: e },
-            );
+            throw kernelError(`createFlashTransferUploadTask 失败: ${errorMessage(e)}`, "UNKNOWN", {
+                cause: e,
+            });
         }
 
         try {

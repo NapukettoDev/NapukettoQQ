@@ -6,18 +6,13 @@
  * 写操作合：成员类操作 user_id(uin) → uid 转换后进 kernel（resolveUidFromUin）；
  * 公告 image_uri / 头像 image_uri 落盘后进 kernel。
  */
-import { kernelError } from "@napuketto/kernel";
+import { NTGroupMemberRole } from "@napuketto/kernel";
 import { z } from "zod";
 import type { MilkyApi } from "../api.js";
+import { requireSelfUid } from "../api.js";
 import { resolveUriToPath } from "../helper/message/media-uri.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
-import { groupIdField, optBool, userIdField } from "./group-query.js";
-
-const optStr = z.string().nullable().optional();
-
-/** NTGroupMemberRole 数值（ADMIN=3 / MEMBER=2，setMemberRole 入参）。 */
-const NTGroupMemberRoleAdmin = 3;
-const NTGroupMemberRoleMember = 2;
+import { groupIdField, optBool, optStr, userIdField } from "./group-query.js";
 
 /** 群管理域动作工厂（群设置 / 成员管理 / 公告 / 戳一戳）。 */
 export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
@@ -69,7 +64,7 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
                 api.groupApi.setMemberRole(
                     String(payload.group_id),
                     uid,
-                    payload.is_set === false ? NTGroupMemberRoleMember : NTGroupMemberRoleAdmin,
+                    payload.is_set === false ? NTGroupMemberRole.MEMBER : NTGroupMemberRole.ADMIN,
                 );
                 return {};
             },
@@ -202,13 +197,4 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
             },
         }),
     ];
-}
-
-/** self.uid 必备（nudge 发送的 callerUid；缺配置报 INVALID_PARAM）。 */
-function requireSelfUid(api: MilkyApi): string {
-    const uid = api.self.uid;
-    if (uid === undefined || uid === "") {
-        throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
-    }
-    return uid;
 }

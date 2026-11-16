@@ -21,15 +21,12 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, basename as pathBasename } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { z } from "zod";
-import type { OneBotApi } from "../../api/one-bot-api.js";
+import { fileUriToPath } from "../../../shared/media.js";
+import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 import { resolveTargetPeer } from "../message/resolve-peer.js";
-
-/** file:// 前缀（fileURLToPath 失败时的裸剥离兜底）。 */
-const FILE_URI_PREFIX_RE = /^file:\/\//;
 
 /** 路径分隔符（取文件名用）。 */
 const PATH_SEPARATORS = /[\\/]/;
@@ -68,11 +65,7 @@ function resolveLocalFile(file: string): string {
         );
     }
     if (file.startsWith("file://")) {
-        try {
-            return fileURLToPath(file);
-        } catch {
-            return file.replace(FILE_URI_PREFIX_RE, "");
-        }
+        return fileUriToPath(file);
     }
     return file;
 }
@@ -107,7 +100,7 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
                 }
                 const res = await fetch(payload.url, init);
                 if (!res.ok) {
-                    throw new Error(`下载失败: ${res.status} ${res.statusText}`);
+                    throw kernelError(`下载失败: ${res.status} ${res.statusText}`, "SEND_FAILED");
                 }
                 const buf = new Uint8Array(await res.arrayBuffer());
                 writeFileSync(filePath, buf);

@@ -8,10 +8,10 @@
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { makeNotify, ob11ActionOf, stubUidToUin } from "../../__tests__/test-support.js";
-import { createGroupSystemMsgActions } from "../get-group-system-msg.js";
+import { createGroupSystemMsgActions } from "../system-msg.js";
 
 /**
- * 与 get-group-system-msg.ts 的 GroupSystemMessageInfo / GroupSystemMsgResult
+ * 与 system-msg.ts 的 GroupSystemMessageInfo / GroupSystemMsgResult
  * 同构（生产侧未导出，仅供断言类型标注）。
  */
 interface GroupSystemMsgItem {

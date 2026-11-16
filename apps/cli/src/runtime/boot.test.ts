@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@napuketto/loader", () => ({
+    QR_LINE_PREFIX: "NAPUTO_QR ",
     resolveQqFiles: mocks.resolveQqFiles,
     checkInstanceLock: mocks.checkInstanceLock,
     defaultStubDir: mocks.defaultStubDir,

@@ -236,7 +236,7 @@ export interface NodeIDispatcherAdapter {
 }
 
 /** 登录监听器接口（普通 JS 对象，传给 loginService.addKernelLoginListener）。自研描述。 */
-export interface IKernelLoginListener {
+export interface KernelLoginListener {
     onLoginConnected?(...args: unknown[]): void;
     onLoginDisConnected?(...args: unknown[]): void;
     onLoginConnecting?(...args: unknown[]): void;
@@ -254,6 +254,9 @@ export interface IKernelLoginListener {
     onQQLoginNumLimited?(...args: unknown[]): void;
     onLoginState?(...args: unknown[]): void;
 }
+
+/** @deprecated 使用 `KernelLoginListener`（匈牙利 `I` 前缀已废弃）。 */
+export type IKernelLoginListener = KernelLoginListener;
 
 /**
  * NodeIKernelSessionListener：session.init 第四参监听器（普通 JS 对象）。

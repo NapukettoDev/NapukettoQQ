@@ -11,6 +11,7 @@ export {
     ConfigError,
     configError,
     EXIT_CONFIG_INVALID,
+    errorMessage,
     isKernelError,
     KERNEL_ERROR_CODES,
     KernelError,

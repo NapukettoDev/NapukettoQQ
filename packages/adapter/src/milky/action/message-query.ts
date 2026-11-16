@@ -4,7 +4,7 @@
  * get_forwarded_messages 经 seqIndex 转发索引（resId → peer）定位。
  */
 import type { GroupDetailInfo, GroupMember, Peer, RawMessage } from "@napuketto/kernel";
-import { ChatType, kernelError, toCanonicalElements } from "@napuketto/kernel";
+import { ChatType, errorMessage, kernelError, toCanonicalElements } from "@napuketto/kernel";
 import { z } from "zod";
 import { toUnixSeconds } from "../../shared/raw-message.js";
 import type { MilkyApi } from "../api.js";
@@ -118,7 +118,7 @@ export function createMessageQueryActions(api: MilkyApi): MilkyAction[] {
                 for (const m of msgs) {
                     api.seqIndex.record(m);
                 }
-                const uidToUin = await collectUidToUin(api, msgs);
+                const uidToUin = await collectAtUidToUin(api, msgs);
                 const messages: IncomingForwardedMessage[] = [];
                 for (const m of msgs) {
                     messages.push({
@@ -151,7 +151,7 @@ async function translateWithEntities(
                 api.logger?.warn(
                     {
                         group: peer.peerUid,
-                        error: err instanceof Error ? err.message : String(err),
+                        error: errorMessage(err),
                     },
                     "milky: 群详情缓存读取失败，实体回填退化",
                 );
@@ -162,7 +162,7 @@ async function translateWithEntities(
                     {
                         group: peer.peerUid,
                         member: msg.senderUid,
-                        error: err instanceof Error ? err.message : String(err),
+                        error: errorMessage(err),
                     },
                     "milky: 群成员缓存读取失败，实体回填退化",
                 );
@@ -202,14 +202,14 @@ async function loadGroupData(
     const [detail, members] = await Promise.all([
         api.groupCache.getGroupDetail(groupCode).catch((err) => {
             api.logger?.warn(
-                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, error: errorMessage(err) },
                 "milky: 群详情缓存读取失败，历史翻译退化",
             );
             return undefined;
         }),
         api.groupCache.getMembers(groupCode).catch((err) => {
             api.logger?.warn(
-                { group: groupCode, error: err instanceof Error ? err.message : String(err) },
+                { group: groupCode, error: errorMessage(err) },
                 "milky: 群成员表缓存读取失败，历史翻译退化",
             );
             return [] as GroupMember[];
@@ -246,7 +246,7 @@ function translateHistoryMessage(
 }
 
 /** at 段 uid → uin 批量转换（mention 翻译；失败退空 Map）。 */
-async function collectUidToUin(api: MilkyApi, msgs: RawMessage[]): Promise<Map<string, string>> {
+async function collectAtUidToUin(api: MilkyApi, msgs: RawMessage[]): Promise<Map<string, string>> {
     const uids = new Set<string>();
     for (const m of msgs) {
         for (const el of toCanonicalElements(m)) {
@@ -260,7 +260,7 @@ async function collectUidToUin(api: MilkyApi, msgs: RawMessage[]): Promise<Map<s
     }
     return await api.uidToUin([...uids]).catch((err) => {
         api.logger?.warn(
-            { count: uids.size, error: err instanceof Error ? err.message : String(err) },
+            { count: uids.size, error: errorMessage(err) },
             "milky: 历史 at uid→uin 失败，mention 段跳过",
         );
         return new Map<string, string>();
@@ -275,7 +275,7 @@ async function senderNameOf(api: MilkyApi, msg: RawMessage): Promise<string> {
                 {
                     group: msg.peerUid,
                     member: msg.senderUid,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: errorMessage(err),
                 },
                 "milky: 发送者成员缓存读取失败，退 uin 字符串",
             );

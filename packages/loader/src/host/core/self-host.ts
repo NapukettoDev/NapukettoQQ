@@ -32,7 +32,7 @@ import {
     requestShutdown,
     watchStopSentinel,
 } from "../../lifecycle/shutdown.js";
-import { env } from "../env.js";
+import { env, isEnvEnabled } from "../env.js";
 import {
     enableIpc,
     lastIpcStatusPhase,
@@ -71,7 +71,7 @@ installSignalShutdown();
 }
 
 // IPC 子进程模式（NAPUTO_IPC=1，koishi 插件驱动）：stdout 专用于 JSON 行协议
-const ipcMode = env.NAPUTO_IPC === "1";
+const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
 if (ipcMode) {
     enableIpc();
     sendStatus("booting");

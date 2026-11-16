@@ -7,7 +7,7 @@
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { registerShutdownHook } from "../../lifecycle/shutdown.js";
-import { env } from "../env.js";
+import { env, isEnvEnabled } from "../env.js";
 import {
     attachIpcServices,
     attachOb11IpcBridge,
@@ -18,8 +18,14 @@ import {
     sendStatus,
     startIpcServer,
 } from "../ipc/index.js";
-import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-cfg.js";
-import type { CoreContextLike, CoreLike, KernelLike, LoginResultLike } from "../types.js";
+import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-config.js";
+import {
+    type CoreContextLike,
+    type CoreLike,
+    type KernelLike,
+    type LoginResultLike,
+    QR_LINE_PREFIX,
+} from "../types.js";
 import { errMsg, log, type SharedState } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
 import { doLogin, type LoginTargetRef, pickLoginAccount } from "./login.js";
@@ -71,9 +77,6 @@ function probeCreatedSession(state: SharedState, ctx: CoreContextLike): void {
     }
 }
 
-/** 非 IPC 模式 QR 透出标记行前缀（cli forwardFiltered 解析后终端渲染）。 */
-const QR_LINE_PREFIX = "NAPUTO_QR ";
-
 /** 登录参数（NAPUTO_QUICK_UIN 强制指定 / ref 目标 / qrOnly 强制扫码 / 默认）。 */
 function buildLoginOpts(
     Appid: string | number,
@@ -88,7 +91,7 @@ function buildLoginOpts(
         ...(quickUin !== undefined ? { quickUin } : {}),
         ...(qrOnly ? { qrOnly: true } : {}),
     };
-    const ipcMode = env.NAPUTO_IPC === "1";
+    const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
     // 登录进度回调：QR 阶段透出二维码数据（cli 终端渲染 / koishi IPC 转发共用）。
     //  - IPC 模式：走 JSON 行协议 sendQr/sendLogin（koishi 插件驱动，不变）
     //  - cli 自建宿主模式：QR 数据以 NAPUTO_QR 标记行输出 stdout，由 cli
@@ -129,7 +132,7 @@ function replaceSession(
     // 且 getMainSession 内部会先 startupSession.start()——与「先 init 后 start」
     // 顺序冲突（HANDOVER-V9 实证）；登录前 createSession 创建的配套 session
     // （ctx.session + ctx.startupSession）才是正确激活目标。
-    const isSelfHost = env.NAPUTO_SELF_HOST === "1";
+    const isSelfHost = isEnvEnabled(env.NAPUTO_SELF_HOST);
     if (isSelfHost) {
         return null;
     }
@@ -224,7 +227,7 @@ async function runSmokeIfEnabled(
     ctx: CoreContextLike,
     loginResult: LoginResultLike,
 ): Promise<void> {
-    if (env.NAPUTO_SMOKE !== "1") {
+    if (!isEnvEnabled(env.NAPUTO_SMOKE)) {
         return;
     }
     try {
@@ -237,7 +240,7 @@ async function runSmokeIfEnabled(
 
 /** 立即探测一次（NAPUTO_PROBE=1）：fallback / core 两处引导路径共用的探测原语。 */
 export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (env.NAPUTO_PROBE !== "1" || typeof kernel.probeRuntime !== "function") {
+    if (!isEnvEnabled(env.NAPUTO_PROBE) || typeof kernel.probeRuntime !== "function") {
         return;
     }
     try {
@@ -257,7 +260,7 @@ export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
  * ctx.session（空壳主 session），录制器要先取服务。
  */
 function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (env.NAPUTO_LISTENER_RECORD !== "1") {
+    if (!isEnvEnabled(env.NAPUTO_LISTENER_RECORD)) {
         return;
     }
     if (typeof kernel.startListenerRecording !== "function") {
@@ -281,7 +284,7 @@ function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): vo
 
 /** 探测模式（NAPUTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
 function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (env.NAPUTO_PROBE !== "1") {
+    if (!isEnvEnabled(env.NAPUTO_PROBE)) {
         return;
     }
     probeOnce(kernel, ctx);
@@ -334,7 +337,7 @@ function buildCoreCreateOptions(
         // IPC 模式关 console：stdout 专用于 JSON 行协议，控制台日志并发写会
         // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
         // logs/napuketto.log 不受影响，cli 模式 console 输出不变
-        ...(env.NAPUTO_IPC === "1" ? { consoleLog: false } : {}),
+        ...(isEnvEnabled(env.NAPUTO_IPC) ? { consoleLog: false } : {}),
     };
 }
 
@@ -377,7 +380,7 @@ export async function bootstrapWithCore(
     const reassembleRef: {
         current: ((loginResult: LoginResultLike) => Promise<boolean>) | null;
     } = { current: null };
-    if (env.NAPUTO_IPC === "1") {
+    if (isEnvEnabled(env.NAPUTO_IPC)) {
         ipcActions = createIpcActionsForCore(core);
         startIpcServer({
             actions: ipcActions,
@@ -424,7 +427,7 @@ export async function bootstrapWithCore(
         await activateSession(kernel, state, ctx, chosen, loginResult, Appid, bootEnv);
         // 等 session 就绪（getMsgService 非 null）——init 完成后才有
         await waitSessionReady(kernel, ctx);
-        if (env.NAPUTO_IPC === "1") {
+        if (isEnvEnabled(env.NAPUTO_IPC)) {
             sendStatus("sessioning");
         }
         if (initial) {
@@ -440,7 +443,7 @@ export async function bootstrapWithCore(
             return false;
         }
         // 登录后把 kernel 服务动作并入登录期动作表（同一张 Map，服务端实时可见）
-        if (env.NAPUTO_IPC === "1" && ipcActions !== null) {
+        if (isEnvEnabled(env.NAPUTO_IPC) && ipcActions !== null) {
             stopIpcServices = attachIpcServices(ipcActions, newServices);
             // OB11 动作桥（可选，2026-08-27）：app 层注入 adapter/network 入口时整表
             // 挂载 OB11 动作容器（79 动作 + ob11 事件透出）；未注入静默跳过，装配
@@ -503,10 +506,10 @@ export async function bootstrapWithCore(
     // koishi 面板「扫码登录」的重启路径（qrOnly 一次性，登录后 env 不再生效）。
     // 打印可用快速登录账号（启动横幅）
     const forcedUin = env.NAPUTO_QUICK_UIN;
-    const qrOnly = env.NAPUTO_QR_ONLY === "1";
+    const qrOnly = isEnvEnabled(env.NAPUTO_QR_ONLY);
     const ref: LoginTargetRef = { targetUin: undefined };
     await pickLoginAccount(kernel, ctx, ref, forcedUin);
-    if (env.NAPUTO_IPC === "1") {
+    if (isEnvEnabled(env.NAPUTO_IPC)) {
         sendStatus("logging");
     }
     const loginResult = await Promise.race([
@@ -519,7 +522,7 @@ export async function bootstrapWithCore(
     if (loginResult === null) {
         control.abort();
         log("bootstrap: 登录失败，引导中止");
-        if (env.NAPUTO_IPC === "1") {
+        if (isEnvEnabled(env.NAPUTO_IPC)) {
             sendStatus("failed", "登录失败", { code: "NOT_LOGIN", message: "登录失败" });
         }
         return false;
@@ -527,7 +530,7 @@ export async function bootstrapWithCore(
     log(
         `bootstrap: 登录成功 uin=${loginResult.uin} uid=${loginResult.uid} nick=${loginResult.nick}`,
     );
-    if (env.NAPUTO_IPC === "1") {
+    if (isEnvEnabled(env.NAPUTO_IPC)) {
         sendLogin("logged_in", {
             uin: loginResult.uin,
             uid: loginResult.uid,

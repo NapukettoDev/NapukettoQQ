@@ -16,15 +16,17 @@ import { join } from "node:path";
 import process from "node:process";
 import type { KernelServices } from "../core/kernel-services.js";
 import { env } from "../env.js";
-import type { CoreContextLike, KernelLike } from "../types.js";
+import type {
+    AdapterCoreModuleLike,
+    CoreContextLike,
+    KernelLike,
+    NetworkModuleLike,
+    Ob11ModuleLike,
+} from "../types.js";
+import { BACKSLASH_RE, INDEX_MJS_RE } from "../types.js";
 import { errMsg, log } from "../util.js";
 import type { IpcActionHandler } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
-
-/** Windows 反斜杠（file:// URL 化时替换）。 */
-const BACKSLASH_RE = /\\/g;
-/** adapter 入口 index.mjs 后缀（子路径导出替换用）。 */
-const INDEX_MJS_RE = /index\.mjs$/;
 
 /** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
  * resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）。 */
@@ -39,39 +41,6 @@ export function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): s
         return undefined;
     }
     return kernel.resolveQqGlobalPath?.(qqRoot);
-}
-
-/** network 包最小面（@napuketto/network，动态 import）。 */
-interface NetworkModuleLike {
-    EventBroadcaster: new () => {
-        register(adapter: { send: <T>(payload: T) => void }): unknown;
-        unregister(adapter: { send: <T>(payload: T) => void }): void;
-    };
-}
-
-/** OB11 动作最小面（handle 返回 OB11 信封 {status,retcode,data,message}，永不抛）。 */
-interface Ob11ActionLike {
-    handle(payload: unknown): Promise<unknown>;
-}
-
-/** adapter 包 onebot11 子路径最小面（@napuketto/adapter，动态 import）。 */
-interface Onebot11ModuleLike {
-    ob11ConfigSchema: { parse(input: unknown): unknown };
-    NapukettoOneBot11Adapter: new (
-        options: Record<string, unknown>,
-    ) => {
-        subscribeOnly(): Promise<void>;
-        unsubscribeOnly(): void;
-        registry: {
-            names: string[];
-            get(name: string): Ob11ActionLike | undefined;
-        };
-    };
-}
-
-/** adapter 包 core 子路径最小面（ProtocolConfig 框架）。 */
-interface AdapterCoreModuleLike {
-    ProtocolConfig: new (options: Record<string, unknown>) => unknown;
 }
 
 /** 环境覆盖（缺省取全局 env；单测注入。exactOptionalPropertyTypes：显式 undefined 合法）。 */
@@ -128,7 +97,7 @@ export async function attachOb11IpcBridge(
         // adapter 子路径导出（ADR-014）：onebot11 面 / core 框架各走各的入口
         const onebot11Entry = e.adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
         const coreEntry = e.adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
-        const adapter = (await importModule(toUrl(onebot11Entry))) as Onebot11ModuleLike;
+        const adapter = (await importModule(toUrl(onebot11Entry))) as Ob11ModuleLike;
         const adapterCore = (await importModule(toUrl(coreEntry))) as AdapterCoreModuleLike;
 
         const broadcaster = new network.EventBroadcaster();

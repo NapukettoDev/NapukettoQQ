@@ -8,8 +8,8 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { env } from "../env.js";
-import { defaultLogConfig, resolveLogFilePath } from "../log-cfg.js";
+import { env, isEnvEnabled } from "../env.js";
+import { defaultLogConfig, resolveLogFilePath } from "../log-config.js";
 import { type ReceiveLogFilter, setupMsgLogging } from "../msg-log.js";
 import type {
     CoreContextLike,
@@ -175,7 +175,7 @@ export async function createKernelServices(
     // 2026-10-25 日志可配置化：级别/格式/时间戳/颜色接 [log] 段 + env
     //（boot 经 NAPUKETTO_LOG_FORMAT/COLORIZE 传播顶层控制台决策）；[log.file]
     // 配置时改写该独立 sink（否则沿用 loader.log）。
-    const ipcMode = env.NAPUTO_IPC === "1";
+    const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
     const logFile =
         logCfg?.file !== undefined
             ? resolveLogFilePath(logCfg.file.path)

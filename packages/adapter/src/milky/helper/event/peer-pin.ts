@@ -10,10 +10,8 @@
  * 一一对应（milky.md §0.8.6）。
  */
 import { ChatType, type PinnedContact, type RecentContact } from "@napuketto/kernel";
+import { NUMERIC_RE } from "../../../shared/uid-uin.js";
 import type { PeerPinChangeData } from "../../types.js";
-
-/** uin 形判别（peer_id 必须是数字串）。 */
-const NUMERIC_RE = /^\d+$/;
 
 /** 置顶翻转检测（每适配器实例一份，键 = chatType:peerUin——群号与 uin 数值空间可重叠）。 */
 export class PinWatch {

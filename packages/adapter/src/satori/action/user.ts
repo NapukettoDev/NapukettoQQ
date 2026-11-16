@@ -5,13 +5,13 @@ import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toChannelById, toUser } from "../helper/index.js";
 import type { Channel, User } from "../types/index.js";
-import { defineSatoriAction, type SatoriAction } from "./base-action.js";
+import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type UserActionDeps = Pick<SatoriApi, "profileApi" | "groupApi" | "groupCache">;
 
 /** 用户动作工厂（user.get / user.channel.create）。 */
-export function createUserActions(deps: UserActionDeps): SatoriAction[] {
+export function createUserActions(deps: UserActionDeps): SatoriActionHandler[] {
     return [
         defineSatoriAction({
             name: "user.get",

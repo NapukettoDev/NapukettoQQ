@@ -67,7 +67,7 @@ function resolveProjectRoot(): string | undefined {
  * 返回绝对路径。独立导出便于 cli / 探测脚本复用。
  */
 export function resolveDataRoot(dataRoot?: string): string {
-    const explicit = dataRoot ?? process.env["NAPKETTO_DATA"];
+    const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"] ?? process.env["NAPKETTO_DATA"];
     if (explicit !== undefined && explicit !== "") {
         return resolve(expandTilde(explicit));
     }
@@ -110,7 +110,7 @@ export interface ConfigPathOptions {
  * 返回绝对路径。独立导出便于 cli / loader 装配链复用。
  */
 export function resolveConfigPath(opts: ConfigPathOptions = {}): string {
-    const explicit = process.env["NAPKETTO_CONFIG"];
+    const explicit = process.env["NAPUKETTO_CONFIG"] ?? process.env["NAPKETTO_CONFIG"];
     if (explicit !== undefined && explicit !== "") {
         return resolve(explicit);
     }

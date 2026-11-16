@@ -8,6 +8,8 @@
  * Milky 长文本校准日志用固定切片（无标注）。
  */
 
+import { errorMessage } from "@napuketto/kernel";
+
 /** info/warn 级截断缺省上限（OB11 口径）。 */
 const RAW_INFO_LIMIT = 64;
 
@@ -39,7 +41,7 @@ export function logEventFailure(
     msg: string,
     err: unknown,
 ): void {
-    logger?.warn({ err: err instanceof Error ? err.message : String(err) }, msg);
+    logger?.warn({ err: errorMessage(err) }, msg);
 }
 
 /** 最小 logger 面（校准日志用：未知事件形状打 raw JSON；缺省静默）。 */
