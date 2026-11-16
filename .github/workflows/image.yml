@@ -82,10 +82,10 @@ jobs:
                   echo "@napuketto/cli@${NAPUKETTO_VERSION} 已在 npm 上，开始构建"
 
             - name: Set up Buildx
-              uses: docker/setup-buildx-action@v3
+              uses: docker/setup-buildx-action@v4
 
             - name: 登录 GHCR
-              uses: docker/login-action@v3
+              uses: docker/login-action@v4
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
@@ -93,7 +93,7 @@ jobs:
 
             - name: 生成镜像标签（默认，含 ffmpeg）
               id: meta
-              uses: docker/metadata-action@v5
+              uses: docker/metadata-action@v6
               with:
                   images: ${{ steps.ver.outputs.image }}
                   tags: |
@@ -102,7 +102,7 @@ jobs:
                       type=sha,format=short,prefix=sha-
 
             - name: 构建并推送（默认，含 ffmpeg）
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: docker
                   file: docker/Dockerfile
@@ -120,7 +120,7 @@ jobs:
 
             - name: 生成镜像标签（slim，无 ffmpeg）
               id: meta-slim
-              uses: docker/metadata-action@v5
+              uses: docker/metadata-action@v6
               with:
                   images: ${{ steps.ver.outputs.image }}
                   flavor: |
@@ -131,7 +131,7 @@ jobs:
                       type=sha,format=short,prefix=sha-
 
             - name: 构建并推送（slim，无 ffmpeg）
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: docker
                   file: docker/Dockerfile
