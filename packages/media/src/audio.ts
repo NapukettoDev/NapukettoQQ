@@ -40,9 +40,9 @@ export async function decodeSilkToPcm(
 /** 解码 SILK → WAV 输出选项。 */
 export interface DecodeSilkToWavOptions {
     /** 采样率（缺省 24000，QQ 语音协议值）。 */
-    sampleRate?: number;
+    sampleRate?: number | undefined;
     /** 输出目录（缺省输入同目录；收方向解码建议 tmpdir，避免污染 NT 数据目录）。 */
-    outDir?: string;
+    outDir?: string | undefined;
 }
 
 /** 解码结果（WAV）。 */

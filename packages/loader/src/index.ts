@@ -15,8 +15,20 @@
  * 本包不再编译 C++ 组件，业务层 100% 走 NAPI。
  */
 
-export type { LaunchOptions, LaunchResult } from "./boot/launcher.js";
-export { defaultStubDir, ENV, launchSelfHost } from "./boot/launcher.js";
+export type {
+    LaunchOptions,
+    LaunchResult,
+    SystemNodeInfo,
+    WinHostNodeResolvers,
+} from "./boot/launcher.js";
+export {
+    defaultStubDir,
+    ENV,
+    findSystemNode,
+    isNodeExecutable,
+    launchSelfHost,
+    resolveWinHostNode,
+} from "./boot/launcher.js";
 export type { WinNodeInfo } from "./boot/win-node.js";
 export { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "./boot/win-node.js";
 export type {
@@ -56,15 +68,25 @@ export {
     IpcMessageSchema,
     IpcResultPayloadSchema,
     IpcStatusPayloadSchema,
+    /** @deprecated 请使用 `IpcActionPayloadSchema` */
     ipcActionPayloadSchema,
+    /** @deprecated 请使用 `IpcBootPhaseSchema` */
     ipcBootPhaseSchema,
+    /** @deprecated 请使用 `IpcControlPayloadSchema` */
     ipcControlPayloadSchema,
+    /** @deprecated 请使用 `IpcEventPayloadSchema` */
     ipcEventPayloadSchema,
+    /** @deprecated 请使用 `IpcLoginPayloadSchema` */
     ipcLoginPayloadSchema,
+    /** @deprecated 请使用 `IpcLogLevelSchema` */
     ipcLogLevelSchema,
+    /** @deprecated 请使用 `IpcLogPayloadSchema` */
     ipcLogPayloadSchema,
+    /** @deprecated 请使用 `IpcMessageSchema` */
     ipcMessageSchema,
+    /** @deprecated 请使用 `IpcResultPayloadSchema` */
     ipcResultPayloadSchema,
+    /** @deprecated 请使用 `IpcStatusPayloadSchema` */
     ipcStatusPayloadSchema,
     isNativeNoiseLine,
 } from "./host/ipc/index.js";

@@ -15,6 +15,7 @@ import process from "node:process";
 import { kernelError } from "../infra/index.js";
 import type {
     EnginInitDesktopConfig,
+    NodeIKernelLoginService,
     NodeIKernelSessionListener,
     NodeIQQNTStartupSessionWrapper,
     NodeIQQNTWrapperEngine,
@@ -49,7 +50,10 @@ function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginInitDeskto
     const platform = detectPlatformType();
     const fullVersion = env.qqVersion ?? "";
     const wrapperPath =
-        process.env["NAPUKETTO_WRAPPER_PATH"] ?? process.env["NAPUTO_WRAPPER_PATH"] ?? "";
+        env.wrapperPath ??
+        process.env["NAPUKETTO_WRAPPER_PATH"] ??
+        process.env["NAPUTO_WRAPPER_PATH"] ??
+        "";
     const majorPath = wrapperPath !== "" ? join(dirname(wrapperPath), "major.node") : "";
     const scanned = majorPath !== "" ? parseQuaFromMajor(majorPath) : null;
     const qua = scanned ?? (fullVersion !== "" ? buildQua(fullVersion, platform) : "");
@@ -80,9 +84,9 @@ export function electronProcessType(): string | undefined {
 /** `resolveQqUserDataRoot` 选项（平台覆盖供测试/联调，缺省按 `process.platform` 探测）。 */
 export interface QqDataRootOptions {
     /** 数据根（`NAPKETTO_DATA` / `--data-dir` 解析结果）。Linux 下 QQ 数据落 `<dataRoot>/nt_qq`。 */
-    dataRoot?: string;
+    dataRoot?: string | undefined;
     /** 平台覆盖（缺省 `detectPlatformType()`）。 */
-    platform?: PlatformType;
+    platform?: PlatformType | undefined;
 }
 
 /**
@@ -160,8 +164,13 @@ export interface WrapperContext {
     session: NodeIQQNTWrapperSession | null;
     /** 启动会话包装（NapCat 同款：StartupSessionWrapper.create()，start() 替代 startNT）。 */
     startupSession: NodeIQQNTStartupSessionWrapper | null;
-    /** QQ 的 loginService 实例（拦截 new 捕获，可为 null）。 */
-    loginService: unknown;
+    /**
+     * QQ 的 loginService 实例（拦截 new 捕获，可为 null）。
+     * 保留 `unknown` 联合以兼容测试桩与老版本 wrapper（仅按方法名反射调用）。
+     */
+    loginService: NodeIKernelLoginService | unknown;
+    /** wrapper.node 绝对路径（BootEnv.wrapperPath 注入；appid 自动解析用）。 */
+    wrapperPath?: string | undefined;
 }
 
 /**
@@ -319,6 +328,16 @@ export function startNapuketto(options: StartNapukettoOptions): WrapperContext {
     prepareSession(ctx, hasCapturedSession, isSelfHost);
     initEngine(ctx, resolveEngineConfig(ctx, env, engineConfig));
     resolveLoginService(ctx, qqLoginService);
+    ctx.wrapperPath =
+        env?.wrapperPath ??
+        process.env["NAPUKETTO_WRAPPER_PATH"] ??
+        process.env["NAPUTO_WRAPPER_PATH"];
+    // 自建宿主必须激活 O3MiscService（三要素之二）：不激活则 getLoginList 永不
+    // resolve（挂起）。放在装配入口自动执行，避免下游漏调 activateO3MiscService
+    // 导致登录永久死锁；函数自身幂等（同一 exports 只激活一次）。
+    if (isSelfHost) {
+        activateO3MiscService(wrapperExports);
+    }
     // session：路线 B（utility）与 QQ 主进程（browser）在 engine 后创建；
     // 自建宿主已在 engine 前创建（isSelfHost 分支），此处跳过避免重复。
     finishSession(ctx, hasCapturedSession, isSelfHost, sessionConfig);
@@ -427,15 +446,20 @@ function getOrCreateLoginService(exports: WrapperNodeApi): unknown {
 /** startNapuketto 的引导环境（由 loader launcher 注入环境变量，boot.cjs 透传）。 */
 export interface BootEnv {
     /** QQ 版本（如 "9.9.31-49919"）。 */
-    qqVersion?: string;
+    qqVersion?: string | undefined;
     /** 用户数据目录（cfgDir 的父级，用于 desktopPathConfig）。 */
-    dataDir?: string;
+    dataDir?: string | undefined;
     /** 数据根（Linux 下 QQ 数据根 = `<dataRoot>/nt_qq`；Windows 忽略）。 */
-    dataRoot?: string;
+    dataRoot?: string | undefined;
     /** 账号 uin（可选，提供则一步 init+start）。 */
-    selfUin?: string;
+    selfUin?: string | undefined;
     /** 账号 uid（可选）。 */
-    selfUid?: string;
+    selfUid?: string | undefined;
+    /**
+     * wrapper.node 绝对路径（appid 自动解析用：同目录 major.node）。
+     * 缺省回退 `NAPUKETTO_WRAPPER_PATH` / `NAPUTO_WRAPPER_PATH` 环境变量。
+     */
+    wrapperPath?: string | undefined;
 }
 
 /** startNapuketto 选项。 */
@@ -443,13 +467,13 @@ export interface StartNapukettoOptions {
     /** 截获的 wrapper.node NAPI exports（boot.cjs 传入）。 */
     wrapperExports: WrapperNodeApi;
     /** 引导环境（版本/数据目录/账号）。 */
-    env?: BootEnv;
+    env?: BootEnv | undefined;
     /** 覆盖 engine 配置（联调用）。 */
-    engineConfig?: EnginInitDesktopConfig;
+    engineConfig?: EnginInitDesktopConfig | undefined;
     /** 覆盖 session 配置（联调用，提供则自动 init+start）。 */
-    sessionConfig?: WrapperSessionInitConfig;
+    sessionConfig?: WrapperSessionInitConfig | undefined;
     /** QQ 已 init 的 session（boot.cjs 拦截 new 捕获）。 */
-    qqSession?: NodeIQQNTWrapperSession | null;
+    qqSession?: NodeIQQNTWrapperSession | null | undefined;
     /** QQ 的 loginService 实例（boot.cjs 拦截 new 捕获）。 */
     qqLoginService?: unknown;
 }
@@ -463,7 +487,7 @@ export interface StartNapukettoOptions {
  * @returns NAPI exports（含 NodeIKernelLoginService 等构造器）
  * @throws KernelError exports 缺 NodeIKernelLoginService（stub 环境异常）或 dlopen 失败
  */
-export function dlopenWrapper(wrapperPath: string): Record<string, unknown> {
+export function dlopenWrapper(wrapperPath: string): WrapperNodeApi {
     // { exports: {} } 是 process.dlopen 的最小载体（wrapper 向其中填充 NAPI exports）
     const m: { exports: Record<string, unknown> } = { exports: {} };
     process.dlopen(m as object, wrapperPath);
@@ -471,21 +495,34 @@ export function dlopenWrapper(wrapperPath: string): Record<string, unknown> {
     if (!keys.includes("NodeIKernelLoginService")) {
         throw kernelError("exports 无 NodeIKernelLoginService（stub 环境异常？）", "INVALID_STATE");
     }
-    return m.exports;
+    // 运行时已按 NAPI 契约校验关键导出；此处收窄为类型面，消除下游类型逃逸。
+    return m.exports as unknown as WrapperNodeApi;
 }
+
+/** 已激活 O3MiscService 的 exports（幂等标记，避免重复挂监听）。 */
+const ACTIVATED_O3_EXPORTS = new WeakSet<object>();
 
 /**
  * 激活自建宿主 O3MiscService 事件分发（三要素之二，V6 实测决定性）：
  * 不激活则 getLoginList 永不 resolve（挂起）。listener 用普通对象
  * （getOnAmgomDataPiece 空实现，wrapper 契约回调）。
  *
+ * 幂等：同一 exports 重复调用只激活一次（已激活返回 true）。
+ *
  * @param wrapperExports dlopen 产出的 exports（缺失/版本变化时返回 false）
  * @returns 是否成功激活
  */
 export function activateO3MiscService(
-    wrapperExports: Record<string, unknown> | undefined,
+    wrapperExports: WrapperNodeApi | Record<string, unknown> | undefined,
 ): boolean {
-    const O3 = wrapperExports?.["NodeIO3MiscService"] as
+    if (wrapperExports === undefined || wrapperExports === null) {
+        return false;
+    }
+    // 幂等：同一 exports 只激活一次（startNapuketto 自动激活 + 下游手动兜底不重复挂监听）。
+    if (ACTIVATED_O3_EXPORTS.has(wrapperExports)) {
+        return true;
+    }
+    const O3 = wrapperExports["NodeIO3MiscService"] as
         | { get?(): { addO3MiscListener(listener: unknown): void } }
         | undefined;
     if (O3 && typeof O3.get === "function") {
@@ -494,6 +531,7 @@ export function activateO3MiscService(
                 // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
             },
         });
+        ACTIVATED_O3_EXPORTS.add(wrapperExports);
         return true;
     }
     return false;

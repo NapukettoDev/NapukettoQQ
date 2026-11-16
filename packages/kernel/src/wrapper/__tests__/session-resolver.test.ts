@@ -79,7 +79,7 @@ describe("getExistingSession", () => {
 });
 
 describe("getMainSession", () => {
-    it("startup 链路完整时返回主 session 并写 ctx.session", () => {
+    it("startup 链路完整时返回主 session（纯查询，不改写 ctx.session）", () => {
         const session = fakeSession();
         const ctx = makeCtx(
             partialExports({
@@ -99,7 +99,8 @@ describe("getMainSession", () => {
             }),
         );
         expect(getMainSession(ctx)).toBe(session);
-        expect(ctx.session).toBe(session);
+        // 纯查询语义：不再毒化调用方的 ctx.session
+        expect(ctx.session).toBeNull();
     });
 
     it("getSessionIdList 非 Map 返回 null", () => {

@@ -44,17 +44,17 @@ export interface MilkyApiOptions {
     /** ：会话列表（get_peer_pins 数据源）。 */
     recentContactApi: RecentContactApi;
     /** 登录身份（get_login_info / self_id / target_user_uid 用）。 */
-    self: { uin: string; nickname: string; uid?: string };
+    self: { uin: string; nickname: string; uid?: string | undefined };
     /** 群/成员缓存（群实体回填 / get_group_list；未装配时动作直查 api）。 */
-    groupCache?: GroupCache;
-    /** QQ 客户端版本（get_impl_info.qq_protocol_version）。 */
-    qqVersion: string;
-    /** 协议端版本（get_impl_info.impl_version）。 */
-    implVersion: string;
+    groupCache?: GroupCache | undefined;
+    /** QQ 客户端版本（get_impl_info.qq_protocol_version；缺省 unknown）。 */
+    qqVersion?: string | undefined;
+    /** 协议端版本（get_impl_info.impl_version；缺省 0.1.0）。 */
+    implVersion?: string | undefined;
     /** 发送媒体 http(s)/base64 URI 下载缓存目录（缺省 = 远程媒体发送不可用）。 */
-    mediaDir?: string;
+    mediaDir?: string | undefined;
     /** 动作层可观测出口（降级分支 warn/debug 留痕 + forward 临时消息撤回失败；缺省静默）。 */
-    logger?: MilkyLoggerLike;
+    logger?: MilkyLoggerLike | undefined;
 }
 
 /**
@@ -81,7 +81,7 @@ export class MilkyApi {
     /** kernel 闪传 API（文件投递：分享卡片，见 flash-transfer.ts 语义说明）。 */
     readonly flashTransferApi: FlashTransferApi;
     readonly recentContactApi: RecentContactApi;
-    readonly self: { uin: string; nickname: string; uid?: string };
+    readonly self: { uin: string; nickname: string; uid?: string | undefined };
     readonly groupCache: GroupCache | undefined;
     readonly qqVersion: string;
     readonly implVersion: string;
@@ -105,8 +105,8 @@ export class MilkyApi {
         this.recentContactApi = opts.recentContactApi;
         this.self = opts.self;
         this.groupCache = opts.groupCache;
-        this.qqVersion = opts.qqVersion;
-        this.implVersion = opts.implVersion;
+        this.qqVersion = opts.qqVersion ?? "unknown";
+        this.implVersion = opts.implVersion ?? "0.1.0";
         this.mediaDir = opts.mediaDir;
         this.logger = opts.logger;
         this.seqIndex = seqIndex;

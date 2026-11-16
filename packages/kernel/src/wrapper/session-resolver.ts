@@ -50,6 +50,8 @@ function resolveMainSession(
 /**
  * 复用 QQ 已有 session（P1-4：QQ 已登录，直接拿单例避免重复 init）。
  * 优先 `NodeIQQNTWrapperSession.get()`；返回 null 时回退 createSession。
+ *
+ * @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用（会写回 ctx.session）。
  */
 export function getExistingSession(ctx: WrapperContext): NodeIQQNTWrapperSession | null {
     const got = trySessionGet(ctx);
@@ -81,6 +83,8 @@ function trySessionGet(ctx: WrapperContext): NodeIQQNTWrapperSession | null {
  * `NodeIQQNTStartupSessionWrapper.create()` → `start()` → `getSessionIdList()`（Map
  * {nt:"nt_3", gpro:"gpro_3"}）→ `NodeIQQNTWrapperSession.getNTWrapperSession("nt_3")`。
  * 注：实测这些 session 是空壳（核心 service null），真正可用的是 new + init（lifecycle.ts）。
+ *
+ * @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用（纯查询语义，不改写 ctx.session）。
  */
 export function getMainSession(ctx: WrapperContext): NodeIQQNTWrapperSession | null {
     try {
@@ -110,9 +114,6 @@ function resolveMainFromStartup(ctx: WrapperContext): NodeIQQNTWrapperSession | 
     }
     const getSession = (id: string): NodeIQQNTWrapperSession =>
         (sessionCtor.getNTWrapperSession as (name: string) => NodeIQQNTWrapperSession)(id);
-    const session = resolveMainSession(created, getSession);
-    if (session !== null) {
-        ctx.session = session;
-    }
-    return session;
+    // 纯查询语义：不把空壳主 session 写回 ctx.session（避免毒化调用方装配状态）。
+    return resolveMainSession(created, getSession);
 }

@@ -57,7 +57,10 @@ export class MsgBridge {
             this.channel.emit(event, msgs);
             return;
         }
-        void awaitPicLocalPaths(msgs).then(() => this.channel.emit(event, msgs));
+        // 落盘等待失败不改变事件契约：catch 后照常发射（canonical 层按缺失裁决）。
+        void awaitPicLocalPaths(msgs)
+            .catch(() => undefined)
+            .then(() => this.channel.emit(event, msgs));
     }
 
     /** 注册原生监听（幂等）。 */
@@ -95,5 +98,15 @@ export class MsgBridge {
         }
         this.service.removeKernelMsgListener(this.listenerId);
         this.listenerId = null;
+    }
+
+    /** 释放（等价 unregister，幂等）。 */
+    dispose(): void {
+        this.unregister();
+    }
+
+    /** `using bridge = ...` 自动释放。 */
+    [Symbol.dispose](): void {
+        this.unregister();
     }
 }

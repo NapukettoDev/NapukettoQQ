@@ -117,6 +117,16 @@ export class GroupCache {
         this.inFlight.clear();
     }
 
+    /** 释放（等价 unregister，幂等）。 */
+    dispose(): void {
+        this.unregister();
+    }
+
+    /** `using cache = ...` 自动释放。 */
+    [Symbol.dispose](): void {
+        this.unregister();
+    }
+
     /** 合并成员到该群缓存（uid → GroupMember）。 */
     private upsertMembers(groupCode: string, infos: Map<string, GroupMember>): void {
         let map = this.members.get(groupCode);

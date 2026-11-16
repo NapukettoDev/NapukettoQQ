@@ -7,6 +7,8 @@
  * - 便捷方法 uinToUid / uidToUin 委托 groupApi（at 转换 / 私聊发送用）。
  * - cacheDir 供消息元素发方向资源下载（img/audio/video/file 的 http(s) src）。
  */
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
     FriendApi,
     GroupApi,
@@ -27,10 +29,10 @@ export interface SatoriApiOptions {
     profileApi: ProfileApi;
     /** 登录身份（login.get / READY logins 用）。 */
     self: { uin: string; nickname: string };
-    /** 媒体资源下载缓存目录（发方向 img/audio/video/file 的 http(s) src）。 */
-    cacheDir: string;
+    /** 媒体资源下载缓存目录（缺省 `os.tmpdir()/napuketto-satori-cache`）。 */
+    cacheDir?: string | undefined;
     /** 群/成员缓存（guild.member.get / user.get 读缓存用）。 */
-    groupCache?: GroupCache;
+    groupCache?: GroupCache | undefined;
 }
 
 /** Satori 动作统一依赖聚合。 */
@@ -59,7 +61,7 @@ export class SatoriApi {
         this.profileApi = opts.profileApi;
         this.self = opts.self;
         this.selfUin = opts.self.uin;
-        this.cacheDir = opts.cacheDir;
+        this.cacheDir = opts.cacheDir ?? join(tmpdir(), "napuketto-satori-cache");
         this.groupCache = opts.groupCache;
     }
 

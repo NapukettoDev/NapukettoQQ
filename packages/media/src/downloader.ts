@@ -11,9 +11,9 @@ import { MediaError } from "./types.js";
 /** 下载选项。 */
 export interface DownloadUrlOptions {
     /** 超时毫秒（缺省 15s）。 */
-    timeoutMs?: number;
+    timeoutMs?: number | undefined;
     /** 大小上限字节（缺省 30MB）。 */
-    maxBytes?: number;
+    maxBytes?: number | undefined;
 }
 
 /** 默认大小上限（30MB）。 */

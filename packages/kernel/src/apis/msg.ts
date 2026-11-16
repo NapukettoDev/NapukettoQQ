@@ -482,6 +482,15 @@ export class MsgApi {
         target: Peer,
     ): Promise<RawMessage> {
         return new Promise((resolve, reject) => {
+            // 统一清理：退订 + 清定时器（三态终局都走这里，避免 15s 定时器泄漏）。
+            let timer: ReturnType<typeof setTimeout> | null = null;
+            const cleanup = (): void => {
+                if (timer !== null) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+                off();
+            };
             const off = channel.on("Msg/onMsgInfoListUpdate", (list) => {
                 const mine = list.find((m) => m.guildId === msgId);
                 if (mine === undefined) {
@@ -491,19 +500,19 @@ export class MsgApi {
                     mine.sendStatus === SEND_STATUS.SUCCESS ||
                     mine.sendStatus === SEND_STATUS.SUCCESS_NO_SEQ
                 ) {
-                    off();
+                    cleanup();
                     resolve(mine);
                 } else if (mine.sendStatus === SEND_STATUS.FAILED) {
-                    off();
+                    cleanup();
                     reject(
                         kernelError(`sendMsg 失败: sendStatus=${mine.sendStatus}`, "SEND_FAILED"),
                     );
                 }
                 // SENDING：继续等
             });
-            // 超时兜底
-            setTimeout(() => {
-                off();
+            // 超时兜底（不阻塞进程自然退出）
+            timer = setTimeout(() => {
+                cleanup();
                 reject(
                     kernelError(
                         `sendMsg 等待确认超时（msgId=${msgId}, target=${JSON.stringify(target)}）`,
@@ -511,6 +520,7 @@ export class MsgApi {
                     ),
                 );
             }, SEND_CONFIRM_TIMEOUT_MS);
+            timer.unref?.();
         });
     }
 

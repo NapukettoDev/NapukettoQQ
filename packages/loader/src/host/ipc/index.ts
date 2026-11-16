@@ -68,15 +68,25 @@ export {
     type IpcStatusMessage,
     type IpcStatusPayload,
     IpcStatusPayloadSchema,
+    /** @deprecated 请使用 `IpcActionPayloadSchema` */
     ipcActionPayloadSchema,
+    /** @deprecated 请使用 `IpcBootPhaseSchema` */
     ipcBootPhaseSchema,
+    /** @deprecated 请使用 `IpcControlPayloadSchema` */
     ipcControlPayloadSchema,
+    /** @deprecated 请使用 `IpcEventPayloadSchema` */
     ipcEventPayloadSchema,
+    /** @deprecated 请使用 `IpcLoginPayloadSchema` */
     ipcLoginPayloadSchema,
+    /** @deprecated 请使用 `IpcLogLevelSchema` */
     ipcLogLevelSchema,
+    /** @deprecated 请使用 `IpcLogPayloadSchema` */
     ipcLogPayloadSchema,
+    /** @deprecated 请使用 `IpcMessageSchema` */
     ipcMessageSchema,
+    /** @deprecated 请使用 `IpcResultPayloadSchema` */
     ipcResultPayloadSchema,
+    /** @deprecated 请使用 `IpcStatusPayloadSchema` */
     ipcStatusPayloadSchema,
 } from "./ipc-types.js";
 export { toJsonSafe } from "./json-safe.js";

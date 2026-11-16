@@ -15,7 +15,8 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import process from "node:process";
 import { type CoreContext, createCoreContext } from "./context.js";
 import {
     createLogger,
@@ -27,6 +28,7 @@ import {
     type TimestampMode,
 } from "./infra/index.js";
 import {
+    initAndStartSession,
     type LoginResult,
     type LoginState,
     type QrCodeData,
@@ -34,10 +36,19 @@ import {
     type QuickLoginOptions,
     quickLogin,
     type SelfInfo,
+    waitSessionReady,
 } from "./login/index.js";
+import type { KernelRuntime, KernelRuntimeOptions } from "./runtime.js";
+import { createKernelRuntime } from "./runtime.js";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "./types/index.js";
 import { resolveQqGlobalPath } from "./wrapper/qq-data-path.js";
-import { buildLoginConfig } from "./wrapper/wrapper-config.js";
+import { createSessionListener } from "./wrapper/wrapper-adapters.js";
+import {
+    buildLoginConfig,
+    buildSessionConfig,
+    readMachineGuid,
+    resolveAppidQua,
+} from "./wrapper/wrapper-config.js";
 import {
     type BootEnv,
     electronProcessType,
@@ -48,7 +59,7 @@ import {
 
 export interface NapukettoCoreOptions {
     /** 数据根 / 账号（透传给 PathWrapper，见 ADR-016）。 */
-    paths?: PathOptions;
+    paths?: PathOptions | undefined;
     /** 日志级别，默认 info。 */
     logLevel?: LogLevel | undefined;
     /** 文件日志路径；不传则默认 `logs/napuketto.log`（父目录自动创建）。 */
@@ -72,35 +83,45 @@ export interface LoginProgress {
     /** 登录状态（QR 状态机）。 */
     state: LoginState;
     /** 二维码数据（state=waiting_scan 时有）。 */
-    qr?: QrCodeData;
+    qr?: QrCodeData | undefined;
     /** 登录成功 selfInfo（state=logged_in 时有）。 */
-    selfInfo?: SelfInfo;
+    selfInfo?: SelfInfo | undefined;
     /** 失败原因（state=failed 时有；如「登录超时，请刷新页面重试」）。 */
-    message?: string;
+    message?: string | undefined;
 }
 
 /** login 参数。 */
 export interface CoreLoginOptions {
-    /** appid（登录握手，由 resolveAppidQua 从 major.node 动态解析，不写死）。 */
-    appid: string;
+    /**
+     * appid（登录握手）。**可选**：未传时自动从 wrapperPath 同目录 major.node
+     * 解析（`resolveAppidQua`）；wrapperPath 缺省回退 `NAPUKETTO_WRAPPER_PATH` /
+     * `NAPUTO_WRAPPER_PATH` 环境变量。仍无法解析则抛 INVALID_PARAM。
+     */
+    appid?: string | undefined;
     /** session.init 超时（毫秒），默认 15s。 */
-    initTimeoutMs?: number;
+    initTimeoutMs?: number | undefined;
     /** 指定快速登录账号（缺省遍历历史列表）。 */
-    quickUin?: string;
+    quickUin?: string | undefined;
     /**
      * 单步快速登录超时（毫秒，T3 软重登挂起兜底），默认 20s。服务端已有同账号
      * 会话时底层 quickLoginWithUin/getLoginList 永久挂起，超时按登录失败抛出
      * （qrFallback 可接）。底层 promise 无法取消：超时后悬挂丢弃。
      */
-    quickLoginTimeoutMs?: number;
+    quickLoginTimeoutMs?: number | undefined;
     /** 快速登录失败时回退 QR 登录（二维码写缓存目录），默认 false。 */
-    qrFallback?: boolean;
+    qrFallback?: boolean | undefined;
     /** 强制扫码：跳过快速登录，直接走 QR 登录（koishi 强制扫码 / 切账号）。默认 false。 */
-    qrOnly?: boolean;
+    qrOnly?: boolean | undefined;
     /** QR 二维码图片保存路径（默认缓存目录 qrcode.png）。 */
-    qrCodePath?: string;
+    qrCodePath?: string | undefined;
     /** 登录进度回调（QR 阶段：二维码数据 + 状态变化）。子进程 IPC 模式转发用。 */
-    onLoginProgress?: (progress: LoginProgress) => void;
+    onLoginProgress?: ((progress: LoginProgress) => void) | undefined;
+    /**
+     * 登录成功后自动完成 Session 激活闭环（accountPath → machineGuid →
+     * buildSessionConfig → initAndStartSession → waitSessionReady）。
+     * 默认 false：保持 loader 现有「手动 activateSession」流程 100% 兼容。
+     */
+    activateSession?: boolean | undefined;
 }
 
 /**
@@ -113,6 +134,12 @@ export class NapukettoCore {
 
     /** QR 登录会话句柄（登录期间非空；登录终态后清空）。refreshQr() 据此可达。 */
     private qrSession: QrLoginSession | null = null;
+
+    /** 由 createRuntime() 装配的运行时服务集合（stop/dispose 时统一清理）。 */
+    private runtime: KernelRuntime | null = null;
+
+    /** stop 幂等标记。 */
+    private stopped = false;
 
     /** 由 create() 装配，不直接 new。 */
     private constructor(ctx: CoreContext) {
@@ -164,38 +191,109 @@ export class NapukettoCore {
     }
 
     /**
-     * 登录 + session 初始化（wrapper 契约，2026-08-05 实测确认）：
-     * loginService.initConfig → 登录（快速/QR）→ **登录成功后** create session + init
-     * → 等 onOpentelemetryInit(is_init) 完成信号。成功后填 ctx.login。
+     * 登录握手（wrapper 契约，2026-08-05 实测确认）：
+     * loginService.initConfig → 登录（快速/QR）→ 填 ctx.login 后返回。
      *
-     * 关键（实测）：登录前 create()/init 均断言失败（session 未 init / 干扰 QQ）；
-     * 登录后 QQ 自己 init 并触发 listener.onOpentelemetryInit——我们只需在登录后
-     * create + init 并监听该信号。
+     * 默认**仅完成登录握手**，不做 session 初始化——QQ 登录后重建 session
+     * （boot.cjs Proxy 捕获新实例并 setSession 替换），替换发生在 login 返回之后。
+     * 需要一步完成会话初始化时：传 `activateSession: true`（登录成功后自动跑
+     * accountPath → machineGuid → buildSessionConfig → initAndStartSession →
+     * waitSessionReady），或随后手动调用 `core.activateSession()`。
      */
     async login(opts: CoreLoginOptions): Promise<LoginResult> {
         const { wrapper } = this.ctx;
         if (wrapper === null) {
             throw kernelError("wrapper 未装配，无法登录", "INVALID_STATE");
         }
+        const appid = resolveCoreAppid(wrapper, opts.appid);
 
         // 1. loginService.initConfig（wrapper 流程：addKernelLoginListener 前）
-        this.initLoginConfig(wrapper, opts.appid);
+        this.initLoginConfig(wrapper, appid);
 
-        // 强制扫码（qrOnly）：跳过快速登录，直接 QR 登录（koishi 强制扫码 / 切账号）。
-        if (opts.qrOnly === true) {
-            const loginResult = await this.loginByQr(opts);
-            this.ctx.login = loginResult;
-            return loginResult;
-        }
-
-        // 2. 登录：快速登录（优先）→ QR 回退。登录成功前不碰 session。
-        const loginResult = await this.loginQuickFirst(wrapper, opts);
-
-        // 3. 登录成功即返回。QQ 登录后重建 session（Proxy 捕获新实例），由 boot.cjs
-        // 登录成功后 setSession 替换，再自行等待 session 就绪（waitSessionReady）。
-        // 不在 login 内等待——替换发生在 login 返回之后，这里等不到。
+        // 2. 登录：快速登录（优先）→ QR 回退；qrOnly 直接 QR。登录成功前不碰 session。
+        const loginResult =
+            opts.qrOnly === true
+                ? await this.loginByQr(opts)
+                : await this.loginQuickFirst(wrapper, opts);
         this.ctx.login = loginResult;
+
+        // 3. 可选：登录成功后自动完成 Session 激活闭环（默认关闭，兼容 loader 手动流程）。
+        if (opts.activateSession === true) {
+            await this.activateSession({
+                appid,
+                ...(opts.initTimeoutMs !== undefined ? { timeoutMs: opts.initTimeoutMs } : {}),
+            });
+        }
         return loginResult;
+    }
+
+    /**
+     * 激活当前登录账号的 Session（先 init 后 startupSession.start，再等就绪）。
+     *
+     * 前置：必须已 `attachWrapper` 且 `login` 成功（否则 fail-fast INVALID_STATE）。
+     * appid 未传时按 wrapperPath / 环境变量同目录 major.node 自动解析。
+     * 幂等性由底层 init 语义决定：重复调用会再次 init（调用方自行保证只激活一次）。
+     */
+    async activateSession(
+        opts: {
+            appid?: string | undefined;
+            timeoutMs?: number | undefined;
+            readyTimeoutMs?: number | undefined;
+        } = {},
+    ): Promise<void> {
+        const { wrapper } = this.ctx;
+        const loginResult = this.ctx.login;
+        if (wrapper === null || loginResult === null) {
+            throw kernelError(
+                "请先调用 core.attachWrapper() 与 core.login() 后再激活 session",
+                "INVALID_STATE",
+            );
+        }
+        const appid = resolveCoreAppid(wrapper, opts.appid);
+        const accountPath = resolveSessionAccountPath(this.ctx, wrapper);
+        const sessionConfig = buildSessionConfig({
+            appid,
+            fullVersion: wrapper.versionInfo.fullVersion,
+            selfUin: loginResult.uin,
+            selfUid: loginResult.uid,
+            accountPath,
+            downloadPath: this.ctx.paths.cacheDir,
+            machineGuid: readMachineGuid(wrapper.loginService),
+        });
+        await initAndStartSession(wrapper, sessionConfig, createSessionListener(), {
+            ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        });
+        await waitSessionReady(wrapper, {
+            ...(opts.readyTimeoutMs !== undefined ? { timeoutMs: opts.readyTimeoutMs } : {}),
+        });
+        this.ctx.logger.info({ account: loginResult.uin }, "Session 激活完成");
+    }
+
+    /**
+     * 装配开箱即用的内核运行时服务（事件通道 + 桥 + 业务 API + 缓存聚合）。
+     * 前置：wrapper 已 attach 且 session 非空（否则 fail-fast INVALID_STATE）。
+     * dispose 由 `stop()` / `dispose()` 统一回收。
+     */
+    createRuntime(
+        opts: Omit<KernelRuntimeOptions, "session" | "login" | "wrapperExports"> = {},
+    ): KernelRuntime {
+        const wrapper = this.ctx.wrapper;
+        const session = wrapper?.session;
+        if (wrapper === null || session === null || session === undefined) {
+            throw kernelError(
+                "请先调用 core.attachWrapper() 且 session 非空后再创建运行时",
+                "INVALID_STATE",
+            );
+        }
+        const runtime = createKernelRuntime({
+            ...opts,
+            loginService: opts.loginService ?? wrapper.loginService,
+            session,
+            login: this.ctx.login,
+            wrapperExports: wrapper.exports,
+        });
+        this.runtime = runtime;
+        return runtime;
     }
 
     /** 快速登录优先，失败按 qrFallback 决定是否回退 QR（QR 应直接出码，见 loginByQr 注）。 */
@@ -316,10 +414,82 @@ export class NapukettoCore {
         opts.onLoginProgress?.(qrProgressEvent(state, session.failureReason ?? undefined));
     }
 
-    /** 停止：日志收尾（资源清理留给 P2 常驻管理）。 */
+    /**
+     * 停止：幂等清理 QR 会话 + 已装配的运行时服务（桥/缓存/通道）后日志收尾。
+     * 重复调用直接返回（宿主关停钩子可能同时触发多次）。
+     */
     stop(): void {
+        if (this.stopped) {
+            return;
+        }
+        this.stopped = true;
+        this.qrSession?.stop();
+        this.qrSession = null;
+        this.runtime?.dispose();
+        this.runtime = null;
         this.ctx.logger.info("NapukettoCore 停止");
     }
+
+    /** 显式释放（`using` / 手动调用的统一入口；等价 stop）。 */
+    dispose(): void {
+        this.stop();
+    }
+
+    /** `using core = ...` 自动释放。 */
+    [Symbol.dispose](): void {
+        this.stop();
+    }
+}
+
+/** wrapperPath 候选环境变量（优先级从高到低）。 */
+const WRAPPER_PATH_ENV_KEYS = ["NAPUKETTO_WRAPPER_PATH", "NAPUTO_WRAPPER_PATH"] as const;
+
+/** 解析 wrapperPath：wrapper 上下文优先，其次环境变量。 */
+function resolveWrapperPath(wrapper: WrapperContext): string | undefined {
+    if (wrapper.wrapperPath !== undefined && wrapper.wrapperPath !== "") {
+        return wrapper.wrapperPath;
+    }
+    for (const key of WRAPPER_PATH_ENV_KEYS) {
+        const value = process.env[key];
+        if (value !== undefined && value !== "") {
+            return value;
+        }
+    }
+    return undefined;
+}
+
+/**
+ * appid 解析：显式传入优先；否则从 wrapperPath 同目录 major.node 解析。
+ * 仍无法解析时抛清晰的 INVALID_PARAM（不静默回退过期 appid）。
+ */
+function resolveCoreAppid(wrapper: WrapperContext, explicit: string | undefined): string {
+    if (explicit !== undefined && explicit !== "") {
+        return explicit;
+    }
+    const wrapperPath = resolveWrapperPath(wrapper);
+    if (wrapperPath !== undefined) {
+        try {
+            return resolveAppidQua(
+                wrapper.versionInfo.fullVersion,
+                join(dirname(wrapperPath), "major.node"),
+            ).appid;
+        } catch {
+            // 继续走下方清晰报错（保留原始语义：无法定位 major.node）
+        }
+    }
+    throw kernelError(
+        "未提供 appid 且无法自动定位 major.node，请在 CoreLoginOptions.appid 或 BootEnv.wrapperPath 中指定",
+        "INVALID_PARAM",
+    );
+}
+
+/**
+ * session 数据目录：worker/自建宿主优先 QQ 真实数据目录（数据根/nt_qq/global），
+ * 否则回退账号目录（与 loader bootstrap-core 的激活路径同口径）。
+ */
+function resolveSessionAccountPath(ctx: CoreContext, wrapper: WrapperContext): string {
+    const root = resolveQqUserDataRoot(wrapper.exports, { dataRoot: ctx.paths.root });
+    return root !== null ? resolveQqGlobalPath(root) : ctx.paths.accountDir;
 }
 
 /** 写二维码 png 到磁盘（base64 解码，供 cli/用户扫码）。 */

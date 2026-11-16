@@ -41,10 +41,12 @@ export class GroupApi {
     /**
      * 群列表（force=true 触发原生刷新）。
      *
-     * ⚠️ 实测校准（2026-08-08 端到端联调）：原生 getGroupList 返回仅
-     * `{ result, errMsg }`——**列表数据经 onGroupListUpdate 事件推送**，
-     * 不走返回值。消费群列表一律从 `GroupCache.listGroups()` 读（缓存由
-     * 事件主动维护）；本方法仅作「触发刷新」用，返回值恒为 []。
+     * @remarks
+     * ⚠️ 本方法**只触发底层事件推送，返回值恒为 `[]`**——原生 getGroupList
+     * 返回仅 `{ result, errMsg }`，列表数据经 onGroupListUpdate 事件推送。
+     * 需要群列表数组请改用 `GroupCache.listGroups()`（缓存快照）或
+     * `GroupCache.listGroupsRefreshed()`（触发刷新并等待事件落地）。
+     * @see GroupCache.listGroupsRefreshed
      */
     async getGroupList(force = false): Promise<Group[]> {
         const raw = await this.service.getGroupList(force);
@@ -168,7 +170,12 @@ export class GroupApi {
         unwrap("kickMemberV2", raw.result, raw.errMsg);
     }
 
-    /** 成员禁言（duration 秒，0 解除禁言）。 */
+    /**
+     * 成员禁言。
+     *
+     * @param members 每项 `duration` 单位为**秒（s）**，`0` 表示解除禁言。
+     * @throws {KernelError} 成员列表为空（INVALID_PARAM）或原生调用失败。
+     */
     async setMemberShutUp(
         groupCode: string,
         members: Array<{ uid: string; duration: number }>,

@@ -69,7 +69,31 @@ export class WsServer implements TransportAdapter {
             serverOptions.path = path;
         }
         const wss = new WebSocketServer(serverOptions);
-        wss.on("connection", (socket, req) => this.onConnection(socket, req));
+        const onConnection = (socket: WebSocket, req: IncomingMessage): void =>
+            this.onConnection(socket, req);
+        wss.on("connection", onConnection);
+
+        // 等 listening 成功后才挂到 this.wss / 启动心跳：error 分支不残留半初始化状态。
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const onListening = (): void => {
+                    wss.off("error", onError);
+                    resolve();
+                };
+                const onError = (err: Error): void => {
+                    wss.off("listening", onListening);
+                    reject(err);
+                };
+                wss.once("listening", onListening);
+                wss.once("error", onError);
+            });
+        } catch (err) {
+            wss.off("connection", onConnection);
+            // 半初始化 server：挂临时 error 监听再 close，防止 close 自身报错逃逸。
+            wss.on("error", () => undefined);
+            wss.close();
+            throw err;
+        }
         this.wss = wss;
 
         if (this.opts.heartbeat) {
@@ -80,12 +104,9 @@ export class WsServer implements TransportAdapter {
                     }
                 }
             }, this.opts.heartbeat.intervalMs);
+            // 不阻塞进程自然退出
+            this.heartbeatTimer.unref?.();
         }
-
-        await new Promise<void>((resolve, reject) => {
-            wss.once("listening", () => resolve());
-            wss.once("error", (err) => reject(err));
-        });
     }
 
     async close(): Promise<void> {

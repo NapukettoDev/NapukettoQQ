@@ -47,6 +47,8 @@ export class WsClient implements TransportAdapter {
             this.ws = ws;
             const onOpen = (): void => {
                 ws.off("error", onError);
+                // 心跳必须基于 this.ws（重连后的新连接），不能闭包捕获旧 ws。
+                this.startHeartbeat();
                 resolve();
             };
             const onError = (err: Error): void => {
@@ -54,21 +56,39 @@ export class WsClient implements TransportAdapter {
                 // 连接失败：清掉引用（否则 open() 幂等判断误判为「已连接」）
                 if (this.ws === ws) {
                     this.ws = undefined;
+                    this.stopHeartbeat();
                 }
                 reject(err);
             };
             ws.on("open", onOpen);
             ws.on("error", onError);
             this.bind(ws);
-
-            if (this.opts.heartbeat) {
-                this.heartbeatTimer = setInterval(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.ping();
-                    }
-                }, this.opts.heartbeat.intervalMs);
-            }
         });
+    }
+
+    /** 启动心跳（先清旧定时器；未配置 heartbeat 时 no-op）。 */
+    private startHeartbeat(): void {
+        this.stopHeartbeat();
+        const heartbeat = this.opts.heartbeat;
+        if (heartbeat === undefined) {
+            return;
+        }
+        this.heartbeatTimer = setInterval(() => {
+            // 访问 this.ws 而非闭包局部变量：重连后心跳自动对新连接生效
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.ping();
+            }
+        }, heartbeat.intervalMs);
+        // 不阻塞进程自然退出
+        this.heartbeatTimer.unref?.();
+    }
+
+    /** 停止心跳（幂等）。 */
+    private stopHeartbeat(): void {
+        if (this.heartbeatTimer !== undefined) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = undefined;
+        }
     }
 
     /** 关闭连接并停止重连 / 心跳。 */
@@ -78,10 +98,7 @@ export class WsClient implements TransportAdapter {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = undefined;
         }
-        if (this.heartbeatTimer !== undefined) {
-            clearInterval(this.heartbeatTimer);
-            this.heartbeatTimer = undefined;
-        }
+        this.stopHeartbeat();
         const { ws } = this;
         this.ws = undefined;
         if (ws) {
@@ -129,6 +146,8 @@ export class WsClient implements TransportAdapter {
             return; // 旧连接残留的 close 事件，忽略
         }
         this.ws = undefined;
+        // 连接断开：立刻停掉心跳（重连成功后在 onOpen 重新启动）
+        this.stopHeartbeat();
         if (this.closed) {
             return;
         }
@@ -149,8 +168,11 @@ export class WsClient implements TransportAdapter {
             this.ws = next;
             next.on("open", () => {
                 this.attempt = 0;
+                this.startHeartbeat();
             });
             this.bind(next);
         }, reconnect.delayMs);
+        // 不阻塞进程自然退出
+        this.reconnectTimer.unref?.();
     }
 }
