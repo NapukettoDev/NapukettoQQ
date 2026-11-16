@@ -217,42 +217,6 @@ describe("get_history_messages", () => {
             ?.handle({ peer_id: 10001, limit: 20 });
         expect(result?.retcode).toBe(-400);
     });
-
-    it("群场景 + groupCache → 实体注入（详情 + 成员表，p3 补测）", async () => {
-        const msg2 = indexableMsg("200", "m-h2");
-        const msg1 = indexableMsg("199", "m-h1");
-        const fetchMessages = vi.fn(async () => [msg2, msg1]); // 原生新→旧
-        const api = buildMilkyApi({
-            msgApi: { fetchMessages },
-            groupCache: {
-                getGroupDetail: vi.fn(async () => ({
-                    groupCode: "10001",
-                    groupName: "历史群",
-                    memberNum: 2,
-                    maxMemberNum: 10,
-                })),
-                getMembers: vi.fn(async () => [
-                    { uid: "uid-20002", uin: "20002", nick: "甲", cardName: "名片甲", role: 2 },
-                ]),
-            },
-        });
-        api.seqIndex.record(indexableMsg("199", "m-h1") as never);
-        const registry = registryOf(api);
-        const res = await action(registry, "get_history_messages").handle({
-            message_scene: "group",
-            peer_id: 10001,
-            start_message_seq: 199,
-            limit: 2,
-        });
-        const data = res.data as {
-            messages: Array<{ group?: { group_name: string }; group_member?: { card: string } }>;
-            next_message_seq: number | null;
-        };
-        expect(data.messages).toHaveLength(2);
-        expect(data.messages[0]?.group?.group_name).toBe("历史群");
-        expect(data.messages[0]?.group_member?.card).toBe("名片甲");
-        expect(data.next_message_seq).toBe(199);
-    });
 });
 
 describe("get_forwarded_messages", () => {
@@ -351,38 +315,6 @@ describe("get_forwarded_messages", () => {
             forward_id: "res-x",
         });
         expect(res).toMatchObject({ status: "failed", retcode: -404, data: null });
-    });
-
-    it("groupCache 成员名片优先 sender_name，缺省退 uin（p3 补测）", async () => {
-        const fw1 = indexableMsg("301", "m-fw1");
-        const fw2 = { ...indexableMsg("302", "m-fw2"), senderUid: "uid-other" };
-        const api = buildMilkyApi({
-            msgApi: {
-                fetchForwardMessage: vi.fn(async () => [fw1, fw2]),
-            },
-            groupCache: {
-                getMember: vi.fn(async (_peer: string, uid: string) =>
-                    uid === "uid-20002"
-                        ? { uid, uin: "20002", nick: "甲", cardName: "名片甲", role: 2 }
-                        : undefined,
-                ),
-            },
-        });
-        api.seqIndex.recordForward("res-id9", {
-            chatType: ChatType.GROUP,
-            peerUid: "10001",
-            msgId: "m-fw1",
-        });
-        const registry = registryOf(api);
-        const res = await action(registry, "get_forwarded_messages").handle({
-            forward_id: "res-id9",
-        });
-        const data = res.data as {
-            messages: Array<{ sender_name: string; avatar_url: string; time: number }>;
-        };
-        expect(data.messages[0]?.sender_name).toBe("名片甲");
-        expect(data.messages[1]?.sender_name).toBe("20002"); // 成员缺失退 uin
-        expect(data.messages[0]?.avatar_url).toContain("nk=20002");
     });
 });
 

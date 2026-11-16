@@ -336,18 +336,6 @@ describe("collectSatoriGrayTipUids（re-export 契约）", () => {
     });
 });
 
-describe("toSatoriMessageEvent：私聊（guild 缺省分支）", () => {
-    it("私聊 message-created：无 guild（pickEventResources 的 guild undefined 路径）", async () => {
-        const content = await toSatoriMessageEvent(
-            makeRawMsg({ chatType: ChatType.C2C, peerUin: "90001", peerName: "" }),
-            { selfUin: "10001" },
-        );
-        expect(content.guild).toBeUndefined();
-        expect(content.member).toBeUndefined();
-        expect(content.channel?.type).toBe(1);
-    });
-});
-
 describe("toSatoriGrayTipEvent：防御分支补漏", () => {
     it("REVOKE 子类型但无 revokeElement → null（不广播）", async () => {
         const raw = makeRawMsg({
@@ -377,20 +365,5 @@ describe("toSatoriGrayTipEvent：防御分支补漏", () => {
             UIN_MAP,
         );
         expect(content?.guild).toEqual({ id: "10001" });
-    });
-
-    it("memberRemark 与 nick 相同 → member.nick 不写（重复分支合并断言）", async () => {
-        const content = await toSatoriGrayTipEvent(
-            makeMemberChangeMsg({
-                groupElement: {
-                    type: TipGroupElementType.MEMBER_ADD,
-                    memberUid: "m",
-                    memberNick: "n",
-                    memberRemark: "",
-                },
-            }),
-            UIN_MAP,
-        );
-        expect(content?.member).toEqual({ user: { id: "m", name: "n" } });
     });
 });

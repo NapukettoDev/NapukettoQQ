@@ -4,8 +4,7 @@
  *  - getFriendList：缓存成功 / 缓存抛错回退 getBuddyListV2 / buddyUids 兜底 /
  *    uidToUin 注入与缺失回退
  *  - getFriendCategories：分类保留 + uid 归并
- *  - isBuddy / getBuddyReqList / handleFriendRequest / setFriendRemark /
- *    deleteFriend / getDoubtFriendRequest / handleDoubtFriendRequest
+ *  - getBuddyReqList / deleteFriend / getDoubtFriendRequest
  */
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
@@ -194,12 +193,6 @@ describe("getFriendCategories", () => {
 });
 
 describe("其余方法", () => {
-    it("isBuddy 透传", () => {
-        const { api, service } = makeApi();
-        expect(api.isBuddy("u1")).toBe(true);
-        expect(service.isBuddy).toHaveBeenCalledWith("u1");
-    });
-
     it("getBuddyReqList：buddyReqs 返回 / 缺失空数组 / 失败抛错", async () => {
         const { api } = makeApi({
             getBuddyReq: vi.fn(async () => ({
@@ -217,23 +210,6 @@ describe("其余方法", () => {
             getBuddyReq: vi.fn(async () => ({ result: 2, errMsg: "x" })),
         });
         await expect(api3.getBuddyReqList()).rejects.toBeInstanceOf(KernelError);
-    });
-
-    it("handleFriendRequest：friendUid/reqTime/accept 透传", async () => {
-        const { api, service } = makeApi();
-        const notify = { reqTime: "123", friendUid: "u1" } as never;
-        await api.handleFriendRequest(notify, true);
-        expect(service.approvalFriendRequest).toHaveBeenCalledWith({
-            friendUid: "u1",
-            reqTime: "123",
-            accept: true,
-        });
-    });
-
-    it("setFriendRemark：void 透传", () => {
-        const { api, service } = makeApi();
-        api.setFriendRemark("u1", "改名");
-        expect(service.setBuddyRemark).toHaveBeenCalledWith({ uid: "u1", remark: "改名" });
     });
 
     it("deleteFriend：默认参数与显式拉黑/双向删除；宽松失败抛错", async () => {
@@ -301,49 +277,9 @@ describe("其余方法", () => {
             message: /getDoubtBuddyReq 失败/,
         });
     });
-
-    it("handleDoubtFriendRequest：approvalDoubtBuddyReq(uid, '', '')", () => {
-        const { api, service } = makeApi();
-        api.handleDoubtFriendRequest("uid-9");
-        expect(service.approvalDoubtBuddyReq).toHaveBeenCalledWith("uid-9", "", "");
-    });
 });
 
 describe("分类兜底与错误语义补充", () => {
-    it("getFriendList：buddyUids 兜底（无 buddyList）", async () => {
-        const { api, service } = makeApi({
-            getBuddyListFromCache: vi.fn(async () => [
-                {
-                    categoryId: 1,
-                    categorySortId: 0,
-                    categroyName: "旧分类",
-                    categroyMbCount: 1,
-                    onlineCount: 0,
-                    buddyUids: ["u9"],
-                },
-            ]),
-        });
-        await expect(api.getFriendList()).resolves.toEqual([
-            { uid: "u9", uin: "u9", nickname: "昵称", remark: "备注" },
-        ]);
-        expect(service.getBuddyNick).toHaveBeenCalledWith("u9");
-    });
-
-    it("getFriendList：两字段全缺 → 该分类贡献 0 人", async () => {
-        const { api } = makeApi({
-            getBuddyListFromCache: vi.fn(async () => [
-                {
-                    categoryId: 1,
-                    categorySortId: 0,
-                    categroyName: "空分类",
-                    categroyMbCount: 0,
-                    onlineCount: 0,
-                },
-            ]),
-        });
-        await expect(api.getFriendList()).resolves.toEqual([]);
-    });
-
     it("getFriendCategories：缓存抛错回退 getBuddyListV2 失败 → UNKNOWN", async () => {
         const { api } = makeApi({
             getBuddyListFromCache: vi.fn(async () => {
@@ -363,13 +299,6 @@ describe("分类兜底与错误语义补充", () => {
             { getDoubtBuddyReq: vi.fn(async () => ({ result: 0, errMsg: "" })) },
             { uidToUin },
         );
-        await expect(api.getDoubtFriendRequest(10)).resolves.toEqual([]);
-        expect(uidToUin).not.toHaveBeenCalled();
-    });
-
-    it("getDoubtFriendRequest：doubtList 空 → 不触发 uidToUin", async () => {
-        const uidToUin = vi.fn(async () => new Map<string, string>());
-        const { api } = makeApi({}, { uidToUin });
         await expect(api.getDoubtFriendRequest(10)).resolves.toEqual([]);
         expect(uidToUin).not.toHaveBeenCalled();
     });

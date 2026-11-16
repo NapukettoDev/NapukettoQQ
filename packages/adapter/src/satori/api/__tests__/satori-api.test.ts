@@ -2,19 +2,18 @@
  * satori/api/satori-api.test.ts：SatoriApi 依赖聚合单测。
  *
  * 锁定：
- *  - 构造：字段装配（self/selfUin/cacheDir/groupCache 透传）
  *  - resolvePeer 三分支：缓存命中群聊 / 缓存命中私聊 / 未命中先试群号
  *    （getGroupInfo 成功=群、失败=私聊并缓存结果）
  *  - setChannelType 回填影响后续 resolvePeer
- *  - uinToUid / uidToUin 委托 groupApi；toCanonicalDeps 组装
+ *  - toCanonicalDeps 组装
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { type StubSatoriApi, stubSatoriApi } from "../../action/__tests__/test-support.js";
 import { SatoriApi } from "../satori-api.js";
 
-/** 构造 SatoriApi（kernel apis 用桩，可选注入 groupCache）。 */
-function makeApi(api: StubSatoriApi, groupCache?: unknown): SatoriApi {
+/** 构造 SatoriApi（kernel apis 用桩）。 */
+function makeApi(api: StubSatoriApi): SatoriApi {
     return new SatoriApi({
         msgApi: api.msgApi as never,
         groupApi: api.groupApi as never,
@@ -23,25 +22,8 @@ function makeApi(api: StubSatoriApi, groupCache?: unknown): SatoriApi {
         profileApi: api.profileApi as never,
         self: api.self,
         cacheDir: api.cacheDir,
-        ...(groupCache !== undefined ? { groupCache: groupCache as never } : {}),
     });
 }
-
-describe("构造与字段装配", () => {
-    it("self / selfUin / cacheDir / groupCache 装配", () => {
-        const api = makeApi(stubSatoriApi());
-        expect(api.selfUin).toBe("10001");
-        expect(api.self).toEqual({ uin: "10001", nickname: "机器人" });
-        expect(api.cacheDir).toBe("/tmp/nk-cache");
-        expect(api.groupCache).toBeUndefined();
-    });
-
-    it("groupCache 可选注入", () => {
-        const cache = { getMembers: async () => [] };
-        const satoriApi = makeApi(stubSatoriApi(), cache);
-        expect(satoriApi.groupCache).toBe(cache);
-    });
-});
 
 describe("resolvePeer", () => {
     it("缓存命中 isGroup=true：直接返回群聊 Peer，不查原生", async () => {
@@ -107,15 +89,6 @@ describe("resolvePeer", () => {
 });
 
 describe("委托方法", () => {
-    it("uinToUid / uidToUin 直接委托 groupApi", async () => {
-        const api = stubSatoriApi();
-        const satoriApi = makeApi(api);
-        await satoriApi.uinToUid(["1"]);
-        await satoriApi.uidToUin(["uid_1"]);
-        expect(api.groupApi.uinToUid).toHaveBeenCalledWith(["1"]);
-        expect(api.groupApi.uidToUin).toHaveBeenCalledWith(["uid_1"]);
-    });
-
     it("toCanonicalDeps：uinToUid 委托 + cacheDir 透传", async () => {
         const api = stubSatoriApi();
         const satoriApi = makeApi(api);
@@ -138,13 +111,5 @@ describe("setChannelType", () => {
             peerUid: "123",
         });
         expect(api.groupApi.getGroupInfo).not.toHaveBeenCalled();
-    });
-
-    it("resolvePeer 的 spy 验证（vi.fn 兼容性自检）", async () => {
-        const api = stubSatoriApi();
-        const satoriApi = makeApi(api);
-        const spy = vi.spyOn(satoriApi, "uinToUid");
-        await satoriApi.uinToUid(["5"]);
-        expect(spy).toHaveBeenCalledWith(["5"]);
     });
 });

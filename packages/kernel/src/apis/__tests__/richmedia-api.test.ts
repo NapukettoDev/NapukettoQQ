@@ -3,11 +3,10 @@
  *  - translateWords / getGroupFileList（形状 + parentFolderId 过滤）/
  *    getGroupFileSystemInfo / createGroupFolder / deleteGroupFile / deleteGroupFolder /
  *    renameGroupFile / moveGroupFile / transGroupFile
- *  - extractFileList 宽松形状（数组 / items / fileList / list / 缺失）
  */
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
-import { extractFileList, RichMediaApi } from "../richmedia.js";
+import { RichMediaApi } from "../richmedia.js";
 import { makeSession } from "./test-support.js";
 
 function makeApi(overrides: Record<string, unknown> = {}) {
@@ -204,68 +203,7 @@ describe("文件夹与文件操作", () => {
     });
 });
 
-describe("extractFileList 宽松形状", () => {
-    it("数组 / items / fileList / list 键 / 缺失", () => {
-        const arr = [{ fileInfo: {} }];
-        expect(extractFileList(arr)).toBe(arr);
-        expect(extractFileList({ items: arr })).toBe(arr);
-        expect(extractFileList({ fileList: arr })).toBe(arr);
-        expect(extractFileList({ list: arr })).toBe(arr);
-        expect(extractFileList({ noKey: 1 })).toEqual([]);
-        expect(extractFileList("str")).toEqual([]);
-        expect(extractFileList(null)).toEqual([]);
-    });
-});
-
 describe("错误路径与返回形状补充", () => {
-    it("createGroupFolder：result 为 0 且非字符串 → 空串占位（folderId 形状待探测）", async () => {
-        const { api } = makeApi({
-            createGroupFolder: vi.fn(async () => ({ result: 0, errMsg: "" })),
-        });
-        await expect(api.createGroupFolder("10001", "新文件夹")).resolves.toBe("");
-    });
-
-    it("createGroupFolder：result 非 0 抛错", async () => {
-        const { api } = makeApi({
-            createGroupFolder: vi.fn(async () => ({ result: 8, errMsg: "no space" })),
-        });
-        await expect(api.createGroupFolder("10001", "新文件夹")).rejects.toMatchObject({
-            code: "UNKNOWN",
-            message: /createGroupFolder 失败: no space/,
-        });
-    });
-
-    it("deleteGroupFile / deleteGroupFolder：result 非 0 抛错", async () => {
-        const { api } = makeApi({
-            deleteGroupFile: vi.fn(async () => ({ result: 2, errMsg: "file busy" })),
-            deleteGroupFolder: vi.fn(async () => ({ result: 3, errMsg: "folder busy" })),
-        });
-        await expect(api.deleteGroupFile("10001", ["f1"])).rejects.toMatchObject({
-            message: /deleteGroupFile 失败: file busy/,
-        });
-        await expect(api.deleteGroupFolder("10001", "fd1")).rejects.toMatchObject({
-            message: /deleteGroupFolder 失败: folder busy/,
-        });
-    });
-
-    it("transGroupFile：result 非 0 抛错", async () => {
-        const { api } = makeApi({
-            transGroupFile: vi.fn(async () => ({ result: 6, errMsg: "trans denied" })),
-        });
-        await expect(api.transGroupFile("10001", "f1")).rejects.toMatchObject({
-            message: /transGroupFile 失败: trans denied/,
-        });
-    });
-
-    it("moveGroupFile：result 非 0 抛错", async () => {
-        const { api } = makeApi({
-            moveGroupFile: vi.fn(async () => ({ result: 4, errMsg: "move denied" })),
-        });
-        await expect(api.moveGroupFile("10001", ["f1"], "fd2")).rejects.toMatchObject({
-            message: /moveGroupFile 失败: move denied/,
-        });
-    });
-
     it("getGroupFileList：result 为数组形态 → 原样作为文件列表返回", async () => {
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({

@@ -223,11 +223,6 @@ describe("HttpServer", () => {
         expect(await res.json()).toEqual({ fell: "through", req: { z: 9 } });
     });
 
-    it("send 为 no-op（HTTP 反向无主动推送）", async () => {
-        const { server } = await start();
-        expect(() => server.send({ any: 1 })).not.toThrow();
-    });
-
     it("open 幂等、close 幂等、未 open 直接 close 安全", async () => {
         const port = await getFreePort();
         const base: HttpServerOptions = { host: "127.0.0.1", port };

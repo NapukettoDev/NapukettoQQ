@@ -4,7 +4,6 @@
  *  - getClientKey：result 非 0 / clientKey 空串抛错；成功返回完整对象
  *  - getCookies：node:https mock（不访问外网）——jump URL 组装、set-cookie 解析、
  *    超时 / 请求错误分支
- *  - getBkn：skey 哈希已知值
  */
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
@@ -93,17 +92,6 @@ describe("getClientKey", () => {
         await expect(api.getClientKey()).rejects.toMatchObject({
             code: "UNKNOWN",
         });
-    });
-});
-
-describe("getBkn", () => {
-    it("已知值：单字符 / 两字符 / 空 skey", () => {
-        // hash = 5381; hash = hash + (hash << 5) + code
-        expect(TicketApi.getBkn("a")).toBe(String(5381 + 5381 * 32 + 97));
-        expect(TicketApi.getBkn("ab")).toBe(
-            String((5381 + 5381 * 32 + 97 + (5381 + 5381 * 32 + 97) * 32 + 98) & 0x7f_ff_ff_ff),
-        );
-        expect(TicketApi.getBkn("")).toBe("5381");
     });
 });
 

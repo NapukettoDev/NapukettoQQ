@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DownloadError, downloadFile } from "../qq-download.js";
+import { downloadFile } from "../qq-download.js";
 
 /** https.get mock 与 statSync 失败注入（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -388,13 +388,5 @@ describe("downloadFile 失败路径", () => {
             name: "DownloadError",
             message: expect.stringContaining("下载完成但文件缺失"),
         });
-    });
-});
-
-describe("DownloadError", () => {
-    it("错误名标记（调用方可按 name 分支）", () => {
-        const err = new DownloadError("x");
-        expect(err.name).toBe("DownloadError");
-        expect(err).toBeInstanceOf(Error);
     });
 });

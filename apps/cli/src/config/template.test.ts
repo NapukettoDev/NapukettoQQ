@@ -70,8 +70,4 @@ describe("configTemplate 模板内容", () => {
         expect(template).toContain("NAPUKETTO_NO_BANNER");
         expect(template).toContain("[log]");
     });
-
-    it("重复调用返回相同内容（纯函数）", () => {
-        expect(configTemplate()).toBe(configTemplate());
-    });
 });

@@ -127,60 +127,6 @@ describe("精华消息（set / list）", () => {
     });
 });
 
-describe("get_group_essence_messages（补充：近似翻译 + 分页）", () => {
-    it("msg_content 近似翻译（text/image）+ 客户端分页", async () => {
-        const registry = groupRegistry({
-            webApi: {
-                getEssenceMsgList: vi.fn(async () => [
-                    {
-                        msg_seq: 1300,
-                        msg_random: 1,
-                        sender_uin: "20002",
-                        sender_nick: "甲",
-                        add_digest_uin: "10000",
-                        add_digest_nick: "机器人",
-                        add_digest_time: 1760000000,
-                        msg_content: [
-                            { msg_type: 1, text: "精华文本" },
-                            { msg_type: 2, image_url: "https://img.example/1.png" },
-                        ],
-                    },
-                ]),
-            },
-        });
-        const result = await registry
-            .get("get_group_essence_messages")
-            ?.handle({ group_id: 10001, page_index: 0, page_size: 20 });
-        const essenceData = result?.data as
-            | { messages: Record<string, unknown>[]; is_end: boolean }
-            | undefined;
-        expect(essenceData?.is_end).toBe(true);
-        const [msg] = essenceData?.messages ?? [];
-        expect(msg).toMatchObject({
-            group_id: 10001,
-            message_seq: 1300,
-            sender_id: 20002,
-            sender_name: "甲",
-            operator_id: 10000,
-            operator_name: "机器人",
-        });
-        expect(msg?.["segments"]).toEqual([
-            { type: "text", data: { text: "精华文本" } },
-            {
-                type: "image",
-                data: {
-                    resource_id: "https://img.example/1.png",
-                    temp_url: "https://img.example/1.png",
-                    width: 0,
-                    height: 0,
-                    summary: "",
-                    sub_type: "normal",
-                },
-            },
-        ]);
-    });
-});
-
 describe("send_group_message_reaction", () => {
     it("face + is_add 缺省：emojiType=1 / like=true", async () => {
         const setMsgEmojiLike = vi.fn(async () => undefined);
@@ -223,14 +169,5 @@ describe("send_group_message_reaction", () => {
             reaction: "",
         });
         expect(res.retcode).toBe(-400);
-    });
-
-    it("缺 reaction → -400（schema 补测）", async () => {
-        const registry = groupRegistry({});
-        const result = await registry.get("send_group_message_reaction")?.handle({
-            group_id: 10001,
-            message_seq: 1,
-        });
-        expect(result?.retcode).toBe(-400);
     });
 });

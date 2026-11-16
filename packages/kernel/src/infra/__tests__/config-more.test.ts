@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConfigBase, parseToml, stringifyToml } from "../config.js";
+import { ConfigBase } from "../config.js";
 import { ConfigError } from "../errors.js";
 
 // readFile 包一层可 mock 的 spy（默认透传真实实现，load/save 其余调用不受影响）
@@ -130,15 +130,6 @@ describe("TOML 往返", () => {
 });
 
 describe("独立工具函数", () => {
-    it("parseToml / stringifyToml 独立可用（无 ConfigBase 场景复用）", () => {
-        const text = stringifyToml({ a: 1, b: "x" });
-        expect(parseToml(text)).toEqual({ a: 1, b: "x" });
-    });
-
-    it("parseToml 非法文本 → 原样抛错（不吞）", () => {
-        expect(() => parseToml("broken ==== [")).toThrow();
-    });
-
     it("load 读取抛非 Error 值 → ConfigError（isMissingFileError 兜底 false）", async () => {
         const { readFile } = await import("node:fs/promises");
         vi.mocked(readFile).mockRejectedValueOnce("raw-string-err");

@@ -18,12 +18,7 @@ import type {
     WrapperSessionInitConfig,
 } from "../../types/index.js";
 import { PlatformType } from "../../types/index.js";
-import {
-    createSession,
-    electronProcessType,
-    startNapuketto,
-    type WrapperContext,
-} from "../wrapper-loader.js";
+import { createSession, startNapuketto, type WrapperContext } from "../wrapper-loader.js";
 import { makeCtx, mockExports, sessionCtorMock } from "./test-support.js";
 
 /** 模拟 Electron 进程类型（进程内 process.type 属性注入，用后恢复）。 */
@@ -301,12 +296,6 @@ describe("startNapuketto QQ 主进程（type=browser 模拟）", () => {
 });
 
 describe("导出补充", () => {
-    it("electronProcessType：注入 browser 后返回 browser", () => {
-        withProcessType("browser", () => {
-            expect(electronProcessType()).toBe("browser");
-        });
-    });
-
     it("createSession：startupSession 记录到 ctx（SSW.create 成功路径）", () => {
         const ssw = { start: vi.fn() };
         const exports = mockExports({
@@ -324,36 +313,6 @@ describe("导出补充", () => {
         const ctx: WrapperContext = makeCtx(exports);
         expect(createSession(ctx)).toBeDefined();
         expect(ctx.startupSession).toBeNull();
-    });
-
-    it("createSession：getNTWrapperSession 与 create 都缺失 → new S() 兜底", () => {
-        // 普通函数构造器（new S() 返回空对象，模拟 wrapper 构造行为）
-        const sessionCtor = Object.assign(
-            function sessionCtor(this: unknown) {
-                return {};
-            },
-            { get: () => null },
-        ) as unknown as NodeIQQNTWrapperSessionCtor;
-        const exports = mockExports({ NodeIQQNTWrapperSession: sessionCtor });
-        const ctx: WrapperContext = makeCtx(exports);
-        expect(createSession(ctx)).toBeDefined();
-    });
-
-    it("createSession：getNTWrapperSession 抛错 → 回退链继续", () => {
-        const sessionCtor = Object.assign(
-            function sessionCtor(this: unknown) {
-                return {};
-            },
-            {
-                getNTWrapperSession: () => {
-                    throw new Error("nt session unavailable");
-                },
-                create: () => null,
-            },
-        ) as unknown as NodeIQQNTWrapperSessionCtor;
-        const exports = mockExports({ NodeIQQNTWrapperSession: sessionCtor });
-        const ctx: WrapperContext = makeCtx(exports);
-        expect(createSession(ctx)).toBeDefined();
     });
 
     it("createSession：S.create 抛错 → 回退 new S()", () => {

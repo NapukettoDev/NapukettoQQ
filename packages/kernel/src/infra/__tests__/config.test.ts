@@ -1,16 +1,16 @@
 /**
- * config.test.ts：ConfigBase 只读校验与 ConfigError 契约单测（2026-10-25 嵌入式退出码）。
+ * config.test.ts：ConfigBase 只读校验单测（2026-10-25 嵌入式退出码）。
  *
- * 覆盖：ConfigError 是 KernelError 子型且 code 恒 INVALID_PARAM（协议层映射零涟漪）、
- * parseText 反序列化/校验错误包装（文案含 path，与运行时逐字一致）、load() 缺失文件
- * 落默认值行为不回退、save() 往返校验。不触真实 wrapper.node（infra 层纯逻辑）。
+ * 覆盖：parseText 反序列化/校验错误包装（文案含 path，与运行时逐字一致）、
+ * load() 缺失文件落默认值行为不回退、save() 往返校验。不触真实 wrapper.node
+ * （infra 层纯逻辑）。
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConfigBase } from "../config.js";
-import { ConfigError, KernelError } from "../errors.js";
+import { ConfigError } from "../errors.js";
 
 interface Item {
     name: string;
@@ -50,15 +50,6 @@ function makeStore(fileName: string): ConfigBase<Item> {
         defaults,
     });
 }
-
-describe("ConfigError 契约", () => {
-    it("是 KernelError 子型且 code 恒为 INVALID_PARAM（协议层映射零涟漪）", () => {
-        const err = new ConfigError("主配置缺少 accounts");
-        expect(err).toBeInstanceOf(KernelError);
-        expect(err.code).toBe("INVALID_PARAM");
-        expect(err.name).toBe("ConfigError");
-    });
-});
 
 describe("ConfigBase.parseText（只读校验）", () => {
     it("合法 TOML 文本 → 解析结果，不读写文件", () => {

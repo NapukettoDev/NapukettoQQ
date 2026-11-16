@@ -66,7 +66,7 @@ describe("WsClient", () => {
     const clients: WsClient[] = [];
     afterEach(async () => {
         for (const client of clients.reverse()) {
-            client.close();
+            await client.close();
         }
         clients.length = 0;
         for (const stub of stubs.reverse()) {

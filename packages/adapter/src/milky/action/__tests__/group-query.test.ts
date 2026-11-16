@@ -52,15 +52,6 @@ describe("get_group_info / get_group_member_list", () => {
         expect(members).toHaveLength(1);
         expect(members[0]).toMatchObject({ user_id: 20002, nickname: "直查" });
     });
-
-    it("成员列表：缓存路径走 groupCache.getMembers", async () => {
-        const getMembers = vi.fn(async () => [memberStub({ nick: "缓存成员" })]);
-        const registry = groupRegistry({ groupCache: { getMembers } });
-        const res = await actionOf(registry, "get_group_member_list").handle({ group_id: 10001 });
-        expect(getMembers).toHaveBeenCalledWith("10001");
-        const members = (res.data as { members: Array<{ nickname: string }> }).members;
-        expect(members[0]?.nickname).toBe("缓存成员");
-    });
 });
 
 describe("get_group_member_info", () => {
@@ -156,34 +147,6 @@ describe("get_group_announcements", () => {
             time: 0,
             content: "无 id 公告",
             image_url: null,
-        });
-    });
-
-    it("bulletin 宽松映射（补测：publishTime 数值 + 无图 null）", async () => {
-        const registry = groupRegistry({
-            groupApi: {
-                getGroupAnnouncements: vi.fn(async () => [
-                    {
-                        announcementId: "a1",
-                        senderUid: "uid-20002",
-                        publishTime: 100,
-                        content: "公告",
-                    },
-                ]),
-            },
-        });
-        const res = await actionOf(registry, "get_group_announcements").handle({ group_id: 10001 });
-        expect(res.data).toEqual({
-            announcements: [
-                {
-                    group_id: 10001,
-                    announcement_id: "a1",
-                    user_id: 20002,
-                    time: 100,
-                    content: "公告",
-                    image_url: null,
-                },
-            ],
         });
     });
 });

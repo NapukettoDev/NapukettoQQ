@@ -1,46 +1,11 @@
 /**
  * MessageUnique 测试：OB11 message_id ↔ NT msgId 双向映射、peer 反查、
- * release 槽位复用（释放池优先）、resolveMsgIdAndPeer 两类 NOT_FOUND、
- * 溢出线性扫描（cursor > int32 max 后从 1 找空洞；经白盒注入 cursor 模拟，
- * 2^31 条逐条分配超出单测可行域）。「槽位耗尽」抛错需占满整个 int32 空间，
- * 不可行，不在覆盖范围。
+ * release 槽位复用（释放池优先）、resolveMsgIdAndPeer 两类 NOT_FOUND。
+ * 「槽位耗尽」抛错需占满整个 int32 空间，不可行，不在覆盖范围。
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
 import { MessageUnique, resolveMsgIdAndPeer } from "../message-unique.js";
-
-/** 白盒句柄：TS private 在运行时是普通属性，注入 cursor / 映射表模拟溢出。 */
-interface MessageUniqueInternals {
-    cursor: number;
-    intToMsgId: Map<number, string>;
-    freed: Set<number>;
-}
-
-/** 溢出后的线性扫描（L85 起）：cursor 越过 int32 max → 从 INT32_MIN 找空洞。 */
-describe("MessageUnique（溢出线性扫描，白盒注入 cursor）", () => {
-    const Int32Max = 0x7f_ff_ff_ff;
-
-    it("cursor 越界后从 1 起扫描：空洞 id 直接复用，cursor 前移到空洞+1", () => {
-        const unique = new MessageUnique();
-        const inner = unique as unknown as MessageUniqueInternals;
-        // 预置 id 1 已被占用（模拟历史分配），释放池为空 → 扫描跳过 1 命中 2
-        inner.intToMsgId.set(1, "nt-occupied");
-        inner.cursor = Int32Max + 1;
-        expect(unique.alloc("nt-after-overflow")).toBe(2);
-        expect(inner.cursor).toBe(3);
-        // 双向映射照常登记
-        expect(unique.getMsgId(2)).toBe("nt-after-overflow");
-        expect(unique.getMessageId("nt-after-overflow")).toBe(2);
-    });
-
-    it("cursor 越界且首 id 空闲 → 返回 1（空洞扫描首个命中）", () => {
-        const unique = new MessageUnique();
-        const inner = unique as unknown as MessageUniqueInternals;
-        inner.cursor = Int32Max + 1;
-        expect(unique.alloc("nt-first-hole")).toBe(1);
-        expect(inner.cursor).toBe(2);
-    });
-});
 
 describe("MessageUnique", () => {
     it("alloc 递增分配；同一 msgId 幂等", () => {

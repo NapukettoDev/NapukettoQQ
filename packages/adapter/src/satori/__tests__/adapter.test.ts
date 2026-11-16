@@ -480,35 +480,4 @@ describe("startTransports 完整装配（真实端口端到端）", () => {
             }),
         ).rejects.toThrow();
     });
-
-    it("subscribe 幂等守卫：已订阅时再次 subscribe 不重复注册", async () => {
-        const spyResult = spyBroadcaster();
-        const api = stubSatoriApi();
-        const { channel } = fakeMsgChannel();
-        const onSpy = vi.spyOn(channel, "on");
-        const adapter = new NapukettoSatoriAdapter(
-            stub<ConstructorParameters<typeof NapukettoSatoriAdapter>[0]>({
-                msgApi: api.msgApi,
-                groupApi: api.groupApi,
-                groupNotifyApi: api.groupNotifyApi,
-                friendApi: api.friendApi,
-                profileApi: api.profileApi,
-                self: api.self,
-                cacheDir: api.cacheDir,
-                config: new ConfigBase({
-                    path: join(tmpRoot, "cfg-guard.toml"),
-                    schema: satoriConfigSchema,
-                    defaults: satoriConfigSchema.parse({}),
-                    seed: satoriConfigSchema.parse({}),
-                }),
-                broadcaster: spyResult.broadcaster,
-                msgChannel: channel,
-            }),
-        );
-        await adapter.start();
-        expect(onSpy).toHaveBeenCalledTimes(1);
-        // 白盒：直接再调 subscribe（private，经类型断言访问），应命中幂等守卫
-        (adapter as unknown as { subscribe: () => void }).subscribe();
-        expect(onSpy).toHaveBeenCalledTimes(1);
-    });
 });

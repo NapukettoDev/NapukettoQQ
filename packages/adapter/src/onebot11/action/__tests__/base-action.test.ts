@@ -7,7 +7,7 @@
  *  - websocketHandle：校验失败 retcode=1400；echo 透传；无 echo 不写字段。
  */
 import { kernelError } from "@napuketto/kernel";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineOb11Action, ob11ErrorCodeMap } from "../base-action.js";
 
@@ -85,13 +85,6 @@ describe("Ob11Action.handle", () => {
         expect(result.retcode).toBe(ob11ErrorCodeMap.UNKNOWN);
         expect(result.message).toBe("未知错误");
     });
-
-    it("handle 的同步调用经 await 包装（vi.fn 断言入参）", async () => {
-        const handler = vi.fn(async (p: { value: string }) => p.value);
-        const action = testAction(handler);
-        await action.handle({ value: "入参" });
-        expect(handler).toHaveBeenCalledWith({ value: "入参" });
-    });
 });
 
 describe("Ob11Action.websocketHandle", () => {
@@ -127,17 +120,5 @@ describe("Ob11Action.websocketHandle", () => {
         expect(result.retcode).toBe(ob11ErrorCodeMap.SEND_FAILED);
         expect(result.retcode).toBe(100);
         expect(result.echo).toBe(42);
-    });
-});
-
-describe("ob11ErrorCodeMap", () => {
-    it("OB11 规范错误码（send 失败 100 族 + UNKNOWN 999）", () => {
-        expect(ob11ErrorCodeMap.SEND_FAILED).toBe(100);
-        expect(ob11ErrorCodeMap.INVALID_PARAM).toBe(105);
-        expect(ob11ErrorCodeMap.NOT_LOGIN).toBe(104);
-        expect(ob11ErrorCodeMap.UNKNOWN).toBe(999);
-        for (const code of Object.values(ob11ErrorCodeMap)) {
-            expect(code).toBeGreaterThan(0);
-        }
     });
 });

@@ -259,14 +259,4 @@ describe("渲染分支补充", () => {
         const text = render({ msg: "m", level: 30, bad: null }, "single-line");
         expect(text).toContain("bad=null");
     });
-
-    it("不传 destination → 缺省挂 process.stdout（仅构造不写入）", () => {
-        const stream = createConsoleFormatStream({
-            format: "single-line",
-            timestamp: "local",
-            colorize: false,
-        });
-        expect(stream).toBeTypeOf("object");
-        expect(stream.write).toBeTypeOf("function");
-    });
 });

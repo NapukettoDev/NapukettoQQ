@@ -1,5 +1,5 @@
 {
-    "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
+    "$schema": "https://biomejs.dev/schemas/2.6.7/schema.json",
     "vcs": {
         "enabled": true,
         "clientKind": "git",
@@ -7,10 +7,7 @@
     },
     "files": {
         "ignoreUnknown": false,
-        "includes": [
-            "**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
-            "tooling/**/*.{ts,js,mjs}"
-        ]
+        "includes": ["**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}", "tooling/**/*.{ts,js,mjs}"]
     },
     "formatter": {
         "enabled": true,
@@ -47,29 +44,19 @@
                                 "selector": {
                                     "kind": "typeParameter"
                                 },
-                                "formats": [
-                                    "PascalCase"
-                                ]
+                                "formats": ["PascalCase"]
                             },
                             {
                                 "selector": {
                                     "kind": "typeMember"
                                 },
-                                "formats": [
-                                    "camelCase",
-                                    "snake_case",
-                                    "PascalCase"
-                                ]
+                                "formats": ["camelCase", "snake_case", "PascalCase"]
                             },
                             {
                                 "selector": {
                                     "kind": "objectLiteralMember"
                                 },
-                                "formats": [
-                                    "camelCase",
-                                    "snake_case",
-                                    "CONSTANT_CASE"
-                                ]
+                                "formats": ["camelCase", "snake_case", "CONSTANT_CASE"]
                             }
                         ]
                     }
@@ -83,10 +70,7 @@
                 "useFilenamingConvention": {
                     "level": "error",
                     "options": {
-                        "filenameCases": [
-                            "camelCase",
-                            "kebab-case"
-                        ]
+                        "filenameCases": ["camelCase", "kebab-case"]
                     }
                 }
             },
@@ -97,9 +81,7 @@
                 "noConsole": {
                     "level": "error",
                     "options": {
-                        "allow": [
-                            "log"
-                        ]
+                        "allow": ["log"]
                     }
                 }
             },
@@ -141,12 +123,7 @@
             }
         },
         {
-            "includes": [
-                "**/*.test.ts",
-                "**/*.test.tsx",
-                "**/*.spec.ts",
-                "**/__tests__/**"
-            ],
+            "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/__tests__/**"],
             "linter": {
                 "rules": {
                     "performance": {

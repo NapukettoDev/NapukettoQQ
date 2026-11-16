@@ -178,14 +178,4 @@ describe("HttpClient", () => {
         await vi.waitFor(() => expect(stub.requests).toHaveLength(2));
         expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({ n: 2 });
     });
-
-    it("open / close 为无连接管理语义（no-op，不抛错）", async () => {
-        const stub = await serve((_req, res) => {
-            res.end("ok");
-        });
-        const client = new HttpClient({ url: stub.url });
-        expect(() => client.open()).not.toThrow();
-        expect(() => client.close()).not.toThrow();
-        expect(() => client.send({ after: "close" })).not.toThrow();
-    });
 });

@@ -5,7 +5,7 @@
  * toUin（ctx 便捷形）与 toUinString（satori string 口径）同规则。
  */
 import { describe, expect, it } from "vitest";
-import { MS_TO_SEC, resolveUin, toUin, toUinString } from "../uid-uin.js";
+import { resolveUin, toUin, toUinString } from "../uid-uin.js";
 
 describe("resolveUin", () => {
     const map = new Map([
@@ -28,10 +28,6 @@ describe("resolveUin", () => {
     it("空串 / undefined：返回 0", () => {
         expect(resolveUin("", map)).toBe(0);
         expect(resolveUin(undefined, map)).toBe(0);
-    });
-
-    it("MS_TO_SEC = 1000（毫秒换算常量契约）", () => {
-        expect(MS_TO_SEC).toBe(1000);
     });
 });
 

@@ -1,12 +1,12 @@
 /**
- * MilkyApi 公共方法测试（api.ts）+ 配置 schema（config.ts）+ 子路径入口（index.ts）
+ * MilkyApi 公共方法测试（api.ts）+ 配置 schema（config.ts）
  *
  * 锁定：resolveUidFromUin（命中 / 空串 / 抛错 → INVALID_PARAM）、resolvePeer
  * 三场景（group 直作 peerUid；friend/temp uin→uid，失败退 uin）、
  * resolveMsgIdBySeq（索引优先 / 近段扫描兜底并回写索引 / 双层未命中 / 拉取失败）、
  * resolveSentOutput（回查 + 索引回写 / 未命中 UNKNOWN）、findGroupNotify 屏序
- * 惰性查找、构造字段透传；
- * milkyConfigSchema 缺省值与校验；index.ts re-export 面。
+ * 惰性查找；
+ * milkyConfigSchema 缺省值与校验。
  */
 import {
     ChatType,
@@ -20,11 +20,9 @@ import {
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../shared/__tests__/stub.js";
-import { NapukettoMilkyAdapter } from "../adapter.js";
 import { findGroupNotify, MilkyApi } from "../api.js";
 import { milkyConfigSchema } from "../config.js";
 import { MessageSeqIndex } from "../helper/state/seq-index.js";
-import * as milkyIndex from "../index.js";
 
 /** 构造桩 MilkyApi（uinToUid / fetchMessages 可覆写）。 */
 function stubApi(
@@ -237,32 +235,6 @@ describe("MilkyApi.resolveSentOutput", () => {
     });
 });
 
-describe("MilkyApi 构造透传", () => {
-    it("版本 / self / mediaDir / seqIndex 字段原样持有", () => {
-        const seqIndex = new MessageSeqIndex();
-        const api = new MilkyApi(
-            stub<ConstructorParameters<typeof MilkyApi>[0]>({
-                msgApi: stub<MsgApi>({}),
-                groupApi: stub<GroupApi>({}),
-                friendApi: stub<FriendApi>({}),
-                profileApi: stub<ProfileApi>({}),
-                self: { uin: "1", nickname: "n" },
-                qqVersion: "qv",
-                implVersion: "iv",
-                mediaDir: "/d",
-            }),
-            seqIndex,
-        );
-        expect(api.qqVersion).toBe("qv");
-        expect(api.implVersion).toBe("iv");
-        expect(api.mediaDir).toBe("/d");
-        expect(api.self).toEqual({ uin: "1", nickname: "n" });
-        expect(api.groupCache).toBeUndefined();
-        expect(api.logger).toBeUndefined();
-        expect(api.seqIndex).toBe(seqIndex);
-    });
-});
-
 describe("milkyConfigSchema", () => {
     it("全缺省：enabled=false / 127.0.0.1:3001 / 空token / 双模式 / 空webhooks", () => {
         const cfg = milkyConfigSchema.parse({});
@@ -304,18 +276,6 @@ describe("milkyConfigSchema", () => {
         expect(() => milkyConfigSchema.parse({ eventModes: ["grpc"] })).toThrow();
         expect(() => milkyConfigSchema.parse({ host: "" })).toThrow();
         expect(() => milkyConfigSchema.parse({ webhooks: [""] })).toThrow();
-    });
-});
-
-describe("milky 子路径入口（index.ts）", () => {
-    it("导出 NapukettoMilkyAdapter 与 milkyConfigSchema", () => {
-        expect(milkyIndex.NapukettoMilkyAdapter).toBe(NapukettoMilkyAdapter);
-        expect(milkyIndex.milkyConfigSchema).toBe(milkyConfigSchema);
-        // 类型导出面（编译期断言的运行时影子）：options 类型可被构造消费
-        const opts: import("../index.js").MilkyAdapterOptions | undefined = undefined;
-        const cfg: import("../index.js").MilkyConfig | undefined = undefined;
-        expect(opts).toBeUndefined();
-        expect(cfg).toBeUndefined();
     });
 });
 

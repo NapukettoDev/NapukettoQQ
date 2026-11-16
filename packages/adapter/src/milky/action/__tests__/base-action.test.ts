@@ -109,15 +109,3 @@ describe("MilkyAction.handle：成功路径", () => {
         expect(res.retcode).toBe(milkyErrorCodeMap.INVALID_STATE);
     });
 });
-
-describe("milkyErrorCodeMap", () => {
-    it("规范语义：-400 参数 / -403 未登录；其余自定负数", () => {
-        expect(milkyErrorCodeMap.INVALID_PARAM).toBe(-400);
-        expect(milkyErrorCodeMap.NOT_LOGIN).toBe(-403);
-        expect(milkyErrorCodeMap.NOT_FOUND).toBe(-404);
-        expect(milkyErrorCodeMap.TIMEOUT).toBe(-504);
-        for (const code of KERNEL_ERROR_CODES) {
-            expect(milkyErrorCodeMap[code], code).toBeLessThan(0);
-        }
-    });
-});

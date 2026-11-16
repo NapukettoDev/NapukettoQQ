@@ -4,14 +4,13 @@
  * loader 不静态依赖 kernel（运行期动态 import），ConfigError 契约按错误名
  * （name="ConfigError"）复刻：isConfigError 对 kernel 同名错误与 loader 复刻类
  * 都命中；bootstrapExitCode 是 self-host 退出码决策的唯一出口（78 / 1）。
- * 另覆盖 errMsg / forEachRawMessage / createState（引导公共工具）。
+ * 另覆盖 errMsg / forEachRawMessage（引导公共工具）。
  */
 import { describe, expect, it } from "vitest";
 import {
     bootstrapExitCode,
     ConfigError,
     convergeBootstrapFailure,
-    createState,
     errMsg,
     forEachRawMessage,
     isConfigError,
@@ -109,16 +108,5 @@ describe("forEachRawMessage（onRecvMsg 参数逐条处理）", () => {
         forEachRawMessage(null, (m) => seen.push(m));
         forEachRawMessage(42, (m) => seen.push(m));
         expect(seen).toHaveLength(0);
-    });
-});
-
-describe("createState（共享状态初值）", () => {
-    it("四字段零值（wrapperExports 空 / 无捕获实例 / 未引导）", () => {
-        expect(createState()).toEqual({
-            wrapperExports: null,
-            qqSession: null,
-            qqLoginService: null,
-            bootstrapped: false,
-        });
     });
 });

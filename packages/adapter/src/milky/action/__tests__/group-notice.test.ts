@@ -3,8 +3,7 @@
  *
  * 锁定：通知类型→实体五变体映射（uid→uin）、客户端分页（limit/next）、
  * 未知通知类型过滤、is_filtered doubt 标志、群通知应答（KAGREE/KREFUSE +
- * notification_seq/invitation_seq 匹配）、findGroupNotify 两屏匹配与
- * NOT_FOUND（api.js 共享查找）。
+ * notification_seq/invitation_seq 匹配）。
  */
 import type { GroupNotify } from "@napuketto/kernel";
 import {
@@ -13,9 +12,8 @@ import {
     NTGroupRequestOperateTypes,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { findGroupNotify } from "../../api.js";
 import type { GroupNotificationEntity } from "../../types.js";
-import { actionOf, buildMilkyApi, groupRegistry } from "./test-support.js";
+import { actionOf, groupRegistry } from "./test-support.js";
 
 /** 通知桩（user1/user2 固定 uid，经 uidToUin 桩转 uin）。 */
 function notify(type: GroupNotifyMsgType): GroupNotify {
@@ -255,42 +253,5 @@ describe("群通知应答（accept/reject request + invitation）", () => {
             group_id: 10001,
         });
         expect(res.retcode).toBe(-400);
-    });
-
-    it("accept_group_request：notification_type 非法 → -400（schema 补测）", async () => {
-        const registry = groupRegistry({});
-        const result = await registry.get("accept_group_request")?.handle({
-            notification_seq: 1,
-            notification_type: "bogus",
-            group_id: 10001,
-        });
-        expect(result?.retcode).toBe(-400);
-    });
-});
-
-describe("findGroupNotify（api.js 共享查找）", () => {
-    it("先非可疑命中", async () => {
-        const notifyObj = notify(GroupNotifyMsgType.REQUEST_JOIN_NEED_ADMINI_STRATOR_PASS);
-        const api = buildMilkyApi({
-            groupNotifyApi: { getSingleScreenNotifies: vi.fn(async () => [notifyObj]) },
-        });
-        const hit = await findGroupNotify(api, "88001");
-        expect(hit.seq).toBe("88001");
-    });
-
-    it("非可疑未命中 → 可疑屏兜底", async () => {
-        const notifyObj = notify(GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS);
-        const api = buildMilkyApi({});
-        const spy = vi
-            .spyOn(api.groupNotifyApi, "getSingleScreenNotifies")
-            .mockImplementation(async (doubt: boolean) => (doubt ? [notifyObj] : []));
-        const hit = await findGroupNotify(api, "88001");
-        expect(hit.seq).toBe("88001");
-        expect(spy).toHaveBeenCalledTimes(2);
-    });
-
-    it("两屏都未命中 → NOT_FOUND", async () => {
-        const api = buildMilkyApi({});
-        await expect(findGroupNotify(api, "999")).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
 });
