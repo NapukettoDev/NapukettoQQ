@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { kernelError } from "../infra/index.js";
+import { isRecord } from "../utils/type-guards.js";
 
 /** 从 versions 目录读取版本 package.json（拿 name/version/buildVersion）。 */
 function readVersionPackage(
@@ -23,20 +24,20 @@ function readVersionPackage(
     if (!existsSync(pkgPath)) {
         throw kernelError(`QQ 版本目录缺少 package.json: ${pkgPath}`, "NOT_FOUND");
     }
+    let raw: unknown;
     try {
-        const raw = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-            name?: string;
-            version?: string;
-            buildVersion?: string;
-        };
-        return {
-            name: raw.name ?? "",
-            version: raw.version ?? "",
-            ...(raw.buildVersion !== undefined ? { buildVersion: raw.buildVersion } : {}),
-        };
+        raw = JSON.parse(readFileSync(pkgPath, "utf8"));
     } catch (cause) {
         throw kernelError(`QQ 版本 package.json 解析失败: ${pkgPath}`, "INVALID_PARAM", { cause });
     }
+    if (!isRecord(raw) || typeof raw["version"] !== "string" || raw["version"].length === 0) {
+        throw kernelError(`QQ 版本 package.json 缺少有效 version: ${pkgPath}`, "INVALID_PARAM");
+    }
+    return {
+        name: typeof raw["name"] === "string" ? raw["name"] : "",
+        version: raw["version"],
+        ...(typeof raw["buildVersion"] === "string" ? { buildVersion: raw["buildVersion"] } : {}),
+    };
 }
 
 /** 解析 wrapper.node 绝对路径（按 ADR-018 目录约定）。 */

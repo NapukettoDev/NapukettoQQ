@@ -16,19 +16,25 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import { env } from "../env.js";
+import { isRecord } from "../type-guards.js";
 import { errMsg, log } from "../util.js";
 
 /** stub 状态 JSON（宽容解析：字段缺省容忍，版本字段不校验）。 */
 export interface MediaPatchStatus {
+    v?: number;
     state?: string;
     componentA?: string;
     componentB?: string;
     cleared?: number;
     reason?: string;
+    tick?: number;
 }
 
 /** 复读延迟（毫秒）：覆盖典型登录后实例出现的窗口，不做无限轮询。 */
 const RECHECK_DELAY_MS = 45_000;
+
+/** 状态文件行分隔（只取首行：stub 可能追加诊断行）。 */
+const FIRST_LINE_RE = /\r?\n/;
 
 /** 读取状态文件（缺失 / 坏 JSON / 非对象 → undefined）。 */
 export function readMediaPatchStatus(path?: string): MediaPatchStatus | undefined {
@@ -37,11 +43,28 @@ export function readMediaPatchStatus(path?: string): MediaPatchStatus | undefine
         return undefined;
     }
     try {
-        const parsed: unknown = JSON.parse(readFileSync(target, "utf8"));
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-            return parsed as MediaPatchStatus;
+        const raw = readFileSync(target, "utf8").trim();
+        if (raw === "") {
+            return undefined;
         }
-        return undefined;
+        const firstLine = raw.split(FIRST_LINE_RE)[0] ?? "";
+        const parsed: unknown = JSON.parse(firstLine);
+        if (!isRecord(parsed)) {
+            return undefined;
+        }
+        return {
+            ...(typeof parsed["v"] === "number" ? { v: parsed["v"] } : {}),
+            ...(typeof parsed["state"] === "string" ? { state: parsed["state"] } : {}),
+            ...(typeof parsed["componentA"] === "string"
+                ? { componentA: parsed["componentA"] }
+                : {}),
+            ...(typeof parsed["componentB"] === "string"
+                ? { componentB: parsed["componentB"] }
+                : {}),
+            ...(typeof parsed["cleared"] === "number" ? { cleared: parsed["cleared"] } : {}),
+            ...(typeof parsed["reason"] === "string" ? { reason: parsed["reason"] } : {}),
+            ...(typeof parsed["tick"] === "number" ? { tick: parsed["tick"] } : {}),
+        };
     } catch (e) {
         log(`[media-patch] 状态文件解析失败（忽略）: ${errMsg(e)}`);
         return undefined;

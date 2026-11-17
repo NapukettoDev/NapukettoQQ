@@ -12,7 +12,7 @@ import type {
     RecentContact,
 } from "../types/index.js";
 import { ChatType } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
+import { getOwnProp, isRecord, requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult } from "./result.js";
 
 /** 会话列表拉取条数（覆盖置顶集合足够大；参数值待探测校准）。 */
@@ -42,11 +42,11 @@ export class RecentContactApi {
 
     /** 置顶会话列表（get_peer_pins；getRecentContactList 返回形状待探测校准）。 */
     async getPinnedContacts(): Promise<PinnedContact[]> {
-        let raw: { result?: unknown; errMsg?: unknown };
+        let raw: unknown;
         try {
-            raw = (await this.service.getRecentContactList({
+            raw = await this.service.getRecentContactList({
                 count: RECENT_CONTACT_FETCH_COUNT,
-            })) as typeof raw;
+            });
         } catch (e) {
             if (isKernelError(e)) {
                 throw e;
@@ -59,15 +59,15 @@ export class RecentContactApi {
 }
 
 /** 从返回形状提取置顶会话（result 数组 / 顶层 contacts / 嵌套容器兼容，待校准）。 */
-function extractPinnedContacts(raw: { result?: unknown }): PinnedContact[] {
-    const candidates: unknown[] = [raw.result, raw];
-    for (const container of [raw.result, raw]) {
-        if (container === null || typeof container !== "object") {
+function extractPinnedContacts(raw: unknown): PinnedContact[] {
+    const resultField = getOwnProp(raw, "result");
+    const candidates: unknown[] = [resultField, raw];
+    for (const container of [resultField, raw]) {
+        if (!isRecord(container)) {
             continue;
         }
-        const rec = container as Record<string, unknown>;
         for (const key of ["contacts", "data", "result", "list"] as const) {
-            candidates.push(rec[key]);
+            candidates.push(container[key]);
         }
     }
     for (const candidate of candidates) {
@@ -79,12 +79,16 @@ function extractPinnedContacts(raw: { result?: unknown }): PinnedContact[] {
     return [];
 }
 
+/** 会话项形状判定（peerUid + chatType 是 RecentContact 的必备标识）。 */
+function isRecentContact(val: unknown): val is RecentContact {
+    return (
+        isRecord(val) && typeof val["peerUid"] === "string" && typeof val["chatType"] === "number"
+    );
+}
+
 /** 单条会话 → 置顶项（置顶标记为真且场景可判定才产出）。 */
 function pinnedOf(item: unknown): PinnedContact[] {
-    if (item === null || typeof item !== "object") {
-        return [];
-    }
-    return pinnedContactOf(item as RecentContact);
+    return isRecentContact(item) ? pinnedContactOf(item) : [];
 }
 
 /** 置顶判据（topFlag 实测字段名 + isTop 兼容形态）且 peerUid 可用才产出。 */

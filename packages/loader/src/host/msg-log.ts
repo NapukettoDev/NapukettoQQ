@@ -13,6 +13,8 @@
  *  - console 版带 ANSI（logger），boot 文件版纯文本（log），互不污染；
  *    IPC 模式 logger 落文件 JSON，写 plain（colored 仅终端用）
  */
+
+import { getOwnProp, isCallable } from "./type-guards.js";
 import type { CanonicalElementLike, EventChannelLike, KernelLike, LoggerLike } from "./types.js";
 import { errMsg, forEachRawMessage, log } from "./util.js";
 
@@ -62,12 +64,11 @@ interface MessageLogLine {
 
 /** 原始消息 → 日志行（纯函数，无副作用）。 */
 function formatMessageLog(kernel: KernelLike, msg: unknown): MessageLogLine {
-    const raw = msg as { chatType?: unknown; peerUin?: unknown; senderUin?: unknown };
     const rendered = renderMessage(kernel, msg);
-    const isGroup = raw.chatType === kernel.ChatType.GROUP;
+    const isGroup = getOwnProp(msg, "chatType") === kernel.ChatType.GROUP;
     const kind = isGroup ? "群聊" : "私聊";
-    const peerUin = String(raw.peerUin ?? "");
-    const senderUin = String(raw.senderUin ?? (peerUin || "未知"));
+    const peerUin = String(getOwnProp(msg, "peerUin") ?? "");
+    const senderUin = String(getOwnProp(msg, "senderUin") ?? (peerUin || "未知"));
     // 群聊：群 + 用户两个标签；私聊：会话即用户，只显示用户标签
     const plainTags = isGroup ? `[群${peerUin}] [用户${senderUin}]` : `[用户${senderUin}]`;
     const coloredTags = isGroup
@@ -130,8 +131,10 @@ export function setupMsgLogging(
         });
     });
     // 通道返回面宽松（on 返回 unknown）：非函数 = 无退订能力，退化 no-op
-    return typeof off === "function"
-        ? (off as () => void)
+    return isCallable(off)
+        ? () => {
+              off();
+          }
         : () => {
               // 无退订能力（理论不达：NTEventChannel.on 恒返回退订函数）
           };

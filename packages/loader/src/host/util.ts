@@ -7,6 +7,7 @@ import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "./env.js";
+import { getErrorMessage } from "./type-guards.js";
 
 /** boot 日志路径（NAPUTO_CFG_DIR 下，与 stub 验证日志同目录）。 */
 const LOG_PATH = env.NAPUTO_CFG_DIR
@@ -24,8 +25,7 @@ export function log(msg: string): void {
 
 /** 错误信息提取（保留 JS 原语义：message 存在用 message，否则用错误对象本身）。 */
 export function errorMessage(e: unknown): string {
-    const record = e as { message?: unknown } | null | undefined;
-    return `${record?.message ?? e}`;
+    return getErrorMessage(e);
 }
 
 /** @deprecated 使用 `errorMessage`（全仓统一命名）。 */

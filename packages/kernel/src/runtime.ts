@@ -47,6 +47,7 @@ import type {
     RecentContactListener,
     WrapperNodeApi,
 } from "./types/index.js";
+import { getOwnProp } from "./utils/type-guards.js";
 
 /** 运行时装配参数。 */
 export interface KernelRuntimeOptions {
@@ -219,7 +220,7 @@ function wrapperUtilOf(
     if (wrapperExports === undefined) {
         return undefined;
     }
-    const fromExports = (wrapperExports as Record<string, unknown>)["NodeQQNTWrapperUtil"];
+    const fromExports = getOwnProp(wrapperExports, "NodeQQNTWrapperUtil");
     return fromExports ?? wrapperExports;
 }
 

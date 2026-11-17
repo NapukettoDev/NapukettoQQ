@@ -128,13 +128,13 @@ function essenceToEntity(item: EssenceMsgItem, groupId: number): GroupEssenceMes
     }
     return {
         group_id: groupId,
-        message_seq: item.msg_seq,
-        message_time: item.add_digest_time,
+        message_seq: item.msg_seq ?? 0,
+        message_time: item.add_digest_time ?? 0,
         sender_id: Number(item.sender_uin) || 0,
-        sender_name: item.sender_nick,
+        sender_name: item.sender_nick ?? "",
         operator_id: Number(item.add_digest_uin) || 0,
-        operator_name: item.add_digest_nick,
-        operation_time: item.add_digest_time,
+        operator_name: item.add_digest_nick ?? "",
+        operation_time: item.add_digest_time ?? 0,
         segments,
     };
 }

@@ -12,6 +12,7 @@
  * 帧格式：`{header: {type, id?}, body}`（单行 JSON 文本帧）；事件帧无 id，
  * 请求/响应帧 id 必填（UUID 关联）；解析后 transform 为扁平消息 `{type, id?, body}`。
  */
+import { getOwnProp } from "@napuketto/kernel";
 import { z } from "zod";
 
 // ---- 协议元信息（镜像 meta.ts）----
@@ -31,7 +32,11 @@ function parseMajor(version: string): number | null {
     if (match === null) {
         return null;
     }
-    const major = Number.parseInt(match[1] as string, 10);
+    const majorText = match[1];
+    if (majorText === undefined) {
+        return null;
+    }
+    const major = Number.parseInt(majorText, 10);
     return Number.isNaN(major) ? null : major;
 }
 
@@ -85,12 +90,12 @@ export function eventFrameSchema<const T extends string, B extends z.ZodType>(ty
             body,
         })
         .transform((frame) => {
-            // zod v4 对泛型成员的对象输出推断不足（body 键丢失），此处用结构断言收拢
-            const wire = frame as { header: { type: T }; body: z.output<B> };
-            return { type: wire.header.type, body: wire.body } satisfies EventMessage<
-                T,
-                z.output<B>
-            >;
+            // zod v4 对泛型成员的对象输出推断不足（body 键丢失）——用 body schema
+            // 重新解析取回精确输出（帧已由外层 schema 校验，不引入新语义）。
+            return {
+                type,
+                body: body.parse(getOwnProp(frame, "body")),
+            } satisfies EventMessage<T, z.output<B>>;
         });
 }
 
@@ -102,11 +107,11 @@ export function requestFrameSchema<const T extends string, B extends z.ZodType>(
             body,
         })
         .transform((frame) => {
-            const wire = frame as { header: { type: T; id: string }; body: z.output<B> };
+            // 同 eventFrameSchema：用 body schema 重新解析取回精确输出。
             return {
-                type: wire.header.type,
-                id: wire.header.id,
-                body: wire.body,
+                type,
+                id: frame.header.id,
+                body: body.parse(getOwnProp(frame, "body")),
             } satisfies RequestMessage<T, z.output<B>>;
         });
 }

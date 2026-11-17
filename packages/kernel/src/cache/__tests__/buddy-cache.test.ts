@@ -39,6 +39,26 @@ describe("narrowBuddyCategories", () => {
         expect(narrowBuddyCategories(true)).toBeNull();
         expect(narrowBuddyCategories([{ bad: 1 }, "x"])).toBeNull();
     });
+
+    it("畸形分类项（[[]] / null）→ null，不崩溃", () => {
+        expect(narrowBuddyCategories([[]])).toBeNull();
+        expect(narrowBuddyCategories([null])).toBeNull();
+        expect(narrowBuddyCategories([{ buddyList: [null, 42, "x"] }])).toHaveLength(1);
+    });
+
+    it("分类缺 buddyList → 安全构造空 buddyList（不崩溃）", () => {
+        const categories = narrowBuddyCategories([{ categoryId: 3, categroyName: "空" }]);
+        expect(categories).toEqual([
+            {
+                categoryId: 3,
+                categorySortId: 0,
+                categroyName: "空",
+                categroyMbCount: 0,
+                onlineCount: 0,
+                buddyList: [],
+            },
+        ]);
+    });
 });
 
 describe("快照 diff(四情形)", () => {
@@ -102,6 +122,16 @@ describe("未知载荷与生命周期", () => {
         cache.register();
         channel.emit("Buddy/onBuddyListChange", snapshot("u1"));
         channel.emit("Buddy/onBuddyListChange", true);
+        expect(logger.warn).toHaveBeenCalledTimes(1);
+        expect(cache.listBuddies()).toHaveLength(1);
+        cache.unregister();
+    });
+
+    it("畸形分类数组（[[]]）→ raw warn，不崩溃且快照不变", () => {
+        const { channel, cache, logger } = makeCache();
+        cache.register();
+        channel.emit("Buddy/onBuddyListChange", snapshot("u1"));
+        expect(() => channel.emit("Buddy/onBuddyListChange", [[]])).not.toThrow();
         expect(logger.warn).toHaveBeenCalledTimes(1);
         expect(cache.listBuddies()).toHaveLength(1);
         cache.unregister();

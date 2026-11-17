@@ -22,6 +22,7 @@ import type {
     WrapperSessionInitConfig,
 } from "../types/index.js";
 import { PlatformType as PlatformTypeValue, VendorType } from "../types/index.js";
+import { hasCallableProp } from "../utils/type-guards.js";
 
 /** app_type=4：桌面端应用类型（engine.initWithDeskTopConfig 契约；移动端为其它值）。 */
 const APP_TYPE_DESKTOP = 4;
@@ -337,13 +338,14 @@ export function buildSessionConfig(options: SessionConfigOptions): WrapperSessio
  */
 export function readMachineGuid(loginService: unknown): string {
     try {
-        const fn = (loginService as Record<string, unknown> | null | undefined)?.["getMachineGuid"];
-        if (typeof fn !== "function") {
-            return "";
+        if (hasCallableProp(loginService, "getMachineGuid")) {
+            const value = loginService.getMachineGuid();
+            if (typeof value === "string" && value.length > 0) {
+                return value;
+            }
         }
-        const value: unknown = fn.call(loginService);
-        return typeof value === "string" ? value : "";
     } catch {
         return "";
     }
+    return "";
 }

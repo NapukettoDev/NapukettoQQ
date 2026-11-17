@@ -6,6 +6,7 @@
  * - probeLoginService：LoginService 实例（QQ 已登录凭据入口）
  */
 
+import { getOwnProp, hasCallableProp } from "../../utils/type-guards.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize, tryShape } from "./probe-serialize.js";
 import { listMethods, tryCall } from "./probe-utils.js";
@@ -21,7 +22,7 @@ export function probeExportCtors(ctx: WrapperContext): Record<string, unknown> {
     ] as const;
     const out: Record<string, unknown> = {};
     for (const key of keys) {
-        const ctor = (ctx.exports as unknown as Record<string, unknown>)[key];
+        const ctor = getOwnProp(ctx.exports, key);
         if (ctor !== null && ctor !== undefined) {
             out[key] = { methods: listMethods(ctor), ownKeys: Object.getOwnPropertyNames(ctor) };
         }
@@ -56,10 +57,8 @@ const ENGINE_CALL_PROBES = [
 
 /** 探测 LoginService 实例（QQ 已登录凭据入口）。 */
 export function probeLoginService(ctx: WrapperContext): Record<string, unknown> | null {
-    const ctor = ctx.exports.NodeIKernelLoginService as unknown as {
-        get?: () => unknown;
-    } | null;
-    if (ctor === null || typeof ctor.get !== "function") {
+    const ctor = ctx.exports.NodeIKernelLoginService;
+    if (!hasCallableProp(ctor, "get")) {
         return null;
     }
     const inst = tryCall(ctor, "get");
@@ -77,7 +76,7 @@ export function probeLoginService(ctx: WrapperContext): Record<string, unknown> 
 function probeLoginGetters(inst: unknown): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const m of LOGIN_GETTER_PROBES) {
-        if (typeof (inst as Record<string, unknown>)[m] === "function") {
+        if (hasCallableProp(inst, m)) {
             out[m] = tryShape(inst, m);
         }
     }

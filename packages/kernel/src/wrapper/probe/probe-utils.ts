@@ -5,6 +5,8 @@
  * - tryCall：安全调用方法拿返回值（失败记录错误，不中断探测）
  */
 
+import { getOwnProp, isCallable } from "../../utils/type-guards.js";
+
 /** 反射枚举一个对象原型链上的方法名（去重、去构造器）。 */
 export function listMethods(obj: unknown): string[] {
     if (obj === null || obj === undefined) {
@@ -49,8 +51,8 @@ export function tryCall(
     name: string,
 ): { ok: boolean; value?: unknown; error?: string } {
     try {
-        const fn = (obj as Record<string, unknown>)[name];
-        if (typeof fn !== "function") {
+        const fn = getOwnProp(obj, name);
+        if (!isCallable(fn)) {
             return { ok: false, error: `not a function (typeof=${typeof fn})` };
         }
         const value = fn.call(obj);

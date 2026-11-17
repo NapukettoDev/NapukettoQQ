@@ -7,6 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isRecord } from "../host/type-guards.js";
 import { packageRoot } from "./package-root.js";
 
 /**
@@ -16,9 +17,9 @@ import { packageRoot } from "./package-root.js";
 export function loaderVersion(): string {
     try {
         const raw = readFileSync(join(packageRoot(), "package.json"), "utf8");
-        const parsed = JSON.parse(raw) as { version?: unknown };
-        if (typeof parsed.version === "string" && parsed.version !== "") {
-            return parsed.version;
+        const parsed: unknown = JSON.parse(raw);
+        if (isRecord(parsed) && typeof parsed["version"] === "string" && parsed["version"] !== "") {
+            return parsed["version"];
         }
     } catch {
         // 读取/解析失败——仅影响 UA 与日志标识，兜底即可

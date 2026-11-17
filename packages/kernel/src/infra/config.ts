@@ -12,6 +12,7 @@ import { mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
+import { getErrorCode, isRecord } from "../utils/type-guards.js";
 import { configError } from "./errors.js";
 
 /** 配置文本格式。 */
@@ -27,7 +28,7 @@ function inferFormat(path: string): ConfigFormat {
 
 function isMissingFileError(err: unknown): boolean {
     if (err instanceof Error) {
-        return (err as NodeJS.ErrnoException).code === "ENOENT";
+        return getErrorCode(err) === "ENOENT";
     }
     return false;
 }
@@ -129,7 +130,10 @@ export class ConfigBase<T> {
     /** 对象 → 文本（TOML/JSON）。 */
     private serialize(value: T): string {
         if (this.format === "toml") {
-            return stringifyTomlText(value as Record<string, unknown>);
+            if (!isRecord(value)) {
+                throw configError(`TOML 配置根必须是对象: ${this.path}`);
+            }
+            return stringifyTomlText(value);
         }
         return JSON.stringify(value, null, 4);
     }
@@ -139,7 +143,8 @@ export class ConfigBase<T> {
         if (this.format === "toml") {
             return parseTomlText(raw);
         }
-        return JSON.parse(raw) as unknown;
+        const parsed: unknown = JSON.parse(raw);
+        return parsed;
     }
 
     /** 反序列化 + schema 校验，错误统一包装为 ConfigError（配置未就绪一族）。 */

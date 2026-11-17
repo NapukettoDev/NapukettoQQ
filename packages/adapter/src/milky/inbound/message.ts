@@ -3,7 +3,7 @@
  * 回查用）与转发 resId 登记 → grayTip（notice / message_recall）→ 群文件上传
  * 事件 → 自消息过滤 → message_receive 组装（回填走 MilkyEnrichment）。
  */
-import type { RawMessage } from "@napuketto/kernel";
+import type { CanonicalElement, RawMessage } from "@napuketto/kernel";
 import { toCanonicalElements } from "@napuketto/kernel";
 import { collectGrayTipUids, findRevokeElement, hasGrayTip } from "../../shared/gray-tip.js";
 import type { MilkyInboundBase } from "../api.js";
@@ -77,8 +77,8 @@ export class MilkyInboundMessage {
         const ctx: ReceiveTranslateContext = { selfUin: this.deps.api.self.uin };
         await this.deps.enrich.fillMentionUids(elements, ctx);
         const replyIds = elements
-            .filter((el) => el.type === "reply")
-            .map((el) => (el as { messageId: string }).messageId);
+            .filter((el): el is Extract<CanonicalElement, { type: "reply" }> => el.type === "reply")
+            .map((el) => el.messageId);
         const meta = this.deps.seqIndex.collectReplyMeta(replyIds);
         if (meta.size > 0) {
             ctx.replyMeta = meta;

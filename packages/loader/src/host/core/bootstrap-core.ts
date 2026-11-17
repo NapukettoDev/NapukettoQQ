@@ -19,6 +19,7 @@ import {
     startIpcServer,
 } from "../ipc/index.js";
 import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-config.js";
+import { hasCallableProp } from "../type-guards.js";
 import {
     type CoreContextLike,
     type CoreLike,
@@ -43,7 +44,6 @@ import {
     probeSessionMethods,
     type SessionCandidate,
     startSessionProbe,
-    type WrapperSessionStaticLike,
 } from "./session.js";
 import { runSmokeTest } from "./smoke.js";
 
@@ -59,18 +59,19 @@ export interface BootstrapEnv {
 /** 探测：create() 与捕获的 QQ session 关系（确认 create() 是否干扰 QQ）。 */
 function probeCreatedSession(state: SharedState, ctx: CoreContextLike): void {
     try {
-        const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"] as
-            | WrapperSessionStaticLike
-            | undefined;
-        const created = S2 && typeof S2.create === "function" ? S2.create() : null;
+        const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"];
+        const created = hasCallableProp(S2, "create") ? S2.create() : null;
         log(
             `BOOT: create()===qqSession? ${created === state.qqSession} | create()===ctx.session? ${created === ctx.session} | qqSession===ctx.session? ${state.qqSession === ctx.session}`,
         );
-        const sess = created as { getMsgService?: unknown } | null | undefined;
-        const svc = sess && typeof sess.getMsgService === "function" ? sess.getMsgService() : null;
-        const qs = state.qqSession as { getMsgService?: unknown } | null | undefined;
+        const svc = hasCallableProp(created, "getMsgService") ? created.getMsgService() : null;
+        const qs = state.qqSession;
+        const qsReady =
+            hasCallableProp(qs, "getMsgService") &&
+            qs.getMsgService() !== null &&
+            qs.getMsgService() !== undefined;
         log(
-            `BOOT: create().getMsgService=${svc !== null && svc !== undefined ? "ready" : "null"} qqSession.getMsgService=${qs && typeof qs.getMsgService === "function" && qs.getMsgService() !== null && qs.getMsgService() !== undefined ? "ready" : "null"}`,
+            `BOOT: create().getMsgService=${svc !== null && svc !== undefined ? "ready" : "null"} qqSession.getMsgService=${qsReady ? "ready" : "null"}`,
         );
     } catch (e) {
         log(`BOOT: create() 探测失败: ${errMsg(e)}`);

@@ -9,7 +9,7 @@
  * 同意 → 触发原生回调 → 再次整批重放，形成死循环。过滤字段按「存在且明确」才生效
  * （字段缺失一律放行）：这些字段名来自说明书参考，未实证，不能因缺字段就静默丢弃申请。
  */
-import type { BuddyReq } from "@napuketto/kernel";
+import { type BuddyReq, isRecord } from "@napuketto/kernel";
 import { toUnixSeconds } from "./raw-message.js";
 
 /** `KMEINITIATORWAITPEERCONFIRM`：等对方确认中，仍属待处理（isDecide=true 也不丢）。 */
@@ -18,13 +18,42 @@ const REQ_TYPE_INITIATOR_WAIT_PEER_CONFIRM = 13;
 /** 去重缓存上限（插入序淘汰最旧项，防长跑进程无界增长）。 */
 const DEDUP_LIMIT = 512;
 
+/** 好友申请项安全构造（reqTime/friendUid 必备；已知可选字段按类型拷贝）。 */
+export function parseBuddyReqItem(item: unknown): BuddyReq | null {
+    if (
+        !isRecord(item) ||
+        typeof item["reqTime"] !== "string" ||
+        typeof item["friendUid"] !== "string"
+    ) {
+        return null;
+    }
+    const out: BuddyReq = { reqTime: item["reqTime"], friendUid: item["friendUid"] };
+    // 其余字段（friendNick / words / isDecide / unreadNums …）原样保留：
+    // 值类型仍是 unknown，索引签名不引入断言；过滤逻辑依赖这些未实证字段。
+    for (const [key, value] of Object.entries(item)) {
+        if (key !== "reqTime" && key !== "friendUid") {
+            out[key] = value;
+        }
+    }
+    return out;
+}
+
 /** BuddyReq 防御性收窄：仅接受字段形状可用的对象。 */
 export function isBuddyReqLike(value: unknown): value is BuddyReq {
-    if (typeof value !== "object" || value === null) {
-        return false;
+    return parseBuddyReqItem(value) !== null;
+}
+
+/** 数组逐项安全构造（任一项残缺 → null，整批不进翻译层）。 */
+function parseBuddyReqList(list: unknown[]): BuddyReq[] | null {
+    const out: BuddyReq[] = [];
+    for (const item of list) {
+        const parsed = parseBuddyReqItem(item);
+        if (parsed === null) {
+            return null;
+        }
+        out.push(parsed);
     }
-    const v = value as Record<string, unknown>;
-    return typeof v["reqTime"] === "string" && typeof v["friendUid"] === "string";
+    return out;
 }
 
 /**
@@ -33,12 +62,12 @@ export function isBuddyReqLike(value: unknown): value is BuddyReq {
  */
 export function narrowBuddyReqs(arg: unknown): BuddyReq[] | null {
     if (Array.isArray(arg)) {
-        return arg.every(isBuddyReqLike) ? (arg as BuddyReq[]) : null;
+        return parseBuddyReqList(arg);
     }
-    if (typeof arg === "object" && arg !== null) {
-        const reqs = (arg as Record<string, unknown>)["buddyReqs"];
-        if (Array.isArray(reqs) && reqs.every(isBuddyReqLike)) {
-            return reqs as BuddyReq[];
+    if (isRecord(arg)) {
+        const reqs = arg["buddyReqs"];
+        if (Array.isArray(reqs)) {
+            return parseBuddyReqList(reqs);
         }
     }
     return null;
@@ -49,10 +78,10 @@ export function narrowBuddyReqs(arg: unknown): BuddyReq[] | null {
  * 0 表示「整批没有未处理项」，调用方可整批短路；非有限数 / 缺失 → undefined（不下判断）。
  */
 export function batchUnreadNums(arg: unknown): number | undefined {
-    if (typeof arg !== "object" || arg === null) {
+    if (!isRecord(arg)) {
         return undefined;
     }
-    const value = (arg as Record<string, unknown>)["unreadNums"];
+    const value = arg["unreadNums"];
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

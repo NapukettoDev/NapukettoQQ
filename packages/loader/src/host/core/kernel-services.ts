@@ -157,8 +157,7 @@ export async function createKernelServices(
     const groupApi = new kernel.GroupApi(session);
     // channel 传入 MsgApi：sendMsg 后等 onMsgInfoListUpdate 确认（NapCat 式，2026-08-11）
     // util 传入 MsgApi：富媒体发送 copyFile（NapCat 式图片预处理，2026-08-11）
-    const util = (ctx as unknown as { exports?: { NodeQQNTWrapperUtil?: unknown } }).exports
-        ?.NodeQQNTWrapperUtil;
+    const util = ctx.exports?.["NodeQQNTWrapperUtil"];
     const msgApi = new kernel.MsgApi(session, channel, util);
     // 在线状态注册（2026-09-15 发现 I）：自建宿主无 UI，引导链此前无人调 setStatus →
     // NT 会话半在线（msf 连接可用、消息可发，但腾讯侧设备不在线）→ 服务端不推送实时
@@ -235,8 +234,7 @@ export async function createKernelServices(
         session,
         engine: ctx.engine,
         // util：wrapper exports 上的 NodeQQNTWrapperUtil（诊断用原生 copyFile）
-        util: (ctx as unknown as { exports?: { NodeQQNTWrapperUtil?: unknown } }).exports
-            ?.NodeQQNTWrapperUtil,
+        util: ctx.exports?.["NodeQQNTWrapperUtil"],
         dispose: () => {
             // 幂等清理：桥 unregister 判空、groupCache.unsubscribes 判空
             bridge.unregister();

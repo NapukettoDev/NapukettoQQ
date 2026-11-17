@@ -15,6 +15,7 @@
  */
 import { EventEmitter } from "node:events";
 import { kernelError } from "./infra/index.js";
+import { isPromiseLike } from "./utils/type-guards.js";
 
 /** waitFor 默认超时（毫秒）。 */
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
@@ -82,9 +83,10 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
      * 每个 Service 只注册一次原生监听，缓存维护与协议翻译都订阅这里。
      */
     on<E extends EventName<L, Name>>(event: E, handler: EventHandler<L, Name, E>): () => void {
-        this.emitter.addListener(event as string, handler as (...args: unknown[]) => void);
+        const erased = (...args: unknown[]): unknown => Reflect.apply(handler, undefined, args);
+        this.emitter.addListener(String(event), erased);
         return () => {
-            this.emitter.removeListener(event as string, handler as (...args: unknown[]) => void);
+            this.emitter.removeListener(String(event), erased);
         };
     }
 
@@ -108,20 +110,20 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
                 cleanup();
                 resolve(args);
             };
+            const erased = (...args: unknown[]): void => {
+                Reflect.apply(handler, undefined, args);
+            };
             const timer = setTimeout(() => {
                 cleanup();
-                reject(kernelError(`等待事件超时: ${event as string}`, "TIMEOUT"));
+                reject(kernelError(`等待事件超时: ${String(event)}`, "TIMEOUT"));
             }, timeoutMs);
             // 不阻塞进程自然退出（等待方若被丢弃，定时器不应吊住事件循环）。
             timer.unref?.();
             const cleanup = (): void => {
                 clearTimeout(timer);
-                this.emitter.removeListener(
-                    event as string,
-                    handler as (...args: unknown[]) => void,
-                );
+                this.emitter.removeListener(String(event), erased);
             };
-            this.emitter.addListener(event as string, handler as (...args: unknown[]) => void);
+            this.emitter.addListener(String(event), erased);
         });
     }
 
@@ -146,16 +148,16 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         // 全事件订阅（IPC 转发）：单个订阅者异常不打断派发，统一走 error 兜底
         for (const anyHandler of this.anyHandlers) {
             try {
-                const ret = anyHandler(event as string, ...args);
+                const ret = anyHandler(String(event), ...args);
                 this.catchAsyncListenerError(ret);
             } catch (err) {
                 this.notifyError(err);
             }
         }
-        const listeners = this.emitter.listeners(event as string);
+        const listeners = this.emitter.listeners(String(event));
         for (const listener of listeners) {
             try {
-                const ret = (listener as (...a: unknown[]) => unknown)(...args);
+                const ret = Reflect.apply(listener, undefined, args);
                 this.catchAsyncListenerError(ret);
             } catch (err) {
                 // error 兜底：单个订阅者异常不打断派发，统一通知 onError
@@ -169,12 +171,8 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
      * UnhandledRejection）——这里统一挂 catch 转发到 onError 兜底。
      */
     private catchAsyncListenerError(ret: unknown): void {
-        if (
-            ret !== null &&
-            typeof ret === "object" &&
-            typeof (ret as { catch?: unknown }).catch === "function"
-        ) {
-            (ret as Promise<unknown>).catch((err: unknown) => {
+        if (isPromiseLike(ret)) {
+            ret.catch((err: unknown) => {
                 this.notifyError(err);
             });
         }

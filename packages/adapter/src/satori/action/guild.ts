@@ -191,9 +191,9 @@ async function findGroupNotify(deps: GuildActionDeps, messageId: string): Promis
 
 /** GroupMember → Satori GuildMember（user.id = uin；nick = 群名片优先）。 */
 function toGuildMember(member: GroupMember, uin: string): GuildMember {
-    const nick = member.cardName !== "" ? member.cardName : member.nick;
+    const nick = (member.cardName ?? "") !== "" ? (member.cardName ?? "") : (member.nick ?? "");
     const out: GuildMember = {
-        user: toUser(uin, member.nick),
+        user: toUser(uin, member.nick ?? ""),
     };
     if (nick !== "" && nick !== member.nick) {
         out.nick = nick;

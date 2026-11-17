@@ -3,7 +3,7 @@
  * peer_pin_change（topFlag 翻转检测，条目自带 chatType 判场景）；启动期
  * getPinnedContacts 播种基线（重启后首个取消置顶也能观测到翻转）。
  */
-import type { RecentContact, RecentContactListChanged } from "@napuketto/kernel";
+import { isRecord, type RecentContact } from "@napuketto/kernel";
 import { numericUin } from "../../shared/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import { PinWatch, toPeerPinChangeData } from "../helper/event/peer-pin.js";
@@ -72,19 +72,38 @@ export class MilkyInboundPin {
 
 /** 变更列表 → changedList 条目数组（形状不符 → 空）。 */
 function changedListOf(list: unknown): readonly unknown[] {
-    if (list === null || typeof list !== "object") {
+    if (!isRecord(list)) {
         return [];
     }
-    const changed = (list as RecentContactListChanged).changedList;
+    const changed = list["changedList"];
     return Array.isArray(changed) ? changed : [];
+}
+
+/** 变更条目 → RecentContact 安全构造（peerUid 缺失时回退 peerUin；场景由 chatType 判定）。 */
+function toRecentContact(val: unknown): RecentContact | null {
+    if (!isRecord(val) || typeof val["chatType"] !== "number") {
+        return null;
+    }
+    const peerUid = typeof val["peerUid"] === "string" ? val["peerUid"] : undefined;
+    const peerUin = typeof val["peerUin"] === "string" ? val["peerUin"] : undefined;
+    const resolvedPeerUid = peerUid ?? peerUin;
+    if (resolvedPeerUid === undefined) {
+        return null;
+    }
+    return {
+        chatType: val["chatType"],
+        peerUid: resolvedPeerUid,
+        ...(peerUin !== undefined ? { peerUin } : {}),
+        ...(typeof val["topFlag"] === "number" ? { topFlag: val["topFlag"] } : {}),
+        ...(typeof val["topFlagTime"] === "string" ? { topFlagTime: val["topFlagTime"] } : {}),
+        ...(typeof val["isTop"] === "boolean" ? { isTop: val["isTop"] } : {}),
+    };
 }
 
 /** 变更条目 → 翻转检测输入（null = 条目不支持/缺置顶字段）。 */
 function pinPayloadOf(entry: unknown): PinPayload | null {
-    if (entry === null || typeof entry !== "object") {
-        return null;
-    }
-    return pinPayloadFrom(entry as RecentContact);
+    const contact = toRecentContact(entry);
+    return contact === null ? null : pinPayloadFrom(contact);
 }
 
 function pinPayloadFrom(contact: RecentContact): PinPayload | null {

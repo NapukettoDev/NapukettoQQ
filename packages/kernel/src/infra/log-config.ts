@@ -12,6 +12,8 @@
  *   - NAPUKETTO_LOG_COLORIZE（1/true/0/false，CLI 顶层进程向子进程传播控制台
  *     渲染决策用；toml 不暴露此键）
  */
+
+import { isRecord } from "../utils/type-guards.js";
 import { kernelError } from "./errors.js";
 
 /** 日志级别（pino 标准级别 + silent）。 */
@@ -76,35 +78,45 @@ export interface LogConfig {
 /** 环境变量快照类型（process.env 的结构子集，便于测试注入）。 */
 export type LogEnvSource = Record<string, string | undefined>;
 
+/** 运行时判定是否为日志级别。 */
+function isLogLevel(value: unknown): value is LogLevel {
+    return typeof value === "string" && LOG_LEVEL_VALUES.some((v) => v === value);
+}
+
+/** 运行时判定是否为控制台输出格式。 */
+function isLogFormat(value: unknown): value is LogFormat {
+    return typeof value === "string" && LOG_FORMAT_VALUES.some((v) => v === value);
+}
+
+/** 运行时判定是否为时间戳模式。 */
+function isTimestampMode(value: unknown): value is TimestampMode {
+    return typeof value === "string" && TIMESTAMP_MODE_VALUES.some((v) => v === value);
+}
+
+/** 运行时判定是否为可覆盖级别的模块名。 */
+function isLogModuleName(value: string): value is LogModuleName {
+    return MODULE_NAME_VALUES.some((v) => v === value);
+}
+
 /** 校验级别字面量；非法值抛 INVALID_PARAM。 */
 function requireLevel(value: unknown, key: string): LogLevel {
-    if (typeof value !== "string" || !(LOG_LEVEL_VALUES as readonly string[]).includes(value)) {
+    if (!isLogLevel(value)) {
         throw kernelError(
             `主配置 ${key} 必须是日志级别（${LOG_LEVEL_VALUES.join(" / ")}）`,
             "INVALID_PARAM",
         );
     }
-    return value as LogLevel;
+    return value;
 }
 
 /** 宽松级别解析（env 覆盖用；非法/缺失返回 undefined 不生效）。 */
 function optionalLevel(value: string | undefined): LogLevel | undefined {
-    if (value === undefined) {
-        return undefined;
-    }
-    return (LOG_LEVEL_VALUES as readonly string[]).includes(value)
-        ? (value as LogLevel)
-        : undefined;
+    return isLogLevel(value) ? value : undefined;
 }
 
 /** 宽松格式解析（env 覆盖用）。 */
 function optionalFormat(value: string | undefined): LogFormat | undefined {
-    if (value === undefined) {
-        return undefined;
-    }
-    return (LOG_FORMAT_VALUES as readonly string[]).includes(value)
-        ? (value as LogFormat)
-        : undefined;
+    return isLogFormat(value) ? value : undefined;
 }
 
 /** 宽松布尔解析（env 用：仅识别 1/true/0/false，其余忽略）。 */
@@ -123,36 +135,33 @@ function parseModuleLevels(raw: unknown): Partial<Record<LogModuleName, LogLevel
     if (raw === undefined) {
         return {};
     }
-    if (typeof raw !== "object" || raw === null) {
+    if (!isRecord(raw)) {
         throw kernelError("主配置 log.levels 必须是对象", "INVALID_PARAM");
     }
     const out: Partial<Record<LogModuleName, LogLevel>> = {};
     for (const [key, value] of Object.entries(raw)) {
-        if (!(MODULE_NAME_VALUES as readonly string[]).includes(key)) {
+        if (!isLogModuleName(key)) {
             throw kernelError(
                 `主配置 log.levels 未知模块 "${key}"（合法模块：${MODULE_NAME_VALUES.join(" / ")}）`,
                 "INVALID_PARAM",
             );
         }
-        out[key as LogModuleName] = requireLevel(value, `log.levels.${key}`);
+        out[key] = requireLevel(value, `log.levels.${key}`);
     }
     return out;
 }
 
 /** 解析 [log.file] 独立文件 sink。 */
 function parseLogFile(raw: unknown, fallbackLevel: LogLevel): LogFileConfig {
-    if (typeof raw !== "object" || raw === null) {
+    if (!isRecord(raw)) {
         throw kernelError("主配置 log.file 必须是对象", "INVALID_PARAM");
     }
-    const record = raw as Record<string, unknown>;
-    const path = record["path"];
+    const path = raw["path"];
     if (typeof path !== "string" || path === "") {
         throw kernelError("主配置 log.file.path 必须是非空字符串", "INVALID_PARAM");
     }
     const level =
-        record["level"] === undefined
-            ? fallbackLevel
-            : requireLevel(record["level"], "log.file.level");
+        raw["level"] === undefined ? fallbackLevel : requireLevel(raw["level"], "log.file.level");
     return { path, level };
 }
 
@@ -162,27 +171,20 @@ interface LogConfigDraft extends LogConfig {
     fileLevelExplicit?: boolean;
 }
 
-/** 校验字面量枚举值（非法抛 INVALID_PARAM，报错文案带键名与合法值集）。 */
-function requireEnum<T extends string>(value: unknown, key: string, values: readonly T[]): T {
-    if (typeof value !== "string" || !(values as readonly string[]).includes(value)) {
-        throw kernelError(`主配置 ${key} 必须是（${values.join(" / ")}）`, "INVALID_PARAM");
-    }
-    return value as T;
-}
-
 /** 校验布尔字段（undefined 保留原值）。 */
 function applyBoolean(
     draft: LogConfigDraft,
     raw: Record<string, unknown>,
     key: "banner" | "unboundReceive",
 ): void {
-    if (raw[key] === undefined) {
+    const value = raw[key];
+    if (value === undefined) {
         return;
     }
-    if (typeof raw[key] !== "boolean") {
+    if (typeof value !== "boolean") {
         throw kernelError(`主配置 log.${key} 必须是布尔值`, "INVALID_PARAM");
     }
-    draft[key] = raw[key] as boolean;
+    draft[key] = value;
 }
 
 /** toml [log] 段字段填充（level/format/timestamp/banner/unboundReceive）。 */
@@ -190,11 +192,25 @@ function applySectionFields(draft: LogConfigDraft, raw: Record<string, unknown>)
     if (raw["level"] !== undefined) {
         draft.level = requireLevel(raw["level"], "log.level");
     }
-    if (raw["format"] !== undefined) {
-        draft.format = requireEnum(raw["format"], "log.format", LOG_FORMAT_VALUES);
+    const format = raw["format"];
+    if (format !== undefined) {
+        if (!isLogFormat(format)) {
+            throw kernelError(
+                `主配置 log.format 必须是（${LOG_FORMAT_VALUES.join(" / ")}）`,
+                "INVALID_PARAM",
+            );
+        }
+        draft.format = format;
     }
-    if (raw["timestamp"] !== undefined) {
-        draft.timestamp = requireEnum(raw["timestamp"], "log.timestamp", TIMESTAMP_MODE_VALUES);
+    const timestamp = raw["timestamp"];
+    if (timestamp !== undefined) {
+        if (!isTimestampMode(timestamp)) {
+            throw kernelError(
+                `主配置 log.timestamp 必须是（${TIMESTAMP_MODE_VALUES.join(" / ")}）`,
+                "INVALID_PARAM",
+            );
+        }
+        draft.timestamp = timestamp;
     }
     applyBoolean(draft, raw, "banner");
     applyBoolean(draft, raw, "unboundReceive");
@@ -239,18 +255,15 @@ export function parseLogConfig(section: unknown, env: LogEnvSource = {}): LogCon
         levels: {},
     };
     if (section !== undefined) {
-        if (typeof section !== "object" || section === null) {
+        if (!isRecord(section)) {
             throw kernelError("主配置 log 段必须是对象", "INVALID_PARAM");
         }
-        const raw = section as Record<string, unknown>;
-        applySectionFields(draft, raw);
-        draft.levels = parseModuleLevels(raw["levels"]);
-        if (raw["file"] !== undefined) {
-            draft.file = parseLogFile(raw["file"], draft.level);
-            draft.fileLevelExplicit =
-                typeof raw["file"] === "object" &&
-                raw["file"] !== null &&
-                (raw["file"] as Record<string, unknown>)["level"] !== undefined;
+        applySectionFields(draft, section);
+        draft.levels = parseModuleLevels(section["levels"]);
+        const file = section["file"];
+        if (file !== undefined) {
+            draft.file = parseLogFile(file, draft.level);
+            draft.fileLevelExplicit = isRecord(file) && file["level"] !== undefined;
         }
     }
     applyEnvOverrides(draft, env);

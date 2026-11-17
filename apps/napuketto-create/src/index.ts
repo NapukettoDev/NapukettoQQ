@@ -22,6 +22,7 @@ import { join, relative } from "node:path";
 import process from "node:process";
 import { styleText } from "node:util";
 import { cancel, confirm, intro, log, outro, spinner, text } from "@clack/prompts";
+import { isRecord } from "./guards.js";
 import type { PackageManager, ScaffoldResult } from "./scaffold.js";
 import {
     checkDirStatus,
@@ -110,10 +111,13 @@ function parseArgs(argv: string[]): CliOptions {
 /** 读取脚手架自身版本号（intro 显示；dist 场景 import.meta.url 指向包内）。 */
 function readVersion(): string {
     try {
-        const ownPkg = JSON.parse(
+        const parsed: unknown = JSON.parse(
             readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-        ) as { version?: string };
-        return ownPkg.version ?? "0.0.0";
+        );
+        if (isRecord(parsed) && typeof parsed["version"] === "string") {
+            return parsed["version"];
+        }
+        return "0.0.0";
     } catch {
         // package.json 缺失（异常环境）→ 兜底
         return "0.0.0";

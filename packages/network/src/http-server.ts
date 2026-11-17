@@ -39,6 +39,14 @@ interface UpgradeableServer {
     ): unknown;
 }
 
+/** 运行时判定原生 server 是否支持 upgrade 事件挂载。 */
+function isUpgradeableServer(val: unknown): val is UpgradeableServer {
+    if ((typeof val !== "object" && typeof val !== "function") || val === null) {
+        return false;
+    }
+    return typeof Reflect.get(val, "on") === "function";
+}
+
 function toRequestContext(c: Context): RequestContext {
     const raw = c.req.header();
     const headers: Record<string, string | undefined> = {};
@@ -114,7 +122,8 @@ export class HttpServer implements TransportAdapter {
 
         let req: unknown;
         try {
-            req = (await c.req.json()) as unknown;
+            const body: unknown = await c.req.json();
+            req = body;
         } catch {
             return c.json({ error: "invalid json body" }, HTTP_STATUS.badRequest);
         }
@@ -186,7 +195,10 @@ export class HttpServer implements TransportAdapter {
             maxPayload: this.opts.wsMaxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
             skipUTF8Validation: false,
         });
-        const upgradeable = server as unknown as UpgradeableServer;
+        if (!isUpgradeableServer(server)) {
+            throw new Error("Server instance does not support upgrade/close");
+        }
+        const upgradeable = server;
         upgradeable.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
             this.onUpgrade?.(
                 incomingMessageToRequestContext(req),

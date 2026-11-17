@@ -182,13 +182,30 @@ describe("diag 诊断动作：方法面枚举与调用", () => {
     });
 
     it("diag.sessionCall：方法调用成功返回 ret；参数数组透传", async () => {
-        const session = { onLine: (a: unknown, b: unknown) => `${String(a)}-${String(b)}` };
+        const session = { doWork: (a: unknown, b: unknown) => `${String(a)}-${String(b)}` };
         const actions = createIpcActions(ctxWith({ session }));
         const result = await callIpcAction(actions, "diag.sessionCall", {
-            method: "onLine",
+            method: "doWork",
             args: ["x", 1],
         });
         expect(result).toEqual({ ok: true, value: { ok: true, ret: "x-1" } });
+    });
+
+    it("diag.sessionCall：onLine / wifiphoto 方法被安全拦截", async () => {
+        const session = { onLine: () => "should-not-run" };
+        const actions = createIpcActions(ctxWith({ session }));
+        const blocked = await callIpcAction(actions, "diag.sessionCall", { method: "onLine" });
+        expect(blocked).toEqual({
+            ok: true,
+            value: { ok: false, error: "method onLine is blocked for safety" },
+        });
+        const blockedPhoto = await callIpcAction(actions, "diag.sessionCall", {
+            method: "getWifiPhotoList",
+        });
+        expect(blockedPhoto).toEqual({
+            ok: true,
+            value: { ok: false, error: "method getWifiPhotoList is blocked for safety" },
+        });
     });
 
     it("diag.sessionCall：方法抛错 → ok:false + err（Error message / 非 Error 字符串化）", async () => {

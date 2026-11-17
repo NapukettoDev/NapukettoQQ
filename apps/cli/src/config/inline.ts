@@ -18,7 +18,7 @@
  * logger（logger.ts 反向依赖本模块判内联来源）。
  */
 import process from "node:process";
-import { configError, errorMessage } from "@napuketto/kernel";
+import { configError, errorMessage, isRecord } from "@napuketto/kernel";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 
 /** 内联配置 env 键（规范前缀；读取为精确键访问，Windows 上 process.env 本身大小写不敏感）。 */
@@ -49,10 +49,7 @@ export function isInlineConfigActive(): boolean {
 
 /** JSON.parse 产物 → 配置对象（数组 / null / 原始值 → undefined）。 */
 function asConfigObject(value: unknown): Record<string, unknown> | undefined {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return undefined;
-    }
-    return value as Record<string, unknown>;
+    return isRecord(value) ? value : undefined;
 }
 
 /**
@@ -65,7 +62,7 @@ function readInlineConfigDoc(): Record<string, unknown> | undefined {
         return undefined;
     }
     try {
-        return asConfigObject(JSON.parse(text) as unknown);
+        return asConfigObject(JSON.parse(text));
     } catch {
         return undefined;
     }

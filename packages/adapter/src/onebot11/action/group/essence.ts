@@ -112,13 +112,13 @@ export function createGroupEssenceActions(api: OneBotApi): Ob11Action[] {
                         }
                     }
                     out.push({
-                        msg_seq: item.msg_seq,
-                        msg_random: item.msg_random,
+                        msg_seq: item.msg_seq ?? 0,
+                        msg_random: item.msg_random ?? 0,
                         sender_id: Number(item.sender_uin),
-                        sender_nick: item.sender_nick,
+                        sender_nick: item.sender_nick ?? "",
                         operator_id: Number(item.add_digest_uin),
-                        operator_nick: item.add_digest_nick,
-                        operator_time: item.add_digest_time,
+                        operator_nick: item.add_digest_nick ?? "",
+                        operator_time: item.add_digest_time ?? 0,
                         message_id: 0,
                         content,
                     });

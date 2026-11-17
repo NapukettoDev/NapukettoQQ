@@ -123,11 +123,12 @@ export interface Group {
     [key: string]: unknown;
 }
 
-/** 群详情（getGroupDetailInfo 返回，说明书参考）。 */
+/** 群详情（getGroupDetailInfo 返回，说明书参考）。
+ * `groupUin` / `ownerUin` 在部分原生返回形状中缺失，按 optional 防御。 */
 export interface GroupDetailInfo {
     groupCode: string;
-    groupUin: string;
-    ownerUin: string;
+    groupUin?: string;
+    ownerUin?: string;
     ownerUid?: string;
     groupName: string;
     memberNum: number;
@@ -138,17 +139,18 @@ export interface GroupDetailInfo {
     [key: string]: unknown;
 }
 
-/** 群成员（getAllMemberList result.infos 的 value，说明书参考）。 */
+/** 群成员（getAllMemberList result.infos 的 value，说明书参考）。
+ * 核心标识为 uid/uin；其余展示/角色字段在部分原生返回（如禁言列表）中缺失，按 optional 防御。 */
 export interface GroupMember {
     uid: string;
     uin: string;
-    nick: string;
-    cardName: string;
-    remark: string;
-    role: NTGroupMemberRole;
-    shutUpTime: number; // 禁言秒数
-    joinTime: string;
-    lastSpeakTime: string;
+    nick?: string;
+    cardName?: string;
+    remark?: string;
+    role?: NTGroupMemberRole;
+    shutUpTime?: number; // 禁言秒数
+    joinTime?: string;
+    lastSpeakTime?: string;
     memberSpecialTitle?: string;
     sex?: number;
     age?: number;

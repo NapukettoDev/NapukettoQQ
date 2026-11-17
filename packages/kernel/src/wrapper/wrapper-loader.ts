@@ -25,6 +25,7 @@ import type {
     WrapperSessionInitConfig,
 } from "../types/index.js";
 import { PlatformType } from "../types/index.js";
+import { hasCallableProp } from "../utils/type-guards.js";
 import { extractDataRoot, resolveQqGlobalPath } from "./qq-data-path.js";
 import {
     createSessionListener,
@@ -33,6 +34,13 @@ import {
     GlobalAdapter,
 } from "./wrapper-adapters.js";
 import { buildQua, detectPlatformType, parseQuaFromMajor } from "./wrapper-config.js";
+import {
+    getElectronProcessType,
+    isStartupSessionWrapper,
+    isWrapperEngine,
+    isWrapperNodeApi,
+    isWrapperSession,
+} from "./wrapper-guards.js";
 
 // ---------------------------------------------------------------
 // startNapuketto 内部辅助（非 export，boot 装配用）
@@ -78,7 +86,7 @@ function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginInitDeskto
  * - "utility"：utilityProcess Worker（路线 B，2026-08-06）
  */
 export function electronProcessType(): string | undefined {
-    return (process as unknown as { type?: string }).type;
+    return getElectronProcessType(process);
 }
 
 /** `resolveQqUserDataRoot` 选项（平台覆盖供测试/联调，缺省按 `process.platform` 探测）。 */
@@ -126,12 +134,15 @@ export function resolveQqUserDataRoot(
 /** 从 QQ 官方 API 提取数据根（不可用返回 null，调用方回退默认）。 */
 function extractUserDataRoot(exports: WrapperNodeApi): string | null {
     try {
-        const util = exports.NodeQQNTWrapperUtil as unknown as {
-            get?: () => { getNTUserDataInfoConfig?: () => unknown };
-        } | null;
-        const raw = util?.get?.().getNTUserDataInfoConfig?.();
-        if (typeof raw === "string" && raw.trim() !== "") {
-            return extractDataRoot(raw.trim());
+        const utilCtor = exports.NodeQQNTWrapperUtil;
+        if (hasCallableProp(utilCtor, "get")) {
+            const inst = utilCtor.get();
+            if (hasCallableProp(inst, "getNTUserDataInfoConfig")) {
+                const raw = inst.getNTUserDataInfoConfig();
+                if (typeof raw === "string" && raw.trim() !== "") {
+                    return extractDataRoot(raw.trim());
+                }
+            }
         }
     } catch {
         // 回退默认位置
@@ -181,19 +192,18 @@ export function createWrapper(
     exports: WrapperNodeApi,
     versionInfo: QqVersionContext,
 ): WrapperContext {
-    const engineMaybe = exports.NodeIQQNTWrapperEngine as unknown as {
-        get?: () => NodeIQQNTWrapperEngine;
-    } | null;
-    if (engineMaybe === null || typeof engineMaybe.get !== "function") {
+    const engineCtor = exports.NodeIQQNTWrapperEngine;
+    if (!hasCallableProp(engineCtor, "get")) {
         throw kernelError(
             "wrapper.node exports 无效（缺少 NodeIQQNTWrapperEngine）",
             "INVALID_PARAM",
         );
     }
-    const engine = engineMaybe.get();
-    if (!engine || typeof engine.initWithDeskTopConfig !== "function") {
+    const rawEngine = engineCtor.get();
+    if (!isWrapperEngine(rawEngine)) {
         throw kernelError("NodeIQQNTWrapperEngine.get() 返回对象无效", "INVALID_PARAM");
     }
+    const engine = rawEngine;
     return {
         exports,
         engine,
@@ -230,16 +240,15 @@ export function createSession(ctx: WrapperContext): NodeIQQNTWrapperSession {
 
 /** 步骤 1：StartupSessionWrapper.create()（建立启动 session，失败忽略）。 */
 function createStartupSession(ctx: WrapperContext): NodeIQQNTWrapperSession | null {
-    const Ssw = ctx.exports.NodeIQQNTStartupSessionWrapper as unknown as
-        | {
-              create?: () => NodeIQQNTStartupSessionWrapper;
-          }
-        | undefined;
-    if (Ssw === undefined || typeof Ssw.create !== "function") {
+    const sswCtor = ctx.exports.NodeIQQNTStartupSessionWrapper;
+    if (!hasCallableProp(sswCtor, "create")) {
         return null;
     }
     try {
-        ctx.startupSession = Ssw.create();
+        const inst = sswCtor.create();
+        if (isStartupSessionWrapper(inst)) {
+            ctx.startupSession = inst;
+        }
     } catch {
         // 可选，失败继续
     }
@@ -247,12 +256,13 @@ function createStartupSession(ctx: WrapperContext): NodeIQQNTWrapperSession | nu
 }
 
 /** 步骤 2：getNTWrapperSession("nt_1")（QQ 主 session，带 cpp_impl）。 */
-function getNTWrapperSession(S: NodeIQQNTWrapperSessionCtor): NodeIQQNTWrapperSession | null {
-    if (typeof S.getNTWrapperSession !== "function") {
+function getNTWrapperSession(S: unknown): NodeIQQNTWrapperSession | null {
+    if (!hasCallableProp(S, "getNTWrapperSession")) {
         return null;
     }
     try {
-        return S.getNTWrapperSession("nt_1");
+        const got = S.getNTWrapperSession("nt_1");
+        return isWrapperSession(got) ? got : null;
     } catch {
         return null; // 回退
     }
@@ -422,7 +432,7 @@ function resolveBootQqGlobalPath(ctx: WrapperContext, dataRoot?: string): string
  */
 function resolveLoginService(ctx: WrapperContext, qqLoginService: unknown): void {
     if (qqLoginService !== undefined && qqLoginService !== null) {
-        ctx.loginService = qqLoginService as WrapperContext["loginService"];
+        ctx.loginService = qqLoginService;
         return;
     }
     ctx.loginService = getOrCreateLoginService(ctx.exports);
@@ -431,10 +441,8 @@ function resolveLoginService(ctx: WrapperContext, qqLoginService: unknown): void
 /** 单例 get() 优先，缺失回退 new（都失败返回 null）。 */
 function getOrCreateLoginService(exports: WrapperNodeApi): unknown {
     try {
-        const loginSvcCtor = exports.NodeIKernelLoginService as unknown as {
-            get?: () => unknown;
-        } | null;
-        if (loginSvcCtor !== null && typeof loginSvcCtor.get === "function") {
+        const loginSvcCtor = exports.NodeIKernelLoginService;
+        if (hasCallableProp(loginSvcCtor, "get")) {
             return loginSvcCtor.get();
         }
         return new exports.NodeIKernelLoginService();
@@ -490,13 +498,17 @@ export interface StartNapukettoOptions {
 export function dlopenWrapper(wrapperPath: string): WrapperNodeApi {
     // { exports: {} } 是 process.dlopen 的最小载体（wrapper 向其中填充 NAPI exports）
     const m: { exports: Record<string, unknown> } = { exports: {} };
-    process.dlopen(m as object, wrapperPath);
-    const keys = Object.keys(m.exports ?? {});
-    if (!keys.includes("NodeIKernelLoginService")) {
+    process.dlopen(m, wrapperPath);
+    if (!Object.keys(m.exports).includes("NodeIKernelLoginService")) {
         throw kernelError("exports 无 NodeIKernelLoginService（stub 环境异常？）", "INVALID_STATE");
     }
-    // 运行时已按 NAPI 契约校验关键导出；此处收窄为类型面，消除下游类型逃逸。
-    return m.exports as unknown as WrapperNodeApi;
+    if (!isWrapperNodeApi(m.exports)) {
+        throw kernelError(
+            `wrapper.node at ${wrapperPath} did not export expected QQNT symbols`,
+            "INVALID_STATE",
+        );
+    }
+    return m.exports;
 }
 
 /** 已激活 O3MiscService 的 exports（幂等标记，避免重复挂监听）。 */
@@ -522,17 +534,19 @@ export function activateO3MiscService(
     if (ACTIVATED_O3_EXPORTS.has(wrapperExports)) {
         return true;
     }
-    const O3 = wrapperExports["NodeIO3MiscService"] as
-        | { get?(): { addO3MiscListener(listener: unknown): void } }
-        | undefined;
-    if (O3 && typeof O3.get === "function") {
-        O3.get().addO3MiscListener({
-            getOnAmgomDataPiece() {
-                // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
-            },
-        });
-        ACTIVATED_O3_EXPORTS.add(wrapperExports);
-        return true;
+    const o3Ctor = wrapperExports["NodeIO3MiscService"];
+    if (!hasCallableProp(o3Ctor, "get")) {
+        return false;
     }
-    return false;
+    const svc = o3Ctor.get();
+    if (!hasCallableProp(svc, "addO3MiscListener")) {
+        return false;
+    }
+    svc.addO3MiscListener({
+        getOnAmgomDataPiece() {
+            // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
+        },
+    });
+    ACTIVATED_O3_EXPORTS.add(wrapperExports);
+    return true;
 }

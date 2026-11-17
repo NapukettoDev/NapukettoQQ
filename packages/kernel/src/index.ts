@@ -223,11 +223,21 @@ export {
     VIDEO_THUMB_KEY,
 } from "./types/index.js";
 export {
+    getErrorCode,
+    getErrorMessage,
+    getOwnProp,
     hasBooleanProp,
+    hasCallableProp,
     hasFunctionProp,
+    hasMethodSurface,
     hasNumberProp,
+    hasStaticCreator,
+    hasStaticGetter,
     hasStringProp,
+    isCallable,
+    isPromiseLike,
     isRecord,
+    parseJsonWithGuard,
     requireKernelService,
 } from "./utils/type-guards.js";
 export {

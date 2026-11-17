@@ -95,7 +95,7 @@ function extractLoginAccounts(list: unknown): LoginAccountInfo[] {
 }
 
 /** quickLoginWithUin 返回 → errMsg（结构缺失按「未知登录错误」处理）。 */
-function extractLoginErrMsg(result: unknown): string {
+export function extractLoginErrMsg(result: unknown): string {
     if (!isRecord(result)) {
         return "未知登录错误";
     }

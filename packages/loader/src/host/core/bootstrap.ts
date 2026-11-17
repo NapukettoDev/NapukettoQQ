@@ -18,9 +18,11 @@
  */
 import { dirname, join } from "node:path";
 import { env } from "../env.js";
+import { hasCallableProp } from "../type-guards.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
 import { convergeBootstrapFailure, log, type SharedState } from "../util.js";
 import { type BootstrapEnv, bootstrapWithCore, probeOnce } from "./bootstrap-core.js";
+import { isKernelModule } from "./module-guards.js";
 
 /** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
  * 「请下载最新版」；major.node 解析的 537376818 成功）。自研，参考 NapCat 思路。
@@ -61,16 +63,17 @@ function hasLifecycleFns(kernel: KernelLike): kernel is LifecycleKernel {
 function initLoginConfig(
     kernel: KernelLike,
     ctx: CoreContextLike,
-    Appid: number,
+    Appid: string | number,
     qqVersion: string,
     dataDir: string,
 ): void {
-    if (typeof kernel.buildLoginConfig !== "function" || !ctx.loginService) {
+    const loginService = ctx.loginService;
+    if (typeof kernel.buildLoginConfig !== "function" || !loginService) {
         return;
     }
     const loginCfg = kernel.buildLoginConfig(Appid, qqVersion, dataDir);
-    if (typeof ctx.loginService.initConfig === "function") {
-        ctx.loginService.initConfig(loginCfg);
+    if (hasCallableProp(loginService, "initConfig")) {
+        loginService.initConfig(loginCfg);
         log("bootstrap: loginService.initConfig OK");
     }
 }
@@ -80,7 +83,7 @@ async function buildAndStartSession(
     kernel: KernelLike,
     ctx: CoreContextLike,
     loginResult: LoginResultLike,
-    Appid: number,
+    Appid: string | number,
     qqVersion: string,
     dataDir: string,
 ): Promise<void> {
@@ -108,7 +111,7 @@ async function buildAndStartSession(
 async function quickLoginAndStartSession(
     kernel: KernelLike,
     ctx: CoreContextLike,
-    Appid: number,
+    Appid: string | number,
     bootEnv: BootstrapEnv,
 ): Promise<boolean> {
     if (!hasLifecycleFns(kernel)) {
@@ -144,7 +147,7 @@ async function bootstrapFallback(
     log(
         `bootstrap: startNapuketto OK, engine=${typeof ctx.engine}, session=${ctx.session !== null}`,
     );
-    const loggedIn = await quickLoginAndStartSession(kernel, ctx, Appid as number, bootEnv);
+    const loggedIn = await quickLoginAndStartSession(kernel, ctx, Appid, bootEnv);
     probeOnce(kernel, ctx);
     return loggedIn;
 }
@@ -163,9 +166,11 @@ async function importKernel(): Promise<KernelLike | undefined> {
         log("bootstrap: NAPUTO_KERNEL_ENTRY not set");
         return undefined;
     }
-    const kernel = (await import(
-        `file://${kernelEntry.replace(/\\/g, "/")}`
-    )) as unknown as KernelLike;
+    const rawKernel: unknown = await import(`file://${kernelEntry.replace(/\\/g, "/")}`);
+    if (!isKernelModule(rawKernel)) {
+        throw new Error(`Invalid @napuketto/kernel module exports at ${kernelEntry}`);
+    }
+    const kernel = rawKernel;
     log(`bootstrap: kernel imported, keys: ${Object.keys(kernel).join(", ")}`);
     if (!hasAssemblyEntry(kernel)) {
         log("bootstrap: kernel 无 startNapuketto/NapukettoCore 导出");

@@ -23,6 +23,7 @@ import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
+import { getErrorCode } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "./qq-types.js";
 
@@ -174,7 +175,7 @@ async function runSevenZip(
                 resolve();
                 return;
             }
-            const code = (err as NodeJS.ErrnoException).code;
+            const code = getErrorCode(err);
             const installHint =
                 code === "ENOENT"
                     ? `未找到 7z 可执行文件: ${sevenZip}\n` +

@@ -52,10 +52,14 @@ export interface GroupSpaceInfo {
     allUpload: boolean;
 }
 
-/** 富媒体服务。 */
+/** 富媒体服务。
+ *
+ * 注：Native 层 `getRichMediaService()` 返回 Proxy，运行时**不存在**
+ * `addKernelRichMediaListener` / `removeKernelRichMediaListener`。下载完成事件
+ * 通过 `MsgService.addKernelMsgListener` 的 `onRichMediaDownloadComplete` 回调
+ * 接收，本接口不再声明这两项虚构方法。
+ */
 export interface NodeIKernelRichMediaService {
-    addKernelRichMediaListener(listener: unknown): number;
-    removeKernelRichMediaListener(listenerId: number): void;
     /** 英文单词翻译（translate_en2zh）。 */
     translateEnWordToZn(words: string[]): Promise<GeneralCallResult & { words?: string[] }>;
     /** 群文件列表（get_group_root_files / get_group_files_by_folder）。 */
