@@ -387,6 +387,16 @@ describe("清单比对与 dry-run", () => {
         expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("结构不合法"));
         expect(writtenManifests).toEqual([]);
     });
+
+    it("清单 known 含非对象条目（null）→ 抛错退出 1，不写清单", async () => {
+        manifestContent = JSON.stringify({ schema: 2, known: [null] });
+        stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
+        await import("./update-qq-releases.ts");
+        await untilExit();
+        expect(process.exitCode).toBe(1);
+        expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("结构不合法"));
+        expect(writtenManifests).toEqual([]);
+    });
 });
 
 describe("下载与版本解析、清单落盘", () => {

@@ -765,14 +765,63 @@ function scanEncoding(
     return build === "" ? null : `${marketingVersion}-${build}`;
 }
 
-/** 读清单（结构校验，失败抛错）。 */
+/** 非 null、非数组的普通对象判定（外部 JSON 边界守卫）。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 清单条目形状（只校验下游真正读取的字段；platform/arch 等缺省字段可省略）。 */
+function isReleaseEntry(value: unknown): value is QqReleaseEntry {
+    if (!isRecord(value)) {
+        return false;
+    }
+    return (
+        typeof value["version"] === "string" &&
+        typeof value["url"] === "string" &&
+        typeof value["sha256"] === "string" &&
+        typeof value["appid"] === "number" &&
+        typeof value["source"] === "string" &&
+        (value["platform"] === undefined ||
+            value["platform"] === "win32" ||
+            value["platform"] === "linux") &&
+        (value["arch"] === undefined || value["arch"] === "x64" || value["arch"] === "arm64") &&
+        (value["coreVersion"] === undefined || typeof value["coreVersion"] === "string") &&
+        (value["buildDate"] === undefined || typeof value["buildDate"] === "string")
+    );
+}
+
+/**
+ * 读清单（结构校验，失败抛错）。
+ *
+ * 逐条校验 known：只查 `Array.isArray` 会让 `[null]` 通过，随后
+ * `releasePlatform(entry)` 读 `entry.platform` 抛 TypeError（且发生在网络请求之后）。
+ */
 function loadManifest(): QqReleasesFile {
     const raw = readFileSync(MANIFEST_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
-    if (parsed.schema !== 2 || !Array.isArray(parsed.known) || parsed.known.length === 0) {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (err) {
+        throw new Error(`qq-releases.json 解析失败: ${String(err)}`);
+    }
+    if (!isRecord(parsed)) {
+        throw new Error("qq-releases.json 结构不合法（顶层必须是对象）");
+    }
+    const schema = parsed["schema"];
+    const known = parsed["known"];
+    if (schema !== 2 || !Array.isArray(known) || known.length === 0) {
         throw new Error("qq-releases.json 结构不合法（需 schema=2 且 known 非空数组）");
     }
-    return parsed as QqReleasesFile;
+    const entries: QqReleaseEntry[] = [];
+    for (const item of known) {
+        if (!isReleaseEntry(item)) {
+            throw new Error(
+                `qq-releases.json 结构不合法（known 含非法条目: ${JSON.stringify(item)?.slice(0, 120)}）`,
+            );
+        }
+        entries.push(item);
+    }
+    return { schema, known: entries };
 }
 
 /** 写清单（4 空格缩进 + 换行，与仓库格式一致）。 */

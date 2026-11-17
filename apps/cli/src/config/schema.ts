@@ -4,7 +4,9 @@
  * 主配置 parse（不引入 zod）：数据根 / 自动重启 / 重启延迟 / 账号列表。
  * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
  * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
- * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验。
+ * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验；
+ * `config validate` 例外（见 protocol-validate.ts：validate 承诺与装配同 schema，
+ * 否则「校验通过但启动 78」，故仅在 validate 路径懒加载 adapter 补校验）。
  * 全部校验错误为 ConfigError（2026-10-25 嵌入式退出码契约：CLI exit 78 一族，
  * 内联与文件两形态共用本校验器）。
  */

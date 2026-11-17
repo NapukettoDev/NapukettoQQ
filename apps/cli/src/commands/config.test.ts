@@ -74,6 +74,30 @@ describe("cmdConfigValidate 显式形态", () => {
         expect(result).toEqual({ source: "inline" });
     });
 
+    it("--config-json 协议段字段类型非法 → ConfigError（与装配 zod 同口径）", async () => {
+        const configJson = JSON.stringify({
+            accounts: [{ qq: "10001", onebot11: { httpServers: "not-an-array" } }],
+        });
+        await expect(cmdConfigValidate({ configJson, dataDir: tmp })).rejects.toThrow(
+            /onebot11 段校验失败/,
+        );
+    });
+
+    it("--config 协议段字段类型非法 → ConfigError（文件形态同口径）", async () => {
+        const path = join(tmp, "napuketto.toml");
+        writeFileSync(path, '[[accounts]]\nqq = "10001"\n[accounts.milky]\nport = "abc"\n');
+        await expect(cmdConfigValidate({ configPath: path, dataDir: tmp })).rejects.toThrow(
+            /milky 段校验失败/,
+        );
+    });
+
+    it("协议段为空对象 → 通过（空段 = 不启用该协议，与 loader 装配一致）", async () => {
+        const configJson = JSON.stringify({ accounts: [{ qq: "10001", kurobot: {} }] });
+        await expect(cmdConfigValidate({ configJson, dataDir: tmp })).resolves.toEqual({
+            source: "inline",
+        });
+    });
+
     it("--config-json 占位 qq → ConfigError，文案不含 toml 路径", async () => {
         try {
             await cmdConfigValidate({

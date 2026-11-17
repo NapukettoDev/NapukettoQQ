@@ -49,6 +49,7 @@ import {
     stringifyToml,
 } from "@napuketto/kernel";
 import { type ConfigSource, parseInlineConfig } from "../config/inline.js";
+import { validateProtocolSections } from "../config/protocol-validate.js";
 import { type CliConfig, parseCliConfig } from "../config/schema.js";
 import { CliConfigStore, defaultCliConfig, resolveCliConfigSource } from "../config/store.js";
 import { configTemplate } from "../config/template.js";
@@ -186,8 +187,8 @@ async function readConfigTextForValidate(path: string): Promise<string> {
 }
 
 /**
- * 校验配置文件（与运行时同构：ConfigBase.parseText 反序列化 + 校验，报错文案
- * 含路径且与 loadCliConfig 主路径逐字一致；格式按扩展名推断，同 ConfigBase）。
+ * 校验配置文件（与运行时同构：ConfigBase.parseText 反序列化 + 主配置校验，
+ * 再补协议段 zod 校验；报错文案含路径且与 loadCliConfig 主路径逐字一致）。
  */
 async function validateConfigFile(path: string, dataRoot: string): Promise<void> {
     const raw = await readConfigTextForValidate(path);
@@ -196,7 +197,7 @@ async function validateConfigFile(path: string, dataRoot: string): Promise<void>
         schema: { parse: parseCliConfig } satisfies ConfigSchema<CliConfig>,
         defaults: defaultCliConfig(dataRoot),
     });
-    store.parseText(raw);
+    await validateProtocolSections(store.parseText(raw));
 }
 
 /** config validate 选项（--config / --config-json 二选一；无参 = 校验生效配置）。 */
@@ -228,7 +229,7 @@ export async function cmdConfigValidate(
         throw kernelError("config validate：--config 与 --config-json 只能二选一", "INVALID_PARAM");
     }
     if (configJson !== undefined) {
-        parseInlineConfig(configJson);
+        await validateProtocolSections(parseInlineConfig(configJson));
         return { source: "inline" };
     }
     if (configPath !== undefined) {
@@ -238,7 +239,7 @@ export async function cmdConfigValidate(
     // 无参：校验当前生效配置（内联优先；文件缺失按配置缺失报 78，不落模板）
     const resolved = resolveCliConfigSource(opts);
     if (resolved.source === "inline") {
-        parseInlineConfig(resolved.text);
+        await validateProtocolSections(parseInlineConfig(resolved.text));
         return { source: "inline" };
     }
     await validateConfigFile(resolved.path, resolved.dataRoot);

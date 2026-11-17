@@ -59,6 +59,36 @@ async function expandGlobDirs(root: string, base: string): Promise<string[]> {
  * 读取单目录下的 package.json。
  * 无 package.json / 无 name / private 包 → null（不可发布）。
  */
+/** 非 null、非数组的普通对象判定（外部 package.json 边界守卫）。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * dependencies 表守卫：`null` / 数组 / 非对象一律视作空表，非字符串版本号丢弃。
+ * 直接 `as Record<string, string>` 会让 `"dependencies": null` 通过——随后
+ * topoSort 的 `Object.keys(null)` 抛 TypeError（发布链半途崩）。
+ */
+function dependencyRecord(value: unknown): Record<string, string> {
+    if (!isRecord(value)) {
+        return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [name, range] of Object.entries(value)) {
+        if (typeof range === "string") {
+            out[name] = range;
+        }
+    }
+    return out;
+}
+
+/**
+ * 读取单目录下的 package.json。
+ * 无 package.json / 无 name / private 包 → null（不可发布）。
+ *
+ * 反序列化产物按 unknown 处理：顶层 `null` / 数组在旧实现里会直接触发
+ * `pkg.name` TypeError，畸形 dependencies 则会炸在拓扑排序。
+ */
 async function loadPackage(dir: string): Promise<WorkspacePkg | null> {
     let raw: string;
     try {
@@ -66,21 +96,19 @@ async function loadPackage(dir: string): Promise<WorkspacePkg | null> {
     } catch {
         return null;
     }
-    const pkg = JSON.parse(raw) as {
-        name?: unknown;
-        private?: unknown;
-        version?: unknown;
-        dependencies?: unknown;
-    };
-    if (typeof pkg.name !== "string" || pkg.name === "" || pkg.private === true) {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+        return null;
+    }
+    const name = parsed["name"];
+    if (typeof name !== "string" || name === "" || parsed["private"] === true) {
         return null;
     }
     return {
-        name: pkg.name,
+        name,
         dir,
-        version: typeof pkg.version === "string" ? pkg.version : "0.0.0",
-        dependencies:
-            pkg.dependencies === undefined ? {} : (pkg.dependencies as Record<string, string>),
+        version: typeof parsed["version"] === "string" ? parsed["version"] : "0.0.0",
+        dependencies: dependencyRecord(parsed["dependencies"]),
     };
 }
 

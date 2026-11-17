@@ -231,6 +231,12 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
 - **登录悬挂即丢弃**：超时只做失败语义，不尝试取消底层 promise。
 - **文件发送不造假成功**：只能走闪传；语义降级必须写在协议文档，不得用 `sendStatus=0`
   静默失败。
+- **uid→uin 不产出假值**：`DoubtFriendRequestInfo.uin` 只在能解析为正安全整数时出现
+  （`Number("u_xxx")` 的 NaN 会让 JSON 变 null，缺省字段比假 0 / null 诚实）；调用方
+  （adapter 动作）按「字段缺省」处理，不得回填 NaN。
+- **原生入口只验调用点方法面**（wrapper-guards）：守卫拿到实例后，调用点
+  （`new Session` / `session.init`）仍要检查可调用性——导出/实例随 QQ 版本漂移时抛
+  `KernelError`，而不是裸 TypeError；不做全量 18 方法硬校验（多版本兼容优先）。
 
 历史决策见 [decisions.md](../../../docs/architecture/decisions.md)，实测样本与探针命令见
 [evidence.md](./evidence.md)。

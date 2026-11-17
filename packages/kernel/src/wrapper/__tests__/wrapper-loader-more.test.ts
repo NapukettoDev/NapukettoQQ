@@ -58,7 +58,7 @@ describe("startNapuketto 自建宿主（无 process.type）", () => {
     it("session 先于 engine 创建（自建宿主决定性顺序）", () => {
         withProcessType(undefined, () => {
             const order: string[] = [];
-            const session = { startNT: vi.fn(() => order.push("startNT")) };
+            const session = { startNT: vi.fn(() => order.push("startNT")), getMsgService: vi.fn() };
             const engine = {
                 initWithDeskTopConfig: vi.fn(() => order.push("engine")),
             };
@@ -183,7 +183,7 @@ describe("startNapuketto 自建宿主（无 process.type）", () => {
     it("sessionConfig 提供 → initSession + startSession（startupSession.start）", () => {
         withProcessType(undefined, () => {
             const start = vi.fn();
-            const session = { init: vi.fn(), startNT: vi.fn() };
+            const session = { init: vi.fn(), startNT: vi.fn(), getMsgService: vi.fn() };
             const exports = mockExports({
                 NodeIQQNTWrapperSession: sessionCtorMock(session),
                 NodeIQQNTStartupSessionWrapper: { create: () => ({ start }) },
@@ -251,7 +251,10 @@ describe("startNapuketto QQ 主进程（type=browser 模拟）", () => {
     it("session 在 engine 之后创建（browser 原顺序）", () => {
         withProcessType("browser", () => {
             const order: string[] = [];
-            const session = { startNT: vi.fn() } as unknown as NodeIQQNTWrapperSession;
+            const session = {
+                startNT: vi.fn(),
+                getMsgService: vi.fn(),
+            } as unknown as NodeIQQNTWrapperSession;
             // create 打点：createNewSession 调用发生在 engine 之后（finishSession）
             const ctor = Object.assign(
                 vi.fn(() => session),
