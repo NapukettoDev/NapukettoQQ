@@ -217,6 +217,7 @@ function handleMilkyHttpRequest(
         .handle(req)
         .then((result) => {
             if (result.status === "ok") {
+                // status=ok 已把 data 收窄为 T；`?? {}` 仅兜住违规动作返回的 null
                 respond({ status: "ok", retcode: 0, data: result.data ?? {} });
             } else {
                 respond({

@@ -17,6 +17,7 @@
  */
 import process from "node:process";
 import type pino from "pino";
+import { isRecord } from "../utils/type-guards.js";
 import type { LogFormat, TimestampMode } from "./log-config.js";
 
 /** 级别数值 → 名称（pino 标准映射）。 */
@@ -341,15 +342,20 @@ export function createConsoleFormatStream(
 
     return {
         write(line: string) {
-            let record: Record<string, unknown>;
+            let parsed: unknown;
             try {
-                record = JSON.parse(line) as Record<string, unknown>;
+                parsed = JSON.parse(line);
             } catch {
                 // 非法 JSON 行原样透出（不吞日志）
                 out.write(`${line}\n`);
                 return;
             }
-            out.write(render(record, ctx));
+            if (!isRecord(parsed)) {
+                // 合法 JSON 但不是对象（数组 / 标量）：非 pino 记录，原样透出
+                out.write(`${line}\n`);
+                return;
+            }
+            out.write(render(parsed, ctx));
         },
     };
 }

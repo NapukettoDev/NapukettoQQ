@@ -19,7 +19,13 @@ import path from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { errorMessage, resolveConfigPath, resolveDataRoot } from "@napuketto/kernel";
+import {
+    errorMessage,
+    hasStringProp,
+    isRecord,
+    resolveConfigPath,
+    resolveDataRoot,
+} from "@napuketto/kernel";
 import {
     checkInstanceLock,
     defaultStubDir,
@@ -91,12 +97,11 @@ function forwardFiltered(input: NodeJS.ReadableStream, out: NodeJS.WritableStrea
  */
 function renderTerminalQr(raw: string): void {
     try {
-        const data = JSON.parse(raw) as { qrcodeUrl?: string };
-        const { qrcodeUrl } = data;
-        if (qrcodeUrl === undefined || qrcodeUrl === "") {
+        const data: unknown = JSON.parse(raw);
+        if (!isRecord(data) || !hasStringProp(data, "qrcodeUrl") || data["qrcodeUrl"] === "") {
             return;
         }
-        process.stdout.write(`${renderQrAnsi(qrcodeUrl)}\n`);
+        process.stdout.write(`${renderQrAnsi(data["qrcodeUrl"])}\n`);
     } catch {
         // 坏行 / 编码失败静默丢弃
     }

@@ -7,6 +7,17 @@
  *
  * 注意：这里所有对象由 QQ 运行时的 NAPI 层自动构建/转换，业务层禁止触碰 C++ ABI。
  */
+import type {
+    NodeIKernelBuddyService,
+    NodeIKernelFlashTransferService,
+    NodeIKernelGroupService,
+    NodeIKernelMsgService,
+    NodeIKernelProfileLikeService,
+    NodeIKernelProfileService,
+    NodeIKernelRecentContactService,
+    NodeIKernelRichMediaService,
+    NodeIKernelTicketService,
+} from "./services/index.js";
 
 /** 平台类型（与 wrapper.node 的 platform 字段对应）。 */
 export const PlatformType = {
@@ -153,19 +164,28 @@ export interface NodeIQQNTWrapperSession {
     disableIpDirect(arg: unknown): void;
     getAccountPath(arg: unknown): string;
     updateTicket(arg: unknown): void;
-    // 60+ getService：运行时反射枚举后补齐
-    getMsgService(): unknown;
-    getGroupService(): unknown;
-    getBuddyService(): unknown;
-    getTicketService(): unknown;
-    getRichMediaService(): unknown;
+    /**
+     * get*Service 系列：运行时返回 **可能为 null 的原生服务句柄**（session 未 init /
+     * 句柄失效时）。这里按各自 Service 接口精确声明，调用方经
+     * `requireKernelService` 校验非空 + 方法面后再使用——不再需要在调用点做
+     * 两级强转（`NodeIKernel*Service | null`）。
+     */
+    getMsgService(): NodeIKernelMsgService | null;
+    getGroupService(): NodeIKernelGroupService | null;
+    getBuddyService(): NodeIKernelBuddyService | null;
+    getTicketService(): NodeIKernelTicketService | null;
+    getRichMediaService(): NodeIKernelRichMediaService | null;
     /** 闪传服务（诊断用：调查 rich media transfer failed 时验证初始化触发点）。 */
-    getFlashTransferService(): unknown;
-    getProfileService(): unknown;
+    getFlashTransferService(): NodeIKernelFlashTransferService | null;
+    getProfileService(): NodeIKernelProfileService | null;
     /** 会话列表（P2 批次二 get_peer_pins 数据源；2026-10-31 探测方法面）。 */
-    getRecentContactService(): unknown;
-    getProfileLikeService(): unknown;
+    getRecentContactService(): NodeIKernelRecentContactService | null;
+    getProfileLikeService(): NodeIKernelProfileLikeService | null;
+    /** 以下服务尚未产出运行时探测类型，保持 unknown（禁止盲猜形状）。 */
     getTipOffService(): unknown;
+    getNodeMiscService(): unknown;
+    getSearchService(): unknown;
+    getUnitedConfigService(): unknown;
 }
 
 /** NodeIQQNTStartupSessionWrapper：启动会话实例方法。 */

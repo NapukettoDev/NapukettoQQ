@@ -42,8 +42,16 @@ export class GroupCache {
     private readonly groupDetails = new Map<string, GroupDetailInfo>();
     /** 群成员：groupCode → (uid → GroupMember)。 */
     private readonly members = new Map<string, Map<string, GroupMember>>();
-    /** 惰性回填 in-flight 去重。 */
-    private readonly inFlight = new Map<string, Promise<unknown>>();
+    /**
+     * 惰性回填 in-flight 去重。
+     *
+     * 按返回类型拆成三个精确容器：同 key 并发只拉一次，且取回的值类型由容器
+     * 声明（Promise<Group[]> / Promise<GroupDetailInfo> / Promise<GroupMember[]>）
+     * 自然推导——不再用 `Promise<unknown>` + `as Promise<T>` 假装泛型。
+     */
+    private inFlightGroupList: Promise<Group[]> | null = null;
+    private readonly inFlightDetail = new Map<string, Promise<GroupDetailInfo>>();
+    private readonly inFlightMembers = new Map<string, Promise<GroupMember[]>>();
 
     private unsubscribes: (() => void) | null = null;
 
@@ -114,7 +122,9 @@ export class GroupCache {
         this.groupList.clear();
         this.groupDetails.clear();
         this.members.clear();
-        this.inFlight.clear();
+        this.inFlightGroupList = null;
+        this.inFlightDetail.clear();
+        this.inFlightMembers.clear();
     }
 
     /** 释放（等价 unregister，幂等）。 */
@@ -192,7 +202,7 @@ export class GroupCache {
         if (cached !== undefined) {
             return cached;
         }
-        const detail = await this.dedupe<GroupDetailInfo>(`detail:${groupCode}`, () =>
+        const detail = await this.dedupeMap(this.inFlightDetail, groupCode, () =>
             this.groupApi.getGroupInfo(groupCode),
         );
         this.groupDetails.set(groupCode, detail);
@@ -208,7 +218,7 @@ export class GroupCache {
         if (map !== undefined && map.size > 0) {
             return [...map.values()];
         }
-        const members = await this.dedupe<GroupMember[]>(`members:${groupCode}`, () =>
+        const members = await this.dedupeMap(this.inFlightMembers, groupCode, () =>
             this.groupApi.getGroupMemberList(groupCode, true),
         );
         const merged = new Map<string, GroupMember>();
@@ -228,8 +238,10 @@ export class GroupCache {
         if (cached !== undefined) {
             return cached;
         }
-        const members = await this.dedupe<GroupMember[]>(`member:${groupCode}:${uid}`, () =>
-            this.groupApi.getGroupMemberInfo(groupCode, [uid]),
+        const members = await this.dedupeMap(
+            this.inFlightMembers,
+            `member:${groupCode}:${uid}`,
+            () => this.groupApi.getGroupMemberInfo(groupCode, [uid]),
         );
         const [member] = members;
         if (member === undefined) {
@@ -255,30 +267,38 @@ export class GroupCache {
         return map?.get(uid);
     }
 
-    /** 惰性回填全量群列表（getGroup 缺失时）。 */
+    /** 惰性回填全量群列表（getGroup 缺失时；并发调用共享同一次拉取）。 */
     private async loadGroupList(): Promise<void> {
-        const list = await this.dedupe<Group[]>("group-list", () =>
-            this.groupApi.getGroupList(false),
-        );
-        for (const group of list) {
+        let inFlight = this.inFlightGroupList;
+        if (inFlight === null) {
+            inFlight = this.groupApi.getGroupList(false).finally(() => {
+                this.inFlightGroupList = null;
+            });
+            this.inFlightGroupList = inFlight;
+        }
+        for (const group of await inFlight) {
             this.groupList.set(group.groupCode, group);
         }
     }
 
-    /** 惰性回填并发去重：同 key 并发只拉一次。 */
-    private async dedupe<T>(key: string, loader: () => Promise<T>): Promise<T> {
-        const existing = this.inFlight.get(key);
+    /**
+     * 惰性回填并发去重（按返回类型分容器）：同 map + key 并发只拉一次。
+     * loader 的返回值类型即容器元素类型——取回时由 Promise<T> 自然给出 T，
+     * 不需要 `as Promise<T>` 断言。
+     */
+    private async dedupeMap<T>(
+        map: Map<string, Promise<T>>,
+        key: string,
+        loader: () => Promise<T>,
+    ): Promise<T> {
+        const existing = map.get(key);
         if (existing !== undefined) {
-            return await (existing as Promise<T>);
+            return await existing;
         }
-        const task = loader()
-            .catch((err: unknown) => {
-                throw err;
-            })
-            .finally(() => {
-                this.inFlight.delete(key);
-            });
-        this.inFlight.set(key, task);
-        return await task;
+        const promise = loader().finally(() => {
+            map.delete(key);
+        });
+        map.set(key, promise);
+        return await promise;
     }
 }

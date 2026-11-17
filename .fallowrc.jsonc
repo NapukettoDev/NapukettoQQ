@@ -65,6 +65,21 @@
             "exports": [
                 "sendLog"
             ]
+        },
+        // 类型守卫的公共面（2026-11-17 虚假类型安全清理）：两者都是**跨协议复用**的
+        // 入站载荷守卫，仓内消费方分别经 parseOB11MessageSegments / forEachRawMessage
+        // 间接使用（静态图看不到对外导出的直接引用）。保留导出供下游适配器/插件复用。
+        {
+            "file": "packages/adapter/src/onebot11/helper/codec/segment.ts",
+            "exports": [
+                "isOB11MessageSegment"
+            ]
+        },
+        {
+            "file": "packages/adapter/src/shared/raw-message.ts",
+            "exports": [
+                "isRawMessage"
+            ]
         }
     ],
     // 框架反射使用的类成员（NAPI 按方法名反射调用，静态分析无引用）：

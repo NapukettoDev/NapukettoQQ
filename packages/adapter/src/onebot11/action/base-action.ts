@@ -18,14 +18,28 @@ const INVALID_RETCODE_HTTP = 400;
 /** 校验失败 retcode：WS 入口。 */
 const INVALID_RETCODE_WS = 1400;
 
-/** OB11 动作结果（retcode/status/data/message 信封 + WS echo）。 */
-export interface ActionResult<T> {
-    retcode: number;
-    status: string;
-    data: T | null;
-    message: string;
-    echo?: unknown;
-}
+/**
+ * OB11 动作结果（retcode/status/data/message 信封 + WS echo）。
+ *
+ * 可辨识联合：`status` 判别，`ok` 分支 `retcode` 恒 0 且 `data` 非空、
+ * `failed` 分支 `data` 恒 null。监听/传输层 `result.status === "ok"` 后
+ * `result.data` 由编译器收窄为 T。字段名与旧版一致（echo 仍两侧可选）。
+ */
+export type ActionResult<T> =
+    | {
+          status: "ok";
+          retcode: 0;
+          data: T;
+          message: "";
+          echo?: unknown;
+      }
+    | {
+          status: "failed";
+          retcode: number;
+          data: null;
+          message: string;
+          echo?: unknown;
+      };
 
 /** OB11 动作对象（工厂产出；HTTP 与 WS 共用同一校验执行骨架）。 */
 export interface Ob11Action<TPayload = unknown, TReturn = unknown> {

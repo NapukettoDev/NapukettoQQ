@@ -19,12 +19,12 @@
  */
 
 import type { NTEventChannel } from "../event-channel.js";
-import { kernelError } from "../infra/index.js";
 import type {
     NodeIKernelRecentContactService,
     NodeIQQNTWrapperSession,
     RecentContactListener,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 
 /** 会话列表事件通道的固定类型（事件名前缀 "RecentContact"）。 */
 export type RecentContactEventChannel = NTEventChannel<RecentContactListener, "RecentContact">;
@@ -39,15 +39,11 @@ export class RecentContactBridge {
     private listenerId: number | null = null;
 
     constructor(session: NodeIQQNTWrapperSession, channel: RecentContactEventChannel) {
-        const service =
-            session.getRecentContactService() as unknown as NodeIKernelRecentContactService | null;
-        if (service === null || service === undefined) {
-            throw kernelError(
-                "getRecentContactService() 返回空（session 未 init）",
-                "INVALID_STATE",
-            );
-        }
-        this.service = service;
+        this.service = requireKernelService(
+            session.getRecentContactService(),
+            "getRecentContactService",
+            ["addKernelRecentContactListener"],
+        );
         this.channel = channel;
     }
 

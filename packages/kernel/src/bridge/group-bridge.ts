@@ -15,12 +15,12 @@
  */
 
 import type { NTEventChannel } from "../event-channel.js";
-import { kernelError } from "../infra/index.js";
 import type {
     GroupListener,
     NodeIKernelGroupService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 
 /** 群事件通道的固定类型（事件名前缀 "Group"）。 */
 export type GroupEventChannel = NTEventChannel<GroupListener, "Group">;
@@ -35,11 +35,9 @@ export class GroupBridge {
     private listenerId: number | null = null;
 
     constructor(session: NodeIQQNTWrapperSession, channel: GroupEventChannel) {
-        const service = session.getGroupService() as unknown as NodeIKernelGroupService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getGroupService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getGroupService(), "getGroupService", [
+            "addKernelGroupListener",
+        ]);
         this.channel = channel;
     }
 

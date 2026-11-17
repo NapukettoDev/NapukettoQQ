@@ -44,16 +44,22 @@ describe("getEssenceMsgList", () => {
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(
-                jsonResponse({ retcode: 0, data: { msg_list: [{ msg_seq: 1 }], is_end: false } }),
+                jsonResponse({
+                    retcode: 0,
+                    data: { msg_list: [{ msg_seq: 1, msg_content: [] }], is_end: false },
+                }),
             )
             .mockResolvedValueOnce(
-                jsonResponse({ retcode: 0, data: { msg_list: [{ msg_seq: 2 }], is_end: true } }),
+                jsonResponse({
+                    retcode: 0,
+                    data: { msg_list: [{ msg_seq: 2, msg_content: [] }], is_end: true },
+                }),
             );
         vi.stubGlobal("fetch", fetchMock);
 
         await expect(api.getEssenceMsgList("10001")).resolves.toEqual([
-            { msg_seq: 1 },
-            { msg_seq: 2 },
+            { msg_seq: 1, msg_content: [] },
+            { msg_seq: 2, msg_content: [] },
         ]);
         expect(getCookies).toHaveBeenCalledWith("qun.qq.com");
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -86,16 +92,21 @@ describe("getEssenceMsgList", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it("msg_list 非数组 → items 空；null 项过滤", async () => {
+    it("msg_list 非数组 → items 空；缺 msg_content / null 项过滤", async () => {
         const { api } = makeApi();
         const fetchMock = vi.fn().mockResolvedValue(
             jsonResponse({
                 retcode: 0,
-                data: { msg_list: [null, { msg_seq: 9 }], is_end: true },
+                data: {
+                    msg_list: [null, { msg_seq: 8 }, { msg_seq: 9, msg_content: [] }],
+                    is_end: true,
+                },
             }),
         );
         vi.stubGlobal("fetch", fetchMock);
-        await expect(api.getEssenceMsgList("10001")).resolves.toEqual([{ msg_seq: 9 }]);
+        await expect(api.getEssenceMsgList("10001")).resolves.toEqual([
+            { msg_seq: 9, msg_content: [] },
+        ]);
     });
 
     it("fetch 抛错 → KernelError UNKNOWN", async () => {

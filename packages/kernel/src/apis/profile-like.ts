@@ -5,18 +5,18 @@
  */
 import { kernelError } from "../infra/index.js";
 import type { NodeIKernelProfileLikeService, NodeIQQNTWrapperSession } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 
 /** 点赞 API：从 session 拿 profile like service，包装成语义化方法。 */
 export class ProfileLikeApi {
     private readonly service: NodeIKernelProfileLikeService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service =
-            session.getProfileLikeService() as unknown as NodeIKernelProfileLikeService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getProfileLikeService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(
+            session.getProfileLikeService(),
+            "getProfileLikeService",
+            ["setBuddyProfileLike"],
+        );
     }
 
     /** 点赞（send_like；uid 为目标 uid，count 次数）。 */

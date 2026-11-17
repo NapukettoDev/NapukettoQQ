@@ -9,6 +9,7 @@
  * 错误语义（规范）：标准 API 平台不支持 → 404；平台支持但未实现 → 501；
  * 非标准 API → 404；鉴权失败 → 401。
  */
+import { isRecord } from "@napuketto/kernel";
 import type {
     AuthorizeHook,
     EventBroadcaster,
@@ -19,7 +20,7 @@ import type {
 import { HttpServer, WsServer } from "@napuketto/network";
 import { SatoriActionError, type SatoriActionRegistry } from "./action/index.js";
 import { HTTP_STATUS, type SatoriConfig } from "./helper/index.js";
-import { type Event, type IdentifyBody, type Login, Opcode } from "./types/index.js";
+import { type Event, type Login, Opcode } from "./types/index.js";
 
 /** WS 事件服务路径（规范固定）。 */
 const WS_EVENTS_PATH = "/v1/events";
@@ -183,12 +184,15 @@ function handleWsSignal(
     token: string | undefined,
     login: () => Login,
 ): void {
-    const parsed = (signal ?? {}) as { op?: unknown; body?: unknown };
-    const op = parsed.op;
+    if (!isRecord(signal)) {
+        return;
+    }
+    const op = signal["op"];
     if (op === Opcode.IDENTIFY) {
-        const body = (parsed.body ?? {}) as Partial<IdentifyBody>;
+        const rawBody = isRecord(signal["body"]) ? signal["body"] : {};
         // 鉴权：配置了 token 时校验 IDENTIFY token；失败不响应（客户端超时断开）
-        if (token !== undefined && token !== "" && body.token !== token) {
+        const bodyToken = rawBody["token"];
+        if (token !== undefined && token !== "" && bodyToken !== token) {
             return;
         }
         // 会话恢复（body.sn）：第一版跳过，直接 READY 当前状态

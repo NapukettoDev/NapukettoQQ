@@ -24,6 +24,7 @@ import type {
     VideoElement,
 } from "../types/index.js";
 import { ChatType, ElementType, toSendElements, VIDEO_THUMB_KEY } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult, unwrapResult } from "./result.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */
@@ -165,11 +166,11 @@ export class MsgApi {
     private lastMsgTime = 0;
 
     constructor(session: NodeIQQNTWrapperSession, channel?: MsgEventChannel, util?: unknown) {
-        const service = session.getMsgService() as unknown as NodeIKernelMsgService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getMsgService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getMsgService(), "getMsgService", [
+            "sendMsg",
+            "recallMsg",
+            "getMsgs",
+        ]);
         this.channel = channel ?? null;
         // util 传入形态：构造器（NodeQQNTWrapperUtil，含 get()）或实例，宽松兼容
         this.util = util !== null && util !== undefined ? (util as { get(): unknown }) : null;
@@ -653,10 +654,7 @@ export class MsgApi {
             ...(target.chatType === ChatType.GROUP ? { confId: target.peerUid } : {}),
         };
         try {
-            checkLooseResult(
-                "sendNudge",
-                (await this.service.sendNudge(param)) as { result?: unknown } | null | undefined,
-            );
+            checkLooseResult("sendNudge", await this.service.sendNudge(param));
         } catch (e) {
             if (isKernelError(e)) {
                 throw e;
@@ -670,10 +668,7 @@ export class MsgApi {
         try {
             checkLooseResult(
                 "setContactLocalTop",
-                (await this.service.setContactLocalTop(target, isTop)) as
-                    | { result?: unknown }
-                    | null
-                    | undefined,
+                await this.service.setContactLocalTop(target, isTop),
             );
         } catch (e) {
             if (isKernelError(e)) {

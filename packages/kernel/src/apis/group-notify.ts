@@ -3,9 +3,11 @@
  *
  * get_group_system_msg / set_group_add_request / get_group_shut_list 共用。
  * getSingleScreenNotifies / getGroupShutUpMemberList 的列表可能走 listener 回调，
- * 直接调用返回形状待探测校准：兼容 result 数组 / 字段 / 直接数组。
+ * 直接调用返回形状待探测校准：兼容 result 数组 / 字段 / Map。
+ *
+ * 列表提取一律走元素级类型守卫（`isGroupNotify` / `isGroupMember`）：
+ * 原生返回数组里混入 null / 字符串 / 残缺对象时逐项丢弃，而不是整数组强转。
  */
-import { kernelError } from "../infra/index.js";
 import type {
     GroupMember,
     GroupNotify,
@@ -13,6 +15,12 @@ import type {
     NodeIQQNTWrapperSession,
     NTGroupRequestOperateTypes,
 } from "../types/index.js";
+import {
+    hasNumberProp,
+    hasStringProp,
+    isRecord,
+    requireKernelService,
+} from "../utils/type-guards.js";
 import { unwrap } from "./result.js";
 
 /** 群通知 API：从 session 拿 group service，包装成语义化方法。 */
@@ -20,26 +28,30 @@ export class GroupNotifyApi {
     private readonly service: NodeIKernelGroupService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service = session.getGroupService() as unknown as NodeIKernelGroupService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getGroupService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getGroupService(), "getGroupService", [
+            "getSingleScreenNotifies",
+            "operateSysNotify",
+        ]);
     }
 
     /** 单屏通知列表（get_group_system_msg / set_group_add_request 共用）。 */
     async getSingleScreenNotifies(doubt: boolean, count: number): Promise<GroupNotify[]> {
-        const raw = await this.service.getSingleScreenNotifies(doubt, "", count);
-        return extractNotifyList(raw.result);
+        const raw: unknown = await this.service.getSingleScreenNotifies(doubt, "", count);
+        return extractNotifyList(isRecord(raw) ? raw["result"] : undefined);
     }
 
     /** 禁言成员列表（get_group_shut_list）。 */
     async getGroupShutUpMemberList(groupCode: string): Promise<GroupMember[]> {
-        const raw = await this.service.getGroupShutUpMemberList(groupCode);
-        if (raw.result !== 0) {
-            unwrap("getGroupShutUpMemberList", raw.result, raw.errMsg);
+        const raw: unknown = await this.service.getGroupShutUpMemberList(groupCode);
+        if (!isRecord(raw)) {
+            return [];
         }
-        return extractMemberList(raw.result);
+        unwrap(
+            "getGroupShutUpMemberList",
+            typeof raw["result"] === "number" ? raw["result"] : 0,
+            typeof raw["errMsg"] === "string" ? raw["errMsg"] : undefined,
+        );
+        return extractMemberList(raw["result"]);
     }
 
     /** 处理群请求（set_group_add_request 应答；approve=true 同意 / false 拒绝）。 */
@@ -70,36 +82,59 @@ export class GroupNotifyApi {
     }
 }
 
-/** 从 getSingleScreenNotifies 返回提取通知数组（兼容 result 数组 / notifies 字段）。 */
-export function extractNotifyList(result: unknown): GroupNotify[] {
-    if (Array.isArray(result)) {
-        return result as GroupNotify[];
-    }
-    if (result !== null && typeof result === "object") {
-        const obj = result as { notifies?: unknown; groupNotifies?: unknown };
-        if (Array.isArray(obj.notifies)) {
-            return obj.notifies as GroupNotify[];
-        }
-        if (Array.isArray(obj.groupNotifies)) {
-            return obj.groupNotifies as GroupNotify[];
-        }
-    }
-    return [];
+/** 群通知项形状判定（seq 字符串 + type 数字是 GroupNotify 的必备标识）。 */
+function isGroupNotify(val: unknown): val is GroupNotify {
+    return isRecord(val) && hasStringProp(val, "seq") && hasNumberProp(val, "type");
 }
 
-/** 从 getGroupShutUpMemberList 返回提取成员数组（兼容 result 数组 / memberList 字段）。 */
+/** 群成员项形状判定（uid + uin 齐备才算成员）。 */
+function isGroupMember(val: unknown): val is GroupMember {
+    return isRecord(val) && hasStringProp(val, "uid") && hasStringProp(val, "uin");
+}
+
+/** 数组逐项守卫过滤（非数组 = 空数组）。 */
+function filterList<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
+    return Array.isArray(value) ? value.filter(guard) : [];
+}
+
+/** 从 getSingleScreenNotifies 返回提取通知数组（兼容 result 数组 / notifies / groupNotifies）。 */
+export function extractNotifyList(result: unknown): GroupNotify[] {
+    if (Array.isArray(result)) {
+        return result.filter(isGroupNotify);
+    }
+    if (!isRecord(result)) {
+        return [];
+    }
+    return [
+        ...filterList(result["notifies"], isGroupNotify),
+        ...filterList(result["groupNotifies"], isGroupNotify),
+    ];
+}
+
+/** 从 getGroupShutUpMemberList 返回提取成员数组（兼容 result 数组 / memberList / list / infos Map）。 */
 export function extractMemberList(result: unknown): GroupMember[] {
     if (Array.isArray(result)) {
-        return result as unknown as GroupMember[];
+        return result.filter(isGroupMember);
     }
-    if (result !== null && typeof result === "object") {
-        const obj = result as { memberList?: unknown; list?: unknown };
-        if (Array.isArray(obj.memberList)) {
-            return obj.memberList as unknown as GroupMember[];
+    if (!isRecord(result)) {
+        return [];
+    }
+    const fromFields = [
+        ...filterList(result["memberList"], isGroupMember),
+        ...filterList(result["list"], isGroupMember),
+    ];
+    if (fromFields.length > 0) {
+        return fromFields;
+    }
+    const infos = result["infos"];
+    if (infos instanceof Map) {
+        const out: GroupMember[] = [];
+        for (const item of infos.values()) {
+            if (isGroupMember(item)) {
+                out.push(item);
+            }
         }
-        if (Array.isArray(obj.list)) {
-            return obj.list as unknown as GroupMember[];
-        }
+        return out;
     }
     return [];
 }

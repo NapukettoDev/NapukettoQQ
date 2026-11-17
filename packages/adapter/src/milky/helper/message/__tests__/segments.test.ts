@@ -16,6 +16,7 @@ import {
     canonicalToIncomingSegments,
     incomingForwardSegment,
     outgoingSegmentsToCanonical,
+    type RawOutgoingSegment,
     type ReceiveSegmentContext,
     type ReplyMeta,
 } from "../segments.js";
@@ -273,6 +274,25 @@ describe("outgoingSegmentsToCanonical：发送方向全类", () => {
             { type: "text", data: { text: "y" } },
         ]);
         expect(elements).toEqual([{ type: "text", text: "y" }]);
+    });
+
+    it("已知段缺必填字段（image 缺 uri / text 缺 text / mention user_id 非数字）→ INVALID_PARAM", () => {
+        /** 捕获抛错的 code（断言协议边界错误语义）。 */
+        function codeOf(segments: Array<OutgoingSegment | RawOutgoingSegment>): string {
+            try {
+                outgoingSegmentsToCanonical(segments);
+            } catch (err) {
+                return (err as { code: string }).code;
+            }
+            return "no-throw";
+        }
+        expect(codeOf([{ type: "image", data: {} }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "record", data: { uri: 1 } }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "video", data: {} }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "text", data: {} }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "mention", data: { user_id: "90001" } }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "reply", data: {} }])).toBe("INVALID_PARAM");
+        expect(codeOf([{ type: "face", data: {} }])).toBe("INVALID_PARAM");
     });
 
     it("file:// 畸形 URI（fileURLToPath 失败）→ 裸剥离前缀兜底", () => {

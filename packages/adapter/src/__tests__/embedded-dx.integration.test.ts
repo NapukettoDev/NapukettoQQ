@@ -46,37 +46,62 @@ const inlineSchema = {
     },
 };
 
-/** 假 session（只实现 runtime/桥所需的方法面）。 */
+/** 假 session（实现 runtime/桥/APIs 构造期校验所需的方法面）。 */
 function makeFakeSession(): NodeIQQNTWrapperSession {
     const msgService = {
         addKernelMsgListener: vi.fn(() => 1),
         removeKernelMsgListener: vi.fn(),
         generateMsgUniqueId: vi.fn(() => "generated-1"),
         sendMsg: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        recallMsg: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        getMsgs: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        getMsgsByMsgId: vi.fn(async () => ({ result: 0, errMsg: "" })),
         setStatus: vi.fn(async () => ({ result: 0, errMsg: "" })),
     };
     const groupService = {
         addKernelGroupListener: vi.fn(() => 1),
         removeKernelGroupListener: vi.fn(),
+        getGroupList: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        getGroupDetailInfo: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        getAllMemberList: vi.fn(async () => ({
+            errCode: 0,
+            errMsg: "",
+            result: { ids: [], infos: new Map(), finish: true },
+        })),
+        getSingleScreenNotifies: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        operateSysNotify: vi.fn(async () => undefined),
     };
     const buddyService = {
         addKernelBuddyListener: vi.fn(() => 1),
         removeKernelBuddyListener: vi.fn(),
+        getBuddyListFromCache: vi.fn(async () => []),
+        getBuddyNick: vi.fn(() => ""),
     };
     const recentContactService = {
         addKernelRecentContactListener: vi.fn(() => 1),
         removeKernelRecentContactListener: vi.fn(),
+        getRecentContactList: vi.fn(async () => ({ result: 0, errMsg: "" })),
     };
     return {
         getMsgService: () => msgService,
         getGroupService: () => groupService,
         getBuddyService: () => buddyService,
         getRecentContactService: () => recentContactService,
-        getTicketService: () => ({}),
-        getRichMediaService: () => ({}),
-        getFlashTransferService: () => ({}),
-        getProfileService: () => ({}),
-        getProfileLikeService: () => ({}),
+        getTicketService: () => ({ forceFetchClientKey: vi.fn(async () => ({ result: 0 })) }),
+        getRichMediaService: () => ({ getGroupFileList: vi.fn(async () => ({ result: 0 })) }),
+        getFlashTransferService: () => ({
+            addFileSetUploadListener: vi.fn(),
+            removeFileSetUploadListener: vi.fn(),
+            createFlashTransferUploadTask: vi.fn(),
+            sendFlashTransferMsg: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        }),
+        getProfileService: () => ({
+            getUserDetailInfo: vi.fn(async () => ({})),
+            getUserDetailInfoByUin: vi.fn(async () => ({})),
+        }),
+        getProfileLikeService: () => ({
+            setBuddyProfileLike: vi.fn(async () => ({ result: 0, errMsg: "" })),
+        }),
     } as unknown as NodeIQQNTWrapperSession;
 }
 

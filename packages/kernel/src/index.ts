@@ -223,7 +223,14 @@ export {
     VIDEO_THUMB_KEY,
 } from "./types/index.js";
 export {
-    /** @internal 运行时反射探测工具 */
+    hasBooleanProp,
+    hasFunctionProp,
+    hasNumberProp,
+    hasStringProp,
+    isRecord,
+    requireKernelService,
+} from "./utils/type-guards.js";
+export {
     createRecordingListener,
     type ListenerRecordEvent,
     type ListenerRecordingResult,

@@ -49,9 +49,11 @@ describe("查询", () => {
 
     it("getSingleScreenNotifies：result 直接数组形状；缺省形状空数组", async () => {
         const { api } = makeApi({
-            getSingleScreenNotifies: vi.fn(async () => ({ result: [{ seq: "2" }] })),
+            getSingleScreenNotifies: vi.fn(async () => ({ result: [{ seq: "2", type: 1 }] })),
         });
-        await expect(api.getSingleScreenNotifies(true, 5)).resolves.toEqual([{ seq: "2" }]);
+        await expect(api.getSingleScreenNotifies(true, 5)).resolves.toEqual([
+            { seq: "2", type: 1 },
+        ]);
         const { api: api2 } = makeApi({
             getSingleScreenNotifies: vi.fn(async () => ({ result: 0, errMsg: "" })),
         });
@@ -68,18 +70,17 @@ describe("查询", () => {
         await expect(api2.getGroupShutUpMemberList("10001")).rejects.toBeInstanceOf(KernelError);
     });
 
-    it("getGroupShutUpMemberList：result 即列表形状被严格 unwrap 拒绝（疑似 bug：提取分支不可达）", async () => {
-        // 现状：raw.result 非 0 即抛错，而 result 为成员列表数组时 !== 0 → 永远走 unwrap 失败，
-        // extractMemberList 的 memberList/list 分支实际不可达（返回形状待探测校准）。
+    it("getGroupShutUpMemberList：result 即列表形状时按元素守卫提取", async () => {
+        // result 为成员列表数组（非错误码）时不再误判为失败：逐项过 isGroupMember。
         const { api } = makeApi({
             getGroupShutUpMemberList: vi.fn(async () => ({
-                result: [{ uid: "u2" }],
+                result: [{ uid: "u2", uin: "10002" }, { uid: "junk" }],
                 errMsg: "",
             })),
         });
-        await expect(api.getGroupShutUpMemberList("10001")).rejects.toMatchObject({
-            message: /getGroupShutUpMemberList 失败/,
-        });
+        await expect(api.getGroupShutUpMemberList("10001")).resolves.toEqual([
+            { uid: "u2", uin: "10002" },
+        ]);
     });
 });
 
