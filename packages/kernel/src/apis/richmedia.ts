@@ -12,6 +12,7 @@ import type {
     NodeIKernelRichMediaService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
+import { hasStringProp, isRecord, requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult, unwrap } from "./result.js";
 
 /** 群文件业务类型（deleteGroupFile/moveGroupFile/renameGroupFile 用，说明书参考）。 */
@@ -48,12 +49,9 @@ export class RichMediaApi {
     private readonly service: NodeIKernelRichMediaService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service =
-            session.getRichMediaService() as unknown as NodeIKernelRichMediaService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getRichMediaService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getRichMediaService(), "getRichMediaService", [
+            "getGroupFileList",
+        ]);
     }
 
     /** 英文单词翻译（translate_en2zh）。 */
@@ -119,16 +117,14 @@ export class RichMediaApi {
 
     /** 创建群文件夹（create_group_file_folder）。 */
     async createGroupFolder(groupCode: string, folderName: string): Promise<string> {
-        const raw = await this.service.createGroupFolder(groupCode, folderName);
-        if (raw.result !== 0) {
-            unwrap("createGroupFolder", raw.result, raw.errMsg);
+        const raw: unknown = await this.service.createGroupFolder(groupCode, folderName);
+        checkLooseResult("createGroupFolder", raw);
+        if (!isRecord(raw)) {
+            return "";
         }
-        // 返回形状待探测：兼容 folderId / resultWithGroupItem
-        const { result } = raw as { result?: unknown };
-        if (typeof result === "string") {
-            return result;
-        }
-        return "";
+        // 返回形状待探测：result 为字符串（folderId）时透出，数字 0 视作无 id
+        const result = raw["result"];
+        return typeof result === "string" ? result : "";
     }
 
     /** 删除群文件（delete_group_file）。 */
@@ -206,28 +202,44 @@ export class RichMediaApi {
     }
 }
 
-/** 从 getGroupFileList 返回提取文件列表（兼容数组 / { items } / { fileList }）。导出供单测。 */
+/** 群文件列表项形状判定（fileInfo / folderInfo 出现时必须带齐标识字段）。 */
+function isGroupFileListItem(val: unknown): val is GroupFileListItem {
+    if (!isRecord(val)) {
+        return false;
+    }
+    const fileInfo = val["fileInfo"];
+    const hasValidFile =
+        fileInfo === undefined ||
+        (isRecord(fileInfo) &&
+            hasStringProp(fileInfo, "fileId") &&
+            hasStringProp(fileInfo, "fileName"));
+    const folderInfo = val["folderInfo"];
+    const hasValidFolder =
+        folderInfo === undefined ||
+        (isRecord(folderInfo) &&
+            hasStringProp(folderInfo, "folderId") &&
+            hasStringProp(folderInfo, "folderName"));
+    return hasValidFile && hasValidFolder;
+}
+
+/** 从 getGroupFileList 返回提取文件列表（兼容数组 / { items } / { item } / { fileList } / { list }）。导出供单测。 */
 export function extractFileList(result: unknown): GroupFileListItem[] {
     if (Array.isArray(result)) {
-        return result as GroupFileListItem[];
+        return result.filter(isGroupFileListItem);
     }
-    if (result === null || typeof result !== "object") {
+    if (!isRecord(result)) {
         return [];
     }
-    const obj = result as { items?: unknown; fileList?: unknown; list?: unknown };
-    for (const key of ["items", "fileList", "list"] as const) {
-        const value = obj[key];
-        if (Array.isArray(value)) {
-            return value as GroupFileListItem[];
+    const candidates = [result["item"], result["items"], result["fileList"], result["list"]];
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) {
+            return candidate.filter(isGroupFileListItem);
         }
     }
     return [];
 }
 
-/** 统计文件数量（兼容数组 / { items }）。 */
+/** 统计文件数量（fileInfo 条目数，数组 / { items } 兼容）。 */
 function countGroupFiles(result: unknown): number {
-    if (Array.isArray(result)) {
-        return (result as GroupFileListItem[]).filter((item) => item.fileInfo !== undefined).length;
-    }
-    return 0;
+    return extractFileList(result).filter((item) => item.fileInfo !== undefined).length;
 }

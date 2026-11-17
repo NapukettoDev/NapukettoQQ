@@ -14,13 +14,13 @@
  */
 
 import type { NTEventChannel } from "../event-channel.js";
-import { kernelError } from "../infra/index.js";
 import type {
     MsgListener,
     NodeIKernelMsgService,
     NodeIQQNTWrapperSession,
     RawMessage,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { awaitPicLocalPaths, hasPendingPicPaths } from "./pic-path-grace.js";
 
 /** 消息事件通道的固定类型（事件名前缀 "Msg"）。 */
@@ -36,11 +36,9 @@ export class MsgBridge {
     private listenerId: number | null = null;
 
     constructor(session: NodeIQQNTWrapperSession, channel: MsgEventChannel) {
-        const service = session.getMsgService() as unknown as NodeIKernelMsgService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getMsgService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getMsgService(), "getMsgService", [
+            "addKernelMsgListener",
+        ]);
         this.channel = channel;
     }
 

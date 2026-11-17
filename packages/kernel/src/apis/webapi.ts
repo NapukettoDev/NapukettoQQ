@@ -6,7 +6,8 @@
  * 零 NapCat 代码：接口契约（URL/参数/返回形状）是 qun.qq.com 外部系统的事实，
  * 自研描述。
  */
-import { errorMessage, kernelError } from "../infra/index.js";
+import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
+import { isRecord } from "../utils/type-guards.js";
 import { TicketApi } from "./ticket.js";
 
 /** 群空间域名（Cookie 归属）。 */
@@ -90,11 +91,7 @@ export class WebApi {
         if (ret === null || ret.retcode !== 0) {
             return null;
         }
-        const list = ret.data?.msg_list;
-        return {
-            items: Array.isArray(list) ? list.filter((item) => item !== null) : [],
-            isEnd: ret.data?.is_end === true,
-        };
+        return { items: extractEssenceItems(ret.msgList), isEnd: ret.isEnd };
     }
 
     /** 获取群精华消息列表（get_essence_msg_list；分页拉取至 is_end）。 */
@@ -176,55 +173,78 @@ export function parseHonorList(text: string, type: number): HonorListItem[] {
     if (match === null || match[1] === undefined) {
         return [];
     }
-    let state: { talkativeList?: unknown; actorList?: unknown };
+    let state: unknown;
     try {
         state = JSON.parse(match[1]);
     } catch {
         return [];
     }
-    const raw = type === WebHonorType.TALKATIVE ? state.talkativeList : state.actorList;
+    if (!isRecord(state)) {
+        return [];
+    }
+    const raw = type === WebHonorType.TALKATIVE ? state["talkativeList"] : state["actorList"];
     if (!Array.isArray(raw)) {
         return [];
     }
     const out: HonorListItem[] = [];
     for (const item of raw) {
-        if (item !== null && typeof item === "object") {
-            const obj = item as {
-                uin?: unknown;
-                name?: unknown;
-                avatar?: unknown;
-                desc?: unknown;
-            };
-            out.push({
-                uin: String(obj.uin ?? ""),
-                name: String(obj.name ?? ""),
-                avatar: String(obj.avatar ?? ""),
-                desc: String(obj.desc ?? ""),
-            });
+        if (!isRecord(item)) {
+            continue;
         }
+        out.push({
+            uin: String(item["uin"] ?? ""),
+            name: String(item["name"] ?? ""),
+            avatar: String(item["avatar"] ?? ""),
+            desc: String(item["desc"] ?? ""),
+        });
     }
     return out;
 }
 
-/** 请求 qun.qq.com JSON 接口（带 Cookie；失败返回 null）。 */
+/** 精华消息项形状判定（msg_content 数组是 EssenceMsgItem 的标识字段）。 */
+function isEssenceMsgItem(val: unknown): val is EssenceMsgItem {
+    return isRecord(val) && Array.isArray(val["msg_content"]);
+}
+
+/** msg_list → 精华消息数组（逐项守卫，非数组 / 残缺项丢弃）。 */
+function extractEssenceItems(list: unknown): EssenceMsgItem[] {
+    return Array.isArray(list) ? list.filter(isEssenceMsgItem) : [];
+}
+
+/** qun.qq.com JSON 响应（收窄后的形状；msgList / isEnd 已经过对象校验）。 */
+interface QunJsonResponse {
+    retcode: number;
+    msgList: unknown;
+    isEnd: boolean;
+}
+
+/**
+ * 请求 qun.qq.com JSON 接口（带 Cookie；失败返回 null）。
+ * 响应体先过 `isRecord` 收窄再取字段——非对象 JSON（数组 / 标量）按 INVALID_PARAM 抛出。
+ */
 async function fetchQunJson(
     url: string,
     cookie: Record<string, string>,
-): Promise<{ retcode: number; data?: { msg_list?: EssenceMsgItem[]; is_end?: boolean } } | null> {
+): Promise<QunJsonResponse | null> {
     try {
         const res = await fetch(url, { headers: { Cookie: cookieToString(cookie) } });
         if (!res.ok) {
             return null;
         }
-        const json = (await res.json()) as {
-            retcode?: number;
-            data?: { msg_list?: unknown; is_end?: unknown };
-        };
+        const json: unknown = await res.json();
+        if (!isRecord(json)) {
+            throw kernelError("群 WebApi 响应非 JSON 对象", "INVALID_PARAM");
+        }
+        const data = json["data"];
         return {
-            retcode: json.retcode ?? -1,
-            data: json.data as { msg_list?: EssenceMsgItem[]; is_end?: boolean },
+            retcode: typeof json["retcode"] === "number" ? json["retcode"] : -1,
+            msgList: isRecord(data) ? data["msg_list"] : undefined,
+            isEnd: isRecord(data) && data["is_end"] === true,
         };
     } catch (err) {
+        if (isKernelError(err)) {
+            throw err;
+        }
         throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
     }
 }

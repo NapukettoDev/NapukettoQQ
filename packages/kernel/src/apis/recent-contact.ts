@@ -12,6 +12,7 @@ import type {
     RecentContact,
 } from "../types/index.js";
 import { ChatType } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult } from "./result.js";
 
 /** 会话列表拉取条数（覆盖置顶集合足够大；参数值待探测校准）。 */
@@ -32,15 +33,11 @@ export class RecentContactApi {
     private readonly service: NodeIKernelRecentContactService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service =
-            session.getRecentContactService() as unknown as NodeIKernelRecentContactService | null;
-        if (service === null || service === undefined) {
-            throw kernelError(
-                "getRecentContactService() 返回空（session 未 init）",
-                "INVALID_STATE",
-            );
-        }
-        this.service = service;
+        this.service = requireKernelService(
+            session.getRecentContactService(),
+            "getRecentContactService",
+            ["getRecentContactList"],
+        );
     }
 
     /** 置顶会话列表（get_peer_pins；getRecentContactList 返回形状待探测校准）。 */

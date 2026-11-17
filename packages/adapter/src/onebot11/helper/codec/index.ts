@@ -16,6 +16,8 @@ export {
 export {
     canonicalToSegment,
     cqCodeToSegment,
+    isOB11MessageSegment,
+    parseOB11MessageSegments,
     segmentsToCqMessage,
     segmentToCanonical,
 } from "./segment.js";

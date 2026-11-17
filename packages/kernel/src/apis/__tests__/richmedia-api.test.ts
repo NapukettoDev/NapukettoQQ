@@ -62,7 +62,10 @@ describe("translateWords", () => {
 
 describe("getGroupFileList", () => {
     it("result 即列表形状：返回全部条目（根目录）", async () => {
-        const items = [{ fileInfo: { fileId: "f1" } }, { folderInfo: { folderUid: "d1" } }];
+        const items = [
+            { fileInfo: { fileId: "f1", fileName: "a.txt", fileSize: "1" } },
+            { folderInfo: { folderId: "d1", folderName: "文档", folderUid: "d1" } },
+        ];
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({ result: items, errMsg: "" })),
         });
@@ -70,7 +73,7 @@ describe("getGroupFileList", () => {
     });
 
     it("result=0 且 raw 顶层列表形状兜底提取", async () => {
-        const items = [{ fileInfo: { fileId: "f1" } }];
+        const items = [{ fileInfo: { fileId: "f1", fileName: "a.txt", fileSize: "1" } }];
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({ result: 0, errMsg: "", ...{ items } })),
         });
@@ -79,18 +82,15 @@ describe("getGroupFileList", () => {
 
     it("parentFolderId 过滤：fileInfo.parent / folderInfo.folderUid 匹配", async () => {
         const items = [
-            { fileInfo: { fileId: "f1", parent: "d1" } },
-            { fileInfo: { fileId: "f2", parent: "d2" } },
-            { folderInfo: { folderUid: "d1" } },
-            { folderInfo: { folderUid: "d3" } },
+            { fileInfo: { fileId: "f1", fileName: "a.txt", fileSize: "1", parent: "d1" } },
+            { fileInfo: { fileId: "f2", fileName: "b.txt", fileSize: "1", parent: "d2" } },
+            { folderInfo: { folderId: "d1", folderName: "一", folderUid: "d1" } },
+            { folderInfo: { folderId: "d3", folderName: "三", folderUid: "d3" } },
         ];
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({ result: items, errMsg: "" })),
         });
-        await expect(api.getGroupFileList("10001", "d1")).resolves.toEqual([
-            { fileInfo: { fileId: "f1", parent: "d1" } },
-            { folderInfo: { folderUid: "d1" } },
-        ]);
+        await expect(api.getGroupFileList("10001", "d1")).resolves.toEqual([items[0], items[2]]);
     });
 
     it("宽松 result 数字非 0 抛错；fileCount 参数透传", async () => {
@@ -154,26 +154,19 @@ describe("getGroupFileSystemInfo", () => {
 });
 
 describe("文件夹与文件操作", () => {
-    it("createGroupFolder：result=0 返回空串（待校准兜底）；失败抛错", async () => {
+    it("createGroupFolder：result 字符串（folderId）透出；result=0 空串；失败抛错", async () => {
         const { api } = makeApi({
+            createGroupFolder: vi.fn(async () => ({ result: "fd-1", errMsg: "" })),
+        });
+        await expect(api.createGroupFolder("10001", "新建夹")).resolves.toBe("fd-1");
+        const { api: api2 } = makeApi({
             createGroupFolder: vi.fn(async () => ({ result: 0, errMsg: "" })),
         });
-        await expect(api.createGroupFolder("10001", "新建夹")).resolves.toBe("");
+        await expect(api2.createGroupFolder("10001", "新建夹")).resolves.toBe("");
         const { api: api3 } = makeApi({
             createGroupFolder: vi.fn(async () => ({ result: 1, errMsg: "x" })),
         });
         await expect(api3.createGroupFolder("10001", "新建夹")).rejects.toBeInstanceOf(KernelError);
-    });
-
-    it("createGroupFolder：result 字符串形状被严格 unwrap 拒绝（疑似 bug：folderId 提取分支不可达）", async () => {
-        // 现状：result 为 folderId 字符串时 result !== 0 → unwrap 抛错，
-        // `typeof result === "string"` 返回分支实际不可达。锁定现状，修复后调整断言。
-        const { api } = makeApi({
-            createGroupFolder: vi.fn(async () => ({ result: "fd-1", errMsg: "" })),
-        });
-        await expect(api.createGroupFolder("10001", "新建夹")).rejects.toMatchObject({
-            message: /createGroupFolder 失败/,
-        });
     });
 
     it("deleteGroupFile / deleteGroupFolder / transGroupFile：失败抛错", async () => {
@@ -205,28 +198,33 @@ describe("文件夹与文件操作", () => {
 
 describe("错误路径与返回形状补充", () => {
     it("getGroupFileList：result 为数组形态 → 原样作为文件列表返回", async () => {
+        const file1 = { fileInfo: { fileId: "1", fileName: "a.txt", fileSize: "1" } };
+        const file2 = { fileInfo: { fileId: "2", fileName: "b.txt", fileSize: "2" } };
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({
-                result: [{ fileInfo: { fileId: "1" } }, { fileInfo: { fileId: "2" } }, {}],
+                result: [file1, file2, {}],
                 groupSpaceResult: { usedSpace: 1, totalSpace: 2 },
             })),
         });
         const items = await api.getGroupFileList("10001");
         expect(items).toHaveLength(3);
-        expect(items[0]?.fileInfo).toEqual({ fileId: "1" });
+        expect(items[0]?.fileInfo).toEqual(file1.fileInfo);
         // 顶层列表形态兜底（extractFileList(raw)）同路径
+        const top = { fileInfo: { fileId: "top", fileName: "top.txt", fileSize: "3" } };
         const { api: api2 } = makeApi({
-            getGroupFileList: vi.fn(async () => [{ fileInfo: { fileId: "top" } }]),
+            getGroupFileList: vi.fn(async () => [top]),
         });
-        await expect(api2.getGroupFileList("10001")).resolves.toEqual([
-            { fileInfo: { fileId: "top" } },
-        ]);
+        await expect(api2.getGroupFileList("10001")).resolves.toEqual([top]);
     });
 
     it("getGroupFileDownloadUrl：命中且 url 空 → NOT_FOUND（无链接）", async () => {
         const { api } = makeApi({
             getGroupFileList: vi.fn(async () => ({
-                result: { items: [{ fileInfo: { fileId: "f1", url: "" } }] },
+                result: {
+                    items: [
+                        { fileInfo: { fileId: "f1", fileName: "a.txt", fileSize: "1", url: "" } },
+                    ],
+                },
                 groupSpaceResult: { usedSpace: 0, totalSpace: 0 },
             })),
         });

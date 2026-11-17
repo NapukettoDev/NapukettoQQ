@@ -94,6 +94,33 @@ describe("runtime-state 读写", () => {
         expect(readAccountRuntime(root, "10002")).toBeNull();
     });
 
+    it("结构损坏（合法 JSON 但字段缺失 / 类型错 / 非法枚举）→ null（严格形状守卫）", () => {
+        const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-shape-"));
+        const writeAccount = (uin: string, body: unknown): void => {
+            mkdirSync(join(root, uin), { recursive: true });
+            writeFileSync(runtimeStatePath(root, uin), JSON.stringify(body), "utf8");
+        };
+        writeAccount("10003", { uin: "10003", pid: "12345", startedAt: "t" });
+        writeAccount("10004", { uin: "10004", pid: -1, startedAt: "t" });
+        writeAccount("10005", {
+            uin: "10005",
+            pid: 1,
+            startedAt: "t",
+            kind: "bogus",
+            status: "running",
+        });
+        for (const uin of ["10003", "10004", "10005"]) {
+            expect(readAccountRuntime(root, uin)).toBeNull();
+        }
+        writeFileSync(
+            supervisorStatePath(root),
+            JSON.stringify({ pid: 1, startedAt: "t", accounts: [1] }),
+            "utf8",
+        );
+        expect(readSupervisorRuntime(root)).toBeNull();
+        rmSync(root, { recursive: true, force: true });
+    });
+
     it("listAccountRuntimes 扫描数据根一级目录（跳过无状态目录）", () => {
         const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-list-"));
         writeAccountRuntime(root, makeRuntime({ uin: "20001" }));

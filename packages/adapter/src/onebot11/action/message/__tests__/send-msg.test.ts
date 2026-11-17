@@ -208,6 +208,19 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
         expect((await action.handle({ group_id: 808, message: segments })).retcode).toBe(400);
     });
 
+    it("segment 数组含 null / 已知段缺必填字段 → retcode 105（不整数组强转）", async () => {
+        const { deps, sendMessage } = makeDeps();
+        const action = sendActionOf(deps, "send_msg");
+        const nullSeg = await action.handle({ group_id: 808, message: [null] });
+        expect(nullSeg).toMatchObject({ status: "failed", retcode: 105 });
+        const missingFile = await action.handle({
+            group_id: 808,
+            message: [{ type: "image", data: { url: "http://x/a.png" } }],
+        });
+        expect(missingFile).toMatchObject({ status: "failed", retcode: 105 });
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
     it("WS 入口（websocketHandle）echo 原样带回", async () => {
         const { deps } = makeDeps();
         const action = sendActionOf(deps, "send_msg");

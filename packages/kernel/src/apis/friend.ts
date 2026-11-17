@@ -14,6 +14,7 @@ import type {
     NodeIKernelBuddyService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult, unwrap } from "./result.js";
 
 /** 好友条目（uid + 昵称/备注，昵称由 buddy service 缓存补全）。 */
@@ -59,11 +60,10 @@ export class FriendApi {
     private readonly uidToUin: ((uids: string[]) => Promise<Map<string, string>>) | undefined;
 
     constructor(session: NodeIQQNTWrapperSession, opts: FriendApiOptions = {}) {
-        const service = session.getBuddyService() as unknown as NodeIKernelBuddyService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getBuddyService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getBuddyService(), "getBuddyService", [
+            "getBuddyListFromCache",
+            "getBuddyNick",
+        ]);
         this.uidToUin = opts.uidToUin;
     }
 
@@ -166,11 +166,11 @@ export class FriendApi {
 
     /** 删除好友（tempBlock=拉黑，tempBothDel=双向删除）。 */
     async deleteFriend(uid: string, tempBlock = false, tempBothDel = false): Promise<void> {
-        const res = (await this.service.delBuddy({
+        const res = await this.service.delBuddy({
             friendUid: uid,
             tempBlock,
             tempBothDel,
-        })) as { result?: unknown; errMsg?: unknown } | undefined;
+        });
         checkLooseResult("delBuddy", res);
     }
 

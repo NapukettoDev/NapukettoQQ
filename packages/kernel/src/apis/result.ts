@@ -10,6 +10,7 @@
 
 import { type KernelErrorCode, kernelError } from "../infra/index.js";
 import type { GeneralCallResult } from "../types/index.js";
+import { isRecord } from "../utils/type-guards.js";
 
 /** errMsg 关键词 → 错误码规则（顺序即优先级，命中任一组关键词即映射）。 */
 const RESULT_CODE_RULES: ReadonlyArray<{ code: KernelErrorCode; keywords: readonly string[] }> = [
@@ -36,15 +37,21 @@ export function unwrap(label: string, result: number, errMsg?: string): void {
     throw kernelError(`${label} 失败: ${errMsg ?? "无错误详情"}`, "UNKNOWN");
 }
 
-/** 宽松 result 校验（result 为数字非 0 视为失败；缺失/非数字视为成功）。 */
-export function checkLooseResult(
-    label: string,
-    res: { result?: unknown; errMsg?: unknown } | null | undefined,
-): void {
-    if (res === undefined || res === null || typeof res.result !== "number" || res.result === 0) {
+/**
+ * 宽松 result 校验（result 为数字非 0 视为失败；缺失/非对象/非数字视为成功）。
+ *
+ * 入参故意收为 unknown：原生方法返回形状在探测期不稳定，调用方无需为
+ * 「把返回值塞进宽松形状」再写 `as { result?: unknown }` 断言。
+ */
+export function checkLooseResult(label: string, res: unknown): void {
+    if (!isRecord(res)) {
         return;
     }
-    throw kernelError(`${label} 失败: ${String(res.errMsg ?? "")}`, "UNKNOWN");
+    const result = res["result"];
+    if (typeof result !== "number" || result === 0) {
+        return;
+    }
+    throw kernelError(`${label} 失败: ${String(res["errMsg"] ?? "")}`, "UNKNOWN");
 }
 
 /** 原生结果解包：result !== 0 抛 KernelError（errMsg 语义映射错误码）。 */

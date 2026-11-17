@@ -12,6 +12,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
 
 /** 账号运行时状态（runtime.json）。 */
 export interface AccountRuntime {
@@ -63,9 +64,47 @@ export function writeAccountRuntime(dataRoot: string, state: AccountRuntime): vo
     writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+/** 账号运行形态判定。 */
+function isAccountRuntimeKind(val: unknown): val is AccountRuntime["kind"] {
+    return val === "supervisor-child" || val === "single-boot";
+}
+
+/** 账号运行状态判定。 */
+function isAccountRuntimeStatus(val: unknown): val is AccountRuntime["status"] {
+    return val === "running" || val === "exited";
+}
+
+/** runtime.json 形状守卫（损坏 / 旧格式 / 手工改错的文件一律判非法）。 */
+function isAccountRuntime(val: unknown): val is AccountRuntime {
+    return (
+        isRecord(val) &&
+        hasStringProp(val, "uin") &&
+        hasNumberProp(val, "pid") &&
+        Number.isInteger(val["pid"]) &&
+        val["pid"] > 0 &&
+        hasStringProp(val, "startedAt") &&
+        isAccountRuntimeKind(val["kind"]) &&
+        isAccountRuntimeStatus(val["status"])
+    );
+}
+
+/** supervisor.json 形状守卫。 */
+function isSupervisorRuntime(val: unknown): val is SupervisorRuntime {
+    return (
+        isRecord(val) &&
+        hasNumberProp(val, "pid") &&
+        Number.isInteger(val["pid"]) &&
+        val["pid"] > 0 &&
+        hasStringProp(val, "startedAt") &&
+        Array.isArray(val["accounts"]) &&
+        val["accounts"].every((item): item is string => typeof item === "string")
+    );
+}
+
 /** 读账号运行时状态（缺失/损坏返回 null）。 */
 export function readAccountRuntime(dataRoot: string, uin: string): AccountRuntime | null {
-    return readJson(runtimeStatePath(dataRoot, uin)) as AccountRuntime | null;
+    const raw = readJson(runtimeStatePath(dataRoot, uin));
+    return isAccountRuntime(raw) ? raw : null;
 }
 
 /** 写 supervisor 运行时状态（数据根缺省时自动创建——首次在新目录 start 不再 ENOENT）。 */
@@ -76,13 +115,14 @@ export function writeSupervisorRuntime(dataRoot: string, state: SupervisorRuntim
 
 /** 读 supervisor 运行时状态（缺失返回 null）。 */
 export function readSupervisorRuntime(dataRoot: string): SupervisorRuntime | null {
-    return readJson(supervisorStatePath(dataRoot)) as SupervisorRuntime | null;
+    const raw = readJson(supervisorStatePath(dataRoot));
+    return isSupervisorRuntime(raw) ? raw : null;
 }
 
 /** 读 JSON 文件（缺失/解析失败返回 null）。 */
 function readJson(path: string): unknown {
     try {
-        return JSON.parse(readFileSync(path, "utf8")) as unknown;
+        return JSON.parse(readFileSync(path, "utf8"));
     } catch {
         return null;
     }
@@ -117,7 +157,8 @@ export function isPidAlive(pid: number): boolean {
         process.kill(pid, 0);
         return true;
     } catch (err) {
-        return (err as NodeJS.ErrnoException).code === "EPERM";
+        // EPERM：进程存在但无权限（非 Error 形态按「不存在」处理）
+        return isRecord(err) && err["code"] === "EPERM";
     }
 }
 

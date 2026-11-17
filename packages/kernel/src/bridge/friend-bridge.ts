@@ -16,12 +16,12 @@
  */
 
 import type { NTEventChannel } from "../event-channel.js";
-import { kernelError } from "../infra/index.js";
 import type {
     BuddyListener,
     NodeIKernelBuddyService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 
 /** 好友事件通道的固定类型（事件名前缀 "Buddy"）。 */
 export type BuddyEventChannel = NTEventChannel<BuddyListener, "Buddy">;
@@ -36,11 +36,9 @@ export class FriendBridge {
     private listenerId: number | null = null;
 
     constructor(session: NodeIQQNTWrapperSession, channel: BuddyEventChannel) {
-        const service = session.getBuddyService() as unknown as NodeIKernelBuddyService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getBuddyService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getBuddyService(), "getBuddyService", [
+            "addKernelBuddyListener",
+        ]);
         this.channel = channel;
     }
 

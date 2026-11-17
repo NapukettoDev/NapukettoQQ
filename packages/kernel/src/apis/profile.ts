@@ -9,6 +9,7 @@
  */
 import { kernelError } from "../infra/index.js";
 import type { NodeIKernelProfileService, NodeIQQNTWrapperSession } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult } from "./result.js";
 import type { StrangerInfo } from "./stranger-info.js";
 import { flattenStrangerInfo } from "./stranger-info.js";
@@ -18,11 +19,10 @@ export class ProfileApi {
     private readonly service: NodeIKernelProfileService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service = session.getProfileService() as unknown as NodeIKernelProfileService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getProfileService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getProfileService(), "getProfileService", [
+            "getUserDetailInfo",
+            "getUserDetailInfoByUin",
+        ]);
     }
 
     /** 设置个性签名（set_self_longnick）。 */

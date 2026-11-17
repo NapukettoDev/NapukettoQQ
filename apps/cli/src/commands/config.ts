@@ -42,6 +42,7 @@ import {
     ConfigBase,
     configError,
     errorMessage,
+    isRecord,
     kernelError,
     parseToml,
     resolveDataRoot,
@@ -53,9 +54,20 @@ import { CliConfigStore, defaultCliConfig, resolveCliConfigSource } from "../con
 import { configTemplate } from "../config/template.js";
 import { logger } from "../logger.js";
 
-/** CliConfig → 普通对象（smol-toml stringify 入参）。 */
+/**
+ * CliConfig → 普通对象（smol-toml stringify 入参）。
+ * 显式逐字段映射：直接强转 Record 会让新增字段静默漏进/漏出 TOML，
+ * 这里让编译期强制维护映射。
+ */
 function toRecord(config: CliConfig): Record<string, unknown> {
-    return config as unknown as Record<string, unknown>;
+    return {
+        dataDir: config.dataDir,
+        autoRestart: config.autoRestart,
+        restartDelayMs: config.restartDelayMs,
+        accounts: config.accounts,
+        nativeMediaPatch: config.nativeMediaPatch,
+        ...(config.log === undefined ? {} : { log: config.log }),
+    };
 }
 
 /** config init：生成全局 TOML 配置文件（项目根）+ 数据根目录。
@@ -130,7 +142,8 @@ function parseExternalConfig(file: string, rawText: string): unknown {
         return parseToml(rawText);
     }
     try {
-        return JSON.parse(rawText) as unknown;
+        const parsed: unknown = JSON.parse(rawText);
+        return parsed;
     } catch {
         throw kernelError(`外部配置 ${file} 不是合法 JSON`, "INVALID_PARAM");
     }
@@ -149,11 +162,10 @@ export async function cmdConfigApply(file: string, opts: { dataDir?: string }): 
         throw kernelError(`读取外部配置失败 ${file}: ${message}`, "INVALID_PARAM", { cause: err });
     }
     const partial = parseExternalConfig(file, rawText);
-    if (typeof partial !== "object" || partial === null) {
+    if (!isRecord(partial)) {
         throw kernelError("外部配置必须是对象", "INVALID_PARAM");
     }
-    const patch = partial as Record<string, unknown>;
-    const merged: Record<string, unknown> = { ...existing, ...patch };
+    const merged: Record<string, unknown> = { ...existing, ...partial };
     const next = parseCliConfig(merged);
     await store.save(next);
     logger.info({ path: store.path }, "全局配置已更新");
@@ -166,7 +178,7 @@ async function readConfigTextForValidate(path: string): Promise<string> {
     try {
         return await readFile(path, "utf8");
     } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        if (isRecord(err) && err["code"] === "ENOENT") {
             throw configError(`配置文件不存在: ${path}`);
         }
         throw configError(`读取配置文件失败: ${path}`, { cause: err });

@@ -35,19 +35,30 @@ describe("extractNotifyList", () => {
 });
 
 describe("extractMemberList", () => {
-    it("直接数组 → 原样返回", () => {
-        const arr = [{ uid: "u1" }];
+    it("直接数组 → 逐项校验后返回", () => {
+        const arr = [{ uid: "u1", uin: "10001" }];
         expect(extractMemberList(arr)).toEqual(arr);
     });
 
     it("memberList 字段 → 返回该字段", () => {
-        const memberList = [{ uid: "u1", nick: "A" }];
+        const memberList = [{ uid: "u1", uin: "10001", nick: "A" }];
         expect(extractMemberList({ memberList })).toEqual(memberList);
     });
 
     it("list 字段 → 返回该字段", () => {
-        const list = [{ uid: "u2", nick: "B" }];
+        const list = [{ uid: "u2", uin: "10002", nick: "B" }];
         expect(extractMemberList({ list })).toEqual(list);
+    });
+
+    it("infos Map → 逐项校验后返回", () => {
+        const infos = new Map([["u3", { uid: "u3", uin: "10003" }]]);
+        expect(extractMemberList({ infos })).toEqual([{ uid: "u3", uin: "10003" }]);
+    });
+
+    it("残缺成员项（缺 uin）被逐项丢弃", () => {
+        expect(extractMemberList([{ uid: "u1" }, { uid: "u2", uin: "10002" }])).toEqual([
+            { uid: "u2", uin: "10002" },
+        ]);
     });
 
     it("非数组 / 非对象 / 缺字段 → 空数组", () => {

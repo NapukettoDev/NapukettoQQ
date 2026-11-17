@@ -12,6 +12,7 @@ import type {
     NodeIKernelTicketService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 
 /** 跳转请求超时（毫秒）。 */
 const JUMP_TIMEOUT_MS = 10_000;
@@ -21,11 +22,9 @@ export class TicketApi {
     private readonly service: NodeIKernelTicketService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service = session.getTicketService() as unknown as NodeIKernelTicketService | null;
-        if (service === null || service === undefined) {
-            throw kernelError("getTicketService() 返回空（session 未 init）", "INVALID_STATE");
-        }
-        this.service = service;
+        this.service = requireKernelService(session.getTicketService(), "getTicketService", [
+            "forceFetchClientKey",
+        ]);
     }
 
     /** 获取 clientKey（get_clientkey）。 */
@@ -79,9 +78,13 @@ function fetchJumpCookies(url: string): Promise<Record<string, string>> {
         );
         req.setTimeout(JUMP_TIMEOUT_MS, () => {
             req.destroy();
-            reject(new Error("获取 cookies 超时"));
+            reject(kernelError("获取 cookies 超时", "TIMEOUT"));
         });
-        req.on("error", (err) => reject(err));
+        req.on("error", (err) =>
+            reject(
+                kernelError(`获取 cookies 网络请求失败: ${err.message}`, "UNKNOWN", { cause: err }),
+            ),
+        );
     });
 }
 

@@ -8,6 +8,7 @@
  */
 
 import { kernelError, sleep, waitFor } from "../infra/index.js";
+import { hasFunctionProp, hasStringProp, isRecord } from "../utils/type-guards.js";
 import { createLoginListener } from "../wrapper/wrapper-adapters.js";
 import type { WrapperContext } from "../wrapper/wrapper-loader.js";
 
@@ -32,6 +33,78 @@ type LoginServiceShape = {
     quickLoginWithUin(uin: string): Promise<{ result: string; loginErrorInfo: { errMsg: string } }>;
     getMsfStatus(): number;
 };
+
+/** 登录连接所需的最小方法面（connect / add / remove 监听均可缺省）。 */
+type LoginConnectionShape = {
+    connect?: () => void;
+    addKernelLoginListener?: (listener: unknown) => number;
+    removeKernelLoginListener?: (listenerId: number) => void;
+};
+
+/**
+ * 登录服务形状判定：getLoginList / quickLoginWithUin / getMsfStatus 齐备才算可用。
+ * 判空职责从「调用点各自做两级强转」收拢到这里。
+ */
+function isLoginServiceShape(val: unknown): val is LoginServiceShape {
+    return (
+        isRecord(val) &&
+        hasFunctionProp(val, "getLoginList") &&
+        hasFunctionProp(val, "quickLoginWithUin") &&
+        hasFunctionProp(val, "getMsfStatus")
+    );
+}
+
+/** 校验并收窄 loginService（失败抛 INVALID_STATE，ADR-009）。 */
+function requireLoginService(raw: unknown): LoginServiceShape {
+    if (!isLoginServiceShape(raw)) {
+        throw kernelError(
+            "loginService 无效（缺 getLoginList / quickLoginWithUin / getMsfStatus）",
+            "INVALID_STATE",
+        );
+    }
+    return raw;
+}
+
+/** 连接方法面判定（connect / add / remove 监听存在时必须是函数）。 */
+function isLoginConnectionShape(val: unknown): val is LoginConnectionShape {
+    if (!isRecord(val)) {
+        return false;
+    }
+    const connect = val["connect"];
+    const addListener = val["addKernelLoginListener"];
+    const removeListener = val["removeKernelLoginListener"];
+    return (
+        (connect === undefined || typeof connect === "function") &&
+        (addListener === undefined || typeof addListener === "function") &&
+        (removeListener === undefined || typeof removeListener === "function")
+    );
+}
+
+/** 登录列表项形状判定（uin 是唯一必填字段）。 */
+function isLoginAccountInfo(val: unknown): val is LoginAccountInfo {
+    return isRecord(val) && hasStringProp(val, "uin");
+}
+
+/** getLoginList 返回 → 登录列表（形状异常返回空数组，不抛裸 TypeError）。 */
+function extractLoginAccounts(list: unknown): LoginAccountInfo[] {
+    if (!isRecord(list)) {
+        return [];
+    }
+    const items = list["LocalLoginInfoList"];
+    return Array.isArray(items) ? items.filter(isLoginAccountInfo) : [];
+}
+
+/** quickLoginWithUin 返回 → errMsg（结构缺失按「未知登录错误」处理）。 */
+function extractLoginErrMsg(result: unknown): string {
+    if (!isRecord(result)) {
+        return "未知登录错误";
+    }
+    const info = result["loginErrorInfo"];
+    if (isRecord(info) && typeof info["errMsg"] === "string") {
+        return info["errMsg"];
+    }
+    return "未知登录错误";
+}
 
 /**
  * 网络状态（MSF）常量。
@@ -78,14 +151,14 @@ export function waitForNetworkConnection(
     ctx: WrapperContext,
     opts: { timeoutMs?: number } = {},
 ): Promise<boolean> {
-    const raw = ctx.loginService as unknown as LoginServiceShape | null;
-    if (raw === null || typeof raw.getMsfStatus !== "function") {
+    const raw = ctx.loginService;
+    if (!isRecord(raw) || !hasFunctionProp(raw, "getMsfStatus")) {
         return Promise.resolve(false);
     }
     return waitFor(
         () => {
             try {
-                return raw.getMsfStatus() === MSF_STATUS_CONNECTED;
+                return raw["getMsfStatus"]() === MSF_STATUS_CONNECTED;
             } catch {
                 return false;
             }
@@ -97,12 +170,9 @@ export function waitForNetworkConnection(
 
 /** 列出历史登录账号（boot.cjs 启动横幅用，「可用快速登录 of QQ」）。 */
 export async function listLoginAccounts(ctx: WrapperContext): Promise<LoginAccountInfo[]> {
-    const raw = ctx.loginService as unknown as LoginServiceShape | null;
-    if (raw === null) {
-        throw kernelError("loginService 无效（缺 getLoginList）", "INVALID_STATE");
-    }
-    const list = await raw.getLoginList();
-    return list.LocalLoginInfoList;
+    const loginService = requireLoginService(ctx.loginService);
+    const list: unknown = await loginService.getLoginList();
+    return extractLoginAccounts(list);
 }
 
 /**
@@ -117,11 +187,8 @@ async function ensureLoginConnected(
     ctx: WrapperContext,
     opts: { timeoutMs?: number },
 ): Promise<void> {
-    const raw = ctx.loginService as unknown as {
-        connect?: () => void;
-        addKernelLoginListener?: (listener: unknown) => number;
-    } | null;
-    if (raw === null || typeof raw.connect !== "function") {
+    const raw = ctx.loginService;
+    if (!isLoginConnectionShape(raw) || typeof raw.connect !== "function") {
         return; // 无 connect（老版本 / QQ 主进程自连），跳过
     }
     await waitLoginConnected(raw, opts.timeoutMs);
@@ -132,11 +199,7 @@ async function ensureLoginConnected(
 
 /** 等 onLoginConnected（注册临时监听 + connect + 超时兜底）。 */
 function waitLoginConnected(
-    raw: {
-        connect?: () => void;
-        addKernelLoginListener?: (listener: unknown) => number;
-        removeKernelLoginListener?: (listenerId: number) => void;
-    },
+    raw: LoginConnectionShape,
     timeoutMs?: number | undefined,
 ): Promise<void> {
     return new Promise<void>((resolve) => {
@@ -172,12 +235,7 @@ function waitLoginConnected(
  * 注册临时登录连接监听（失败不阻塞连接）。返回 listenerId（不可注册时为 null）。
  * 连接确认或超时后由 finish 统一 remove——软重登/多实例下不会堆积原生监听器。
  */
-function tryRegisterConnectListener(
-    raw: {
-        addKernelLoginListener?: (listener: unknown) => number;
-    },
-    finish: () => void,
-): number | null {
+function tryRegisterConnectListener(raw: LoginConnectionShape, finish: () => void): number | null {
     try {
         const listener = createLoginListener();
         listener.onLoginConnected = () => {
@@ -309,8 +367,8 @@ async function attemptQuickLogin(
     loginService: LoginServiceShape,
     target: LoginAccountInfo,
 ): Promise<AttemptResult> {
-    const result = await loginService.quickLoginWithUin(target.uin);
-    const { errMsg } = result.loginErrorInfo;
+    const result: unknown = await loginService.quickLoginWithUin(target.uin);
+    const errMsg = extractLoginErrMsg(result);
     if (errMsg) {
         return { ok: false, errMsg };
     }
@@ -350,20 +408,16 @@ export async function quickLogin(
     ctx: WrapperContext,
     opts: QuickLoginOptions = {},
 ): Promise<LoginResult> {
-    const raw = ctx.loginService as unknown as LoginServiceShape | null;
-    if (raw === null) {
-        throw kernelError("loginService 无效（缺 getLoginList）", "INVALID_STATE");
-    }
-    const loginService = raw;
+    const loginService = requireLoginService(ctx.loginService);
     const quickTimeoutMs = opts.quickLoginTimeoutMs ?? QUICK_LOGIN_TIMEOUT_MS;
     // 连接登录服务（自建宿主必需：不 connect 则「登录系统连接异常」）
     await ensureLoginConnected(ctx, {
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     });
-    const list = await raceWithTimeout(loginService.getLoginList(), quickTimeoutMs, () => {
+    const list: unknown = await raceWithTimeout(loginService.getLoginList(), quickTimeoutMs, () => {
         throw kernelError(`快速登录失败: ${QUICK_LOGIN_TIMEOUT_MESSAGE}`, "NOT_LOGIN");
     });
-    const items = list.LocalLoginInfoList;
+    const items = extractLoginAccounts(list);
     if (items.length === 0) {
         throw kernelError("无历史登录账号", "NOT_LOGIN");
     }

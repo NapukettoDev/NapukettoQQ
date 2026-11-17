@@ -6,21 +6,27 @@
  * forward 段走专用组装链（sendForwardComposition，临时消息法，见 milky.md §0.6）。
  */
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
-import { errorMessage, kernelError } from "@napuketto/kernel";
+import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
 import type { MilkyApi } from "../api.js";
 import { resolveMediaUri } from "../helper/message/media-uri.js";
-import { outgoingSegmentsToCanonical } from "../helper/message/segments.js";
-import type { OutgoingForwardedMessage, OutgoingSegment, SendMessageOutput } from "../types.js";
+import {
+    isRawOutgoingSegment,
+    outgoingSegmentsToCanonical,
+    type RawOutgoingSegment,
+} from "../helper/message/segments.js";
+import type { OutgoingSegment, SendMessageOutput } from "../types.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
 
 /**
  * OutgoingSegment 宽松校验：入口只保证「{type, data}」形状，字段级转换在
- * outgoingSegmentsToCanonical 内做（未知段跳过 = 规范兼容性要求）。
+ * outgoingSegmentsToCanonical 内做（已知段缺字段抛 INVALID_PARAM，未知段跳过）。
+ * 类型标注直接写 RawOutgoingSegment——不再把「只保证 {type,data} 的入口值」
+ * 谎称成完整的 OutgoingSegment：入口本就不保证字段，校验后的形状必须诚实。
  */
-const outgoingSegmentSchema = z
+const outgoingSegmentSchema: ZodType<RawOutgoingSegment> = z
     .object({ type: z.string(), data: z.record(z.string(), z.unknown()) })
-    .loose() as unknown as ZodType<OutgoingSegment>;
+    .loose();
 
 /**
  * 单条消息的段数上限：.min(1) 只保下界，不设上界时第三方可 POST 十万个合法段
@@ -39,7 +45,7 @@ export function createMessageSendActions(api: MilkyApi): MilkyAction[] {
         defineMilkyAction({
             name: "send_private_message",
             schema: z.object({ user_id: z.number().int().min(10001), ...sendMessageFields }),
-            handle: async (payload: { user_id: number; message: OutgoingSegment[] }) => {
+            handle: async (payload: { user_id: number; message: RawOutgoingSegment[] }) => {
                 const peer = await api.resolvePeer("friend", payload.user_id);
                 return await sendMilkyMessage(peer, payload.message, api);
             },
@@ -47,7 +53,7 @@ export function createMessageSendActions(api: MilkyApi): MilkyAction[] {
         defineMilkyAction({
             name: "send_group_message",
             schema: z.object({ group_id: z.number().int().min(10001), ...sendMessageFields }),
-            handle: async (payload: { group_id: number; message: OutgoingSegment[] }) => {
+            handle: async (payload: { group_id: number; message: RawOutgoingSegment[] }) => {
                 const peer = await api.resolvePeer("group", payload.group_id);
                 return await sendMilkyMessage(peer, payload.message, api);
             },
@@ -61,7 +67,7 @@ export function createMessageSendActions(api: MilkyApi): MilkyAction[] {
  *  forward 段分流到组装链（临时消息法）。 */
 export async function sendMilkyMessage(
     peer: Peer,
-    segments: OutgoingSegment[],
+    segments: readonly (OutgoingSegment | RawOutgoingSegment)[],
     api: MilkyApi,
 ): Promise<SendMessageOutput> {
     if (segments.some((s) => s.type === "forward")) {
@@ -86,7 +92,7 @@ export async function sendMilkyMessage(
  */
 async function sendForwardComposition(
     peer: Peer,
-    segments: OutgoingSegment[],
+    segments: readonly (OutgoingSegment | RawOutgoingSegment)[],
     api: MilkyApi,
 ): Promise<SendMessageOutput> {
     if (segments.length !== 1) {
@@ -96,7 +102,7 @@ async function sendForwardComposition(
     if (forward === undefined || forward.type !== "forward") {
         throw kernelError("forward 组装链收到非 forward 段", "UNKNOWN");
     }
-    const messages = narrowForwardMessages(forward);
+    const messages = narrowForwardMessages(forward.data);
     const srcMsgIds: string[] = [];
     for (const [i, item] of messages.entries()) {
         const { elements, atUins } = outgoingSegmentsToCanonical(item.segments);
@@ -112,28 +118,42 @@ async function sendForwardComposition(
     return await api.resolveSentOutput(peer, msgId);
 }
 
+/** 收窄后的转发节点（只保留组装链真正消费的 segments）。 */
+interface NarrowedForwardMessage {
+    segments: RawOutgoingSegment[];
+}
+
 /**
  * forward 段载荷收窄（入口 schema 只保证 data 为 record）：messages 非空数组，
- * 项内 segments 非空数组。user_id / sender_name / time 不参与组装不校验
- * （丢弃字段不设门槛）；title / preview / summary / prompt 忽略。
+ * 项内 segments 非空数组且**每个元素**都是 {type, data} 对象。user_id /
+ * sender_name / time 不参与组装不校验（丢弃字段不设门槛）；title / preview /
+ * summary / prompt 忽略。
  */
-function narrowForwardMessages(
-    forward: Extract<OutgoingSegment, { type: "forward" }>,
-): OutgoingForwardedMessage[] {
-    const raw = (forward.data as { messages?: unknown }).messages;
+function narrowForwardMessages(data: Record<string, unknown>): NarrowedForwardMessage[] {
+    const raw = data["messages"];
     if (!Array.isArray(raw) || raw.length === 0) {
         throw kernelError("forward 段 messages 必须是非空数组", "INVALID_PARAM");
     }
-    const out: OutgoingForwardedMessage[] = [];
+    const out: NarrowedForwardMessage[] = [];
     for (const item of raw) {
-        if (typeof item !== "object" || item === null) {
+        if (!isRecord(item)) {
             throw kernelError("forward 段 messages 项必须是对象", "INVALID_PARAM");
         }
-        const segments = (item as { segments?: unknown }).segments;
+        const segments = item["segments"];
         if (!Array.isArray(segments) || segments.length === 0) {
             throw kernelError("forward 段 messages 项的 segments 必须是非空数组", "INVALID_PARAM");
         }
-        out.push(item as OutgoingForwardedMessage);
+        const narrowed: RawOutgoingSegment[] = [];
+        for (const segment of segments) {
+            if (!isRawOutgoingSegment(segment)) {
+                throw kernelError(
+                    "forward 段内嵌 segment 必须是包含 type 与 data 的对象",
+                    "INVALID_PARAM",
+                );
+            }
+            narrowed.push(segment);
+        }
+        out.push({ segments: narrowed });
     }
     return out;
 }
@@ -199,19 +219,22 @@ async function resolveElement(
     if (el.type === "at" && el.target !== "all") {
         return { ...el, target: uinToUid?.get(el.target) ?? el.target };
     }
-    if (isRemoteMediaUri(el)) {
-        const media = el as Extract<CanonicalElement, { type: "image" | "voice" | "video" }>;
-        return { ...media, path: await resolveMediaUri(media.path, api.mediaDir) };
+    if (
+        (el.type === "image" || el.type === "voice" || el.type === "video") &&
+        isRemoteMediaUri(el)
+    ) {
+        return { ...el, path: await resolveMediaUri(el.path, api.mediaDir) };
     }
     return el;
 }
 
 /** 远程媒体元素（image/voice/video 且 path 为需落盘的 URI）。 */
-function isRemoteMediaUri(el: CanonicalElement): boolean {
+function isRemoteMediaUri(
+    el: Extract<CanonicalElement, { type: "image" | "voice" | "video" }>,
+): boolean {
     return (
-        (el.type === "image" || el.type === "voice" || el.type === "video") &&
-        (el.path.startsWith("http://") ||
-            el.path.startsWith("https://") ||
-            el.path.startsWith("base64://"))
+        el.path.startsWith("http://") ||
+        el.path.startsWith("https://") ||
+        el.path.startsWith("base64://")
     );
 }

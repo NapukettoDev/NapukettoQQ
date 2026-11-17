@@ -11,13 +11,26 @@ import type { KernelErrorCode } from "@napuketto/kernel";
 import type { ZodError, ZodType } from "zod";
 import { runAction } from "../../core/index.js";
 
-/** Milky 动作结果（retcode 为规范负数族；transport 原样组装信封）。 */
-export interface MilkyActionResult<T> {
-    status: "ok" | "failed";
-    retcode: number;
-    data: T | null;
-    message: string;
-}
+/**
+ * Milky 动作结果（retcode 为规范负数族；transport 原样组装信封）。
+ *
+ * 可辨识联合：`status` 判别，`ok` 分支 `retcode` 恒 0 且 `data` 非空、
+ * `failed` 分支 `data` 恒 null。下游 `result.status === "ok"` 后无需再判空
+ * `data`（编译器已收窄），字段名与旧版完全一致。
+ */
+export type MilkyActionResult<T> =
+    | {
+          status: "ok";
+          retcode: 0;
+          data: T;
+          message: "";
+      }
+    | {
+          status: "failed";
+          retcode: number;
+          data: null;
+          message: string;
+      };
 
 /** Milky 动作对象（工厂产出）。 */
 export interface MilkyAction<TPayload = unknown, TReturn = unknown> {

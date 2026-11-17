@@ -10,6 +10,7 @@
  * （`startupBaselineSec`），早于基准的视为历史积压丢弃。
  */
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
+import { hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "./log.js";
 import { startupBaselineSec } from "./startup-cutoff.js";
 import { firstNonEmptyString } from "./text.js";
@@ -24,14 +25,28 @@ export function senderNickname(msg: RawMessage): string {
     return firstNonEmptyString(msg.sendNickName, msg.sendMemberName) ?? "";
 }
 
-/** 逐条处理消息（自动规范化数组 + 过滤非对象项）。 */
+/**
+ * RawMessage 形状守卫（onRecvMsg 参数是不可信的原生回调载荷）：
+ * msgId / peerUid 为字符串、chatType 为有限数字、elements 为数组。
+ */
+export function isRawMessage(val: unknown): val is RawMessage {
+    return (
+        isRecord(val) &&
+        hasStringProp(val, "msgId") &&
+        hasStringProp(val, "peerUid") &&
+        hasNumberProp(val, "chatType") &&
+        Array.isArray(val["elements"])
+    );
+}
+
+/** 逐条处理消息（自动规范化数组 + 逐项过 isRawMessage 过滤）。 */
 export function forEachRawMessage(msgs: unknown, handler: (msg: RawMessage) => void): void {
     const list = Array.isArray(msgs) ? msgs : [msgs];
     for (const msg of list) {
-        if (!msg || typeof msg !== "object") {
+        if (!isRawMessage(msg)) {
             continue;
         }
-        handler(msg as RawMessage);
+        handler(msg);
     }
 }
 

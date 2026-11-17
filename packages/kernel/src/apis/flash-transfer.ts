@@ -19,6 +19,7 @@ import type {
     NodeIQQNTWrapperSession,
     Peer,
 } from "../types/index.js";
+import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult } from "./result.js";
 
 /** 上传默认超时（毫秒）：大文件留足时间，超时抛 TIMEOUT 而不是静默挂住。 */
@@ -52,15 +53,11 @@ export class FlashTransferApi {
     private readonly service: NodeIKernelFlashTransferService;
 
     constructor(session: NodeIQQNTWrapperSession) {
-        const service =
-            session.getFlashTransferService() as unknown as NodeIKernelFlashTransferService | null;
-        if (service === null || service === undefined) {
-            throw kernelError(
-                "getFlashTransferService() 返回空（session 未 init）",
-                "INVALID_STATE",
-            );
-        }
-        this.service = service;
+        this.service = requireKernelService(
+            session.getFlashTransferService(),
+            "getFlashTransferService",
+            ["createFlashTransferUploadTask", "addFileSetUploadListener", "sendFlashTransferMsg"],
+        );
     }
 
     /**

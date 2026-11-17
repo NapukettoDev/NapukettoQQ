@@ -41,6 +41,7 @@ import {
 import type { KernelRuntime, KernelRuntimeOptions } from "./runtime.js";
 import { createKernelRuntime } from "./runtime.js";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "./types/index.js";
+import { isRecord } from "./utils/type-guards.js";
 import { resolveQqGlobalPath } from "./wrapper/qq-data-path.js";
 import { createSessionListener } from "./wrapper/wrapper-adapters.js";
 import {
@@ -78,17 +79,29 @@ export interface NapukettoCoreOptions {
     account?: string | undefined;
 }
 
-/** 登录进度（IPC 子进程模式经 onLoginProgress 转发；koishi 插件展示二维码/状态用）。 */
-export interface LoginProgress {
-    /** 登录状态（QR 状态机）。 */
-    state: LoginState;
-    /** 二维码数据（state=waiting_scan 时有）。 */
-    qr?: QrCodeData | undefined;
-    /** 登录成功 selfInfo（state=logged_in 时有）。 */
-    selfInfo?: SelfInfo | undefined;
-    /** 失败原因（state=failed 时有；如「登录超时，请刷新页面重试」）。 */
-    message?: string | undefined;
-}
+/**
+ * 登录进度（IPC 子进程模式经 onLoginProgress 转发；koishi 插件展示二维码/状态用）。
+ *
+ * 可辨识联合：`state` 是判别字段，`switch (progress.state)` 后 `qr` / `selfInfo` /
+ * `message` 由编译器自然收窄（waiting_scan 必有 qr、logged_in 必有 selfInfo、
+ * failed 必有 message）。属性名与旧版完全一致，下游 `progress.qr` 等访问路径不变。
+ */
+export type LoginProgress =
+    | { state: "idle"; qr?: undefined; selfInfo?: undefined; message?: string | undefined }
+    | {
+          state: "waiting_scan";
+          qr: QrCodeData;
+          selfInfo?: undefined;
+          message?: string | undefined;
+      }
+    | {
+          state: "scanned";
+          qr?: QrCodeData | undefined;
+          selfInfo?: undefined;
+          message?: string | undefined;
+      }
+    | { state: "logged_in"; qr?: undefined; selfInfo: SelfInfo; message?: string | undefined }
+    | { state: "failed"; qr?: undefined; selfInfo?: undefined; message: string };
 
 /** login 参数。 */
 export interface CoreLoginOptions {
@@ -322,16 +335,14 @@ export class NapukettoCore {
      * QQ 主进程（V1）模式 QQ 自己 initConfig 过正确路径，无需解析。
      */
     private initLoginConfig(wrapper: WrapperContext, appid: string): void {
-        const loginService = wrapper.loginService as {
-            initConfig?: (config: unknown) => void;
-        } | null;
-        if (loginService === null || typeof loginService.initConfig !== "function") {
+        const raw = wrapper.loginService;
+        if (!isRecord(raw) || !hasInitConfig(raw)) {
             this.ctx.logger.warn("loginService 不可用，跳过 initConfig");
             return;
         }
         const commonPath = resolveCommonPath(this.ctx, wrapper);
         const loginCfg = buildLoginConfig(appid, wrapper.versionInfo.fullVersion, commonPath);
-        loginService.initConfig(loginCfg);
+        raw["initConfig"](loginCfg);
         this.ctx.logger.info({ commonPath }, "loginService.initConfig OK");
     }
 
@@ -411,7 +422,10 @@ export class NapukettoCore {
         state: LoginState,
     ): void {
         this.ctx.logger.info({ state }, "QR 登录状态");
-        opts.onLoginProgress?.(qrProgressEvent(state, session.failureReason ?? undefined));
+        const progress = qrProgressEvent(state, session.selfInfo, session.failureReason);
+        if (progress !== null) {
+            opts.onLoginProgress?.(progress);
+        }
     }
 
     /**
@@ -492,6 +506,17 @@ function resolveSessionAccountPath(ctx: CoreContext, wrapper: WrapperContext): s
     return root !== null ? resolveQqGlobalPath(root) : ctx.paths.accountDir;
 }
 
+/**
+ * loginService.initConfig 形状守卫（可带一个配置参数调用）。
+ * `hasFunctionProp` 的函数类型是「零参可调用」（`(...args: never[])`），
+ * 这里需要带参调用，故给一个精确到参数的谓词。
+ */
+function hasInitConfig(
+    val: Record<string, unknown>,
+): val is Record<string, unknown> & { initConfig: (config: unknown) => void } {
+    return typeof val["initConfig"] === "function";
+}
+
 /** 写二维码 png 到磁盘（base64 解码，供 cli/用户扫码）。 */
 function writeQrCodePng(filePath: string, pngBase64: string): void {
     try {
@@ -523,10 +548,32 @@ function requireQrSelfInfo(session: QrLoginSession): SelfInfo {
     return self;
 }
 
-/** QR 进度事件折叠（failed 附 failureReason 为 message，其余不带 message 键）。 */
-function qrProgressEvent(state: LoginState, reason: string | undefined): LoginProgress {
-    const message = state === "failed" ? reason : undefined;
-    return { state, ...(message !== undefined ? { message } : {}) };
+/**
+ * QR 进度事件折叠（可辨识联合，判别字段 = state）。
+ *
+ * 返回 null = 该状态不单独上报：
+ *  - waiting_scan：二维码数据由 `subscribeQrProgress` 的 onQrCode 回执发出
+ *    （那里才拿得到 qr），状态机这次先不带 qr 的事件不再重复发；
+ *  - logged_in 且 selfInfo 仍为空：会话已损坏（调用方随后按 INVALID_STATE 拒绝），
+ *    不构造自相矛盾的 logged_in 事件。
+ */
+function qrProgressEvent(
+    state: LoginState,
+    selfInfo: SelfInfo | null,
+    reason: string | null,
+): LoginProgress | null {
+    switch (state) {
+        case "idle":
+            return { state };
+        case "waiting_scan":
+            return null;
+        case "scanned":
+            return { state };
+        case "logged_in":
+            return selfInfo === null ? null : { state, selfInfo };
+        case "failed":
+            return { state, message: reason ?? "" };
+    }
 }
 
 /** 等待 QR 登录终态：logged_in resolve，failed reject。 */

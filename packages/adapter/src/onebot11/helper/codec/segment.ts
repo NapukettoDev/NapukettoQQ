@@ -1,12 +1,23 @@
 /**
  * OB11 segment 单元素转换（从 data.ts 拆分，FTA 优化）
  *
+ * - isOB11MessageSegment / parseOB11MessageSegments：入站 segment 的运行时形状守卫
+ *   （HTTP 载荷是不可信输入，禁止 `as OB11MessageSegment[]` 直转）
  * - canonicalToSegment / segmentToCanonical：单元素 ↔ 单 segment（null = 无法表达跳过）
+ *   ——按 `switch (el.type)` / `switch (seg.type)` 走可辨识联合分支，编译器自然收窄，
+ *   不再用「键 → builder（入参强转 never）」查表绕过联合逆变检查。
  * - CQ_SEGMENT_BUILDERS / cqCodeToSegment：CQ 码 → segment（未知类型保留原文为文本段）
+ *
+ * 运行时数值容忍：OB11 规范允许 `at.qq` / `face.id` / `reply.id` 等为 number，
+ * 守卫接受 string | number，转换时统一 String() 归一（canonical 字段恒为 string）。
  */
 import type { CanonicalElement } from "@napuketto/kernel";
+import { hasStringProp, isRecord, kernelError } from "@napuketto/kernel";
 import type { OB11MessageSegment } from "../../types/index.js";
 import { type CqCode, encodeCqCode, escapeCqText } from "./cqcode.js";
+
+/** 校验失败统一文案（协议入站边界，ADR-009）。 */
+const INVALID_SEGMENT_MESSAGE = "OneBot11 消息段格式不合法";
 
 /** OB11 媒体段 data（image/record/video 共用，url 可选）。 */
 function mediaData(file: string, url: string | undefined): { file: string; url?: string } {
@@ -35,23 +46,20 @@ function canonicalAt(target: string, display: string | undefined): CanonicalElem
     return el;
 }
 
-/** canonical 媒体元素子集（image/voice/video 均含 url 可选字段）。 */
-type MediaCanonical =
-    | { type: "image"; path: string; url?: string; size?: { width: number; height: number } }
-    | { type: "voice"; path: string; url?: string }
-    | { type: "video"; path: string; url?: string };
-
-/** canonical 媒体元素（image/voice/video，url 可选；type 为联合需断言收窄）。 */
+/** canonical 媒体元素（image/voice/video，url 可选；分支内收窄，无需断言）。 */
 function canonicalMedia(
     type: "image" | "voice" | "video",
     path: string,
     url: string | undefined,
 ): CanonicalElement {
-    const el: MediaCanonical = { type, path } as MediaCanonical;
-    if (url !== undefined) {
-        el.url = url;
+    switch (type) {
+        case "image":
+            return url === undefined ? { type: "image", path } : { type: "image", path, url };
+        case "voice":
+            return url === undefined ? { type: "voice", path } : { type: "voice", path, url };
+        case "video":
+            return url === undefined ? { type: "video", path } : { type: "video", path, url };
     }
-    return el;
 }
 
 /** canonical json/xml 的 raw → OB11 data 字符串（字符串原样，对象序列化）。 */
@@ -62,112 +70,164 @@ function rawToString(raw: unknown): string {
     return JSON.stringify(raw);
 }
 
-/** canonical 元素 → OB11 segment 转换器（键 = canonical type，判别字段收窄）。 */
-const CANONICAL_TO_SEGMENT: Record<string, (el: never) => OB11MessageSegment> = {
-    text: (el: Extract<CanonicalElement, { type: "text" }>) => ({
-        type: "text" as const,
-        data: { text: el.text },
-    }),
-    at: (el: Extract<CanonicalElement, { type: "at" }>) => ({
-        type: "at" as const,
-        data: atData(el.target, el.display),
-    }),
-    image: (el: Extract<CanonicalElement, { type: "image" }>) => ({
-        type: "image" as const,
-        data: mediaData(el.path, el.url),
-    }),
-    face: (el: Extract<CanonicalElement, { type: "face" }>) => ({
-        type: "face" as const,
-        data: { id: el.id },
-    }),
-    voice: (el: Extract<CanonicalElement, { type: "voice" }>) => ({
-        type: "record" as const,
-        data: mediaData(el.path, el.url),
-    }),
-    video: (el: Extract<CanonicalElement, { type: "video" }>) => ({
-        type: "video" as const,
-        data: mediaData(el.path, el.url),
-    }),
-    // 群/私聊文件（）：data.file 取文件名（缺省路径）——go-cqhttp
-    // 兼容形状;此前 file 元素被静默丢弃（转换表无此键）
-    file: (el: Extract<CanonicalElement, { type: "file" }>) => ({
-        type: "file" as const,
-        data: { file: el.name ?? el.path },
-    }),
-    reply: (el: Extract<CanonicalElement, { type: "reply" }>) => ({
-        type: "reply" as const,
-        data: { id: el.messageId },
-    }),
-    forward: (el: Extract<CanonicalElement, { type: "forward" }>) => ({
-        type: "forward" as const,
-        data: { id: el.messageIds[0] ?? "" },
-    }),
-    json: (el: Extract<CanonicalElement, { type: "json" }>) => ({
-        type: "json" as const,
-        data: { data: rawToString(el.raw) },
-    }),
-    xml: (el: Extract<CanonicalElement, { type: "xml" }>) => ({
-        type: "xml" as const,
-        data: { data: rawToString(el.raw) },
-    }),
-};
+/** 字段是否为 string | number（OB11 数值型 id 的容忍形态）。 */
+function isStringOrNumber(val: unknown): boolean {
+    return typeof val === "string" || typeof val === "number";
+}
+
+/** 可选字符串字段（缺省合法，出现时必须是 string）。 */
+function isOptionalString(data: Record<string, unknown>, key: string): boolean {
+    return data[key] === undefined || typeof data[key] === "string";
+}
+
+/** 文本 / at / face 类型的 data 校验。 */
+function isTextLikeSegmentData(type: string, data: Record<string, unknown>): boolean {
+    switch (type) {
+        case "text":
+        case "string":
+            return hasStringProp(data, "text");
+        case "at":
+            return isStringOrNumber(data["qq"]) && isOptionalString(data, "name");
+        case "face":
+            return isStringOrNumber(data["id"]);
+        default:
+            return false;
+    }
+}
+
+/** image / record / video / file 类型的 data 校验。 */
+function isMediaSegmentData(type: string, data: Record<string, unknown>): boolean {
+    switch (type) {
+        case "image":
+        case "record":
+        case "video":
+            return hasStringProp(data, "file") && isOptionalString(data, "url");
+        case "file":
+            return hasStringProp(data, "file");
+        default:
+            return false;
+    }
+}
+
+/** reply / forward / json / xml 类型的 data 校验。 */
+function isPayloadSegmentData(type: string, data: Record<string, unknown>): boolean {
+    switch (type) {
+        case "reply":
+        case "forward":
+            return isStringOrNumber(data["id"]);
+        case "json":
+        case "xml":
+            return typeof data["data"] === "string" || isRecord(data["data"]);
+        default:
+            return false;
+    }
+}
+
+/**
+ * OB11 消息段形状守卫：`type` 为 string，`data` 为对象，且**已知类型的必填字段**
+ * 类型正确。未知 `type` 一律判非法（发送入口显式拒绝，不静默丢段）。
+ *
+ * 按 data 校验形态拆成三组小函数（文本类 / 媒体类 / 载荷类），主函数只做短路组合。
+ */
+export function isOB11MessageSegment(val: unknown): val is OB11MessageSegment {
+    if (!isRecord(val) || !hasStringProp(val, "type")) {
+        return false;
+    }
+    const data = val["data"];
+    if (!isRecord(data)) {
+        return false;
+    }
+    const type = val["type"];
+    return (
+        isTextLikeSegmentData(type, data) ||
+        isMediaSegmentData(type, data) ||
+        isPayloadSegmentData(type, data)
+    );
+}
+
+/**
+ * 校验并收窄入站 segment 数组（HTTP 动作载荷 → OB11MessageSegment[]）。
+ * 任一项不合法即抛 INVALID_PARAM（ADR-009 外部边界统一错误语义）。
+ */
+export function parseOB11MessageSegments(raw: readonly unknown[]): OB11MessageSegment[] {
+    const out: OB11MessageSegment[] = [];
+    for (const item of raw) {
+        if (!isOB11MessageSegment(item)) {
+            throw kernelError(INVALID_SEGMENT_MESSAGE, "INVALID_PARAM");
+        }
+        out.push(item);
+    }
+    return out;
+}
 
 /** canonical 元素 → OB11 segment（null = OB11 无法表达，跳过）。 */
 export function canonicalToSegment(el: CanonicalElement): OB11MessageSegment | null {
-    const builder = CANONICAL_TO_SEGMENT[el.type];
-    // el.type 是判别字段，与映射键一一对应；as never 规避联合逆变检查
-    return builder === undefined ? null : builder(el as never);
+    switch (el.type) {
+        case "text":
+            return { type: "text", data: { text: el.text } };
+        case "at":
+            return { type: "at", data: atData(el.target, el.display) };
+        case "image":
+            return { type: "image", data: mediaData(el.path, el.url) };
+        case "face":
+            return { type: "face", data: { id: el.id } };
+        case "voice":
+            return { type: "record", data: mediaData(el.path, el.url) };
+        case "video":
+            return { type: "video", data: mediaData(el.path, el.url) };
+        // 群/私聊文件：data.file 取文件名（缺省路径）——go-cqhttp 兼容形状
+        case "file":
+            return { type: "file", data: { file: el.name ?? el.path } };
+        case "reply":
+            return { type: "reply", data: { id: el.messageId } };
+        case "forward":
+            return { type: "forward", data: { id: el.messageIds[0] ?? "" } };
+        case "json":
+            return { type: "json", data: { data: rawToString(el.raw) } };
+        case "xml":
+            return { type: "xml", data: { data: rawToString(el.raw) } };
+        case "unknown":
+            return null;
+        default:
+            return null;
+    }
 }
 
-/** OB11 segment → canonical 元素转换器（键 = segment type）。 */
-const SEGMENT_TO_CANONICAL: Record<string, (seg: never) => CanonicalElement> = {
-    text: (seg: Extract<OB11MessageSegment, { type: "text" }>) => ({
-        type: "text" as const,
-        text: seg.data.text,
-    }),
-    string: (seg: Extract<OB11MessageSegment, { type: "string" }>) => ({
-        type: "text" as const,
-        text: seg.data.text,
-    }),
-    at: (seg: Extract<OB11MessageSegment, { type: "at" }>) =>
-        canonicalAt(seg.data.qq, seg.data.name),
-    face: (seg: Extract<OB11MessageSegment, { type: "face" }>) => ({
-        type: "face" as const,
-        id: seg.data.id,
-    }),
-    image: (seg: Extract<OB11MessageSegment, { type: "image" }>) =>
-        canonicalMedia("image", seg.data.file, seg.data.url),
-    record: (seg: Extract<OB11MessageSegment, { type: "record" }>) =>
-        canonicalMedia("voice", seg.data.file, seg.data.url),
-    video: (seg: Extract<OB11MessageSegment, { type: "video" }>) =>
-        canonicalMedia("video", seg.data.file, seg.data.url),
-    reply: (seg: Extract<OB11MessageSegment, { type: "reply" }>) => ({
-        type: "reply" as const,
-        messageId: seg.data.id,
-    }),
-    forward: (seg: Extract<OB11MessageSegment, { type: "forward" }>) => ({
-        type: "forward" as const,
-        messageIds: [seg.data.id],
-    }),
-    json: (seg: Extract<OB11MessageSegment, { type: "json" }>) => ({
-        type: "json" as const,
-        raw: seg.data.data,
-    }),
-    xml: (seg: Extract<OB11MessageSegment, { type: "xml" }>) => ({
-        type: "xml" as const,
-        raw: seg.data.data,
-    }),
-};
-
-/** OB11 segment → canonical 元素（未知 type 兜底按 xml 处理，保持既有行为）。 */
+/**
+ * OB11 segment → canonical 元素（未知 type 兜底按 xml 处理，保持既有行为）。
+ * 入参已由 isOB11MessageSegment 收窄；类型侧调用（内部 CQ 码生成 / 接收方向翻译）
+ * 直接传 OB11MessageSegment，default 分支仅在运行时出现意外 type 时命中。
+ */
 export function segmentToCanonical(seg: OB11MessageSegment): CanonicalElement | null {
-    const builder = SEGMENT_TO_CANONICAL[seg.type];
-    if (builder !== undefined) {
-        return builder(seg as never);
+    const rawSegment: unknown = seg;
+    switch (seg.type) {
+        case "text":
+        case "string":
+            return { type: "text", text: seg.data.text };
+        case "at":
+            return canonicalAt(String(seg.data.qq), seg.data.name);
+        case "face":
+            return { type: "face", id: String(seg.data.id) };
+        case "image":
+            return canonicalMedia("image", seg.data.file, seg.data.url);
+        case "record":
+            return canonicalMedia("voice", seg.data.file, seg.data.url);
+        case "video":
+            return canonicalMedia("video", seg.data.file, seg.data.url);
+        case "reply":
+            return { type: "reply", messageId: String(seg.data.id) };
+        case "forward":
+            return { type: "forward", messageIds: [String(seg.data.id)] };
+        case "json":
+            return { type: "json", raw: seg.data.data };
+        case "xml":
+            return { type: "xml", raw: seg.data.data };
+        default: {
+            // 未知 type：兜底按 xml 处理（数据字段缺失 → raw undefined）
+            const data = isRecord(rawSegment) ? rawSegment["data"] : undefined;
+            return { type: "xml", raw: isRecord(data) ? data["data"] : undefined };
+        }
     }
-    // 未知 type：兜底按 xml 处理（表字面量恒含 xml 键，此处仅类型收窄）
-    const xmlBuilder = SEGMENT_TO_CANONICAL["xml"];
-    return xmlBuilder === undefined ? null : xmlBuilder(seg as never);
 }
 
 /** CQ 段构造器（params 键可能缺失，undefined 用空串兜底）。 */

@@ -24,7 +24,11 @@ function makeApi(
         getAllMemberList: vi.fn(async () => ({
             errCode: 0,
             errMsg: "",
-            result: { ids: [], infos: new Map([["u1", { uid: "u1" }]]), finish: true },
+            result: {
+                ids: [],
+                infos: new Map([["u1", { uid: "u1", uin: "10001" }]]),
+                finish: true,
+            },
         })),
         getMemberInfo: vi.fn(async () => ({ result: 0, errMsg: "" })),
         getUidByUins: vi.fn(async () => ({ errCode: 0, errMsg: "", uids: new Map() })),
@@ -88,7 +92,14 @@ describe("GroupApi constructor", () => {
         expect(
             () =>
                 new GroupApi(
-                    makeSession({ getGroupService: () => ({}), getMsgService: () => null }),
+                    makeSession({
+                        getGroupService: () => ({
+                            getGroupList: vi.fn(),
+                            getGroupDetailInfo: vi.fn(),
+                            getAllMemberList: vi.fn(),
+                        }),
+                        getMsgService: () => null,
+                    }),
                 ),
         ).toThrow(/getMsgService\(\) 返回空/);
     });
@@ -109,7 +120,12 @@ describe("查询", () => {
     });
 
     it("getGroupInfo：详情在 result 对象内（result 即详情形状）", async () => {
-        const detail = { groupCode: "10001", groupName: "g" };
+        const detail = {
+            groupCode: "10001",
+            groupName: "g",
+            memberNum: 3,
+            maxMemberNum: 200,
+        };
         const { api } = makeApi({
             getGroupDetailInfo: vi.fn(async () => ({ result: { ...detail }, errMsg: "" })),
         });
@@ -117,7 +133,12 @@ describe("查询", () => {
     });
 
     it("getGroupInfo：详情在 groupInfo 字段", async () => {
-        const info = { groupCode: "10002" };
+        const info = {
+            groupCode: "10002",
+            groupName: "g2",
+            memberNum: 1,
+            maxMemberNum: 200,
+        };
         const { api } = makeApi({
             getGroupDetailInfo: vi.fn(async () => ({ result: 0, errMsg: "", groupInfo: info })),
         });
@@ -131,16 +152,18 @@ describe("查询", () => {
         await expect(api.getGroupInfo("10001")).rejects.toBeInstanceOf(KernelError);
     });
 
-    it("getGroupInfo：形状异常抛 UNKNOWN（result=0 但无详情字段）", async () => {
+    it("getGroupInfo：形状异常抛 INVALID_PARAM（result=0 但无详情字段）", async () => {
         const { api } = makeApi({
             getGroupDetailInfo: vi.fn(async () => ({ result: 0, errMsg: "" })),
         });
-        await expect(api.getGroupInfo("10001")).rejects.toMatchObject({ code: "UNKNOWN" });
+        await expect(api.getGroupInfo("10001")).rejects.toMatchObject({ code: "INVALID_PARAM" });
     });
 
     it("getGroupMemberList：errCode=0 返回 infos 值数组", async () => {
         const { api } = makeApi();
-        await expect(api.getGroupMemberList("10001")).resolves.toEqual([{ uid: "u1" }]);
+        await expect(api.getGroupMemberList("10001")).resolves.toEqual([
+            { uid: "u1", uin: "10001" },
+        ]);
     });
 
     it("getGroupMemberList：errCode 非 0 抛 UNKNOWN", async () => {
@@ -165,10 +188,12 @@ describe("查询", () => {
             getMemberInfo: vi.fn(async () => ({
                 result: 0,
                 errMsg: "",
-                infos: new Map([["u1", { uid: "u1" }]]),
+                infos: new Map([["u1", { uid: "u1", uin: "10001" }]]),
             })),
         });
-        await expect(api.getGroupMemberInfo("10001", ["u1"])).resolves.toEqual([{ uid: "u1" }]);
+        await expect(api.getGroupMemberInfo("10001", ["u1"])).resolves.toEqual([
+            { uid: "u1", uin: "10001" },
+        ]);
     });
 
     it("getGroupMemberInfo：infos 非 Map 形状 → 空数组（待校准兜底）", async () => {

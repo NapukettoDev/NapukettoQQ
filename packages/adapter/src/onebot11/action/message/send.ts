@@ -15,8 +15,12 @@ import { z } from "zod";
 import type { AdapterLoggerLike } from "../../../shared/log.js";
 import { ensureSilk, prepareVideoElements } from "../../../shared/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
-import { applySendContext, cqMessageToCanonical, segmentsToCanonical } from "../../helper/index.js";
-import type { OB11MessageSegment } from "../../types/index.js";
+import {
+    applySendContext,
+    cqMessageToCanonical,
+    parseOB11MessageSegments,
+    segmentsToCanonical,
+} from "../../helper/index.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
 
@@ -50,10 +54,10 @@ async function sendOb11Message(
     deps: SendMsgDeps,
 ): Promise<{ message_id: number }> {
     const peer = await resolveTargetPeer(payload, deps, "send_msg 需要 group_id 或 user_id");
-    // message: CQ 码字符串 → canonical；segment 数组 → canonical
+    // message: CQ 码字符串 → canonical；segment 数组 → 运行时守卫收窄 → canonical
     let canonical: CanonicalElement[];
     if (Array.isArray(payload.message)) {
-        canonical = segmentsToCanonical(payload.message as OB11MessageSegment[]);
+        canonical = segmentsToCanonical(parseOB11MessageSegments(payload.message));
     } else {
         canonical = cqMessageToCanonical(payload.message);
     }
