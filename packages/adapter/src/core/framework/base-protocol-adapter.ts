@@ -12,14 +12,18 @@ import { EventBroadcaster } from "@napuketto/network";
 /**
  * 协议配置输入：`ConfigBase` 实例（loader seed 装配）或 Plain Object（嵌入式
  * 调用方最常写的形态）。`undefined` = 全空配置（schema 缺省值兜底）。
+ *
+ * 注意：不再并 `Record<string, unknown>` 兜底——那一项会让任意对象绕过
+ * `Partial<TConfig>` 的字段约束（连别的协议的 `ConfigBase` 也能塞进来）。
  */
-export type ProtocolConfigInput<TConfig> =
-    | ConfigBase<TConfig>
-    | Partial<TConfig>
-    | Record<string, unknown>
-    | undefined;
+export type ProtocolConfigInput<TConfig> = ConfigBase<TConfig> | Partial<TConfig> | undefined;
 
-/** 是否为 ConfigBase 实例/鸭子类型（单测常注入带 `load()` 的 mock）。 */
+/**
+ * 是否为 ConfigBase 实例/鸭子类型（单测常注入带 `load()` 的 mock）。
+ *
+ * 鸭子类型只用于「已有 `load()` 的实例」，`load()` 自身负责 schema 校验；
+ * Plain Object 一律走下方内存 seed 分支（强制 `schema.parse`）。
+ */
 function isConfigBaseLike<TConfig>(value: unknown): value is ConfigBase<TConfig> {
     return isRecord(value) && typeof value["load"] === "function";
 }

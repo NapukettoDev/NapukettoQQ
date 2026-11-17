@@ -87,6 +87,12 @@ strict/78 契约相反。两套读取是有意分层，不是重复实现。只�
 loader 需要严格校验、或内联契约再次变化时，才评估在 kernel 提供纯函数原语
 （env 键、文本读取、JSON 对象解析），并由 loader 经 `KernelLike` 特性探测采用。
 
+**`config validate` 的协议段校验**：主配置解析保持协议段为宽松对象，但 validate
+路径会懒加载 `@napuketto/adapter` 的四个协议 schema，对**非空**协议段做与 loader
+装配同口径的字段校验（空段 = 不启用，跳过）。这一层只在 validate 引入，普通启动与
+supervisor 不加载协议包——否则 validate 只做 `isRecord` 浅校验，会出现「校验通过但
+启动 exit 78」的假承诺。新增协议时要同步登记进 `config/protocol-validate.ts`。
+
 ## 测试布局
 测试与源码同目录，文件名对应被测模块；跨模块的领域套件可用领域名：
 

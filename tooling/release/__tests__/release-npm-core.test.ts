@@ -67,6 +67,24 @@ describe("discoverPackages", () => {
         const pkgs = await discoverPackages(tmpRoot);
         expect(pkgs.map((p) => p.name)).toEqual(["@napuketto/kernel"]);
     });
+
+    it("package.json 畸形（dependencies: null / 顶层 null）→ 不抛 TypeError，按空依赖处理", async () => {
+        const nullDeps = join(tmpRoot, "packages", "null-deps");
+        await mkdir(nullDeps, { recursive: true });
+        await writeFile(
+            join(nullDeps, "package.json"),
+            JSON.stringify({ name: "@napuketto/null-deps", version: "0.0.1", dependencies: null }),
+            "utf8",
+        );
+        const nullTop = join(tmpRoot, "packages", "null-top");
+        await mkdir(nullTop, { recursive: true });
+        await writeFile(join(nullTop, "package.json"), "null", "utf8");
+
+        const pkgs = await discoverPackages(tmpRoot);
+        const hit = pkgs.find((p) => p.name === "@napuketto/null-deps");
+        expect(hit?.dependencies).toEqual({});
+        expect(pkgs.some((p) => p.dir === nullTop)).toBe(false);
+    });
 });
 
 describe("topoSort", () => {

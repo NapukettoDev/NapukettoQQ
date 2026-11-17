@@ -38,7 +38,12 @@ export interface FriendCategory {
 /** 可疑好友申请（OB11 结构，get_doubt_friends_add_request 返回）。 */
 export interface DoubtFriendRequestInfo {
     flag: string;
-    uin: number;
+    /**
+     * 申请人 QQ 号。uid 无法解析为数字 uin（如 `u_xxx` 且不在任何群）时**缺省**：
+     * `Number("u_xxx")` 会产出 NaN，JSON 序列化后静默变成 null（下游 number 契约被
+     * 击穿），所以这里宁可不给字段，也不给 NaN / 0 这类假值。
+     */
+    uin?: number;
     nick?: string;
     source?: string;
     reason?: string;
@@ -216,6 +221,17 @@ function assignOptional<K extends keyof DoubtFriendRequestInfo>(
     }
 }
 
+/**
+ * uid → uin 数值（解析失败返回 undefined，绝不产出 NaN）。
+ *
+ * uid 形如 `u_xxx` 且群口径未命中时 `Number(uid)` 是 NaN；NaN 混进 number 契约后
+ * 经 JSON.stringify 变 null。这里只接受正安全整数（QQ 号），其余交给调用方省略字段。
+ */
+function resolveDoubtUin(uid: string, uinMap: Map<string, string>): number | undefined {
+    const value = Number(uinMap.get(uid) ?? uid);
+    return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
 /** 单项转换：DoubtBuddyReq → OB11 结构（导出供单测，friend.test.ts）。 */
 export function toDoubtFriendRequestInfo(
     item: DoubtBuddyReq,
@@ -223,9 +239,9 @@ export function toDoubtFriendRequestInfo(
 ): DoubtFriendRequestInfo {
     const info: DoubtFriendRequestInfo = {
         flag: item.uid,
-        uin: Number(uinMap.get(item.uid) ?? item.uid),
         type: "doubt",
     };
+    assignOptional(info, "uin", resolveDoubtUin(item.uid, uinMap));
     assignOptional(info, "nick", item.nick);
     assignOptional(info, "source", item.source);
     assignOptional(info, "reason", item.reason);

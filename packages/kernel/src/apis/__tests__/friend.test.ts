@@ -2,9 +2,9 @@
  * friend.ts toDoubtFriendRequestInfo 基线测试（fallow 重构目标，untested risk）
  *
  * 覆盖可疑好友申请转换：
- *  - 必填字段（flag/uin/type）
+ *  - flag/type 必填；uin 仅在能解析为正整数时出现（绝不产出 NaN）
  *  - 可选字段条件赋值（exactOptionalPropertyTypes）
- *  - uid→uin 转换缺失时回退 uid
+ *  - uid→uin 转换缺失时回退 uid 数字转换
  */
 import { describe, expect, it } from "vitest";
 import { toDoubtFriendRequestInfo } from "../friend.js";
@@ -17,6 +17,15 @@ describe("toDoubtFriendRequestInfo", () => {
             uin: 10001,
             type: "doubt",
         });
+    });
+
+    it("uid 形如 u_xxx 且 uinMap 未命中 → 不产出 NaN，uin 字段缺省", () => {
+        const item = { uid: "u_a1b2c3" } as never;
+        const result = toDoubtFriendRequestInfo(item, new Map());
+        expect(result).toEqual({ flag: "u_a1b2c3", type: "doubt" });
+        expect("uin" in result).toBe(false);
+        // JSON 序列化后不得出现 null（NaN 的序列化产物）
+        expect(JSON.stringify(result)).not.toContain("null");
     });
 
     it("uinMap 命中时 uin 用转换值", () => {
@@ -54,6 +63,7 @@ describe("toDoubtFriendRequestInfo", () => {
     it("可选字段缺失不出现键（exactOptionalPropertyTypes）", () => {
         const item = { uid: "u1" } as never;
         const result = toDoubtFriendRequestInfo(item, new Map());
+        expect("uin" in result).toBe(false);
         expect("nick" in result).toBe(false);
         expect("source" in result).toBe(false);
         expect("reason" in result).toBe(false);

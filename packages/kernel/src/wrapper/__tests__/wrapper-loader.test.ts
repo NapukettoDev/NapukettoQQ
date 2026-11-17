@@ -12,6 +12,7 @@ import type { WrapperContext } from "../wrapper-loader.js";
 import {
     createSession,
     createWrapper,
+    initSession,
     resolveQqUserDataRoot,
     startSession,
 } from "../wrapper-loader.js";
@@ -71,6 +72,28 @@ describe("createSession", () => {
         expect(session).toBe(fake);
     });
 
+    it("Session 构造器缺失/非函数 → KernelError（不裸 new）", () => {
+        const exports = mockExports({ NodeIQQNTWrapperSession: undefined });
+        const ctx = makeCtx(exports);
+        expect(() => createSession(ctx)).toThrow(/缺少可调用的 NodeIQQNTWrapperSession 构造器/);
+    });
+
+    it("create() 返回空壳对象 → 视为不可用，继续回退 new", () => {
+        const fallbackSession = { getMsgService: vi.fn() };
+        function ConstructibleSessionCtor(this: unknown) {
+            return fallbackSession;
+        }
+        Object.assign(ConstructibleSessionCtor, {
+            get: () => null,
+            getNTWrapperSession: () => null,
+            create: () => ({ notASession: true }),
+        });
+        const exports = mockExports({ NodeIQQNTWrapperSession: ConstructibleSessionCtor });
+        const ctx = makeCtx(exports);
+        expect(() => createSession(ctx)).not.toThrow();
+        expect(ctx.session).toBe(fallbackSession);
+    });
+
     it("startupSession.create 失败不中断", () => {
         const fallbackSession = { getMsgService: vi.fn() };
         const exports = mockExports({
@@ -84,6 +107,22 @@ describe("createSession", () => {
         const ctx = makeCtx(exports);
         expect(() => createSession(ctx)).not.toThrow();
         expect(ctx.session).not.toBeNull();
+    });
+});
+
+describe("initSession", () => {
+    it("session 缺 init → INVALID_STATE（空壳 Session 不裸调）", () => {
+        const ctx = makeCtx(mockExports());
+        ctx.session = { getMsgService: vi.fn() } as unknown as NodeIQQNTWrapperSession;
+        expect(() => initSession(ctx, {} as never, {} as never)).toThrow(/缺少 init 方法/);
+    });
+
+    it("session 具备 init → 正常调用", () => {
+        const init = vi.fn();
+        const ctx = makeCtx(mockExports());
+        ctx.session = { init, getMsgService: vi.fn() } as unknown as NodeIQQNTWrapperSession;
+        initSession(ctx, {} as never, {} as never);
+        expect(init).toHaveBeenCalledTimes(1);
     });
 });
 

@@ -25,7 +25,7 @@ import type {
     WrapperSessionInitConfig,
 } from "../types/index.js";
 import { PlatformType } from "../types/index.js";
-import { hasCallableProp } from "../utils/type-guards.js";
+import { getOwnProp, hasCallableProp } from "../utils/type-guards.js";
 import { extractDataRoot, resolveQqGlobalPath } from "./qq-data-path.js";
 import {
     createSessionListener,
@@ -233,9 +233,26 @@ export function initEngine(ctx: WrapperContext, config: EnginInitDesktopConfig):
 export function createSession(ctx: WrapperContext): NodeIQQNTWrapperSession {
     const S = ctx.exports.NodeIQQNTWrapperSession;
     const session =
-        createStartupSession(ctx) ?? getNTWrapperSession(S) ?? createNewSession(S) ?? new S();
+        createStartupSession(ctx) ?? getNTWrapperSession(S) ?? createNewSession(S) ?? newSession(S);
     ctx.session = session;
     return session;
+}
+
+/**
+ * 步骤 4：`new S()`（最后兜底）。
+ *
+ * isWrapperNodeApi 只保证「至少一个已知导出键存在」；Session 构造器可能缺失或
+ * 被版本漂移换成非函数值（stub 半成品）。`new undefined()` 会抛裸 TypeError，
+ * 这里换成 KernelError，且只在真正要 `new` 时才拒绝（静态方法可用的导出仍容忍）。
+ */
+function newSession(S: NodeIQQNTWrapperSessionCtor): NodeIQQNTWrapperSession {
+    if (typeof S !== "function") {
+        throw kernelError(
+            "wrapper.node 导出缺少可调用的 NodeIQQNTWrapperSession 构造器",
+            "INVALID_PARAM",
+        );
+    }
+    return new S();
 }
 
 /** 步骤 1：StartupSessionWrapper.create()（建立启动 session，失败忽略）。 */
@@ -268,13 +285,15 @@ function getNTWrapperSession(S: unknown): NodeIQQNTWrapperSession | null {
     }
 }
 
-/** 步骤 3：S.create() 回退。 */
+/** 步骤 3：S.create() 回退（返回值同样过 session 方法面守卫，拒绝空壳对象）。 */
 function createNewSession(S: NodeIQQNTWrapperSessionCtor): NodeIQQNTWrapperSession | null {
-    if (typeof S.create !== "function") {
+    const create = getOwnProp(S, "create");
+    if (typeof create !== "function") {
         return null;
     }
     try {
-        return S.create();
+        const created: unknown = Reflect.apply(create, S, []);
+        return isWrapperSession(created) ? created : null;
     } catch {
         return null;
     }
@@ -287,6 +306,14 @@ export function initSession(
     listener: NodeIKernelSessionListener,
 ): void {
     const session = ctx.session ?? createSession(ctx);
+    // isWrapperSession 只验 getMsgService（「service 挂载即 session 可用」），空壳
+    // Session 能过守卫；init 是这里真正要调用的方法，缺失时给 KernelError 而非裸 TypeError。
+    if (typeof getOwnProp(session, "init") !== "function") {
+        throw kernelError(
+            "session 实例缺少 init 方法（wrapper 版本不匹配或空壳 Session）",
+            "INVALID_STATE",
+        );
+    }
     session.init(config, new DependsAdapter(), new DispatcherAdapter(), listener);
 }
 

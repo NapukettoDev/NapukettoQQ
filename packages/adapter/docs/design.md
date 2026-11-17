@@ -233,5 +233,9 @@
 - 生命周期守卫：骨架 start/stop 并发去重（stop 等待进行中的 start）；Satori 非登录事件
   `login.sn` 固定 0（登录序号≠事件 sn）；OB11 错误响应（404 / 异常兜底）同样透传 `echo`。
 - 依赖面：不新增运行时依赖；KuroBot 客户端用 Node 内置 `WebSocket`，`ws` 仅 devDependency。
+- **协议配置输入不叠 `Record<string, unknown>` 逃生舱**：`ProtocolConfigInput` 只接受
+  `ConfigBase<T>` / `Partial<T>` / `undefined`；宽兜底会让别的协议配置（或仅带 `load()`
+  的对象）绕过字段约束。鸭子类型 `load()` 只保留给单测 mock，Plain Object 一律走
+  `schema.parse`（内存 seed 分支）。
 - 历史决策见 [decisions](../../../docs/architecture/decisions.md)；实测样本见
   [evidence](./evidence.md)。
