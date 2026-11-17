@@ -55,4 +55,41 @@ describe("readMediaPatchStatus", () => {
             tick: 1,
         });
     });
+
+    it("pending / degraded 状态 → 解析成功（stub-media-patch.cpp 输出）", () => {
+        tmp = mkdtempSync(join(tmpdir(), "napuketto-mps-"));
+        const pending = join(tmp, "pending.json");
+        writeFileSync(pending, '{"v":1,"state":"pending","componentA":"pending"}');
+        expect(readMediaPatchStatus(pending)).toEqual({
+            v: 1,
+            state: "pending",
+            componentA: "pending",
+        });
+        const degraded = join(tmp, "degraded.json");
+        writeFileSync(
+            degraded,
+            '{"v":1,"state":"degraded","componentA":"sig_mismatch","componentB":"skipped","reason":"sig"}',
+        );
+        expect(readMediaPatchStatus(degraded)).toEqual({
+            v: 1,
+            state: "degraded",
+            componentA: "sig_mismatch",
+            componentB: "skipped",
+            reason: "sig",
+        });
+    });
+
+    it("多行输出只解析首行；字段类型不符 → 丢弃该字段", () => {
+        tmp = mkdtempSync(join(tmpdir(), "napuketto-mps-"));
+        const path = join(tmp, "multi.json");
+        writeFileSync(path, '{"v":1,"state":"applied","cleared":"bad","tick":2}\n{"extra":true}\n');
+        expect(readMediaPatchStatus(path)).toEqual({ v: 1, state: "applied", tick: 2 });
+    });
+
+    it("空文件 → undefined（不抛）", () => {
+        tmp = mkdtempSync(join(tmpdir(), "napuketto-mps-"));
+        const path = join(tmp, "empty.json");
+        writeFileSync(path, "   \n");
+        expect(readMediaPatchStatus(path)).toBeUndefined();
+    });
 });

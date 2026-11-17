@@ -13,6 +13,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 
 import path from "node:path";
 import process from "node:process";
+import { isRecord } from "./guards.js";
 
 /** 模板目录（相对本文件：src 与 dist 都在包根下，../templates 均指向包根/templates）。 */
 const TEMPLATES = new URL("../templates/", import.meta.url);
@@ -29,8 +30,10 @@ async function fetchLatestCliVersion(): Promise<string | null> {
         if (!res.ok) {
             return null;
         }
-        const json = (await res.json()) as { version?: unknown };
-        return typeof json.version === "string" && json.version !== "" ? json.version : null;
+        const json: unknown = await res.json();
+        return isRecord(json) && typeof json["version"] === "string" && json["version"] !== ""
+            ? json["version"]
+            : null;
     } catch {
         return null;
     }
@@ -53,16 +56,18 @@ async function fetchLatestCliVersion(): Promise<string | null> {
  */
 async function cliVersionRange(): Promise<string> {
     try {
-        const ownPkg = JSON.parse(
+        const parsed: unknown = JSON.parse(
             readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-        ) as {
-            dependencies?: Record<string, string>;
-            devDependencies?: Record<string, string>;
-        };
-        const range =
-            ownPkg.devDependencies?.["@napuketto/cli"] ?? ownPkg.dependencies?.["@napuketto/cli"];
-        if (range !== undefined && range !== "workspace:*") {
-            return range;
+        );
+        if (isRecord(parsed)) {
+            const devDependencies = parsed["devDependencies"];
+            const dependencies = parsed["dependencies"];
+            const range =
+                (isRecord(devDependencies) ? devDependencies["@napuketto/cli"] : undefined) ??
+                (isRecord(dependencies) ? dependencies["@napuketto/cli"] : undefined);
+            if (typeof range === "string" && range !== "workspace:*") {
+                return range;
+            }
         }
     } catch {
         // package.json 缺失（异常环境）→ 走 registry 兜底

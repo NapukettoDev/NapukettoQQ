@@ -15,6 +15,7 @@
  * 不该让整个 CLI 起不来。
  */
 import { readFileSync } from "node:fs";
+import { isRecord } from "@napuketto/kernel";
 
 /** 读不到 package.json 时的兜底版本号。 */
 export const VERSION_FALLBACK = "0.0.0-unknown";
@@ -32,16 +33,14 @@ const CANDIDATES = ["../package.json", "../../package.json"] as const;
 export function cliVersion(): string {
     for (const rel of CANDIDATES) {
         try {
-            const pkg = JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8")) as {
-                name?: unknown;
-                version?: unknown;
-            };
+            const parsed: unknown = JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8"));
             if (
-                pkg.name === SELF_NAME &&
-                typeof pkg.version === "string" &&
-                pkg.version.length > 0
+                isRecord(parsed) &&
+                parsed["name"] === SELF_NAME &&
+                typeof parsed["version"] === "string" &&
+                parsed["version"].length > 0
             ) {
-                return pkg.version;
+                return parsed["version"];
             }
         } catch {
             // 候选不存在 / 不是合法 JSON → 试下一个

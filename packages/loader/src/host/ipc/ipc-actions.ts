@@ -8,6 +8,7 @@
  * ⚠️ 不自研 kernel 依赖（loader 运行时 file:// 动态 import kernel，编译期不建
  * workspace 依赖——见 types.ts 注释）。错误码提取用宽松结构判断。
  */
+import { getErrorCode, getOwnProp, hasCallableProp, isCallable, isRecord } from "../type-guards.js";
 import { errorMessage, log } from "../util.js";
 
 /** 宽松 Peer 最小面（kernel Peer：chatType + peerUid）。 */
@@ -118,11 +119,12 @@ interface LooseAtElement {
 
 /** at 元素判断（宽松结构；排除 @全体——target="all" 走 atType=1，无需转换）。 */
 function isLooseAtElement(value: unknown): value is LooseAtElement {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const el = value as Record<string, unknown>;
-    return el["type"] === "at" && typeof el["target"] === "string" && el["target"] !== "all";
+    return (
+        isRecord(value) &&
+        value["type"] === "at" &&
+        typeof value["target"] === "string" &&
+        value["target"] !== "all"
+    );
 }
 
 /** 收集元素中的 at（非 @全体）及其索引。 */
@@ -216,7 +218,10 @@ async function resolveAtElements(
     }
     const out = [...elements];
     for (const item of atItems) {
-        const prev = out[item.index] as LooseAtElement;
+        const prev = out[item.index];
+        if (!isLooseAtElement(prev)) {
+            continue;
+        }
         const next = await normalizeAtElement(ctx, peerUid, prev, uidMap);
         if (next !== null) {
             out[item.index] = next;
@@ -279,14 +284,11 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     // 诊断：按方法名 + 参数数组调用 flash 服务任意方法（2 参数组合实验用）。
     actions.set("diag.flashCall", async (params) => {
-        const sess = ctx.session as { getFlashTransferService?: () => unknown } | undefined;
-        if (sess === undefined) {
+        const sess = ctx.session;
+        if (!hasCallableProp(sess, "getFlashTransferService")) {
             return { error: "session 未注入" };
         }
-        const flash =
-            typeof sess.getFlashTransferService === "function"
-                ? sess.getFlashTransferService()
-                : null;
+        const flash = sess.getFlashTransferService();
         if (flash === null || flash === undefined) {
             return { error: "flash 服务为 null" };
         }
@@ -295,6 +297,11 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     // 诊断：调用 session 任意方法（上线信号验证：onLine 可能触发模块初始化）。
     actions.set("diag.sessionCall", async (params) => {
+        const method = typeof params["method"] === "string" ? params["method"] : "";
+        // 安全拦截：onLine 会导致进程后续丢失全部入站消息；wifiphoto 相关方法非业务面。
+        if (method === "onLine" || method.toLowerCase().includes("wifiphoto")) {
+            return { ok: false, error: `method ${method} is blocked for safety` };
+        }
         if (ctx.session === undefined) {
             return { error: "session 未注入" };
         }
@@ -311,12 +318,11 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     // 诊断：调用 richMediaService 任意方法（uploadRMFileWithoutMsg 等替代上传路径）。
     actions.set("diag.richMediaCall", async (params) => {
-        const sess = ctx.session as { getRichMediaService?: () => unknown } | undefined;
-        if (sess === undefined) {
+        const sess = ctx.session;
+        if (!hasCallableProp(sess, "getRichMediaService")) {
             return { error: "session 未注入" };
         }
-        const svc =
-            typeof sess.getRichMediaService === "function" ? sess.getRichMediaService() : null;
+        const svc = sess.getRichMediaService();
         if (svc === null || svc === undefined) {
             return { error: "richMedia 服务为 null" };
         }
@@ -325,11 +331,11 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     // 诊断：调用 msgService 任意方法（getRichMediaFilePathForGuild 等富媒体路径计算）。
     actions.set("diag.msgServiceCall", async (params) => {
-        const sess = ctx.session as { getMsgService?: () => unknown } | undefined;
-        if (sess === undefined) {
+        const sess = ctx.session;
+        if (!hasCallableProp(sess, "getMsgService")) {
             return { error: "session 未注入" };
         }
-        const svc = typeof sess.getMsgService === "function" ? sess.getMsgService() : null;
+        const svc = sess.getMsgService();
         if (svc === null || svc === undefined) {
             return { error: "msgService 为 null" };
         }
@@ -338,11 +344,11 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     // 诊断：调用 NodeQQNTWrapperUtil 任意方法（原生 copyFile 等）。
     actions.set("diag.utilCall", async (params) => {
-        const util = ctx.util as { get?: () => unknown } | undefined;
-        if (util === undefined) {
+        const util = ctx.util;
+        if (util === undefined || util === null) {
             return { error: "util 未注入" };
         }
-        const instance = typeof util.get === "function" ? util.get() : util;
+        const instance = hasCallableProp(util, "get") ? util.get() : util;
         if (instance === null || instance === undefined) {
             return { error: "util 实例为 null" };
         }
@@ -360,18 +366,21 @@ async function callDiagnosticMethod(
 ): Promise<unknown> {
     const method = typeof params["method"] === "string" ? params["method"] : "";
     const args = Array.isArray(params["args"]) ? params["args"] : [];
-    const target = obj as Record<string, unknown>;
+    if ((typeof obj !== "object" && typeof obj !== "function") || obj === null) {
+        return { error: "target object is not a record" };
+    }
     if (method === "__methods") {
         const own = Object.getOwnPropertyNames(obj);
-        const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(obj) ?? {});
-        return { methods: [...new Set([...own, ...proto])] };
+        const proto: unknown = Object.getPrototypeOf(obj);
+        const protoKeys = isRecord(proto) ? Object.getOwnPropertyNames(proto) : [];
+        return { methods: [...new Set([...own, ...protoKeys])] };
     }
-    const fn = target[method];
-    if (typeof fn !== "function") {
+    const fn = getOwnProp(obj, method);
+    if (!isCallable(fn)) {
         return { error: `方法不存在: ${method}` };
     }
     try {
-        const r = await (fn as (...a: unknown[]) => unknown).apply(obj, args);
+        const r = await fn.apply(obj, args);
         return { ok: true, ret: r };
     } catch (e) {
         return { ok: false, err: errorMessage(e) };
@@ -389,10 +398,10 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
         "getFileTmpPath",
         "getTransferingTmpPath",
     ]) {
-        const fn = (svc as Record<string, unknown>)[name];
-        if (typeof fn === "function") {
+        const fn = getOwnProp(svc, name);
+        if (isCallable(fn)) {
             try {
-                tmp[name] = await (fn as () => unknown).call(svc);
+                tmp[name] = await fn.call(svc);
             } catch (e) {
                 tmp[name] = `调用失败: ${errorMessage(e)}`;
             }
@@ -405,7 +414,6 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
 
 /** 诊断：闪传服务候选 side-effect 触发（§5.3 候选动作 1，参数宽松猜测）。 */
 async function probeFlashSideEffects(flash: unknown): Promise<Record<string, unknown>> {
-    const flashObj = flash as Record<string, unknown>;
     const sideEffects: Record<string, unknown> = {};
     const candidates: [string, unknown[]][] = [
         ["addFileSetSimpleStatusListener", [() => undefined]],
@@ -414,10 +422,10 @@ async function probeFlashSideEffects(flash: unknown): Promise<Record<string, unk
         ["getFileSetIdByCode", [""]],
     ];
     for (const [name, args] of candidates) {
-        const fn = flashObj[name];
-        if (typeof fn === "function") {
+        const fn = getOwnProp(flash, name);
+        if (isCallable(fn)) {
             try {
-                const r = await (fn as (...a: unknown[]) => unknown).apply(flash, args);
+                const r = await fn.apply(flash, args);
                 sideEffects[name] = { ok: true, ret: r };
             } catch (e) {
                 sideEffects[name] = {
@@ -434,22 +442,22 @@ async function probeFlashSideEffects(flash: unknown): Promise<Record<string, unk
 
 /** 诊断主流程：session → 富媒体服务 + 闪传服务的方法面与触发结果。 */
 async function runRichMediaDiag(session: unknown): Promise<Record<string, unknown>> {
-    const sess = session as
-        | { getRichMediaService?: () => unknown; getFlashTransferService?: () => unknown }
-        | undefined;
-    if (sess === undefined) {
+    if (session === undefined || session === null) {
         return { error: "session 未注入（IPC 上下文缺 session）" };
     }
     const out: Record<string, unknown> = {};
-    const svc = typeof sess.getRichMediaService === "function" ? sess.getRichMediaService() : null;
+    const svc = hasCallableProp(session, "getRichMediaService")
+        ? session.getRichMediaService()
+        : null;
     if (svc !== null && svc !== undefined) {
         out["richMediaTmpPaths"] = await enumerateTmpPaths(svc);
         out["richMediaMethods"] = Object.getOwnPropertyNames(Object.getPrototypeOf(svc));
     } else {
         out["richMediaService"] = "null";
     }
-    const flash =
-        typeof sess.getFlashTransferService === "function" ? sess.getFlashTransferService() : null;
+    const flash = hasCallableProp(session, "getFlashTransferService")
+        ? session.getFlashTransferService()
+        : null;
     if (flash !== null && flash !== undefined) {
         out["flashMethods"] = Object.getOwnPropertyNames(Object.getPrototypeOf(flash));
         out["flashSideEffects"] = await probeFlashSideEffects(flash);
@@ -486,11 +494,6 @@ export async function callIpcAction(
 
 /** 宽松提取错误码（KernelError 有 string code 字段；其他错误 UNKNOWN）。 */
 function errorCodeOf(err: unknown): string {
-    if (typeof err === "object" && err !== null) {
-        const code = (err as { code?: unknown }).code;
-        if (typeof code === "string" && code !== "") {
-            return code;
-        }
-    }
-    return "UNKNOWN";
+    const code = getErrorCode(err);
+    return code !== undefined && code !== "" ? code : "UNKNOWN";
 }

@@ -19,6 +19,59 @@ interface FfprobeParse {
     format?: { duration?: string };
 }
 
+/** 判断未知值是否为非 null、非数组的普通对象（media 零内部依赖，就地实现）。 */
+function isRecord(val: unknown): val is Record<string, unknown> {
+    return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
+/** ffprobe 单个 stream 项安全构造（非对象 / 字段类型不符 → null）。 */
+function parseFfprobeStream(
+    item: unknown,
+): { width?: number; height?: number; ["codec_type"]?: string } | null {
+    if (!isRecord(item)) {
+        return null;
+    }
+    const width = item["width"];
+    const height = item["height"];
+    const codecType = item["codec_type"];
+    return {
+        ...(typeof width === "number" ? { width } : {}),
+        ...(typeof height === "number" ? { height } : {}),
+        ...(typeof codecType === "string" ? { ["codec_type"]: codecType } : {}),
+    };
+}
+
+/** ffprobe format 段安全构造（缺失 / duration 非字符串 → undefined）。 */
+function parseFfprobeFormat(raw: unknown): { duration?: string } | undefined {
+    if (!isRecord(raw)) {
+        return undefined;
+    }
+    const duration = raw["duration"];
+    return typeof duration === "string" ? { duration } : undefined;
+}
+
+/** ffprobe JSON → 安全构造的形状（非对象 / 字段类型不符 → null）。 */
+function parseFfprobe(raw: unknown): FfprobeParse | null {
+    if (!isRecord(raw)) {
+        return null;
+    }
+    const streams: NonNullable<FfprobeParse["streams"]> = [];
+    const streamsRaw = raw["streams"];
+    if (Array.isArray(streamsRaw)) {
+        for (const item of streamsRaw) {
+            const stream = parseFfprobeStream(item);
+            if (stream !== null) {
+                streams.push(stream);
+            }
+        }
+    }
+    const format = parseFfprobeFormat(raw["format"]);
+    return {
+        ...(streams.length > 0 ? { streams } : {}),
+        ...(format !== undefined ? { format } : {}),
+    };
+}
+
 /** 转码：按选项输出到替换扩展名后的路径（.mp4）。ffmpeg 缺失/失败抛 MediaError。 */
 export async function transcodeVideo(input: string, opts: TranscodeOptions = {}): Promise<string> {
     const args = ["-y", "-i", input];
@@ -62,7 +115,12 @@ export async function getVideoInfo(input: string): Promise<VideoInfo> {
         if (result.exitCode !== 0) {
             throw new MediaError(`ffprobe 读取失败: ${input}（exit ${result.exitCode}）`);
         }
-        parsed = JSON.parse(result.stdout) as FfprobeParse;
+        const parsedJson: unknown = JSON.parse(result.stdout);
+        const info = parseFfprobe(parsedJson);
+        if (info === null) {
+            throw new MediaError(`ffprobe 输出格式无效: ${input}`);
+        }
+        parsed = info;
     } catch (err) {
         if (err instanceof MediaError) {
             throw err;

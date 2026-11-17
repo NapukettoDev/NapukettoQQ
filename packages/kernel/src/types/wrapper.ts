@@ -82,8 +82,15 @@ export interface NodeIQQNTWrapperEngine {
 }
 
 /** NodeIQQNTWrapperEngine 构造器（含静态 get()）。 */
-export type NodeIQQNTWrapperEngineCtor = new () => NodeIQQNTWrapperEngine & {
+export type NodeIQQNTWrapperEngineCtor = {
+    new (): NodeIQQNTWrapperEngine;
     get(): NodeIQQNTWrapperEngine;
+};
+
+/** NodeIQQNTWrapperUtil 构造器（含静态 get()）。 */
+export type NodeQQNTWrapperUtilCtor = {
+    new (): NodeQQNTWrapperUtil;
+    get(): NodeQQNTWrapperUtil;
 };
 
 /** desktopPathConfig 结构。 */
@@ -159,7 +166,11 @@ export interface NodeIQQNTWrapperSession {
     ): void;
     startNT(sessionId?: number): void;
     close(arg: unknown): void;
-    onLine(arg: unknown): void;
+    /**
+     * @deprecated 禁止调用：Native 层调用 `session.onLine` 会导致进程后续彻底
+     * 丢失所有入站文字与图片消息。上线状态请走 `MsgApi.setOnlineStatus`。
+     */
+    onLine?(arg: unknown): void;
     offLine(arg: unknown): void;
     disableIpDirect(arg: unknown): void;
     getAccountPath(arg: unknown): string;
@@ -295,7 +306,7 @@ export interface NodeIKernelSessionListener {
 /** wrapper.node 的 NAPI 顶层导出（module.exports）。 */
 export interface WrapperNodeApi {
     NodeIO3MiscService: NodeIO3MiscService;
-    NodeQQNTWrapperUtil: NodeQQNTWrapperUtil;
+    NodeQQNTWrapperUtil: NodeQQNTWrapperUtilCtor;
     /** 构造器：`new wrapper.NodeIQQNTWrapperSession()`。 */
     NodeIQQNTWrapperSession: NodeIQQNTWrapperSessionCtor;
     NodeIQQNTStartupSessionWrapper: NodeIQQNTStartupSessionWrapperCtor;

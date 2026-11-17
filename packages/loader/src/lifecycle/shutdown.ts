@@ -20,6 +20,7 @@
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { getErrorMessage } from "../host/type-guards.js";
 
 /** 哨兵文件名（置于数据根）。 */
 export const STOP_SENTINEL_FILENAME = "napuketto.stop";
@@ -153,7 +154,7 @@ export async function requestShutdown(reason: string): Promise<void> {
         try {
             await hook();
         } catch (err) {
-            const message = (err as { message?: unknown } | null)?.message ?? String(err);
+            const message = getErrorMessage(err);
             process.stdout.write(`[self-host] 关停钩子异常（继续）: ${message}\n`);
         }
     }

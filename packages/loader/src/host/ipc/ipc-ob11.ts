@@ -14,7 +14,9 @@
  */
 import { join } from "node:path";
 import process from "node:process";
+import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../core/module-guards.js";
 import { env } from "../env.js";
+import { isRecord } from "../type-guards.js";
 import type {
     AdapterCoreModuleLike,
     CoreContextLike,
@@ -34,8 +36,7 @@ export function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): s
     if (ctx === undefined || ctx === null) {
         return undefined;
     }
-    const wrapperExports = (ctx as unknown as { wrapper?: { exports?: unknown } | null }).wrapper
-        ?.exports;
+    const wrapperExports = ctx.wrapper?.exports ?? ctx.exports;
     const qqRoot = kernel.resolveQqUserDataRoot?.(wrapperExports) ?? null;
     if (qqRoot === null) {
         return undefined;
@@ -64,6 +65,37 @@ async function importFileUrl(url: string): Promise<unknown> {
     return import(url);
 }
 
+/** OB11 桥依赖的已校验模块面。 */
+interface Ob11BridgeModules {
+    network: NetworkModuleLike;
+    adapter: Ob11ModuleLike;
+    adapterCore: AdapterCoreModuleLike;
+}
+
+/** 动态 import 并校验 network / onebot11 / core 三个模块（失败抛出）。 */
+async function loadOb11BridgeModules(
+    importModule: (url: string) => Promise<unknown>,
+    e: Ob11BridgeEnv & { adapterEntry: string; networkEntry: string },
+): Promise<Ob11BridgeModules> {
+    const toUrl = (p: string): string => `file://${p.replace(BACKSLASH_RE, "/")}`;
+    const rawNetwork: unknown = await importModule(toUrl(e.networkEntry));
+    if (!isNetworkModule(rawNetwork)) {
+        throw new Error(`Invalid @napuketto/network module exports at ${e.networkEntry}`);
+    }
+    // adapter 子路径导出（ADR-014）：onebot11 面 / core 框架各走各的入口
+    const onebot11Entry = e.adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
+    const coreEntry = e.adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
+    const rawAdapter: unknown = await importModule(toUrl(onebot11Entry));
+    if (!isOb11Module(rawAdapter)) {
+        throw new Error(`Invalid @napuketto/adapter/onebot11 exports at ${onebot11Entry}`);
+    }
+    const rawAdapterCore: unknown = await importModule(toUrl(coreEntry));
+    if (!isAdapterCoreModule(rawAdapterCore)) {
+        throw new Error(`Invalid @napuketto/adapter/core exports at ${coreEntry}`);
+    }
+    return { network: rawNetwork, adapter: rawAdapter, adapterCore: rawAdapterCore };
+}
+
 /**
  * OB11 动作桥装配（bootstrap 登录成功、attachIpcServices 之后调用）。
  * 返回停止函数（broadcaster 注销 + adapter 退订；进程级清理用）。
@@ -83,22 +115,22 @@ export async function attachOb11IpcBridge(
     const noop = (): void => {
         // 降级空操作（未注入入口 / 装配失败：保持纯 kernel 动作面）
     };
-    if (e.adapterEntry === undefined || e.adapterEntry === "") {
+    const adapterEntry = e.adapterEntry;
+    const networkEntry = e.networkEntry;
+    if (adapterEntry === undefined || adapterEntry === "") {
         return noop;
     }
-    if (e.networkEntry === undefined || e.networkEntry === "") {
+    if (networkEntry === undefined || networkEntry === "") {
         return noop;
     }
     const importModule = deps.importModule ?? importFileUrl;
     const emit = deps.emitEvent ?? sendEvent;
     try {
-        const toUrl = (p: string): string => `file://${p.replace(BACKSLASH_RE, "/")}`;
-        const network = (await importModule(toUrl(e.networkEntry))) as NetworkModuleLike;
-        // adapter 子路径导出（ADR-014）：onebot11 面 / core 框架各走各的入口
-        const onebot11Entry = e.adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
-        const coreEntry = e.adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
-        const adapter = (await importModule(toUrl(onebot11Entry))) as Ob11ModuleLike;
-        const adapterCore = (await importModule(toUrl(coreEntry))) as AdapterCoreModuleLike;
+        const { network, adapter, adapterCore } = await loadOb11BridgeModules(importModule, {
+            ...e,
+            adapterEntry,
+            networkEntry,
+        });
 
         const broadcaster = new network.EventBroadcaster();
         // seed 模式：load() 返回内存初值（parse({}) 缺省段），不读不写任何配置文件
@@ -118,11 +150,9 @@ export async function attachOb11IpcBridge(
             groupChannel: services.groupChannel,
             friendChannel: services.friendChannel,
             // OB11 friend_add 源（B2，2026-09-08）：好友缓存快照 diff 通道
-            buddyCacheEvents: (services.buddyCache as { events: unknown } | undefined)?.events,
+            buddyCacheEvents: services.buddyCache?.events,
             // 校准日志（pino 实例，未知事件形状 raw JSON）
-            logger: services.logger as
-                | { warn(obj: unknown, msg?: string): void; info(obj: unknown, msg?: string): void }
-                | undefined,
+            logger: services.logger,
             msgApi: services.msgApi,
             groupApi: services.groupApi,
             groupNotifyApi: services.groupNotifyApi,
@@ -178,7 +208,7 @@ export async function attachOb11IpcBridge(
         // OB11 事件 → IPC event 通道（service="ob11"，name=post_type，args=[完整事件]）
         const bridgeAdapter = {
             send: (event: unknown) => {
-                const postType = (event as { post_type?: unknown }).post_type;
+                const postType = isRecord(event) ? event["post_type"] : undefined;
                 emit("ob11", typeof postType === "string" ? postType : "unknown", [event]);
             },
         };

@@ -23,29 +23,36 @@
 import type { NTEventChannel } from "../event-channel.js";
 import { kernelError } from "../infra/index.js";
 import type { LoginListener } from "../types/index.js";
+import { hasCallableProp } from "../utils/type-guards.js";
 
 /** 登录事件通道的固定类型（事件名前缀 "Login"）。 */
 export type LoginEventChannel = NTEventChannel<LoginListener, "Login">;
+
+/** LoginBridge 依赖的 loginService 方法面（remove 可选，老版本可能缺）。 */
+interface BoundLoginService {
+    addKernelLoginListener(listener: unknown): number;
+    removeKernelLoginListener?(listenerId: number): void;
+}
+
+/** 运行时判定 loginService 是否具备监听注册方法面。 */
+function isBoundLoginService(val: unknown): val is BoundLoginService {
+    return hasCallableProp(val, "addKernelLoginListener");
+}
 
 /**
  * 登录事件桥：注册原生监听 → 回调 emit 到 channel。
  * 无全局单例（ADR-015 推论）——每进程一份。
  */
 export class LoginBridge {
-    private readonly service: unknown;
+    private readonly boundService: BoundLoginService;
     private readonly channel: LoginEventChannel;
     private listenerId: number | null = null;
 
     constructor(loginService: unknown, channel: LoginEventChannel) {
-        if (
-            loginService === null ||
-            loginService === undefined ||
-            typeof (loginService as { addKernelLoginListener?: unknown }).addKernelLoginListener !==
-                "function"
-        ) {
+        if (!isBoundLoginService(loginService)) {
             throw kernelError("loginService 无效（缺 addKernelLoginListener）", "INVALID_STATE");
         }
-        this.service = loginService;
+        this.boundService = loginService;
         this.channel = channel;
     }
 
@@ -60,9 +67,7 @@ export class LoginBridge {
                 this.channel.emit("Login/onLoginDisConnected", ...args),
             onLogoutSucceed: (...args) => this.channel.emit("Login/onLogoutSucceed", ...args),
         };
-        this.listenerId = (
-            this.service as { addKernelLoginListener(listener: unknown): number }
-        ).addKernelLoginListener(listener);
+        this.listenerId = this.boundService.addKernelLoginListener(listener);
     }
 
     /** 注销原生监听（幂等）。 */
@@ -70,9 +75,7 @@ export class LoginBridge {
         if (this.listenerId === null) {
             return;
         }
-        (
-            this.service as { removeKernelLoginListener(listenerId: number): void }
-        ).removeKernelLoginListener(this.listenerId);
+        this.boundService.removeKernelLoginListener?.(this.listenerId);
         this.listenerId = null;
     }
 

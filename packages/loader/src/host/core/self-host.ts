@@ -39,6 +39,7 @@ import {
     sendStatus,
     shouldSendGenericBootFailed,
 } from "../ipc/index.js";
+import { getOwnProp, hasCallableProp } from "../type-guards.js";
 import { bootstrapExitCode, createState, errMsg, log } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";
@@ -78,7 +79,7 @@ if (ipcMode) {
 }
 
 log(
-    `[self-host] 启动 @ ${new Date().toISOString()} pid=${process.pid} node=${process.version} type=${(process as { type?: string }).type ?? "(标准 node)"}`,
+    `[self-host] 启动 @ ${new Date().toISOString()} pid=${process.pid} node=${process.version} type=${getOwnProp(process, "type") ?? "(标准 node)"}`,
 );
 log(`[self-host] stub 目录: ${env.NAPUTO_STUB_DIR ?? "(PATH 前置，未记录)"}`);
 
@@ -140,7 +141,7 @@ if (ipcMode) {
 try {
     // { exports: {} } 是 process.dlopen 的最小载体（wrapper 向其中填充 NAPI exports）
     const m: { exports: Record<string, unknown> } = { exports: {} };
-    process.dlopen(m as object, wrapperPath);
+    process.dlopen(m, wrapperPath);
     const keys = Object.keys(m.exports ?? {});
     log(`[self-host] ✅ dlopen 成功，exports ${keys.length} 个`);
     if (!keys.includes("NodeIKernelLoginService")) {
@@ -166,16 +167,19 @@ try {
 //    不激活则 getLoginList 永不 resolve（挂起）。listener 用普通 JS 对象
 //    （getOnAmgomDataPiece 空实现，wrapper 契约回调）。
 try {
-    const O3 = state.wrapperExports?.["NodeIO3MiscService"] as
-        | { get?(): { addO3MiscListener(listener: unknown): void } }
-        | undefined;
-    if (O3 && typeof O3.get === "function") {
-        O3.get().addO3MiscListener({
-            getOnAmgomDataPiece() {
-                // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
-            },
-        });
-        log("[self-host] ✅ O3MiscService 激活事件分发");
+    const o3Ctor = state.wrapperExports?.["NodeIO3MiscService"];
+    if (hasCallableProp(o3Ctor, "get")) {
+        const svc = o3Ctor.get();
+        if (hasCallableProp(svc, "addO3MiscListener")) {
+            svc.addO3MiscListener({
+                getOnAmgomDataPiece() {
+                    // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
+                },
+            });
+            log("[self-host] ✅ O3MiscService 激活事件分发");
+        } else {
+            log("[self-host] ⚠️ NodeIO3MiscService 缺 addO3MiscListener（版本变化？继续尝试）");
+        }
     } else {
         log("[self-host] ⚠️ NodeIO3MiscService 缺失（版本变化？继续尝试）");
     }

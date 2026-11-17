@@ -19,15 +19,16 @@ const ESSENCE_PAGE_LIMIT = 50;
 /** 精华消息最大分页数。 */
 const ESSENCE_MAX_PAGES = 20;
 
-/** 精华消息项（digest_list 返回 data.msg_list 成员，说明书参考）。 */
+/** 精华消息项（digest_list 返回 data.msg_list 成员，说明书参考）。
+ * 原生返回并不保证带全部展示字段，缺失按 optional 防御；`msg_content` 是标识字段。 */
 export interface EssenceMsgItem {
-    msg_seq: number;
-    msg_random: number;
-    sender_uin: string;
-    sender_nick: string;
-    add_digest_uin: string;
-    add_digest_nick: string;
-    add_digest_time: number;
+    msg_seq?: number;
+    msg_random?: number;
+    sender_uin?: string;
+    sender_nick?: string;
+    add_digest_uin?: string;
+    add_digest_nick?: string;
+    add_digest_time?: number;
     msg_content: Array<{
         msg_type?: number;
         text?: string;
@@ -201,9 +202,31 @@ export function parseHonorList(text: string, type: number): HonorListItem[] {
     return out;
 }
 
-/** 精华消息项形状判定（msg_content 数组是 EssenceMsgItem 的标识字段）。 */
+/** 可选字段：缺失放行，存在时类型必须正确。 */
+function isOptionalString(rec: Record<string, unknown>, key: string): boolean {
+    const v = rec[key];
+    return v === undefined || v === null || typeof v === "string";
+}
+
+/** 可选字段：缺失放行，存在时必须是有限 number。 */
+function isOptionalNumber(rec: Record<string, unknown>, key: string): boolean {
+    const v = rec[key];
+    return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
+}
+
+/** 精华消息项形状判定（msg_content 数组必备；其余字段存在时逐一校验类型）。 */
 function isEssenceMsgItem(val: unknown): val is EssenceMsgItem {
-    return isRecord(val) && Array.isArray(val["msg_content"]);
+    return (
+        isRecord(val) &&
+        Array.isArray(val["msg_content"]) &&
+        isOptionalString(val, "sender_uin") &&
+        isOptionalString(val, "sender_nick") &&
+        isOptionalString(val, "add_digest_uin") &&
+        isOptionalString(val, "add_digest_nick") &&
+        isOptionalNumber(val, "msg_seq") &&
+        isOptionalNumber(val, "msg_random") &&
+        isOptionalNumber(val, "add_digest_time")
+    );
 }
 
 /** msg_list → 精华消息数组（逐项守卫，非数组 / 残缺项丢弃）。 */

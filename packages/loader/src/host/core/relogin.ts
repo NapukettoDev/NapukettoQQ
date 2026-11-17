@@ -112,7 +112,7 @@ type LoginStateLike = (typeof LOGIN_STATES)[number];
 
 /** 宽松收窄（kernel onLoginProgress.state 是 string；bootstrap-core 登录回调共用）。 */
 export function isLoginState(value: string): value is LoginStateLike {
-    return (LOGIN_STATES as readonly string[]).includes(value);
+    return LOGIN_STATES.some((s) => s === value);
 }
 
 /** ready 态软重登：重装配 → 成功重播 ready/logged_in，失败交失败处理。 */

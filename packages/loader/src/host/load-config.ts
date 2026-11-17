@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "./env.js";
+import { isRecord } from "./type-guards.js";
 import type { KernelLike } from "./types.js";
 import { errMsg, log } from "./util.js";
 
@@ -32,13 +33,7 @@ export interface ProtocolSections {
 const INLINE_CONFIG_SENTINEL = "<inline>";
 
 /** 宽松账号项（TOML [[accounts]] 元素 / JSON accounts 元素）。 */
-interface AccountLike {
-    qq?: unknown;
-    onebot11?: unknown;
-    satori?: unknown;
-    kurobot?: unknown;
-    milky?: unknown;
-}
+type AccountLike = Record<string, unknown>;
 
 /** 账号内取协议段（宽松对象，装配时 zod 校验）。 */
 function sectionOf(
@@ -46,10 +41,7 @@ function sectionOf(
     key: "onebot11" | "satori" | "kurobot" | "milky",
 ): Record<string, unknown> | undefined {
     const section = account[key];
-    if (section !== undefined && section !== null && typeof section === "object") {
-        return section as Record<string, unknown>;
-    }
-    return undefined;
+    return isRecord(section) ? section : undefined;
 }
 
 /**
@@ -63,8 +55,8 @@ export function readInlineConfigDoc(): Record<string, unknown> | undefined {
     }
     try {
         const doc: unknown = JSON.parse(raw);
-        if (typeof doc === "object" && doc !== null && !Array.isArray(doc)) {
-            return doc as Record<string, unknown>;
+        if (isRecord(doc)) {
+            return doc;
         }
         log("bootstrap: 内联配置不是 JSON 对象（回退文件形态）");
         return undefined;
@@ -85,10 +77,7 @@ function extractSections(
     let milkySection: Record<string, unknown> = {};
     if (Array.isArray(accounts)) {
         const mine = accounts.find(
-            (item): item is AccountLike =>
-                typeof item === "object" &&
-                item !== null &&
-                String((item as AccountLike)["qq"]) === uin,
+            (item): item is AccountLike => isRecord(item) && String(item["qq"]) === uin,
         );
         if (mine !== undefined) {
             ob11Section = sectionOf(mine, "onebot11") ?? {};

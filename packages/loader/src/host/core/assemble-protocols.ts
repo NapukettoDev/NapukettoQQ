@@ -8,13 +8,24 @@ import { loadProtocolSections } from "../load-config.js";
 import type {
     AdapterCoreModuleLike,
     KernelLike,
+    KurobotModuleLike,
     LoginResultLike,
+    MilkyModuleLike,
     NetworkModuleLike,
     Ob11ModuleLike,
+    SatoriModuleLike,
 } from "../types.js";
 import { BACKSLASH_RE, INDEX_MJS_RE } from "../types.js";
 import { ConfigError, errMsg, log } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
+import {
+    isAdapterCoreModule,
+    isKurobotModule,
+    isMilkyModule,
+    isNetworkModule,
+    isOb11Module,
+    isSatoriModule,
+} from "./module-guards.js";
 
 /**
  * 协议段 seed 校验（zod 错误 → ConfigError，2026-10-25 嵌入式退出码契约）：
@@ -34,40 +45,6 @@ function parseSeed(
         const detail = errMsg(e).replace(/\s+/g, " ").trim();
         throw new ConfigError(`协议配置 ${label} 段校验失败: ${detail}`, { cause: e });
     }
-}
-
-/** adapter 包 milky 子路径最小面（@napuketto/adapter，动态 import）。 */
-interface MilkyModuleLike {
-    milkyConfigSchema: { parse(input: unknown): unknown };
-    NapukettoMilkyAdapter: new (
-        options: Record<string, unknown>,
-    ) => {
-        start(): Promise<unknown>;
-        stop(): Promise<void>;
-    };
-}
-
-/** adapter 包 satori 子路径最小面（@napuketto/adapter，动态 import）。 */
-interface SatoriModuleLike {
-    satoriConfigSchema: { parse(input: unknown): unknown };
-    NapukettoSatoriAdapter: new (
-        options: Record<string, unknown>,
-    ) => {
-        start(): Promise<unknown>;
-        stop(): Promise<void>;
-    };
-}
-
-/** adapter 包 kurobot 子路径最小面（@napuketto/adapter，动态 import）。 */
-interface KurobotModuleLike {
-    kurobotConfigSchema: { parse(input: unknown): unknown };
-    kurobotConfigDefaults: () => unknown;
-    NapukettoKurobotAdapter: new (
-        options: Record<string, unknown>,
-    ) => {
-        start(): Promise<unknown>;
-        stop(): Promise<void>;
-    };
 }
 
 /** 可选协议 adapter 生命周期最小面（start/stop）。 */
@@ -130,6 +107,65 @@ async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle
     return satori;
 }
 
+/** file:// URL 化（Windows 反斜杠转正斜杠）。 */
+function toFileUrl(p: string): string {
+    return `file://${p.replace(BACKSLASH_RE, "/")}`;
+}
+
+/** 动态 import network 并校验导出面。 */
+async function importNetworkModule(url: string): Promise<NetworkModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isNetworkModule(raw)) {
+        throw new Error(`Invalid @napuketto/network module exports at ${url}`);
+    }
+    return raw;
+}
+
+/** 动态 import adapter onebot11 并校验导出面。 */
+async function importOb11Module(url: string): Promise<Ob11ModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isOb11Module(raw)) {
+        throw new Error(`Invalid @napuketto/adapter/onebot11 exports at ${url}`);
+    }
+    return raw;
+}
+
+/** 动态 import adapter satori 并校验导出面。 */
+async function importSatoriModule(url: string): Promise<SatoriModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isSatoriModule(raw)) {
+        throw new Error(`Invalid @napuketto/adapter/satori exports at ${url}`);
+    }
+    return raw;
+}
+
+/** 动态 import adapter kurobot 并校验导出面。 */
+async function importKurobotModule(url: string): Promise<KurobotModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isKurobotModule(raw)) {
+        throw new Error(`Invalid @napuketto/adapter/kurobot exports at ${url}`);
+    }
+    return raw;
+}
+
+/** 动态 import adapter milky 并校验导出面。 */
+async function importMilkyModule(url: string): Promise<MilkyModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isMilkyModule(raw)) {
+        throw new Error(`Invalid @napuketto/adapter/milky exports at ${url}`);
+    }
+    return raw;
+}
+
+/** 动态 import adapter core 并校验导出面。 */
+async function importAdapterCoreModule(url: string): Promise<AdapterCoreModuleLike> {
+    const raw: unknown = await import(toFileUrl(url));
+    if (!isAdapterCoreModule(raw)) {
+        throw new Error(`Invalid @napuketto/adapter/core exports at ${url}`);
+    }
+    return raw;
+}
+
 /**
  * 装配 OB11 + Satori（+ Kurobot / Milky）适配器（登录成功后，非 IPC 模式）。
  *
@@ -159,9 +195,7 @@ export async function assembleOb11AndSatori(
     }
     try {
         const milkyAdapters: Array<{ stop(): Promise<void> }> = [];
-        const network = (await import(
-            `file://${networkEntry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as NetworkModuleLike;
+        const network = await importNetworkModule(networkEntry);
         // adapter 子路径导出（ADR-014）：onebot11 面（ob11ConfigSchema/
         // NapukettoOneBot11Adapter）走 ./onebot11，core 框架（ProtocolConfig）走 ./core。
         const onebot11Entry = adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
@@ -169,21 +203,11 @@ export async function assembleOb11AndSatori(
         const kurobotEntry = adapterEntry.replace(INDEX_MJS_RE, "kurobot/index.mjs");
         const milkyEntry = adapterEntry.replace(INDEX_MJS_RE, "milky/index.mjs");
         const coreEntry = adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
-        const adapter = (await import(
-            `file://${onebot11Entry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as Ob11ModuleLike;
-        const satoriAdapter = (await import(
-            `file://${satoriEntry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as SatoriModuleLike;
-        const kurobotAdapter = (await import(
-            `file://${kurobotEntry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as KurobotModuleLike;
-        const milkyAdapter = (await import(
-            `file://${milkyEntry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as MilkyModuleLike;
-        const adapterCore = (await import(
-            `file://${coreEntry.replace(BACKSLASH_RE, "/")}`
-        )) as unknown as AdapterCoreModuleLike;
+        const adapter = await importOb11Module(onebot11Entry);
+        const satoriAdapter = await importSatoriModule(satoriEntry);
+        const kurobotAdapter = await importKurobotModule(kurobotEntry);
+        const milkyAdapter = await importMilkyModule(milkyEntry);
+        const adapterCore = await importAdapterCoreModule(coreEntry);
 
         const { channel, groupCache } = services;
         // 协议隔离（2026-11-10）：一协议一广播器。broadcaster 是「adapter 事件 →
@@ -203,9 +227,7 @@ export async function assembleOb11AndSatori(
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
         // resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）
-        const wrapperExports = (
-            services.ctx as unknown as { wrapper?: { exports?: unknown } | null }
-        ).wrapper?.exports;
+        const wrapperExports = services.ctx.wrapper?.exports ?? services.ctx.exports;
         const qqRoot = kernel.resolveQqUserDataRoot?.(wrapperExports) ?? null;
         const mediaBaseDir = qqRoot !== null ? kernel.resolveQqGlobalPath?.(qqRoot) : undefined;
         const ob11 = new adapter.NapukettoOneBot11Adapter({
@@ -216,16 +238,10 @@ export async function assembleOb11AndSatori(
             groupChannel: services.groupChannel,
             friendChannel: services.friendChannel,
             // OB11 friend_add 源（B2，2026-09-08）：好友缓存快照 diff 通道
-            buddyCacheEvents: (services.buddyCache as { events: unknown } | undefined)?.events,
+            buddyCacheEvents: services.buddyCache?.events,
             // 校准日志（loader logger 的 ob11 子 logger：module=ob11，级别随
             // [log.levels].ob11；2026-10-25 校准数据已降 debug + raw 截断）
-            logger: services.calibLogger as
-                | {
-                      warn(obj: unknown, msg?: string): void;
-                      info(obj: unknown, msg?: string): void;
-                      debug(obj: unknown, msg?: string): void;
-                  }
-                | undefined,
+            logger: services.calibLogger,
             msgApi: services.msgApi,
             groupApi: services.groupApi,
             groupNotifyApi: services.groupNotifyApi,
@@ -304,15 +320,8 @@ export async function assembleOb11AndSatori(
                 // 接收行按 [log].unboundReceive 决定是否打印
                 receiveFilter: services.receiveFilter,
                 // 连接生命周期 / 握手被拒等日志（pino 实例，最小面）
-                logger: services.logger as
-                    | {
-                          debug(obj: unknown, msg: string): void;
-                          info(obj: unknown, msg: string): void;
-                          warn(obj: unknown, msg: string): void;
-                          error(obj: unknown, msg: string): void;
-                      }
-                    | undefined,
-            }) as { start(): Promise<unknown>; stop(): Promise<void> };
+                logger: services.logger,
+            });
             await kurobot.start();
             log("bootstrap: kurobot adapter started");
         }
@@ -354,14 +363,8 @@ export async function assembleOb11AndSatori(
                 qqVersion: env.NAPUTO_QQ_VERSION || "unknown",
                 // 发送远程媒体 URI 的下载缓存目录（与 OB11 download_file 同目录）
                 mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
-                logger: services.calibLogger as
-                    | {
-                          debug(obj: unknown, msg?: string): void;
-                          warn(obj: unknown, msg?: string): void;
-                          info(obj: unknown, msg?: string): void;
-                      }
-                    | undefined,
-            }) as { start(): Promise<unknown>; stop(): Promise<void> };
+                logger: services.calibLogger,
+            });
             await milky.start();
             log("bootstrap: milky adapter started");
             milkyAdapters.push(milky);

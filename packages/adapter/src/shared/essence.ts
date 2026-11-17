@@ -10,7 +10,7 @@
  *    WebApi.getEssenceMsgList 全量列表 diff：新增/移除 + operator（add_digest_uin）
  *    + sender（sender_uin）回填，是双方共用的发射路径。
  */
-import type { EssenceMsgItem } from "@napuketto/kernel";
+import { type EssenceMsgItem, isRecord } from "@napuketto/kernel";
 import { type SysMsgField, varintAt } from "./sysmsg.js";
 
 /** 单个候选值 → 群号字符串（非空字符串 / 正整数）。 */
@@ -27,10 +27,9 @@ function toGroupCode(value: unknown): string | null {
 /** onGroupEssenceListChange 参数 → 群号（录制实证首项字符串；防御收窄）。 */
 export function narrowEssenceGroupArg(arg: unknown): string | null {
     const first = Array.isArray(arg) ? arg[0] : arg;
-    if (first !== null && typeof first === "object") {
-        const rec = first as Record<string, unknown>;
+    if (isRecord(first)) {
         for (const key of ["groupCode", "group_code", "groupId", "peerUid"] as const) {
-            const code = toGroupCode(rec[key]);
+            const code = toGroupCode(first[key]);
             if (code !== null) {
                 return code;
             }

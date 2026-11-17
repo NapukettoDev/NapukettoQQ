@@ -95,8 +95,11 @@ export class MilkyEnrichment {
         ctx: ReceiveTranslateContext,
     ): Promise<void> {
         const atUids = elements
-            .filter((el) => el.type === "at" && el.target !== "all")
-            .map((el) => (el as { target: string }).target);
+            .filter(
+                (el): el is Extract<CanonicalElement, { type: "at" }> =>
+                    el.type === "at" && el.target !== "all",
+            )
+            .map((el) => el.target);
         if (atUids.length === 0) {
             return;
         }

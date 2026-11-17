@@ -2,13 +2,13 @@
  * Milky inbound 精华域：双路径发射——732:1 快路径（sysmsg 域 claim 后即时广播）
  * 与列表 diff（remove 路径 + operator 回填），essenceKeys 按 群:seq:方向 去重。
  */
+import { isRecord } from "@napuketto/kernel";
 import type { EssenceAddedItem } from "../../shared/essence.js";
 import { EssenceListSync, narrowEssenceGroupArg } from "../../shared/essence.js";
 import { sliceRaw } from "../../shared/log.js";
 import { numericUin } from "../../shared/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import { RecentKeyCache } from "../helper/state/recent-keys.js";
-import type { GroupEssenceMessageChangeData } from "../types.js";
 
 /** 精华域装配参数 = 管道依赖全集（api / broadcast / logger 按需取用）。 */
 export type MilkyInboundEssenceDeps = MilkyInboundBase;
@@ -38,11 +38,15 @@ export class MilkyInboundEssence {
         if (ruleKind !== "group_essence_message_change") {
             return true;
         }
-        const rec = data as Partial<GroupEssenceMessageChangeData>;
-        if (typeof rec.group_id !== "number" || typeof rec.message_seq !== "number") {
+        if (!isRecord(data)) {
             return true; // 非预期载荷不参与去重（保守放行）
         }
-        return this.claimChange(rec.group_id, rec.message_seq, true);
+        const groupId = data["group_id"];
+        const seq = data["message_seq"];
+        if (typeof groupId !== "number" || typeof seq !== "number") {
+            return true; // 非预期载荷不参与去重（保守放行）
+        }
+        return this.claimChange(groupId, seq, true);
     }
 
     /** 精华列表变更：拉全量列表 diff（remove 路径 + operator 回填；串行防乱序）。 */

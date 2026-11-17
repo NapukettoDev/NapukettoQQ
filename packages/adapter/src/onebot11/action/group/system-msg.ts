@@ -13,6 +13,9 @@ import { defineOb11Action, type Ob11Action } from "../base-action.js";
 /** 默认获取数量。 */
 const DEFAULT_COUNT = 50;
 
+/** OB11 兼容别名键（常量是为了规避 objectLiteralMember 命名规则）。 */
+const INVITED_REQUEST_ALIAS = "InvitedRequest";
+
 /** 群系统消息返回结构。 */
 interface GroupSystemMessageInfo {
     request_id: number;
@@ -133,9 +136,9 @@ export function createGroupSystemMsgActions(api: OneBotApi): Ob11Action[] {
                 const result = {
                     invited_requests: invited,
                     join_requests: joined,
-                } as GroupSystemMsgResult;
-                // 兼容别名 InvitedRequest（对象字面量 PascalCase 键被 useNamingConvention 拦截，改用索引）
-                result["InvitedRequest"] = invited;
+                    // 兼容别名 InvitedRequest（OB11 协议字段；常量键规避命名规则）
+                    [INVITED_REQUEST_ALIAS]: invited,
+                } satisfies GroupSystemMsgResult;
                 return result;
             },
         }),

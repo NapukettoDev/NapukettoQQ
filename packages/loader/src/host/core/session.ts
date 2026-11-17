@@ -7,6 +7,7 @@
  * 由 bootstrap.ts import（纯函数，无状态）。
  */
 
+import { hasCallableProp } from "../type-guards.js";
 import type { CoreContextLike, KernelLike } from "../types.js";
 import { errMsg, log, type SharedState } from "../util.js";
 
@@ -27,8 +28,9 @@ export interface WrapperSessionStaticLike {
  * 与 isSessionUsable 的区别：这里允许返回 null（未 init 但对象有效）。 */
 function isSessionObjectValid(s: unknown): boolean {
     if (!s) return false;
+    if (!hasCallableProp(s, "getMsgService")) return false;
     try {
-        (s as { getMsgService(): unknown }).getMsgService();
+        s.getMsgService();
         return true;
     } catch {
         return false;
@@ -38,8 +40,9 @@ function isSessionObjectValid(s: unknown): boolean {
 /** session 可用性判断：getMsgService() 可调且非 null（核心 service 已挂载）。 */
 export function isSessionUsable(s: unknown): boolean {
     if (!s) return false;
+    if (!hasCallableProp(s, "getMsgService")) return false;
     try {
-        const svc = (s as { getMsgService(): unknown }).getMsgService();
+        const svc = s.getMsgService();
         return svc !== null && svc !== undefined;
     } catch {
         return false;
@@ -52,9 +55,8 @@ function describeSession(s: unknown): string {
         return "null";
     }
     try {
-        const sess = s as { getSessionId?(): unknown; getMsgService?(): unknown };
-        const id = typeof sess.getSessionId === "function" ? String(sess.getSessionId()) : "?";
-        const svc = typeof sess.getMsgService === "function" ? sess.getMsgService() : null;
+        const id = hasCallableProp(s, "getSessionId") ? String(s.getSessionId()) : "?";
+        const svc = hasCallableProp(s, "getMsgService") ? s.getMsgService() : null;
         return `id=${id} msgSvc=${svc !== null && svc !== undefined ? "READY" : "null"}`;
     } catch (e) {
         return `id=? msgSvc=断言(${errMsg(e).slice(0, 60)})`;
@@ -76,18 +78,16 @@ export function startSessionProbe(
 ): NodeJS.Timeout {
     const sessionProbe = setInterval(() => {
         try {
-            const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"] as
-                | WrapperSessionStaticLike
-                | undefined;
+            const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"];
             const out: string[] = [];
-            const qqSession = state.qqSession as { getMsgService?: unknown } | null | undefined;
-            if (qqSession && typeof qqSession.getMsgService === "function") {
+            const qqSession = state.qqSession;
+            if (qqSession && hasCallableProp(qqSession, "getMsgService")) {
                 pushProbe(out, "qqSession", qqSession);
             }
-            if (S2 && typeof S2.get === "function") {
+            if (hasCallableProp(S2, "get")) {
                 pushProbe(out, "get()", S2.get());
             }
-            if (S2 && typeof S2.getNTWrapperSession === "function") {
+            if (hasCallableProp(S2, "getNTWrapperSession")) {
                 pushProbe(out, 'getNT("Session")', S2.getNTWrapperSession("Session"));
             }
             log(`BOOT: session 探测: ${out.join(" | ")}`);
@@ -105,15 +105,15 @@ export function startSessionProbe(
 /** 探测 session 方法面（NAPI 反射，验证 startNT/init 等关键方法）。 */
 export function probeSessionMethods(ctx: CoreContextLike): void {
     try {
-        const s = ctx.session as Record<string, unknown> | null | undefined;
-        if (s) {
+        const s = ctx.session;
+        if (s !== null && s !== undefined && (typeof s === "object" || typeof s === "function")) {
             const names = [
                 ...Object.getOwnPropertyNames(Object.getPrototypeOf(s) ?? {}),
                 ...Object.keys(s),
             ];
             log(`bootstrap: session methods(${names.length}): ${[...new Set(names)].join(", ")}`);
             log(
-                `bootstrap: session.init=${typeof s["init"]} startNT=${typeof s["startNT"]} getMsgService=${typeof s["getMsgService"]}`,
+                `bootstrap: session.init=${typeof Reflect.get(s, "init")} startNT=${typeof Reflect.get(s, "startNT")} getMsgService=${typeof Reflect.get(s, "getMsgService")}`,
             );
         }
     } catch (e) {
@@ -128,9 +128,7 @@ export function collectCandidateSessions(
     ctx: CoreContextLike,
 ): SessionCandidate[] {
     const candidates: SessionCandidate[] = [];
-    const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"] as
-        | WrapperSessionStaticLike
-        | undefined;
+    const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"];
     // A: QQ 主 session（startup 链路 getSessionIdList → getNTWrapperSession(nt_x)），
     //    渲染进程已 init → 大概率 READY（kernel session-resolver.ts 实测链路）。
     try {
@@ -143,7 +141,7 @@ export function collectCandidateSessions(
     }
     // B: vehicle 激活的 session（注册 key="Session"，对象有效但未 init）
     try {
-        if (S2 && typeof S2.getNTWrapperSession === "function") {
+        if (hasCallableProp(S2, "getNTWrapperSession")) {
             const got = S2.getNTWrapperSession("Session");
             if (got) candidates.push({ s: got, tag: "getNT(Session)" });
         }
@@ -152,7 +150,7 @@ export function collectCandidateSessions(
     }
     // C: get()（单例表默认项）
     try {
-        if (S2 && typeof S2.get === "function") {
+        if (hasCallableProp(S2, "get")) {
             const got = S2.get();
             if (got) candidates.push({ s: got, tag: "get()" });
         }

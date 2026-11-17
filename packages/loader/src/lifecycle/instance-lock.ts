@@ -29,6 +29,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { isRecord, parseJsonWithGuard } from "../host/type-guards.js";
 import {
     CMDLINE_PROBE_SUPPORTED,
     normalizeCmdline,
@@ -64,16 +65,29 @@ export interface InstanceLockCheck {
  *
  * @param dataDir 数据目录（账号级，如 ~/.napuketto/3567141148）
  */
+/** 锁文件内容形状判定（pid/startedAt 为有限 number；其余可选字段存在时校验类型）。 */
+function isInstanceLockInfo(val: unknown): val is InstanceLockInfo {
+    return (
+        isRecord(val) &&
+        typeof val["pid"] === "number" &&
+        Number.isFinite(val["pid"]) &&
+        typeof val["startedAt"] === "number" &&
+        Number.isFinite(val["startedAt"]) &&
+        (val["cmdline"] === undefined || typeof val["cmdline"] === "string")
+    );
+}
+
 export function checkInstanceLock(dataDir: string): InstanceLockCheck {
     const lockPath = join(dataDir, INSTANCE_LOCK_FILE);
-    let info: InstanceLockInfo | null = null;
+    let raw: string;
     try {
-        info = JSON.parse(readFileSync(lockPath, "utf-8")) as InstanceLockInfo;
+        raw = readFileSync(lockPath, "utf-8");
     } catch {
         // 文件不存在 / 内容损坏 → 视为可启动（损坏锁由 acquire 覆盖）
         return { occupied: false, pid: null, lockPath };
     }
-    if (typeof info.pid !== "number" || Number.isNaN(info.pid) || info.pid <= 0) {
+    const info = parseJsonWithGuard(raw, isInstanceLockInfo);
+    if (info === null || Number.isNaN(info.pid) || info.pid <= 0) {
         return { occupied: false, pid: null, lockPath };
     }
     // PID 存活判定（Windows 下 process.kill(pid, 0) 探测）
@@ -141,8 +155,8 @@ export function acquireInstanceLock(dataDir: string, cmdline?: string): boolean 
 export function releaseInstanceLock(dataDir: string): void {
     const lockPath = join(dataDir, INSTANCE_LOCK_FILE);
     try {
-        const info = JSON.parse(readFileSync(lockPath, "utf-8")) as InstanceLockInfo;
-        if (info.pid === process.pid) {
+        const info = parseJsonWithGuard(readFileSync(lockPath, "utf-8"), isInstanceLockInfo);
+        if (info !== null && info.pid === process.pid) {
             rmSync(lockPath, { force: true });
         }
     } catch {

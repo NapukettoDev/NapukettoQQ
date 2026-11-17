@@ -24,7 +24,7 @@ import type {
     TicketApi,
     WebApi,
 } from "@napuketto/kernel";
-import { errorMessage, GroupApi } from "@napuketto/kernel";
+import { errorMessage, GroupApi, NTGroupMemberRole } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../../shared/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
@@ -181,7 +181,9 @@ export class OneBotApi {
         }
         try {
             const member = await this.groupCache.getMember(groupCode, uid);
-            return member === undefined ? undefined : GroupApi.roleToString(member.role);
+            return member === undefined
+                ? undefined
+                : GroupApi.roleToString(member.role ?? NTGroupMemberRole.UNSPECIFIED);
         } catch (err) {
             this.logger?.warn(
                 { group: groupCode, uid, error: errorMessage(err) },
@@ -202,7 +204,10 @@ export class OneBotApi {
         try {
             const out = new Map<string, GroupSenderRole>();
             for (const member of await this.groupCache.getMembers(groupCode)) {
-                out.set(member.uid, GroupApi.roleToString(member.role));
+                out.set(
+                    member.uid,
+                    GroupApi.roleToString(member.role ?? NTGroupMemberRole.UNSPECIFIED),
+                );
             }
             return out;
         } catch (err) {

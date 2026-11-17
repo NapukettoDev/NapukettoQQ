@@ -11,6 +11,7 @@
 import {
     configError,
     errorMessage,
+    isRecord,
     type LogConfig,
     parseLogConfig,
     resolveDataRoot,
@@ -75,10 +76,10 @@ function parseProtocolSection(
     if (section === undefined) {
         return;
     }
-    if (typeof section !== "object" || section === null) {
+    if (!isRecord(section)) {
         throw configError(`主配置账号 ${key} 段必须是对象`);
     }
-    return section as Record<string, unknown>;
+    return section;
 }
 
 /**
@@ -207,10 +208,10 @@ function applyProtocolSections(raw: Record<string, unknown>, out: CliAccountConf
 
 /** 解析单个账号项（qq 必填；协议段缺省 = 不启用）。 */
 function parseAccount(item: unknown): CliAccountConfig {
-    if (typeof item !== "object" || item === null) {
+    if (!isRecord(item)) {
         throw configError("主配置 accounts 元素必须是对象");
     }
-    const raw = item as Record<string, unknown>;
+    const raw = item;
     const out: CliAccountConfig = { qq: parseAccountQq(raw) };
     applyAccountEnabled(out, raw["enabled"]);
     applyProtocolSections(raw, out);
@@ -241,10 +242,10 @@ function parseLogSection(input: unknown): LogConfig {
 
 /** 手写校验器：主配置 parse（不引入 zod）。全部校验错误为 ConfigError（exit 78 一族）。 */
 export function parseCliConfig(input: unknown): CliConfig {
-    if (typeof input !== "object" || input === null) {
+    if (!isRecord(input)) {
         throw configError("主配置必须是对象");
     }
-    const raw = input as Record<string, unknown>;
+    const raw = input;
     const dataDir = parseDataDir(raw);
     const autoRestart = parseAutoRestart(raw);
     const restartDelayMs = parseRestartDelayMs(raw);

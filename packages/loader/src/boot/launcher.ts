@@ -16,6 +16,7 @@ import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { getErrorCode, getErrorMessage } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "../qq/locate-qq.js";
 import {
@@ -167,11 +168,11 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     // uncaughtException → 整个宿主进程（koishi）崩溃。预检已覆盖常见场景，
     // 这里防漏网并输出可读信息，绝不让宿主进程崩掉。
     child.once("error", (err) => {
-        const code = (err as NodeJS.ErrnoException).code;
+        const code = getErrorCode(err);
         const message =
             code === "ENOENT"
                 ? `无法启动子进程（命令不存在）: ${command}`
-                : `子进程启动失败: ${err.message}`;
+                : `子进程启动失败: ${getErrorMessage(err)}`;
         // 防崩溃兜底输出（driver 侧另有 error 监听转 onError 友好流程）
         process.stderr.write(`[napuketto-loader] ${message}\n`);
     });

@@ -4,7 +4,13 @@
  * 纯函数：只读入参，不调 API、不读缓存。
  * 群成员/群信息等 NT 实体 → OB11 返回结构的薄映射。
  */
-import { type Group, GroupApi, type GroupDetailInfo, type GroupMember } from "@napuketto/kernel";
+import {
+    type Group,
+    GroupApi,
+    type GroupDetailInfo,
+    type GroupMember,
+    NTGroupMemberRole,
+} from "@napuketto/kernel";
 import type { GroupInfo, GroupMemberInfo } from "../types/index.js";
 
 /** NT Group → OB11 GroupInfo。 */
@@ -40,6 +46,33 @@ export function toOb11GroupInfoDetail(detail: GroupDetailInfo): GroupInfo {
 /** 禁言秒 → 毫秒（shut_up_timestamp 单位）。 */
 const SEC_TO_MS = 1000;
 
+/** 可选成员字段补全（缺省 / 空值不写入，保持 OB11 事件精简）。 */
+function applyMemberOptionalFields(info: GroupMemberInfo, member: GroupMember): void {
+    const cardName = member.cardName ?? "";
+    if (cardName !== "") {
+        info.card = cardName;
+    }
+    if (member.memberSpecialTitle !== undefined && member.memberSpecialTitle !== "") {
+        info.title = member.memberSpecialTitle;
+        info.special_title = member.memberSpecialTitle;
+    }
+    const shutUpTime = member.shutUpTime ?? 0;
+    if (shutUpTime > 0) {
+        info.shut_up_timestamp = shutUpTime * SEC_TO_MS;
+    }
+    const joinTime = member.joinTime ?? "";
+    if (joinTime !== "" && joinTime !== "0") {
+        info.join_time = Number(joinTime);
+    }
+    const lastSpeakTime = member.lastSpeakTime ?? "";
+    if (lastSpeakTime !== "" && lastSpeakTime !== "0") {
+        info.last_sent_time = Number(lastSpeakTime);
+    }
+    if (typeof member.age === "number") {
+        info.age = member.age;
+    }
+}
+
 /** NT GroupMember → OB11 GroupMemberInfo（uin 由 uidToUin 映射补全）。 */
 export function toOb11GroupMemberInfo(
     groupCode: string,
@@ -53,27 +86,9 @@ export function toOb11GroupMemberInfo(
     const info: GroupMemberInfo = {
         group_id: Number(groupCode),
         user_id: Number(uinStr),
-        nickname: member.nick,
-        role: GroupApi.roleToString(member.role),
+        nickname: member.nick ?? "",
+        role: GroupApi.roleToString(member.role ?? NTGroupMemberRole.UNSPECIFIED),
     };
-    if (member.cardName !== "") {
-        info.card = member.cardName;
-    }
-    if (member.memberSpecialTitle !== undefined && member.memberSpecialTitle !== "") {
-        info.title = member.memberSpecialTitle;
-        info.special_title = member.memberSpecialTitle;
-    }
-    if (member.shutUpTime > 0) {
-        info.shut_up_timestamp = member.shutUpTime * SEC_TO_MS;
-    }
-    if (member.joinTime !== "" && member.joinTime !== "0") {
-        info.join_time = Number(member.joinTime);
-    }
-    if (member.lastSpeakTime !== "" && member.lastSpeakTime !== "0") {
-        info.last_sent_time = Number(member.lastSpeakTime);
-    }
-    if (typeof member.age === "number") {
-        info.age = member.age;
-    }
+    applyMemberOptionalFields(info, member);
     return info;
 }

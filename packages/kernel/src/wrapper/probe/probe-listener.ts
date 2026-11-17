@@ -18,6 +18,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { errorMessage } from "../../infra/index.js";
+import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../utils/type-guards.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize } from "./probe-serialize.js";
 import { listMethods } from "./probe-utils.js";
@@ -110,7 +111,8 @@ export function createRecordingListener(
     };
     // 空目标：所有属性访问走陷阱（ownKeys 为空是刻意的——若原生以枚举发现回调，
     // <ownKeys> 记录立即暴露该行为，fallback 预置已知回调名全集后重录）。
-    return new Proxy({} as Record<string, unknown>, {
+    const target: Record<string, unknown> = {};
+    return new Proxy(target, {
         get(target, prop, receiver): unknown {
             if (typeof prop !== "string") {
                 return Reflect.get(target, prop, receiver);
@@ -161,8 +163,8 @@ export function startListenerRecording(
         }
     };
     const registered: ListenerRecordingResult["registered"] = {};
-    const session = ctx.session as Record<string, unknown> | null;
-    if (session !== null && session !== undefined) {
+    const session = ctx.session;
+    if (isRecord(session)) {
         for (const getter of INSTRUMENTED_SERVICE_GETTERS) {
             registered[serviceShortName(getter)] = recordService(session, getter, emit);
         }
@@ -179,11 +181,11 @@ function recordService(
 ): ListenerRecordingResult["registered"][string] {
     const name = serviceShortName(getter);
     try {
-        const fn = session[getter];
-        if (typeof fn !== "function") {
-            return { ok: false, error: `getter 缺失（typeof=${typeof fn}）` };
+        const getterFn = session[getter];
+        if (!isCallable(getterFn)) {
+            return { ok: false, error: `getter 缺失（typeof=${typeof getterFn}）` };
         }
-        const service = (fn as () => unknown).call(session);
+        const service = getterFn.call(session);
         if (service === null || service === undefined) {
             return { ok: false, error: "null/undefined" };
         }
@@ -198,12 +200,9 @@ function recordLoginService(
     ctx: WrapperContext,
     emit: (record: ListenerRecordEvent) => void,
 ): ListenerRecordingResult["registered"][string] {
-    const ctor = (ctx.exports as unknown as Record<string, unknown>)["NodeIKernelLoginService"] as
-        | { get?: () => unknown }
-        | null
-        | undefined;
+    const ctor = getOwnProp(ctx.exports, "NodeIKernelLoginService");
     try {
-        if (ctor === null || ctor === undefined || typeof ctor.get !== "function") {
+        if (!hasCallableProp(ctor, "get")) {
             return { ok: false, error: "NodeIKernelLoginService.get 缺失" };
         }
         const service = ctor.get();
@@ -226,15 +225,13 @@ function attachRecordingListener(
     if (addMethod === null) {
         return { ok: false, error: "无 add*Listener 方法" };
     }
-    const add = (service as Record<string, unknown>)[addMethod];
-    if (typeof add !== "function") {
+    const add = getOwnProp(service, addMethod);
+    if (!isCallable(add)) {
         return { ok: false, error: `${addMethod} 非函数` };
     }
     const listener = createRecordingListener(name, emit);
-    const listenerId = (add as (...args: unknown[]) => unknown).call(service, listener) as
-        | number
-        | null
-        | undefined;
+    const rawId = add.call(service, listener);
+    const listenerId = typeof rawId === "number" ? rawId : undefined;
     emit({
         ts: new Date().toISOString(),
         service: name,

@@ -24,7 +24,7 @@ import type {
     VideoElement,
 } from "../types/index.js";
 import { ChatType, ElementType, toSendElements, VIDEO_THUMB_KEY } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
+import { hasCallableProp, isRecord, requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult, unwrapResult } from "./result.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */
@@ -103,11 +103,10 @@ function pttDownloadResult(latest: PttElement | undefined, isLastPoll: boolean):
 function extractFavEmojiUrls(list: unknown[]): string[] {
     const out: string[] = [];
     for (const item of list) {
-        if (item === null || typeof item !== "object") {
+        if (!isRecord(item)) {
             continue;
         }
-        const rec = item as Record<string, unknown>;
-        const url = rec["url"] ?? rec["imageUrl"] ?? rec["emojiUrl"];
+        const url = item["url"] ?? item["imageUrl"] ?? item["emojiUrl"];
         if (typeof url === "string" && url !== "") {
             out.push(url);
         }
@@ -161,7 +160,7 @@ export class MsgApi {
     /** 消息事件通道（sendMsg 后等 onMsgInfoListUpdate 确认发送结果）。 */
     private readonly channel: MsgEventChannel | null;
     /** NodeQQNTWrapperUtil（富媒体发送 copyFile 用；session 拿不到时可为 null）。 */
-    private readonly util: { get(): unknown } | null;
+    private readonly util: unknown;
     /** 上次生成 msgId 的时间（单调递增，2026-08-07 防同毫秒并发碰撞）。 */
     private lastMsgTime = 0;
 
@@ -173,7 +172,7 @@ export class MsgApi {
         ]);
         this.channel = channel ?? null;
         // util 传入形态：构造器（NodeQQNTWrapperUtil，含 get()）或实例，宽松兼容
-        this.util = util !== null && util !== undefined ? (util as { get(): unknown }) : null;
+        this.util = util ?? null;
     }
 
     /**
@@ -458,15 +457,14 @@ export class MsgApi {
             downloadType, // 下载类型：1 = 原文件，2 = 缩略图（视频缩略图必须）
             file_uuid: "",
         });
-        if (util !== null) {
-            const instance = typeof util.get === "function" ? util.get() : util;
-            const copy = (instance as Record<string, unknown>)["copyFile"];
-            if (typeof copy === "function") {
-                await (copy as (a: string, b: string) => Promise<unknown>).call(
-                    instance,
-                    path,
-                    relPath,
-                );
+        if (util !== null && util !== undefined) {
+            const instance = hasCallableProp(util, "get") ? util.get() : util;
+            if (hasCallableProp(instance, "copyFile")) {
+                try {
+                    await instance.copyFile(path, relPath);
+                } catch {
+                    // 原生 copyFile 失败不阻断发送：后续走 wrapper 自身下载路径
+                }
             }
         }
         return relPath;
@@ -680,14 +678,17 @@ export class MsgApi {
 
     /** 收藏表情列表（get_custom_face_url_list；queryFavEmojiByDesc 形状待校准）。 */
     async queryFavEmojis(): Promise<string[]> {
-        let raw: { result?: unknown; errMsg?: unknown; emojiInfoList?: unknown };
+        let raw: unknown;
         try {
-            raw = (await this.service.queryFavEmojiByDesc("")) as typeof raw;
+            raw = await this.service.queryFavEmojiByDesc("");
         } catch (e) {
             throw kernelError(`queryFavEmojiByDesc 调用失败: ${errorMessage(e)}`, "UNKNOWN");
         }
         checkLooseResult("queryFavEmojiByDesc", raw);
-        const list = raw.emojiInfoList;
+        if (!isRecord(raw)) {
+            return [];
+        }
+        const list = raw["emojiInfoList"];
         if (!Array.isArray(list)) {
             return [];
         }

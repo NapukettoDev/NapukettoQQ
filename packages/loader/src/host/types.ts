@@ -39,6 +39,40 @@ export interface NetworkModuleLike {
     };
 }
 
+/** adapter 包 satori 子路径最小面（@napuketto/adapter，动态 import）。 */
+export interface SatoriModuleLike {
+    satoriConfigSchema: { parse(input: unknown): unknown };
+    NapukettoSatoriAdapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+    };
+}
+
+/** adapter 包 kurobot 子路径最小面（@napuketto/adapter，动态 import）。 */
+export interface KurobotModuleLike {
+    kurobotConfigSchema: { parse(input: unknown): unknown };
+    kurobotConfigDefaults: () => unknown;
+    NapukettoKurobotAdapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+    };
+}
+
+/** adapter 包 milky 子路径最小面（@napuketto/adapter，动态 import）。 */
+export interface MilkyModuleLike {
+    milkyConfigSchema: { parse(input: unknown): unknown };
+    NapukettoMilkyAdapter: new (
+        options: Record<string, unknown>,
+    ) => {
+        start(): Promise<unknown>;
+        stop(): Promise<void>;
+    };
+}
+
 /** OB11 动作最小面（handle 返回 OB11 信封 {status,retcode,data,message}，永不抛）。 */
 export interface Ob11ActionLike {
     handle(payload: unknown): Promise<unknown>;
@@ -85,19 +119,38 @@ export interface LoggerLike {
     child?(bindings: Record<string, unknown>, options?: { level?: string }): LoggerLike;
 }
 
-/** 群 API 最小面（uin↔uid 双向映射）。 */
+/** 群 API 最小面（uin↔uid 双向映射 + IPC 动作表查询面）。 */
 export interface GroupApiLike {
     uidToUin(uins: string[]): Promise<Map<string, string>>;
     uinToUid(uins: string[]): Promise<Map<string, string>>;
+    getGroupList(force?: boolean): Promise<unknown[]>;
+    getGroupMemberList(groupCode: string, forceFetch?: boolean): Promise<unknown[]>;
+    getGroupMemberInfo(groupCode: string, uids: string[]): Promise<unknown[]>;
 }
 
-/** 消息 API 最小面。 */
+/** 群缓存最小面（IPC 动作表查询面）。 */
+export interface GroupCacheLike {
+    listGroupsRefreshed(): Promise<Array<{ groupCode: string; groupName: string }>>;
+    getMember?(groupCode: string, uid: string): Promise<{ uid: string; nick?: string } | undefined>;
+}
+
+/** 好友 API 最小面。 */
+export interface FriendApiLike {
+    getFriendList(): Promise<unknown[]>;
+}
+
+/** 消息 API 最小面（IPC 动作表 + 协议适配共用）。 */
 export interface MsgApiLike {
     sendMessage(
         peer: { chatType: number; peerUid: string },
-        elements: CanonicalElementLike[],
+        elements: unknown[],
     ): Promise<{ msgId: string }>;
-    fetchMessages(peer: unknown, options: { count: number }): Promise<RawMessageLike[]>;
+    recallMessage(peer: { chatType: number; peerUid: string }, msgIds: string[]): Promise<void>;
+    fetchMessages(
+        peer: { chatType: number; peerUid: string },
+        options: { count: number; msgId?: string },
+    ): Promise<unknown[]>;
+    markRead(peer: { chatType: number; peerUid: string }): Promise<void>;
     /** 设置在线状态（自建宿主无 UI，引导链必须显式上报——缺它 = 半在线无推送，2026-09-15 发现 I）。 */
     setOnlineStatus(opts: {
         status: number;
@@ -146,13 +199,18 @@ export interface LoginAccountLike {
 
 /** CoreContext（kernel NapukettoCore.create → attachWrapper 返回）。 */
 export interface CoreContextLike {
-    session: unknown;
+    session?: unknown;
     engine?: unknown;
     login?: { uin?: string; uid?: string; nick?: string };
     /** 老 kernel 回退路径（startNapuketto 手工 lifecycle）。 */
-    loginService?: { initConfig(config: unknown): void };
+    loginService?: unknown;
+    /** wrapper exports（NodeQQNTWrapperUtil 等诊断面）。 */
+    exports?: Record<string, unknown>;
     /** wrapper 上下文（LoginBridge 取 loginService：拦截 new 捕获 / 单例 get()）。 */
-    wrapper?: { loginService?: unknown } | null;
+    wrapper?: {
+        loginService?: unknown;
+        exports?: Record<string, unknown>;
+    } | null;
 }
 
 /** NapukettoCore（kernel 装配层）。 */
@@ -224,7 +282,7 @@ export interface KernelLike {
     // 登录
     listLoginAccounts(ctx: CoreContextLike): Promise<LoginAccountLike[]>;
     quickLogin?: (ctx: CoreContextLike, options: unknown) => Promise<LoginResultLike>;
-    buildLoginConfig?: (appid: number, version: string, dataDir: string) => unknown;
+    buildLoginConfig?: (appid: string | number, version: string, dataDir: string) => unknown;
     // session
     getMainSession?: (ctx: CoreContextLike) => unknown;
     buildSessionConfig(options: unknown): unknown;
@@ -286,7 +344,7 @@ export interface KernelLike {
     FriendApi: new (
         session: unknown,
         deps: { uidToUin: (uins: string[]) => Promise<Map<string, string>> },
-    ) => unknown;
+    ) => FriendApiLike;
     GroupBridge: new (
         session: unknown,
         channel: EventChannelLike,
@@ -308,7 +366,15 @@ export interface KernelLike {
     GroupCache: new (options: {
         channel: EventChannelLike;
         groupApi: GroupApiLike;
-    }) => { register(): void; unregister(): void };
+    }) => {
+        register(): void;
+        unregister(): void;
+        listGroupsRefreshed(): Promise<Array<{ groupCode: string; groupName: string }>>;
+        getMember?(
+            groupCode: string,
+            uid: string,
+        ): Promise<{ uid: string; nick?: string } | undefined>;
+    };
     BuddyCache: new (options: {
         channel: EventChannelLike;
         logger?: unknown;
@@ -360,12 +426,12 @@ export interface KernelServices {
     /** 登录状态事件通道（Login/onLoginDisConnected；milky bot_offline 源）。 */
     loginChannel: EventChannelLike;
     /** 好友缓存（B2，2026-09-08：onBuddyListChange 快照 diff → onBuddyAdded/Removed；OB11 friend_add 源）。 */
-    buddyCache: unknown;
-    /** kernel apis（宽松 unknown，装配方按需断言——OB11 用完整面，IPC 动作表用最小面）。 */
-    msgApi: unknown;
-    groupApi: unknown;
-    friendApi: unknown;
-    groupCache: unknown;
+    buddyCache: { events: EventChannelLike; register(): void; unregister(): void };
+    /** kernel apis（精确最小面，装配方直接使用，无需断言）。 */
+    msgApi: MsgApiLike;
+    groupApi: GroupApiLike;
+    friendApi: FriendApiLike;
+    groupCache: GroupCacheLike;
     groupNotifyApi: unknown;
     ticketApi: unknown;
     richMediaApi: unknown;

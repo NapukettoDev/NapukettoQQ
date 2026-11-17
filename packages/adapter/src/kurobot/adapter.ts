@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { MsgEventChannel } from "@napuketto/kernel";
-import { errorMessage, kernelError } from "@napuketto/kernel";
+import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
 import { type KurobotConfig, kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";
 import type { KurobotConnectionOptions, KurobotLogger } from "./connection.js";
@@ -194,13 +194,11 @@ export class NapukettoKurobotAdapter extends BaseProtocolAdapter<KurobotConfig> 
 /** best-effort 读取 adapter 包版本（dist 与 src 双布局相对包根一致；失败 debug 留痕）。 */
 function resolvePackageVersion(log?: KurobotLogger): string | null {
     try {
-        const pkg = JSON.parse(
+        const parsed: unknown = JSON.parse(
             readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
-        ) as {
-            version?: unknown;
-        };
-        if (typeof pkg.version === "string" && pkg.version !== "") {
-            return pkg.version;
+        );
+        if (isRecord(parsed) && typeof parsed["version"] === "string" && parsed["version"] !== "") {
+            return parsed["version"];
         }
         return null;
     } catch (err) {

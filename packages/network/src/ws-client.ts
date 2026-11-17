@@ -125,7 +125,8 @@ export class WsClient implements TransportAdapter {
         ws.on("message", (raw) => {
             let req: unknown;
             try {
-                req = JSON.parse(raw.toString()) as unknown;
+                const parsed: unknown = JSON.parse(raw.toString());
+                req = parsed;
             } catch {
                 return;
             }

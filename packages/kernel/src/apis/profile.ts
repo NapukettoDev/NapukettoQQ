@@ -27,17 +27,13 @@ export class ProfileApi {
 
     /** 设置个性签名（set_self_longnick）。 */
     async setLongNick(longNick: string): Promise<void> {
-        const res = (await this.service.setLongNick(longNick)) as
-            | { result?: unknown; errMsg?: unknown }
-            | undefined;
+        const res = await this.service.setLongNick(longNick);
         checkLooseResult("setLongNick", res);
     }
 
     /** 设置昵称（set_qq_profile）。 */
     async setNickName(nickName: string): Promise<void> {
-        const res = (await this.service.setNickName(nickName)) as
-            | { result?: unknown; errMsg?: unknown }
-            | undefined;
+        const res = await this.service.setNickName(nickName);
         checkLooseResult("setNickName", res);
     }
 

@@ -13,6 +13,7 @@ import type {
     GroupEventChannel,
     MsgEventChannel,
 } from "@napuketto/kernel";
+import { isRecord } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
 import type { AdapterLoggerLike } from "../shared/log.js";
@@ -205,16 +206,17 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 请求分发（挂到 transport 的 onRequest）：{ action, params, echo } → 注册表分发。 */
     async handleRequest(req: unknown, respond: (res: unknown) => void): Promise<void> {
-        const parsed = (req ?? {}) as { action?: unknown; params?: unknown; echo?: unknown };
+        const parsed = isRecord(req) ? req : {};
         // params 缺省 {}（OB11 规范允许省略；schema 校验在动作内，此处不判类型）
-        const { action: rawAction, echo } = parsed;
-        const params = parsed.params ?? {};
-        let action = "";
-        if (typeof rawAction === "string") {
-            action = rawAction;
+        const action: unknown = parsed["action"];
+        const echo = parsed["echo"];
+        const params = parsed["params"] ?? {};
+        let actionName = "";
+        if (typeof action === "string") {
+            actionName = action;
         }
         // 错误响应同样透传 echo（WS 客户端按 echo 关联请求/响应）
-        if (action === "") {
+        if (actionName === "") {
             respond({
                 status: "failed",
                 retcode: 404,
@@ -224,13 +226,13 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             });
             return;
         }
-        const act = this.registry.get(action);
+        const act = this.registry.get(actionName);
         if (act === undefined) {
             respond({
                 status: "failed",
                 retcode: 404,
                 data: null,
-                message: `未知动作: ${action}`,
+                message: `未知动作: ${actionName}`,
                 ...(echo !== undefined ? { echo } : {}),
             });
             return;
@@ -247,11 +249,12 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
 /** 请求体 echo 字段提取（透传用；非对象 / 缺省 / undefined 返回空对象）。 */
 function echoFieldOf(req: unknown): { echo: unknown } | Record<string, never> {
-    if (req !== null && typeof req === "object") {
-        const echo = (req as { echo?: unknown }).echo;
-        if (echo !== undefined) {
-            return { echo };
-        }
+    if (!isRecord(req)) {
+        return {};
+    }
+    const echo = req["echo"];
+    if (echo !== undefined) {
+        return { echo };
     }
     return {};
 }

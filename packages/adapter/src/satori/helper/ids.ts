@@ -6,7 +6,9 @@
  * - user.id = uin；message.id = NT msgId
  * - login.user.id = 机器人 uin
  */
-import type { Channel, ChannelType, Guild, Login, User } from "../types/index.js";
+
+import type { Channel, Guild, Login, User } from "../types/index.js";
+import { ChannelType } from "../types/index.js";
 
 /** 平台名（固定 qq）。 */
 export const PLATFORM = "qq";
@@ -33,7 +35,7 @@ export function toUser(id: string, name?: string, nick?: string): User {
 
 /** 构造群聊频道（id = 群号）。 */
 export function toGroupChannel(groupCode: string, name?: string): Channel {
-    const channel: Channel = { id: String(groupCode), type: 0 as ChannelType };
+    const channel: Channel = { id: String(groupCode), type: ChannelType.TEXT };
     if (name !== undefined && name !== "") {
         channel.name = name;
     }
@@ -42,7 +44,7 @@ export function toGroupChannel(groupCode: string, name?: string): Channel {
 
 /** 构造私聊频道（id = 对端 uin）。 */
 export function toDirectChannel(uin: string, name?: string): Channel {
-    const channel: Channel = { id: String(uin), type: 1 as ChannelType };
+    const channel: Channel = { id: String(uin), type: ChannelType.DIRECT };
     if (name !== undefined && name !== "") {
         channel.name = name;
     }

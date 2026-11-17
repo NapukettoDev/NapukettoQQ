@@ -12,6 +12,7 @@
  * 数据（与 narrowBuddyReqs 同模式）。翻译纯函数。
  */
 
+import { isRecord } from "@napuketto/kernel";
 import { MS_TO_SEC } from "../../shared/uid-uin.js";
 import type { OB11OfflineFileNoticeEvent } from "../event/index.js";
 
@@ -47,39 +48,44 @@ function pickUrl(item: Record<string, unknown>): string {
     return "";
 }
 
+/** 元素项是否携带 fileElement 记录。 */
+function hasFileElement(el: unknown): el is { fileElement: Record<string, unknown> } {
+    return isRecord(el) && isRecord(el["fileElement"]);
+}
+
 /** 单个候选对象 → 归一化项（不可识别返回 null）。接受两类形状：
  *  ① RawMessage 型（elements[].fileElement——离线文件以消息推送到达的假设，
  *     与 onRecvOfflineFileMsg 挂在 MsgService、UpdateC2CFileMsg 字符串一致）
  *  ② 专用实体型（顶层 fileName 或 fileInfo.fileName——getNewOfflineFileList 族） */
 function narrowItem(item: unknown): OfflineFileLike | null {
-    if (typeof item !== "object" || item === null) {
+    if (!isRecord(item)) {
         return null;
     }
-    const obj = item as Record<string, unknown>;
     // ① RawMessage 型：fileElement 落在 elements 数组
-    if (Array.isArray(obj["elements"])) {
-        const el = obj["elements"].find(
-            (e) => typeof e === "object" && e !== null && "fileElement" in e,
-        ) as { fileElement?: Record<string, unknown> } | undefined;
-        const file = el?.fileElement;
-        if (file == null) {
+    const elements = item["elements"];
+    if (Array.isArray(elements)) {
+        const el = elements.find(hasFileElement);
+        if (el === undefined) {
             return null;
         }
+        const file = el.fileElement;
         return {
-            senderUin: pickUin(obj),
+            senderUin: pickUin(item),
             name: typeof file["fileName"] === "string" ? file["fileName"] : "",
             size: Number(file["fileSize"] ?? 0),
             url: pickUrl(file),
         };
     }
     // ② 专用实体型：顶层或 fileInfo 下的 fileName
-    const file = (obj["fileInfo"] as Record<string, unknown> | undefined) ?? obj;
-    if (typeof file["fileName"] !== "string") {
+    const fileInfo = item["fileInfo"];
+    const file = isRecord(fileInfo) ? fileInfo : item;
+    const fileName = file["fileName"];
+    if (typeof fileName !== "string") {
         return null;
     }
     return {
-        senderUin: pickUin(obj),
-        name: file["fileName"],
+        senderUin: pickUin(item),
+        name: fileName,
         size: Number(file["fileSize"] ?? 0),
         url: pickUrl(file),
     };

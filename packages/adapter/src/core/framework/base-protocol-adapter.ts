@@ -6,7 +6,7 @@
  * 事件广播：协议层翻译 kernel 事件后经 `broadcastEvent` 推给 network。
  */
 
-import { ConfigBase, type ConfigSchema } from "@napuketto/kernel";
+import { ConfigBase, type ConfigSchema, isRecord } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 
 /**
@@ -21,11 +21,7 @@ export type ProtocolConfigInput<TConfig> =
 
 /** 是否为 ConfigBase 实例/鸭子类型（单测常注入带 `load()` 的 mock）。 */
 function isConfigBaseLike<TConfig>(value: unknown): value is ConfigBase<TConfig> {
-    return (
-        value !== null &&
-        typeof value === "object" &&
-        typeof (value as { load?: unknown }).load === "function"
-    );
+    return isRecord(value) && typeof value["load"] === "function";
 }
 
 /**

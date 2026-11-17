@@ -18,7 +18,7 @@
  * 不需要声明 `ws` 依赖（ws 归 network 所有），发布依赖面少一个包。
  */
 import { randomUUID } from "node:crypto";
-import { errorMessage } from "@napuketto/kernel";
+import { errorMessage, getOwnProp, isRecord } from "@napuketto/kernel";
 import {
     type BindingsUpdatedBody,
     bindingsUpdatedFrame,
@@ -279,7 +279,8 @@ export class KurobotConnection {
     private onText(text: string): void {
         let json: unknown;
         try {
-            json = JSON.parse(text) as unknown;
+            const parsed: unknown = JSON.parse(text);
+            json = parsed;
         } catch {
             this.log.warn({ text: text.slice(0, 200) }, "kurobot: 非法 JSON 帧，忽略");
             return;
@@ -467,14 +468,14 @@ export class KurobotConnection {
 
 /** 从已解析的原始帧 JSON 取 header.id（容忍缺失）。 */
 function headerId(json: unknown): string | undefined {
-    if (typeof json !== "object" || json === null) {
+    if (!isRecord(json)) {
         return undefined;
     }
-    const header = (json as { header?: unknown }).header;
-    if (typeof header !== "object" || header === null) {
+    const header = json["header"];
+    if (!isRecord(header)) {
         return undefined;
     }
-    const id = (header as { id?: unknown }).id;
+    const id = header["id"];
     return typeof id === "string" ? id : undefined;
 }
 
@@ -486,7 +487,7 @@ function messageText(event: MessageEvent): string {
 
 /** error 事件摘要（undici 的 ErrorEvent 带 message，普通 Event 没有）。 */
 function errorDetail(event: Event): string {
-    const { message } = event as { message?: unknown };
+    const message = getOwnProp(event, "message");
     return typeof message === "string" ? message : "websocket error";
 }
 

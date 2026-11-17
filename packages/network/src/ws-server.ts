@@ -138,7 +138,8 @@ export class WsServer implements TransportAdapter {
         socket.on("message", (raw) => {
             let reqBody: unknown;
             try {
-                reqBody = JSON.parse(raw.toString()) as unknown;
+                const parsed: unknown = JSON.parse(raw.toString());
+                reqBody = parsed;
             } catch {
                 // 非 JSON 消息：忽略（协议层只处理 JSON 请求）
                 return;

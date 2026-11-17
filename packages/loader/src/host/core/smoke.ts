@@ -16,6 +16,7 @@
  */
 
 import { env } from "../env.js";
+import { getOwnProp } from "../type-guards.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
 import { errMsg, forEachRawMessage, log } from "../util.js";
 
@@ -115,7 +116,7 @@ export async function runSmokeTest(
                 log(`smoke: onRecvMsg 解析失败: ${errMsg(e)}`);
             }
             log(
-                `smoke: 📥 onRecvMsg 收到 #${received}（msgId=${(m as { msgId?: unknown }).msgId ?? "?"} seq=${(m as { msgSeq?: unknown }).msgSeq ?? "?"} text="${receivedText}"）`,
+                `smoke: 📥 onRecvMsg 收到 #${received}（msgId=${getOwnProp(m, "msgId") ?? "?"} seq=${getOwnProp(m, "msgSeq") ?? "?"} text="${receivedText}"）`,
             );
         });
     });
@@ -140,14 +141,16 @@ export async function runSmokeTest(
     let landed = false;
     try {
         const recent = await msgApi.fetchMessages(peer, { count: 10 });
-        landed = recent.some((m) => m.msgId === sentMsgId || m.msgSeq === sentMsgId);
+        landed = recent.some(
+            (m) => getOwnProp(m, "msgId") === sentMsgId || getOwnProp(m, "msgSeq") === sentMsgId,
+        );
         log(
             `smoke: 落库验证: 最近 ${recent.length} 条${landed ? " ✅ 含刚发消息" : " ❌ 未找到（可能同步延迟）"}`,
         );
         if (!landed) {
             for (const m of recent.slice(0, 3)) {
                 log(
-                    `smoke:   最近消息 msgId=${m.msgId} seq=${m.msgSeq} text="${extractTexts(kernel, m)}"`,
+                    `smoke:   最近消息 msgId=${getOwnProp(m, "msgId")} seq=${getOwnProp(m, "msgSeq")} text="${extractTexts(kernel, m)}"`,
                 );
             }
         }

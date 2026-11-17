@@ -20,6 +20,7 @@ import {
 import { chmod, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { isRecord } from "../host/type-guards.js";
 import { errorMessage } from "../host/util.js";
 import { resolveDataRoot } from "../internal/data-root.js";
 import { packageRoot } from "../internal/package-root.js";
@@ -214,10 +215,10 @@ export const LINUX_QQ_INSTALL_DIR = "/opt/QQ";
 function readPackageVersion(packageJsonPath: string): string | null {
     try {
         const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-        if (typeof parsed !== "object" || parsed === null) {
+        if (!isRecord(parsed)) {
             return null;
         }
-        const version = (parsed as { version?: unknown }).version;
+        const version = parsed["version"];
         return typeof version === "string" && version !== "" ? version : null;
     } catch {
         return null;

@@ -156,12 +156,12 @@ function renderJsonLine(record: Record<string, unknown>, ctx: RenderContext): st
     const jsonLine = {
         time: renderTime(time, ctx.timestamp, true, ctx.timeOriginMs),
         level: levelLabel(level).toLowerCase(),
-        ...(module !== undefined
-            ? { module: module as string }
+        ...(typeof module === "string"
+            ? { module }
             : typeof name === "string"
               ? { module: name }
               : {}),
-        ...(account !== undefined ? { account: account as string } : {}),
+        ...(typeof account === "string" ? { account } : {}),
         ...(typeof pid === "number" ? { pid } : {}),
         msg,
         ...fields,
@@ -290,8 +290,8 @@ function renderValueLines(value: unknown, depth: number): string[] {
     if (Array.isArray(value)) {
         return renderArrayLines(value, depth);
     }
-    if (typeof value === "object" && value !== null) {
-        return renderObjectLines(value as Record<string, unknown>, depth);
+    if (isRecord(value)) {
+        return renderObjectLines(value, depth);
     }
     if (typeof value === "string" && value.includes("\n")) {
         return renderMultilineStringLines(value, depth);

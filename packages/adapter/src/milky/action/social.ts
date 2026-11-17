@@ -92,17 +92,20 @@ export function createSocialActions(api: MilkyApi): MilkyAction[] {
                         return new Map<string, string>();
                     });
                 }
-                const requests: FriendRequestEntity[] = reqs.map((req) => ({
-                    time: Number(req.reqTime) || 0,
-                    initiator_id: Number(uidToUin.get(req.friendUid)) || 0,
-                    initiator_uid: req.friendUid,
-                    target_user_id: Number(api.self.uin),
-                    target_user_uid: api.self.uid ?? "",
-                    state: "pending",
-                    comment: typeof req["words"] === "string" ? (req["words"] as string) : "",
-                    via: req.sourceName ?? "",
-                    is_filtered: false,
-                }));
+                const requests: FriendRequestEntity[] = reqs.map((req) => {
+                    const words = req["words"];
+                    return {
+                        time: Number(req.reqTime) || 0,
+                        initiator_id: Number(uidToUin.get(req.friendUid)) || 0,
+                        initiator_uid: req.friendUid,
+                        target_user_id: Number(api.self.uin),
+                        target_user_uid: api.self.uid ?? "",
+                        state: "pending",
+                        comment: typeof words === "string" ? words : "",
+                        via: req.sourceName ?? "",
+                        is_filtered: false,
+                    };
+                });
                 const limit = payload.limit ?? requests.length;
                 return { requests: requests.slice(0, limit) };
             },

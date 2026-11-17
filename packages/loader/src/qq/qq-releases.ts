@@ -18,6 +18,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
+import { isRecord } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
 import type { QqReleaseEntry, QqReleasesFile } from "./qq-release-manifest.js";
 import { QQ_RELEASES_SCHEMA, releaseArch, releasePlatform } from "./qq-release-manifest.js";
@@ -43,6 +44,52 @@ export class QqReleasesError extends Error {
     }
 }
 
+/** 未知 JSON 值 → 清单条目（严格结构校验；失败返回 null，不做强转）。 */
+function parseReleaseEntry(raw: unknown): QqReleaseEntry | null {
+    if (!isRecord(raw)) {
+        return null;
+    }
+    if (
+        typeof raw["version"] !== "string" ||
+        raw["version"] === "" ||
+        typeof raw["url"] !== "string" ||
+        typeof raw["sha256"] !== "string" ||
+        typeof raw["appid"] !== "number" ||
+        typeof raw["source"] !== "string"
+    ) {
+        return null;
+    }
+    const platform = raw["platform"];
+    const arch = raw["arch"];
+    return {
+        version: raw["version"],
+        url: raw["url"],
+        sha256: raw["sha256"],
+        appid: raw["appid"],
+        source: raw["source"],
+        ...(platform === "win32" || platform === "linux" ? { platform } : {}),
+        ...(arch === "x64" || arch === "arm64" ? { arch } : {}),
+        ...(typeof raw["coreVersion"] === "string" ? { coreVersion: raw["coreVersion"] } : {}),
+        ...(typeof raw["buildDate"] === "string" ? { buildDate: raw["buildDate"] } : {}),
+    };
+}
+
+/** 未知 JSON 值 → 版本清单（schema + known 全量条目校验）。 */
+function parseReleasesFile(raw: unknown): QqReleasesFile | null {
+    if (!isRecord(raw) || typeof raw["schema"] !== "number" || !Array.isArray(raw["known"])) {
+        return null;
+    }
+    const known: QqReleaseEntry[] = [];
+    for (const item of raw["known"]) {
+        const entry = parseReleaseEntry(item);
+        if (entry === null) {
+            return null;
+        }
+        known.push(entry);
+    }
+    return { schema: raw["schema"], known };
+}
+
 /** 读版本清单（同步，启动期调用一次即可）。 */
 export function loadQqReleases(): QqReleasesFile {
     const file = join(packageRoot(), "qq-releases.json");
@@ -52,20 +99,17 @@ export function loadQqReleases(): QqReleasesFile {
     } catch {
         throw new QqReleasesError(`版本清单缺失: ${file}（@napuketto/loader 包安装不完整？）`);
     }
-    let parsed: Partial<QqReleasesFile>;
+    let parsedJson: unknown;
     try {
-        parsed = JSON.parse(raw) as Partial<QqReleasesFile>;
+        parsedJson = JSON.parse(raw);
     } catch {
         throw new QqReleasesError(`版本清单解析失败: ${file}`);
     }
-    if (
-        parsed.schema !== QQ_RELEASES_SCHEMA ||
-        !Array.isArray(parsed.known) ||
-        parsed.known.length === 0
-    ) {
+    const parsed = parseReleasesFile(parsedJson);
+    if (parsed === null || parsed.schema !== QQ_RELEASES_SCHEMA || parsed.known.length === 0) {
         throw new QqReleasesError(`版本清单解析失败: ${file}`);
     }
-    return parsed as QqReleasesFile;
+    return parsed;
 }
 
 /** latestRelease 选项（缺省当前进程平台/架构）。 */

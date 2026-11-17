@@ -427,9 +427,34 @@ function toStringMap(value: unknown): Map<string, string> {
     return out;
 }
 
-/** 群成员形状判定（infos Map 的 value：uid + uin 齐备才算成员）。 */
+/** 可选字段：缺失（undefined/null）放行，存在时必须是 string。 */
+function isOptionalString(rec: Record<string, unknown>, key: string): boolean {
+    const v = rec[key];
+    return v === undefined || v === null || typeof v === "string";
+}
+
+/** 可选字段：缺失（undefined/null）放行，存在时必须是有限 number。 */
+function isOptionalNumber(rec: Record<string, unknown>, key: string): boolean {
+    const v = rec[key];
+    return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
+}
+
+/** 群成员形状判定（uid + uin 必备；展示 / 角色字段缺失即合法，存在则须类型正确）。 */
 function isGroupMember(val: unknown): val is GroupMember {
-    return isRecord(val) && hasStringProp(val, "uid") && hasStringProp(val, "uin");
+    return (
+        isRecord(val) &&
+        hasStringProp(val, "uid") &&
+        hasStringProp(val, "uin") &&
+        isOptionalString(val, "nick") &&
+        isOptionalString(val, "cardName") &&
+        isOptionalString(val, "remark") &&
+        isOptionalString(val, "joinTime") &&
+        isOptionalString(val, "lastSpeakTime") &&
+        isOptionalNumber(val, "role") &&
+        isOptionalNumber(val, "shutUpTime") &&
+        isOptionalNumber(val, "sex") &&
+        isOptionalNumber(val, "age")
+    );
 }
 
 /** infos Map → 成员数组（逐项形状校验，非成员项丢弃）。 */
@@ -443,14 +468,16 @@ function memberListOf(infos: Map<unknown, unknown>): GroupMember[] {
     return out;
 }
 
-/** 群详情形状判定（标识 / 名称 / 成员数四要素齐备才算详情）。 */
+/** 群详情形状判定（标识 / 名称 / 成员数四要素齐备；群号标识字段可选校验）。 */
 function isGroupDetailInfo(val: unknown): val is GroupDetailInfo {
     return (
         isRecord(val) &&
         hasStringProp(val, "groupCode") &&
         hasStringProp(val, "groupName") &&
         hasNumberProp(val, "memberNum") &&
-        hasNumberProp(val, "maxMemberNum")
+        hasNumberProp(val, "maxMemberNum") &&
+        isOptionalString(val, "groupUin") &&
+        isOptionalString(val, "ownerUin")
     );
 }
 

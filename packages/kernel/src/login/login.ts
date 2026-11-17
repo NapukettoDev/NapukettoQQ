@@ -11,7 +11,9 @@
  */
 import { kernelError } from "../infra/index.js";
 import type { KernelLoginListener } from "../types/index.js";
+import { hasMethodSurface } from "../utils/type-guards.js";
 import { createLoginListener } from "../wrapper/wrapper-adapters.js";
+import { extractLoginErrMsg } from "./login-connect.js";
 
 /** 登录状态。 */
 export type LoginState = "idle" | "waiting_scan" | "scanned" | "logged_in" | "failed";
@@ -43,8 +45,20 @@ interface LoginServiceLike {
     removeKernelLoginListener(listenerId: number): void;
     connect(): void;
     getLoginList(): Promise<{ result: number; LocalLoginInfoList: LoginListItem[] }>;
-    quickLoginWithUin(uin: string): Promise<{ result: string; loginErrorInfo: { errMsg: string } }>;
+    quickLoginWithUin(uin: string): Promise<unknown>;
     getQRCodePicture(): boolean;
+}
+
+/** 运行时判定 loginService 是否具备 QrLoginSession 依赖的方法面。 */
+function isLoginServiceLike(val: unknown): val is LoginServiceLike {
+    return hasMethodSurface(val, [
+        "addKernelLoginListener",
+        "removeKernelLoginListener",
+        "connect",
+        "getLoginList",
+        "quickLoginWithUin",
+        "getQRCodePicture",
+    ]);
 }
 
 /** 二维码过期错误码（errType=1 errCode=3，实测）。 */
@@ -81,11 +95,10 @@ export class QrLoginSession {
     private readonly timeoutMs: number;
 
     constructor(loginService: unknown, options: { timeoutMs?: number } = {}) {
-        const svc = loginService as LoginServiceLike | null;
-        if (svc === null || typeof svc.addKernelLoginListener !== "function") {
+        if (!isLoginServiceLike(loginService)) {
             throw kernelError("loginService 无效（缺 addKernelLoginListener）", "INVALID_STATE");
         }
-        this.loginService = svc;
+        this.loginService = loginService;
         this.timeoutMs = options.timeoutMs ?? QR_LOGIN_TIMEOUT_MS;
     }
 
@@ -135,7 +148,7 @@ export class QrLoginSession {
                     // resolve 带 loginErrorInfo.errMsg，**不是 reject**——只挂 .catch
                     // 会永不触发 → 无凭据环境（WSL 扫码）永不 refresh → 二维码永不
                     // 产生，完全静默阻塞（2026-08-13 WSL 扫码卡死根因）。
-                    if (result.loginErrorInfo.errMsg !== "") {
+                    if (extractLoginErrMsg(result) !== "") {
                         this.refreshAfterQuickLogin();
                     }
                 })

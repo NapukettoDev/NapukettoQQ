@@ -212,7 +212,8 @@ async function loadGroupData(
                 { group: groupCode, error: errorMessage(err) },
                 "milky: 群成员表缓存读取失败，历史翻译退化",
             );
-            return [] as GroupMember[];
+            const empty: GroupMember[] = [];
+            return empty;
         }),
     ]);
     const memberByUid = new Map<string, GroupMember>();
@@ -251,7 +252,7 @@ async function collectAtUidToUin(api: MilkyApi, msgs: RawMessage[]): Promise<Map
     for (const m of msgs) {
         for (const el of toCanonicalElements(m)) {
             if (el.type === "at" && el.target !== "all") {
-                uids.add((el as { target: string }).target);
+                uids.add(el.target);
             }
         }
     }

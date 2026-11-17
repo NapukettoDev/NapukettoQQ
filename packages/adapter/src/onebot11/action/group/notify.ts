@@ -157,8 +157,8 @@ export function createGroupNotifyActions(api: OneBotApi): Ob11Action[] {
                 for (const member of members) {
                     out.push({
                         user_id: Number(uinMap.get(member.uid) ?? member.uin ?? member.uid),
-                        nickname: member.nick,
-                        shut_up_time: member.shutUpTime,
+                        nickname: member.nick ?? "",
+                        shut_up_time: member.shutUpTime ?? 0,
                     });
                 }
                 return out;

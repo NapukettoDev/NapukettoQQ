@@ -6,11 +6,11 @@
  * 返回停止函数（进程退出时清理）。
  */
 
+import { isCallable } from "../type-guards.js";
 import type { CoreLike, KernelServices } from "../types.js";
 import {
     createIpcActions,
     type IpcActionHandler,
-    type IpcApiContext,
     registerLoginRefreshAction,
 } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
@@ -33,8 +33,8 @@ function forwardChannel(
         sendEvent(service, name, args);
     });
     // 宽松返回面（EventChannelLike.onAny 返回 unknown）：是函数才收进停止列表
-    if (typeof off === "function") {
-        stops.push(off as () => void);
+    if (isCallable(off)) {
+        stops.push(off);
     }
 }
 
@@ -60,9 +60,7 @@ export function attachIpcServices(
 ): () => void {
     // peerUin（QQ 号）→ uid 转换（kernel GroupApi.uinToUid，自研描述；
     // exactOptionalPropertyTypes：可选字段用条件展开，不显式赋 undefined）
-    const groupApi = services.groupApi as {
-        uinToUid?: (uins: string[]) => Promise<Map<string, string>>;
-    };
+    const groupApi = services.groupApi;
     // ⚠️ 必须 bind（2026-08-20 生产实修）：GroupApi.uinToUid 是**类方法**，
     // 摘成裸函数注入会丢 this → 方法内 `this.service.getUidByUins()` 抛
     // `Cannot read properties of undefined (reading 'service')`（读的是
@@ -72,10 +70,10 @@ export function attachIpcServices(
     // （正确写法），此处漏了——注入 kernel 类方法一律 bind 或箭头包装。
     const uinToUid = groupApi.uinToUid?.bind(services.groupApi);
     const full = createIpcActions({
-        msgApi: services.msgApi as IpcApiContext["msgApi"],
-        groupApi: services.groupApi as IpcApiContext["groupApi"],
-        groupCache: services.groupCache as IpcApiContext["groupCache"],
-        friendApi: services.friendApi as IpcApiContext["friendApi"],
+        msgApi: services.msgApi,
+        groupApi: services.groupApi,
+        groupCache: services.groupCache,
+        friendApi: services.friendApi,
         self: services.self,
         session: services.session,
         engine: services.engine,

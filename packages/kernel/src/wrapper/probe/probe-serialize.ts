@@ -9,6 +9,7 @@
  * 与字节形态普通数组转 base64 全量保留（截断上限放宽），数字数组/深对象不再
  * 20 项 / 4 层截断（上限提至 64 / 8）。
  */
+import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../utils/type-guards.js";
 
 /** 序列化深度上限（循环引用/深层对象防护）。 */
 const MAX_SERIALIZE_DEPTH = 8;
@@ -42,7 +43,9 @@ function serializeContainer(value: object, depth: number): unknown {
     }
     if (Array.isArray(value)) {
         if (value.length >= BYTES_ARRAY_MIN && looksLikeBytes(value)) {
-            return serializeBytes(Uint8Array.from(value, (b) => (b as number) & 0xff));
+            return serializeBytes(
+                Uint8Array.from(value, (b) => (typeof b === "number" ? b & 0xff : 0)),
+            );
         }
         return serializeArray(value, depth);
     }
@@ -52,8 +55,11 @@ function serializeContainer(value: object, depth: number): unknown {
     if (value instanceof Set) {
         return serializeSet(value, depth);
     }
-    if (typeof (value as Promise<unknown>).then === "function") {
+    if (hasCallableProp(value, "then")) {
         return "[Promise]";
+    }
+    if (!isRecord(value)) {
+        return String(value);
     }
     return serializeObject(value, depth);
 }
@@ -106,10 +112,10 @@ function serializeSet(value: Set<unknown>, depth: number): unknown {
 }
 
 /** 普通对象序列化（键截断）。 */
-function serializeObject(value: object, depth: number): unknown {
+function serializeObject(value: Record<string, unknown>, depth: number): unknown {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value).slice(0, MAX_OBJECT_KEYS)) {
-        out[key] = serialize((value as Record<string, unknown>)[key], depth + 1);
+        out[key] = serialize(value[key], depth + 1);
     }
     return out;
 }
@@ -117,8 +123,8 @@ function serializeObject(value: object, depth: number): unknown {
 /** 尝试解析一个 service getter 的返回值形状（深度受限）。 */
 export function tryShape(session: unknown, getter: string): unknown {
     try {
-        const fn = (session as Record<string, unknown>)[getter];
-        if (typeof fn !== "function") return null;
+        const fn = getOwnProp(session, getter);
+        if (!isCallable(fn)) return null;
         const value = fn.call(session);
         if (value === null || value === undefined) return null;
         return serialize(value);

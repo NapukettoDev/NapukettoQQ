@@ -13,7 +13,8 @@
 
 import type { BuddyEventChannel } from "../bridge/index.js";
 import { NTEventChannel } from "../event-channel.js";
-import type { BuddyCategory, BuddyListEntry } from "../types/index.js";
+import type { BuddyCategory, BuddyCoreInfo, BuddyListEntry } from "../types/index.js";
+import { isRecord } from "../utils/type-guards.js";
 
 /** BuddyCache diff 事件 listener（归一化「新增/删除」事件）。 */
 export type BuddyCacheListener = {
@@ -32,20 +33,115 @@ export interface BuddyCacheOptions {
     logger?: { warn(obj: unknown, msg?: string): void };
 }
 
+/** 可选展示字段：存在且类型正确才拷贝（未知值丢弃）。 */
+const MEMBER_STRING_KEYS = ["nick", "remark", "longNick", "avatarUrl", "topTime"] as const;
+const MEMBER_NUMBER_KEYS = [
+    "categoryId",
+    "birthday_year",
+    "birthday_month",
+    "birthday_day",
+    "sex",
+] as const;
+
+/** 拷贝成员可选字段（类型正确才写入）。 */
+function copyMemberExtras(entry: BuddyListEntry, raw: Record<string, unknown>): void {
+    for (const key of MEMBER_STRING_KEYS) {
+        const value = raw[key];
+        if (typeof value === "string") {
+            entry[key] = value;
+        }
+    }
+    for (const key of MEMBER_NUMBER_KEYS) {
+        const value = raw[key];
+        if (typeof value === "number") {
+            entry[key] = value;
+        }
+    }
+    const isBlocked = raw["isBlocked"];
+    if (typeof isBlocked === "boolean") {
+        entry["isBlocked"] = isBlocked;
+    }
+}
+
+/** coreInfo 安全构造（uid/uin 必备）。 */
+function parseCoreInfo(raw: unknown): BuddyCoreInfo | null {
+    if (!isRecord(raw) || typeof raw["uid"] !== "string" || typeof raw["uin"] !== "string") {
+        return null;
+    }
+    const out = { uid: raw["uid"], uin: raw["uin"] };
+    const nick = raw["nick"];
+    const remark = raw["remark"];
+    return {
+        ...out,
+        ...(typeof nick === "string" ? { nick } : {}),
+        ...(typeof remark === "string" ? { remark } : {}),
+    };
+}
+
+/**
+ * 解析单个好友明细（T10 实测形状：uid/uin 齐备；其余展示字段按类型安全拷贝）。
+ * 返回真实构造的新对象——不把原生载荷直接断言成 `BuddyListEntry`。
+ */
+export function parseBuddyMember(raw: unknown): BuddyListEntry | null {
+    if (!isRecord(raw) || typeof raw["uid"] !== "string" || typeof raw["uin"] !== "string") {
+        return null;
+    }
+    const entry: BuddyListEntry = { uid: raw["uid"], uin: raw["uin"] };
+    copyMemberExtras(entry, raw);
+    const coreInfo = parseCoreInfo(raw["coreInfo"]);
+    if (coreInfo !== null) {
+        entry.coreInfo = coreInfo;
+    }
+    if (isRecord(raw["baseInfo"])) {
+        entry.baseInfo = raw["baseInfo"];
+    }
+    return entry;
+}
+
+/** 单个分类项 → BuddyCategory（非对象返回 null）。 */
+function parseBuddyCategory(item: unknown): BuddyCategory | null {
+    if (!isRecord(item)) {
+        return null;
+    }
+    const buddyListRaw = Array.isArray(item["buddyList"]) ? item["buddyList"] : [];
+    const buddyList: BuddyListEntry[] = [];
+    for (const b of buddyListRaw) {
+        const parsed = parseBuddyMember(b);
+        if (parsed !== null) {
+            buddyList.push(parsed);
+        }
+    }
+    return {
+        categoryId: typeof item["categoryId"] === "number" ? item["categoryId"] : 0,
+        categorySortId: typeof item["categorySortId"] === "number" ? item["categorySortId"] : 0,
+        categroyName: typeof item["categroyName"] === "string" ? item["categroyName"] : "",
+        categroyMbCount:
+            typeof item["categroyMbCount"] === "number"
+                ? item["categroyMbCount"]
+                : buddyList.length,
+        onlineCount: typeof item["onlineCount"] === "number" ? item["onlineCount"] : 0,
+        buddyList,
+    };
+}
+
 /**
  * 防御性收窄 onBuddyListChange 载荷 → BuddyCategory[]（T10 实证形状；
- * 非数组返回 null，调用方打 raw 日志积累校准数据）。
+ * 非数组 / 非对象分类项返回 null，调用方打 raw 日志积累校准数据）。
+ * 分类字段逐项做运行时类型校验并安全构造，缺失项取保守默认值。
  */
 export function narrowBuddyCategories(arg: unknown): BuddyCategory[] | null {
     if (!Array.isArray(arg)) {
         return null;
     }
+    const categories: BuddyCategory[] = [];
     for (const item of arg) {
-        if (item === null || typeof item !== "object") {
+        const category = parseBuddyCategory(item);
+        if (category === null) {
             return null;
         }
+        categories.push(category);
     }
-    return arg as BuddyCategory[];
+    return categories;
 }
 
 /** 从快照分类拍平好友明细（buddyList 缺失的分类跳过）。 */

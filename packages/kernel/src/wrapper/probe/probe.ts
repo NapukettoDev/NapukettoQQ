@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { errorMessage } from "../../infra/index.js";
+import { hasCallableProp } from "../../utils/type-guards.js";
 import { getMainSession } from "../session-resolver.js";
 import type { WrapperContext } from "../wrapper-loader.js";
 import { serialize } from "./probe-serialize.js";
@@ -58,10 +59,9 @@ function probeSessionId(
 
 /** 探测单个 session 记录（getter 存在性 + msgService 调用结果 + 方法面）。 */
 function probeSessionRecord(value: unknown): Record<string, unknown> {
-    const rec = value as Record<string, unknown>;
-    const msg = tryMsgService(rec, value);
+    const msg = tryMsgService(value);
     return {
-        hasMsgServiceGetter: typeof rec["getMsgService"] === "function",
+        hasMsgServiceGetter: hasCallableProp(value, "getMsgService"),
         msgServiceOk: msg.service !== null,
         msgServiceMethods: msg.service ? listMethods(msg.service).length : 0,
         msgError: msg.error,
@@ -70,12 +70,12 @@ function probeSessionRecord(value: unknown): Record<string, unknown> {
 }
 
 /** 尝试调用 getMsgService（失败记录错误，成功返回实例）。 */
-function tryMsgService(
-    rec: Record<string, unknown>,
-    thisCtx: unknown,
-): { service: unknown; error: string | null } {
+function tryMsgService(thisCtx: unknown): { service: unknown; error: string | null } {
     try {
-        const svc = (rec["getMsgService"] as () => unknown).call(thisCtx);
+        if (!hasCallableProp(thisCtx, "getMsgService")) {
+            return { service: null, error: "missing getMsgService" };
+        }
+        const svc = thisCtx.getMsgService.call(thisCtx);
         return { service: svc ?? null, error: null };
     } catch (e) {
         return { service: null, error: errorMessage(e) };
@@ -84,10 +84,11 @@ function tryMsgService(
 
 /** 取 NodeIQQNTWrapperSession.getNTWrapperSession 函数（无则 null）。 */
 function getNTWrapperSessionFn(ctx: WrapperContext): ((...args: unknown[]) => unknown) | null {
-    const fn = (ctx.exports.NodeIQQNTWrapperSession as unknown as Record<string, unknown>)[
-        "getNTWrapperSession"
-    ];
-    return typeof fn === "function" ? (fn as (...args: unknown[]) => unknown) : null;
+    const ctor = ctx.exports.NodeIQQNTWrapperSession;
+    if (hasCallableProp(ctor, "getNTWrapperSession")) {
+        return ctor.getNTWrapperSession;
+    }
+    return null;
 }
 
 /** 探测 startup 实例：start() + getSessionIdList()，提取 sessionIds（Map 值或键）。 */
@@ -163,10 +164,8 @@ function probeSessionByName(ctx: WrapperContext, name: string): unknown {
 
 /** StartupSessionWrapper 可用性判定（缺 create 方法视为不可用）。 */
 function startupWrapper(ctx: WrapperContext): { create?: () => unknown } | null {
-    const startup = ctx.exports.NodeIQQNTStartupSessionWrapper as unknown as {
-        create?: () => unknown;
-    } | null;
-    return startup === null || typeof startup.create !== "function" ? null : startup;
+    const startup = ctx.exports.NodeIQQNTStartupSessionWrapper;
+    return hasCallableProp(startup, "create") ? startup : null;
 }
 
 /** create() 调用结果面（成功记实例方法面 + 序列化值，失败记 error）。 */
