@@ -1,8 +1,33 @@
 {
+    "$schema": "https://json.schemastore.org/package.json",
     "name": "create-napukettoqq",
     "version": "0.3.16",
-    "description": "一键生成 NapukettoQQ 机器人项目（yarn/pnpm/npm create napukettoqq）",
     "type": "module",
+    "description": "Scaffolding tool to quickly create a NapukettoQQ bot project (pnpm/npm/yarn create napukettoqq).",
+    "keywords": [
+        "qq",
+        "bot",
+        "napuketto",
+        "create",
+        "scaffold",
+        "template",
+        "cli"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/apps/napuketto-create#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "apps/napuketto-create"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Oppenheymu",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -14,13 +39,13 @@
         "dist",
         "templates"
     ],
-    "main": "./dist/index.mjs",
     "bin": {
         "create-napukettoqq": "./dist/index.mjs"
     },
+    "main": "./dist/index.mjs",
     "scripts": {
-        "dev": "tsdown --watch",
-        "build": "tsdown"
+        "build": "tsdown",
+        "dev": "tsdown --watch"
     },
     "dependencies": {
         "@clack/prompts": "^1.9.0"
@@ -28,11 +53,5 @@
     "devDependencies": {
         "@napuketto/cli": "workspace:*",
         "tsdown": "catalog:"
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "apps/napuketto-create"
     }
 }
