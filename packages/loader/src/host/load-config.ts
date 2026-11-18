@@ -17,17 +17,30 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "./env.js";
 import { isRecord } from "./type-guards.js";
-import type { KernelLike } from "./types.js";
+import type { KernelLike, ProtocolKey } from "./types.js";
+import { PROTOCOL_KEYS } from "./types.js";
 import { errMsg, log } from "./util.js";
+
+/** 协议段表（协议键 → 宽松段对象；装配时 zod 校验）。 */
+type SectionMap = Record<ProtocolKey, Record<string, unknown>>;
 
 /** 协议配置段（账号内 [onebot11] / [satori] / [kurobot] / [milky]，宽松对象，装配时 zod 校验）。 */
 export interface ProtocolSections {
     cfgFile: string;
+    /** 表驱动访问面：协议键 → 段对象（装配方按 PROTOCOL_KEYS 消费）。 */
+    sections: SectionMap;
+    /** 具名投影（兼容既有调用方；= sections.onebot11 等，同一引用）。 */
     ob11Section: Record<string, unknown>;
     satoriSection: Record<string, unknown>;
     kurobotSection: Record<string, unknown>;
     milkySection: Record<string, unknown>;
 }
+
+/** ProtocolSections 的具名投影面（兼容既有测试与调用方）。 */
+type SectionFields = Pick<
+    ProtocolSections,
+    "sections" | "ob11Section" | "satoriSection" | "kurobotSection" | "milkySection"
+>;
 
 /** 内联来源时 cfgFile 的哨兵值（非文件路径；日志/错误标注里不出现真实路径）。 */
 const INLINE_CONFIG_SENTINEL = "<inline>";
@@ -36,12 +49,25 @@ const INLINE_CONFIG_SENTINEL = "<inline>";
 type AccountLike = Record<string, unknown>;
 
 /** 账号内取协议段（宽松对象，装配时 zod 校验）。 */
-function sectionOf(
-    account: AccountLike,
-    key: "onebot11" | "satori" | "kurobot" | "milky",
-): Record<string, unknown> | undefined {
+function sectionOf(account: AccountLike, key: ProtocolKey): Record<string, unknown> | undefined {
     const section = account[key];
     return isRecord(section) ? section : undefined;
+}
+
+/** 全空协议段表（未找到账号 / 无协议段 / 读取失败）。 */
+function emptySections(): SectionMap {
+    return { onebot11: {}, satori: {}, kurobot: {}, milky: {} };
+}
+
+/** 协议段表 → ProtocolSections（具名属性只是同一批对象的兼容投影）。 */
+function sectionFields(sections: SectionMap): SectionFields {
+    return {
+        sections,
+        ob11Section: sections.onebot11,
+        satoriSection: sections.satori,
+        kurobotSection: sections.kurobot,
+        milkySection: sections.milky,
+    };
 }
 
 /**
@@ -67,26 +93,20 @@ export function readInlineConfigDoc(): Record<string, unknown> | undefined {
 }
 
 /** accounts 数组按登录 uin 取协议段（文件/内联共用；未找到账号 / 无协议段 → 空段）。 */
-function extractSections(
-    accounts: unknown,
-    uin?: string,
-): Pick<ProtocolSections, "ob11Section" | "satoriSection" | "kurobotSection" | "milkySection"> {
-    let ob11Section: Record<string, unknown> = {};
-    let satoriSection: Record<string, unknown> = {};
-    let kurobotSection: Record<string, unknown> = {};
-    let milkySection: Record<string, unknown> = {};
+function extractSections(accounts: unknown, uin?: string): SectionMap {
+    const sections = emptySections();
     if (Array.isArray(accounts)) {
         const mine = accounts.find(
             (item): item is AccountLike => isRecord(item) && String(item["qq"]) === uin,
         );
         if (mine !== undefined) {
-            ob11Section = sectionOf(mine, "onebot11") ?? {};
-            satoriSection = sectionOf(mine, "satori") ?? {};
-            kurobotSection = sectionOf(mine, "kurobot") ?? {};
-            milkySection = sectionOf(mine, "milky") ?? {};
+            // 表驱动：协议键单一来源，新增协议只改 PROTOCOL_KEYS 与具名投影。
+            for (const key of PROTOCOL_KEYS) {
+                sections[key] = sectionOf(mine, key) ?? {};
+            }
         }
     }
-    return { ob11Section, satoriSection, kurobotSection, milkySection };
+    return sections;
 }
 
 /**
@@ -97,18 +117,13 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
     const inlineDoc = readInlineConfigDoc();
     if (inlineDoc !== undefined) {
         log("bootstrap: 配置来源: inline（NAPKETTO_CONFIG_JSON）");
-        return { cfgFile: INLINE_CONFIG_SENTINEL, ...extractSections(inlineDoc["accounts"], uin) };
+        return {
+            cfgFile: INLINE_CONFIG_SENTINEL,
+            ...sectionFields(extractSections(inlineDoc["accounts"], uin)),
+        };
     }
     const cfgFile = env.NAPKETTO_CONFIG || join(env.NAPUTO_CFG_DIR || ".", "napuketto.toml");
-    let sections: Pick<
-        ProtocolSections,
-        "ob11Section" | "satoriSection" | "kurobotSection" | "milkySection"
-    > = {
-        ob11Section: {},
-        satoriSection: {},
-        kurobotSection: {},
-        milkySection: {},
-    };
+    let sections = emptySections();
     try {
         const raw = readFileSync(cfgFile, "utf8");
         const parsed = kernel.parseToml(raw);
@@ -116,5 +131,5 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
     } catch (e) {
         log(`bootstrap: 全局配置读取失败（用默认 ob11/satori 配置）: ${errMsg(e)}`);
     }
-    return { cfgFile, ...sections };
+    return { cfgFile, ...sectionFields(sections) };
 }

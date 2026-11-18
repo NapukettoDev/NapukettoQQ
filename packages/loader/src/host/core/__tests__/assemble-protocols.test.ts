@@ -277,6 +277,35 @@ describe("assembleOb11AndSatori", () => {
         expect(adapterOf("milky")).toBeUndefined();
     });
 
+    it("仅配置 OB11 → 可选协议子路径不 import（ADR-014 按需加载）", async () => {
+        // 三个可选子路径写成「一加载就抛」：若被提前 import，装配必然失败。
+        for (const sub of ["satori", "kurobot", "milky"]) {
+            writeFileSync(
+                join(tmpRoot, "adapter", sub, "index.mjs"),
+                `throw new Error("${sub} subpath must not be imported");\n`,
+                "utf8",
+            );
+        }
+        stubInlineConfig({});
+        const assemble = await freshAssemble();
+        const stop = await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
+        expect(fakeAdapters().map((r) => r.kind)).toEqual(["ob11"]);
+        await expect(stop()).resolves.toBeUndefined();
+    });
+
+    it("子路径导出面非法 → 统一错误消息（Invalid @napuketto/adapter/<subpath> exports）", async () => {
+        writeFileSync(
+            join(tmpRoot, "adapter", "onebot11", "index.mjs"),
+            "export const nope = 1;\n",
+            "utf8",
+        );
+        stubInlineConfig({});
+        const assemble = await freshAssemble();
+        await expect(
+            assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN),
+        ).rejects.toThrow(/^Invalid @napuketto\/adapter\/onebot11 exports at /);
+    });
+
     it("satori 段存在但未配 cacheDir → 缺省 <账号目录>/cache", async () => {
         stubInlineConfig({ satori: { token: "" } });
         const assemble = await freshAssemble();
