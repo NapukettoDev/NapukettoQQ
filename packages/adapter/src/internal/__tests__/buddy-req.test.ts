@@ -11,14 +11,14 @@
 
 import type { BuddyReq } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import type { AdapterLoggerLike } from "../infra/log.js";
 import {
     BuddyReqDedup,
     batchUnreadNums,
     filterBuddyReqs,
     isActionableBuddyReq,
     processInboundBuddyReqs,
-} from "../buddy-req.js";
-import type { AdapterLoggerLike } from "../log.js";
+} from "../qq/buddy-req.js";
 
 /** 启动基准（固定时刻，便于构造「基准前 / 基准后」样本）。 */
 const BASELINE = 1_794_307_394;

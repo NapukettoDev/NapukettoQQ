@@ -10,7 +10,7 @@
  * （字段缺失一律放行）：这些字段名来自说明书参考，未实证，不能因缺字段就静默丢弃申请。
  */
 import { type BuddyReq, isRecord } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "./log.js";
+import type { AdapterLoggerLike } from "../infra/log.js";
 import { toUnixSeconds } from "./raw-message.js";
 
 /** `KMEINITIATORWAITPEERCONFIRM`：等对方确认中，仍属待处理（isDecide=true 也不丢）。 */

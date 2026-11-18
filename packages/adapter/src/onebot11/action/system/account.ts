@@ -14,7 +14,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { z } from "zod";
-import { downloadBufferToFile } from "../../../shared/media.js";
+import { downloadBufferToFile } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 

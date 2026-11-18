@@ -7,7 +7,7 @@
  */
 
 import type { ZodType } from "zod";
-import { runAction } from "../../core/index.js";
+import { runAction } from "../../framework/index.js";
 import { satoriHttpStatusMap } from "../helper/index.js";
 
 /** 动作错误（带 HTTP 状态码；由 transport 层透传）。 */

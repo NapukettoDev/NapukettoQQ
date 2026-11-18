@@ -10,7 +10,7 @@
 import { pathToFileURL } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../../shared/__tests__/stub.js";
+import { stub } from "../../../../internal/__tests__/stub.js";
 import type { OutgoingSegment } from "../../../types.js";
 import {
     canonicalToIncomingSegments,

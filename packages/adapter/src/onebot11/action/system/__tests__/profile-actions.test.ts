@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../shared/__tests__/stub.js";
+import { stub } from "../../../../internal/__tests__/stub.js";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
 import { createSystemAccountActions } from "../account.js";
 import { createSystemFileActions } from "../file.js";

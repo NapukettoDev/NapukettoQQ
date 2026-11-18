@@ -12,8 +12,8 @@
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
-import type { AdapterLoggerLike } from "../../../shared/log.js";
-import { ensureSilk, prepareVideoElements } from "../../../shared/media.js";
+import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
+import { ensureSilk, prepareVideoElements } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     applySendContext,

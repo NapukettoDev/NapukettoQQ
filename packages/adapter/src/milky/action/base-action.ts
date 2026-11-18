@@ -9,7 +9,7 @@
  */
 import type { KernelErrorCode } from "@napuketto/kernel";
 import type { ZodError, ZodType } from "zod";
-import { runAction } from "../../core/index.js";
+import { runAction } from "../../framework/index.js";
 
 /**
  * Milky 动作结果（retcode 为规范负数族；transport 原样组装信封）。

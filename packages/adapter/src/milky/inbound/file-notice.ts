@@ -2,8 +2,8 @@
  * Milky inbound 轻量通知域：私聊文件双回调（friend_file_upload，按 msgId 去重）
  * 与 bot_offline（Login 桥，载荷零样本，reason 固定值）。置顶翻转在 pin.ts。
  */
-import { sliceRaw } from "../../shared/log.js";
-import { forEachRawMessage, toUnixSeconds } from "../../shared/raw-message.js";
+import { sliceRaw } from "../../internal/infra/log.js";
+import { forEachRawMessage, toUnixSeconds } from "../../internal/qq/raw-message.js";
 import type { MilkyInboundBase } from "../api.js";
 import { toFriendFileUploadData } from "../helper/event/file-upload.js";
 import { RecentKeyCache } from "../helper/state/recent-keys.js";

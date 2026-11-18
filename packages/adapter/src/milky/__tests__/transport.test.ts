@@ -26,8 +26,8 @@ import {
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
-import { type ActionRegistry, ConfigBase } from "../../core/index.js";
-import { stub } from "../../shared/__tests__/stub.js";
+import { type ActionRegistry, ConfigBase } from "../../framework/index.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import type { MilkyAction } from "../action/base-action.js";
 import { createMilkyActionRegistry } from "../action/index.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";

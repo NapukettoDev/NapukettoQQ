@@ -15,7 +15,7 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { stub } from "../../shared/__tests__/stub.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import {
     type AdapterEnv,
     adapterEnv,

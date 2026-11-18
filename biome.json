@@ -98,6 +98,29 @@
     "overrides": [
         {
             "includes": [
+                "packages/adapter/src/framework/**",
+                "!packages/adapter/src/framework/__tests__/**"
+            ],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": ["**/internal/**"],
+                                        "message": "framework/ 是公开契约层，禁止依赖包内私有实现（src/internal/）"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "includes": [
                 "packages/kernel/src/apis/webapi.ts",
                 "packages/kernel/src/apis/ticket.ts"
             ],

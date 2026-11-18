@@ -8,7 +8,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../shared/__tests__/stub.js";
+import { stub } from "../../../../internal/__tests__/stub.js";
 import type { GroupSenderRole } from "../../../helper/data.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import type { OB11MessageInfo } from "../../../types/index.js";

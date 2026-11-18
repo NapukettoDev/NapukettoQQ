@@ -21,8 +21,8 @@ import type {
     WsSocket,
 } from "@napuketto/network";
 import { createSseResponse, HttpClient, HttpServer, isWsOpen } from "@napuketto/network";
-import type { ActionRegistry } from "../core/index.js";
-import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../core/index.js";
+import type { ActionRegistry } from "../framework/index.js";
+import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../framework/index.js";
 import type { MilkyAction } from "./action/index.js";
 import type { MilkyConfig } from "./config.js";
 

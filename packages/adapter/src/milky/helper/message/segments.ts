@@ -15,7 +15,7 @@
  */
 import type { CanonicalElement } from "@napuketto/kernel";
 import { hasNumberProp, hasStringProp, isRecord, kernelError } from "@napuketto/kernel";
-import { fileUriToPath } from "../../../shared/media.js";
+import { fileUriToPath } from "../../../internal/qq/media.js";
 import type { IncomingSegment, OutgoingSegment } from "../../types.js";
 
 /** 发送段的最小形状（入口只保证 type 为 string、data 为对象）。 */

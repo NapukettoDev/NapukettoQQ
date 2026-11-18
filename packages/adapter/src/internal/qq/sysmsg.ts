@@ -17,7 +17,7 @@
  * milky.md §0.8.6 识别表）+ wrapper.node OnSysMsg* 处理器分类学（原生分发键 =
  * msg_type/sub_type）。翻译纯函数。
  */
-import type { AdapterLoggerLike } from "./log.js";
+import type { AdapterLoggerLike } from "../infra/log.js";
 
 // ---------------------------------------------------------------------------
 // wire-format 解码器

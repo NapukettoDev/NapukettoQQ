@@ -3,7 +3,7 @@
  */
 import type { GroupApi } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { GuildActionDeps } from "../guild.js";
 import { createGuildActions } from "../guild.js";
 import { satoriActionOf } from "./test-support.js";

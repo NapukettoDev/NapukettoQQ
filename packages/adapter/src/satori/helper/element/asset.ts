@@ -6,7 +6,7 @@
  * - 下载落盘统一走 shared/media.ts 的 downloadBufferToFile（异步 I/O 单一入口）
  */
 import { join } from "node:path";
-import { downloadBufferToFile } from "../../../shared/media.js";
+import { downloadBufferToFile } from "../../../internal/qq/media.js";
 
 /** internal:{platform}/{user.id}/{path} → 本地路径（取 _tmp 之后的路径，回落 cacheDir）。 */
 function resolveInternalPath(src: string): string {

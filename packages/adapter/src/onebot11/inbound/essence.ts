@@ -5,10 +5,10 @@
 
 import type { EssenceAddedItem } from "@napuketto/kernel";
 import { EssenceListSync, narrowEssenceGroupArg } from "@napuketto/kernel";
-import { extractEssenceSetSysMsg } from "../../shared/essence.js";
-import { truncRaw } from "../../shared/log.js";
-import type { SysMsgField } from "../../shared/sysmsg.js";
-import { MS_TO_SEC, numericUin } from "../../shared/uid-uin.js";
+import { truncRaw } from "../../internal/infra/log.js";
+import { extractEssenceSetSysMsg } from "../../internal/qq/essence.js";
+import type { SysMsgField } from "../../internal/qq/sysmsg.js";
+import { MS_TO_SEC, numericUin } from "../../internal/qq/uid-uin.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 

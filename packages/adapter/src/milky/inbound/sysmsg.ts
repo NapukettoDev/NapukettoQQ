@@ -4,14 +4,14 @@
  * 信封 → 识别 → 分流）。表命中提取 data 体 → 精华快路径 claim 去重 → 信封包装
  * 广播；未识别 / 提取失败落校准路径，不广播半成品。
  */
-import { sliceRaw } from "../../shared/log.js";
+import { sliceRaw } from "../../internal/infra/log.js";
 import {
     narrowSysMsgBlobs,
     processSysMsgBlob,
     type SysMsgEnvelope,
     type SysMsgField,
     type SysMsgRecognition,
-} from "../../shared/sysmsg.js";
+} from "../../internal/qq/sysmsg.js";
 import type { MilkyInboundBase } from "../api.js";
 import { recognizeMilkySysMsg } from "../helper/event/sysmsg.js";
 import type { MilkyInboundEssence } from "./essence.js";

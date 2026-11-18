@@ -22,7 +22,7 @@
 import { join, basename as pathBasename } from "node:path";
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { z } from "zod";
-import { downloadBufferToFile, fileUriToPath } from "../../../shared/media.js";
+import { downloadBufferToFile, fileUriToPath } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 

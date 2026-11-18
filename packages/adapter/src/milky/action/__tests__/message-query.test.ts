@@ -17,7 +17,7 @@ import {
     type RawMessage,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { GetForwardedMessagesOutput, GetHistoryMessagesOutput } from "../../types.js";

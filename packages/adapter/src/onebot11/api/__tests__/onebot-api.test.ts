@@ -18,7 +18,7 @@ import {
     type WebApi,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import { OneBotApi } from "../onebot-api.js";
 
 /** 构造 GroupMember（缺省最小合法值，overrides 覆盖）。 */

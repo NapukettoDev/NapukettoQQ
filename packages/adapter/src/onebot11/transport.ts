@@ -19,7 +19,7 @@ import {
     WsClient,
     WsServer,
 } from "@napuketto/network";
-import { BEARER_PREFIX, createTokenAuthorize } from "../core/index.js";
+import { BEARER_PREFIX, createTokenAuthorize } from "../framework/index.js";
 import type { OB11Config } from "./helper/index.js";
 
 /** 传输装配结果。 */

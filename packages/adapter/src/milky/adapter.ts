@@ -22,7 +22,7 @@ import {
     type ConfigBase,
     type ProtocolHooks,
     resolveProtocolConfig,
-} from "../core/index.js";
+} from "../framework/index.js";
 import { createMilkyActionRegistry } from "./action/index.js";
 import { MilkyApi, type MilkyApiOptions } from "./api.js";
 import { type MilkyConfig, milkyConfigSchema } from "./config.js";

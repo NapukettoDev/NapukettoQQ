@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
 import { encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
-import type { AdapterLoggerLike } from "./log.js";
+import type { AdapterLoggerLike } from "../infra/log.js";
 
 /** file:// 前缀（fileURLToPath 解析失败时的裸剥离兜底）。 */
 export const FILE_URI_PREFIX_RE = /^file:\/\//;

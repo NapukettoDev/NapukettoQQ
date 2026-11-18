@@ -5,7 +5,7 @@
  */
 import type { CanonicalElement, RawMessage } from "@napuketto/kernel";
 import { toCanonicalElements } from "@napuketto/kernel";
-import { collectGrayTipUids, findRevokeElement, hasGrayTip } from "../../shared/gray-tip.js";
+import { collectGrayTipUids, findRevokeElement, hasGrayTip } from "../../internal/qq/gray-tip.js";
 import type { MilkyInboundBase } from "../api.js";
 import type { MilkyEnrichment } from "../enrichment.js";
 import { toMilkyNoticeEvent } from "../helper/event/notice.js";

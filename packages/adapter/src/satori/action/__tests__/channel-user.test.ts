@@ -10,7 +10,7 @@
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { Channel, List, User } from "../../types/index.js";
 import type { ChannelActionDeps } from "../channel.js";
 import { createChannelActions } from "../channel.js";

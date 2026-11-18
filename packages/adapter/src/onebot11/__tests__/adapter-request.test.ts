@@ -22,8 +22,8 @@ import type {
 } from "@napuketto/kernel";
 import { EventBroadcaster } from "@napuketto/network";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConfigBase } from "../../core/index.js";
-import { stub } from "../../shared/__tests__/stub.js";
+import { ConfigBase } from "../../framework/index.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import {
     type AdapterLoggerLike,
     NapukettoOneBot11Adapter,

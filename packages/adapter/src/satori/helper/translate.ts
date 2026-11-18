@@ -5,8 +5,8 @@
  * uidToUin 批量转换（依赖注入，与 OB11 的 ReceiveTranslateContext 同思路）。
  */
 import { ChatType, type RawMessage, toCanonicalElements } from "@napuketto/kernel";
-import { toUnixSeconds } from "../../shared/raw-message.js";
-import { MS_TO_SEC } from "../../shared/uid-uin.js";
+import { toUnixSeconds } from "../../internal/qq/raw-message.js";
+import { MS_TO_SEC } from "../../internal/qq/uid-uin.js";
 import type { Channel, Message } from "../types/index.js";
 import { canonicalToSatoriElements } from "./element/canonical.js";
 import { renderElements } from "./element/element.js";

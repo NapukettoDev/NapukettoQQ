@@ -23,7 +23,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
-import { toUnixSeconds } from "../shared/raw-message.js";
+import { toUnixSeconds } from "../internal/qq/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 

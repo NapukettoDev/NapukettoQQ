@@ -10,7 +10,7 @@
  */
 import type { CanonicalElement } from "@napuketto/kernel";
 import { transcodeVideo } from "@napuketto/media";
-import { ensureSilk } from "../../../shared/media.js";
+import { ensureSilk } from "../../../internal/qq/media.js";
 import { resolveAsset } from "./asset.js";
 import type { SatoriElement } from "./element.js";
 

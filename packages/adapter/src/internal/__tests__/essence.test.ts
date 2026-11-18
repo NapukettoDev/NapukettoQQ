@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { extractEssenceSetSysMsg } from "../essence.js";
-import { decodeProtoTree } from "../sysmsg.js";
+import { extractEssenceSetSysMsg } from "../qq/essence.js";
+import { decodeProtoTree } from "../qq/sysmsg.js";
 
 describe("extractEssenceSetSysMsg：732:1 路径提取", () => {
     /** varint 编码。 */

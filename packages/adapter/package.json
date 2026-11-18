@@ -43,14 +43,14 @@
         }
     },
     "tsdown": {
-        "entry": [
-            "src/index.ts",
-            "src/core/index.ts",
-            "src/onebot11/index.ts",
-            "src/satori/index.ts",
-            "src/kurobot/index.ts",
-            "src/milky/index.ts"
-        ]
+        "entry": {
+            "index": "src/index.ts",
+            "core/index": "src/framework/index.ts",
+            "onebot11/index": "src/onebot11/index.ts",
+            "satori/index": "src/satori/index.ts",
+            "kurobot/index": "src/kurobot/index.ts",
+            "milky/index": "src/milky/index.ts"
+        }
     },
     "scripts": {
         "dev": "tsdown --watch",

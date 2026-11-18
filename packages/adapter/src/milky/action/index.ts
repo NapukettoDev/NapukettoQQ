@@ -4,7 +4,7 @@
  *
  * 64 动作 = docs/protocols/milky.md §9 清单全量。
  */
-import { ActionRegistry } from "../../core/index.js";
+import { ActionRegistry } from "../../framework/index.js";
 import type { MilkyApi } from "../api.js";
 import type { MilkyAction } from "./base-action.js";
 import { createGroupEssenceActions } from "./group-essence.js";

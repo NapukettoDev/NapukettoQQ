@@ -6,7 +6,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, errorMessage } from "@napuketto/kernel";
-import { logEventFailure } from "../../shared/log.js";
+import { logEventFailure } from "../../internal/infra/log.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { OB11Config } from "../helper/index.js";

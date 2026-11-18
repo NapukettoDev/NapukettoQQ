@@ -25,7 +25,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { errorMessage, GroupApi, NTGroupMemberRole } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "../../shared/log.js";
+import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
 

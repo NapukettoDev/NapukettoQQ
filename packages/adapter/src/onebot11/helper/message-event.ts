@@ -6,7 +6,7 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, toCanonicalElements } from "@napuketto/kernel";
-import { senderNickname, toUnixSeconds } from "../../shared/raw-message.js";
+import { senderNickname, toUnixSeconds } from "../../internal/qq/raw-message.js";
 import type {
     GroupSender,
     OB11GroupMessageEvent,

@@ -15,8 +15,8 @@ import {
     isLiveMessage,
     subscribeRawMessages,
     toUnixSeconds,
-} from "../raw-message.js";
-import { STARTUP_GRACE_SEC } from "../startup-cutoff.js";
+} from "../qq/raw-message.js";
+import { STARTUP_GRACE_SEC } from "../qq/startup-cutoff.js";
 import { stub } from "./stub.js";
 
 /** 构造最小合法 RawMessage。 */

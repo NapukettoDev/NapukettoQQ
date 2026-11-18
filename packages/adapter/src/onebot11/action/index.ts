@@ -8,7 +8,7 @@
  * friend/ system/），各领域文件导出 create*Actions 工厂，此处遍历注册——新增动作在
  * 领域文件的工厂里登记即可。
  */
-import { ActionRegistry } from "../../core/index.js";
+import { ActionRegistry } from "../../framework/index.js";
 import type { OneBotApi } from "../api/onebot-api.js";
 import type { Ob11Action } from "./base-action.js";
 import { createFriendManageActions } from "./friend/manage.js";

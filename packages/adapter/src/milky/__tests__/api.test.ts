@@ -19,7 +19,7 @@ import {
     type RawMessage,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../shared/__tests__/stub.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import { findGroupNotify, MilkyApi } from "../api.js";
 import { milkyConfigSchema } from "../config.js";
 import { MessageSeqIndex } from "../helper/state/seq-index.js";

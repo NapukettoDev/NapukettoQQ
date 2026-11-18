@@ -10,7 +10,7 @@
  */
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../gray-tip.js";
+import { collectGrayTipUids, firstUntranslatedGrayTip, hasGrayTip } from "../qq/gray-tip.js";
 import { stub } from "./stub.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */

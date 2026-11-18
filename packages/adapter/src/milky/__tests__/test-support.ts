@@ -33,8 +33,8 @@ import {
 import type { TransportAdapter } from "@napuketto/network";
 import { EventBroadcaster } from "@napuketto/network";
 import { vi } from "vitest";
-import { ConfigBase } from "../../core/index.js";
-import { stub } from "../../shared/__tests__/stub.js";
+import { ConfigBase } from "../../framework/index.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import { NapukettoMilkyAdapter } from "../adapter.js";
 import { MilkyApi } from "../api.js";
 import type { MilkyConfig } from "../config.js";

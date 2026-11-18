@@ -5,7 +5,7 @@
  * 删他人表态）、校验失败 400。
  */
 import { describe, expect, it } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { ReactionActionDeps } from "../reaction.js";
 import { createReactionActions } from "../reaction.js";
 import { type StubSatoriApi, satoriActionOf, stubSatoriApi } from "./test-support.js";

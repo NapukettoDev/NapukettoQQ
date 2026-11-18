@@ -11,10 +11,10 @@
  * 自动同意 → 再次全量重放」会成死循环。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import { BuddyReqDedup, processInboundBuddyReqs } from "../../shared/buddy-req.js";
-import { logEventFailure, truncRaw } from "../../shared/log.js";
-import { startupBaselineSec } from "../../shared/startup-cutoff.js";
-import { collectGroupNotifyUids, type RequestTranslateContext } from "../../shared/uid-uin.js";
+import { logEventFailure, truncRaw } from "../../internal/infra/log.js";
+import { BuddyReqDedup, processInboundBuddyReqs } from "../../internal/qq/buddy-req.js";
+import { startupBaselineSec } from "../../internal/qq/startup-cutoff.js";
+import { collectGroupNotifyUids, type RequestTranslateContext } from "../../internal/qq/uid-uin.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import { toOb11FriendRequestEvent, toOb11GroupRequestEvent } from "../helper/request.js";

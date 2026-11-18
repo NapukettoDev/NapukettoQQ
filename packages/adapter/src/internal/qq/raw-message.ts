@@ -11,7 +11,7 @@
  */
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import { hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "./log.js";
+import type { AdapterLoggerLike } from "../infra/log.js";
 import { startupBaselineSec } from "./startup-cutoff.js";
 import { firstNonEmptyString } from "./text.js";
 
