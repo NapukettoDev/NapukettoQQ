@@ -54,13 +54,17 @@
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
 - 跨协议 QQ 共享原语收在包内 `src/shared/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
-  `numericUin`（number / string / 数字串口径）、gray-tip 的 `hasGrayTip`/`findRevokeElement`、
+  `numericUin`（number / string / 数字串口径）、`collectGroupNotifyUids`（群通知 user1/user2
+  双方 uid）与 `resolveUidToUinWithFallback`（去重空串 → 批量 `uidToUin` → 群口径未命中的
+  前 `MAX_PROFILE_LOOKUPS` 条逐条资料兜底，fail-soft 留痕；OB11 / Milky enrichment 共用）、
+  gray-tip 的 `hasGrayTip`/`findRevokeElement`、
   essence 的 `EssenceListSync`（列表缓存 + 串行链 + diff，OB11 / Milky adapter 共用）、
   raw-message 的数组规范化与 `toUnixSeconds`（Windows 毫秒 / Linux 秒归一）、
   log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
   面）、text 的 `firstNonEmptyString`/`stringOrUndefined`（NT 原生字段「空串 vs 省略」
   择一取值）、startup-cutoff 的 `STARTUP_GRACE_SEC`/`startupBaselineSec`（启动 / 重连的
   历史积压基准，四协议共用）、buddy-req 的 `isActionableBuddyReq`/`filterBuddyReqs`/
+  `processInboundBuddyReqs`（unreadNums 短路 → 收窄 → 过滤 → 去重的入口管线）/
   `BuddyReqDedup`（好友申请可处理性判定与实例级去重）；协议目录只留形状差异（事件翻译、
   识别表、错误口径——NOT_FOUND 抛错类型与消息归调用方）。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——

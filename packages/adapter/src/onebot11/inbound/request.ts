@@ -11,15 +11,10 @@
  * 自动同意 → 再次全量重放」会成死循环。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import {
-    BuddyReqDedup,
-    batchUnreadNums,
-    filterBuddyReqs,
-    narrowBuddyReqs,
-} from "../../shared/buddy-req.js";
+import { BuddyReqDedup, processInboundBuddyReqs } from "../../shared/buddy-req.js";
 import { logEventFailure, truncRaw } from "../../shared/log.js";
 import { startupBaselineSec } from "../../shared/startup-cutoff.js";
-import type { RequestTranslateContext } from "../../shared/uid-uin.js";
+import { collectGroupNotifyUids, type RequestTranslateContext } from "../../shared/uid-uin.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import { toOb11FriendRequestEvent, toOb11GroupRequestEvent } from "../helper/request.js";
@@ -69,30 +64,14 @@ export class Ob11InboundRequest {
 
     /** 好友申请翻译派发（flag=reqTime；uid→uin 批量失败退空 Map）。 */
     private async broadcastBuddyReqs(arg: unknown): Promise<void> {
-        // 批级 unreadNums=0：整批没有未处理项（登录同步的旧列表），无需逐条判定
-        if (batchUnreadNums(arg) === 0) {
-            this.deps.logger?.debug({}, "ob11: onBuddyReqChange unreadNums=0（整批跳过）");
-            return;
-        }
-        const reqs = narrowBuddyReqs(arg);
-        if (reqs === null) {
-            // 未知形状：raw 日志积累校准数据（ 实测后回填 narrowBuddyReqs）
-            this.deps.logger?.warn(
-                { raw: truncRaw(JSON.stringify(arg)) },
-                "ob11: onBuddyReqChange 未知参数形状",
-            );
-            return;
-        }
-        // 历史积压 / 已读 / 已处理 / 自己发起 → 丢弃；剩余项去重后才是待推申请
-        const fresh = filterBuddyReqs(reqs, this.baselineSec).filter((req) =>
-            this.dedup.claim(req),
-        );
-        if (fresh.length < reqs.length) {
-            this.deps.logger?.debug(
-                { total: reqs.length, kept: fresh.length },
-                "ob11: 好友申请过滤（历史积压 / 已读 / 已处理 / 重复）",
-            );
-        }
+        // 四步守门：unreadNums=0 短路 → 收窄 → 可处理性过滤 → 去重（共享管线）
+        const fresh = processInboundBuddyReqs(arg, {
+            baselineSec: this.baselineSec,
+            dedup: this.dedup,
+            scope: "ob11",
+            formatRaw: truncRaw,
+            logger: this.deps.logger,
+        });
         if (fresh.length === 0) {
             return;
         }
@@ -108,17 +87,4 @@ export class Ob11InboundRequest {
     private async requestCtx(uids: string[]): Promise<RequestTranslateContext> {
         return { selfUin: this.deps.selfUin, uidToUin: await this.deps.enrich.uidToUinMap(uids) };
     }
-}
-
-/** 收集群系统通知涉及的 uid（user1/user2 双方，空 uid 跳过）。 */
-function collectGroupNotifyUids(notifies: readonly GroupNotify[]): string[] {
-    const uids: string[] = [];
-    for (const notify of notifies) {
-        for (const user of [notify.user1, notify.user2]) {
-            if (typeof user?.uid === "string" && user.uid !== "") {
-                uids.push(user.uid);
-            }
-        }
-    }
-    return uids;
 }
