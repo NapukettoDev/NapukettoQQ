@@ -7,58 +7,20 @@
  *  - HTTP 正向（httpPost.enabled）：HttpClient 事件上报（fire-and-forget）
  *  - WS 正向（wsReverse.enabled）：WsClient 主动连第三方（双向）
  *
- * 鉴权：token 存在时校验 Authorization: Bearer <token> / access_token 查询参数。
+ * 鉴权：token 存在时校验 Authorization: Bearer <token> / 裸 authorization 头 /
+ * access_token 查询参数（方言开关由 core 鉴权原语参数化）。
  * 返回 transports（事件上报用，注册到 broadcaster）与 close（停止时关闭全部）。
  */
 import {
-    type AuthorizeHook,
     type EventBroadcaster,
     HttpClient,
     HttpServer,
-    type RequestContext,
     type TransportAdapter,
     WsClient,
     WsServer,
 } from "@napuketto/network";
+import { BEARER_PREFIX, createTokenAuthorize } from "../core/index.js";
 import type { OB11Config } from "./helper/index.js";
-
-/** Authorization 头前缀。 */
-const BEARER_PREFIX = "Bearer ";
-
-/** 校验 URL 查询参数里的 access_token（WS client 连接 URL 可能带）。
- * ⚠️ req.url 是纯路径（无 origin），new URL(相对路径) 必抛——
- *  E2E 实测抓到的 bug（查询参数鉴权从未生效，WS 全被 4401 关闭），
- * 用 dummy base 解析。 */
-function hasAccessTokenQuery(url: string, token: string): boolean {
-    try {
-        const parsed = new URL(url, "http://localhost");
-        return parsed.searchParams.get("access_token") === token;
-    } catch {
-        return false;
-    }
-}
-
-/** 校验 Authorization: Bearer <token> 头。 */
-function checkBearer(auth: string | undefined, token: string): boolean {
-    if (auth === undefined || !auth.startsWith(BEARER_PREFIX)) {
-        return false;
-    }
-    return auth.slice(BEARER_PREFIX.length) === token;
-}
-
-/** 构造鉴权钩子（token 未配置则不鉴权）。 */
-function makeAuthorize(token: string | undefined): AuthorizeHook | undefined {
-    if (token === undefined || token === "") {
-        return;
-    }
-    return (ctx: RequestContext): boolean => {
-        const auth = ctx.headers["authorization"] ?? ctx.headers["Authorization"];
-        if (checkBearer(auth, token) || ctx.headers["authorization"] === token) {
-            return true;
-        }
-        return hasAccessTokenQuery(ctx.url, token);
-    };
-}
 
 /** 传输装配结果。 */
 export interface Ob11TransportSet {
@@ -142,7 +104,10 @@ function assembleHttpServers(
                 host: item.host,
                 port: item.port,
             };
-            const authorize = makeAuthorize(item.token ?? config.token);
+            const authorize = createTokenAuthorize(item.token ?? config.token, {
+                allowQueryToken: true,
+                allowRawHeader: true,
+            });
             if (authorize !== undefined) {
                 options.authorize = authorize;
             }
@@ -166,7 +131,10 @@ function assembleWsServers(
                 port: item.port,
                 heartbeat: { intervalMs: item.heartbeatInterval },
             };
-            const authorize = makeAuthorize(item.token ?? config.token);
+            const authorize = createTokenAuthorize(item.token ?? config.token, {
+                allowQueryToken: true,
+                allowRawHeader: true,
+            });
             if (authorize !== undefined) {
                 options.authorize = authorize;
             }

@@ -38,6 +38,11 @@
   按领域工厂顺序遍历注册。
 - 协议目录内不设转发 barrel：`index.ts` 只保留 `package.json` `exports` 声明的
   6 个子路径入口与实际聚合面（注册表/类型聚合）；单模块转发壳一律直引目标模块。
+- `core/framework/auth.ts` 提供协议层 Token 鉴权原语：`matchTokenCredential` 按
+  `TokenAuthOptions` 参数化 Bearer 头、可选裸 `authorization` 头（OB11 兼容）与
+  可选 `?access_token=` 查询参数（OB11 / Milky，固定以 `http://localhost` 为 base
+  解析相对路径）；`createTokenAuthorize` 在 token 为空时返回 `undefined`（不装钩子）。
+  三协议 transport 只声明方言开关，不各自重复解析。
 - fail-soft 降级分支必须留痕：kernel API 调用失败（uid↔uin、群缓存读、媒体下载）→
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内

@@ -372,7 +372,7 @@ describe("wsServers token 兜底链", () => {
     });
 });
 
-describe("hasAccessTokenQuery 解析失败兜底（恶意请求行）", () => {
+describe("access_token 查询参数解析失败兜底（恶意请求行）", () => {
     const { set } = assemble({
         token: BRANCH_TOKEN,
         wsServers: [{ enabled: true, host: "127.0.0.1", port: RAW_PROBE_PORT }],
@@ -389,7 +389,7 @@ describe("hasAccessTokenQuery 解析失败兜底（恶意请求行）", () => {
         const sawRejectFrame = await new Promise<boolean>((resolve, reject) => {
             const raw = connect({ host: "127.0.0.1", port: RAW_PROBE_PORT }, () => {
                 // 请求目标 "//[::1?..." → new URL 抛 TypeError，
-                // hasAccessTokenQuery catch 兜底 false → 4401 关闭帧
+                // 查询参数解析 catch 兜底 false → 4401 关闭帧
                 raw.write(
                     `GET //[::1?access_token=${BRANCH_TOKEN} HTTP/1.1\r\n` +
                         "Host: 127.0.0.1\r\n" +

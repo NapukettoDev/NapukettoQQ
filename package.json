@@ -23,7 +23,7 @@
         "check": "biome check . && tsc --noEmit",
         "fix": "biome check --write . && tsc --noEmit",
         "test": "vitest run",
-        "test:quiet": "vitest run --reporter=dot --silent",
+        "test:quiet": "vitest run --reporter=dot --silent=true",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
