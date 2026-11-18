@@ -54,9 +54,20 @@ export type {
     BuddyCacheEventChannel,
     BuddyCacheListener,
     BuddyCacheOptions,
+    EssenceAddedItem,
+    EssenceCacheEntry,
+    EssenceDiffResult,
+    EssenceListSyncDeps,
     GroupCacheOptions,
 } from "./cache/index.js";
-export { BuddyCache, GroupCache, narrowBuddyCategories } from "./cache/index.js";
+export {
+    BuddyCache,
+    diffEssenceList,
+    EssenceListSync,
+    GroupCache,
+    narrowBuddyCategories,
+    narrowEssenceGroupArg,
+} from "./cache/index.js";
 export type { CoreContext, CoreContextOptions } from "./context.js";
 export { createCoreContext } from "./context.js";
 export type { CoreLoginOptions, LoginProgress, NapukettoCoreOptions } from "./core.js";

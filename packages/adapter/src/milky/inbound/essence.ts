@@ -2,9 +2,8 @@
  * Milky inbound 精华域：双路径发射——732:1 快路径（sysmsg 域 claim 后即时广播）
  * 与列表 diff（remove 路径 + operator 回填），essenceKeys 按 群:seq:方向 去重。
  */
-import { isRecord } from "@napuketto/kernel";
-import type { EssenceAddedItem } from "../../shared/essence.js";
-import { EssenceListSync, narrowEssenceGroupArg } from "../../shared/essence.js";
+import type { EssenceAddedItem } from "@napuketto/kernel";
+import { EssenceListSync, isRecord, narrowEssenceGroupArg } from "@napuketto/kernel";
 import { sliceRaw } from "../../shared/log.js";
 import { numericUin } from "../../shared/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";

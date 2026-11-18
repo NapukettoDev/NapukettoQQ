@@ -58,7 +58,6 @@
   双方 uid）与 `resolveUidToUinWithFallback`（去重空串 → 批量 `uidToUin` → 群口径未命中的
   前 `MAX_PROFILE_LOOKUPS` 条逐条资料兜底，fail-soft 留痕；OB11 / Milky enrichment 共用）、
   gray-tip 的 `hasGrayTip`/`findRevokeElement`、
-  essence 的 `EssenceListSync`（列表缓存 + 串行链 + diff，OB11 / Milky adapter 共用）、
   raw-message 的数组规范化与 `toUnixSeconds`（Windows 毫秒 / Linux 秒归一）、
   log 的 `truncRaw`/`sliceRaw`/`AdapterLoggerLike`（raw 日志截断两口径 + 校准 logger
   面）、text 的 `firstNonEmptyString`/`stringOrUndefined`（NT 原生字段「空串 vs 省略」
@@ -67,6 +66,9 @@
   `processInboundBuddyReqs`（unreadNums 短路 → 收窄 → 过滤 → 去重的入口管线）/
   `BuddyReqDedup`（好友申请可处理性判定与实例级去重）；协议目录只留形状差异（事件翻译、
   识别表、错误口径——NOT_FOUND 抛错类型与消息归调用方）。
+- 群精华列表缓存 / 首帧基线抑制 / 串行 diff 同步器已下沉 kernel 缓存层（ADR-028）：
+  `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 从 `@napuketto/kernel`
+  导入；`src/shared/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
   `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与
@@ -108,7 +110,8 @@
 - notice：grayTip REVOKE → group_recall / friend_recall；aioOp → notify.poke（字段口径
   待真实事件校准，路径恒打 raw 日志）；群成员变动/管理/禁言走 TipGroupElement。
   `groupUploadAsNotice=false` 时文件消息报 message + file 段，true 时报 group_upload。
-- 精华：唯一发射路径是 `Group/onGroupEssenceListChange` 列表 diff；sysmsg 732:1 只作
+- 精华：唯一发射路径是 `Group/onGroupEssenceListChange` 列表 diff（`@napuketto/kernel`
+  `EssenceListSync`，ADR-028）；sysmsg 732:1 只作
   加速触发器踢入同一串行链（diff 幂等 + 串行去重）。sender 缺失跳过事件；operator 仅
   add 回填；message_id 经近段 60 条反查 + MessageUnique 幂等分配。
 
@@ -188,6 +191,8 @@
 - 通用管线：`processSysMsgBlob`（单条字节块：解码 → 信封 → 识别 → onNotice 分流 →
   未识别 debug 校准日志）为 OB11 / Milky 共用流程；协议差异只在识别表、命中处理
   与解码失败日志级别（OB11 warn / Milky debug，既有口径刻意不统一）。
+- 732:1 精华的字段提取器（`extractEssenceSetSysMsg`）留在 `src/shared/essence.ts`；
+  其上的列表缓存 / diff / 首帧基线抑制由 kernel `cache/essence-cache.ts` 承担（ADR-028）。
 - 字节布局、样本清单与字段号依据见 [evidence](./evidence.md#msgonrecvsysmsg-字节布局)。
 
 ### 文件投递：闪传语义降级
@@ -207,6 +212,8 @@
   `RecentContactApi` / `FlashTransferApi` 等语义 API；事件通道 `MsgEventChannel` /
   `GroupEventChannel` / `BuddyEventChannel` / `BuddyCacheEventChannel` /
   `RecentContactEventChannel` / `LoginEventChannel`；只读缓存 `GroupCache` / `BuddyCache`；
+  群精华列表 diff 原语 `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg`
+  （ADR-028）；
   类型与错误 `CanonicalElement` / `RawMessage` / `ChatType` / `KernelError` / `kernelError`。
 - network（只消费）：`EventBroadcaster`、`TransportAdapter`、`HttpServer`、`WsServer`、
   `HttpClient`、`WsClient`、`createSseResponse`、`isWsOpen`、鉴权钩子；network 不 import
@@ -226,7 +233,8 @@
 
 - 翻译层纯函数（ADR-008）：只读入参；uid→uin、msgId 反查、缓存查询都在协议边界的
   enrichment 完成，结果经 ctx 注入。改翻译不得新增 API 调用或缓存读取。
-- 缓存只读（ADR-008）：diff / baseline / 首帧抑制属 kernel 缓存层，adapter 不写缓存；精华列表拉取用串行链（并发回写会把新列表覆盖成旧列表）。
+- 缓存只读（ADR-008）：diff / baseline / 首帧抑制属 kernel 缓存层（`cache/essence-cache.ts`，
+  ADR-028），adapter 不写缓存；精华列表拉取用 kernel 串行链（并发回写会把新列表覆盖成旧列表）。
 - 元素存在性一律 `!= null`：Linux 原生对象把未命中的变体显式置 null，`!== undefined` 会误判（直读字段抛错或普通消息误入分支）。
 - 时间统一经 `toUnixSeconds`：兼容 Windows 毫秒与 Linux 秒，禁止在翻译里直接 `/1000`。
 - 启动前历史积压一律拦截（issue #122）：QQNT 在登录 / 重连时会把历史消息与旧好友申请
