@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/kernel",
-    "version": "0.15.1",
+    "version": "0.15.2",
     "type": "module",
     "description": "Core runtime kernel of NapukettoQQ",
     "keywords": [
