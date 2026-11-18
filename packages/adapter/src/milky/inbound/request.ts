@@ -7,12 +7,7 @@
  * 已处理 / 自己发起的项丢弃，剩余项按 `${friendUid}:${reqTime}` 去重。
  */
 import type { GroupNotify } from "@napuketto/kernel";
-import {
-    BuddyReqDedup,
-    batchUnreadNums,
-    filterBuddyReqs,
-    narrowBuddyReqs,
-} from "../../shared/buddy-req.js";
+import { BuddyReqDedup, processInboundBuddyReqs } from "../../shared/buddy-req.js";
 import { logEventFailure, sliceRaw } from "../../shared/log.js";
 import { startupBaselineSec } from "../../shared/startup-cutoff.js";
 import type { RequestTranslateContext } from "../../shared/uid-uin.js";
@@ -64,29 +59,14 @@ export class MilkyInboundRequest {
     }
 
     private async broadcastBuddyReqs(arg: unknown): Promise<void> {
-        // 批级 unreadNums=0：整批没有未处理项（登录同步的旧列表），无需逐条判定
-        if (batchUnreadNums(arg) === 0) {
-            this.deps.logger?.debug({}, "milky: onBuddyReqChange unreadNums=0（整批跳过）");
-            return;
-        }
-        const reqs = narrowBuddyReqs(arg);
-        if (reqs === null) {
-            this.deps.logger?.warn(
-                { raw: sliceRaw(JSON.stringify(arg)) },
-                "milky: onBuddyReqChange 未知参数形状",
-            );
-            return;
-        }
-        // 历史积压 / 已读 / 已处理 / 自己发起 → 丢弃；剩余项去重后才是待推申请
-        const fresh = filterBuddyReqs(reqs, this.baselineSec).filter((req) =>
-            this.dedup.claim(req),
-        );
-        if (fresh.length < reqs.length) {
-            this.deps.logger?.debug(
-                { total: reqs.length, kept: fresh.length },
-                "milky: 好友申请过滤（历史积压 / 已读 / 已处理 / 重复）",
-            );
-        }
+        // 四步守门：unreadNums=0 短路 → 收窄 → 可处理性过滤 → 去重（共享管线）
+        const fresh = processInboundBuddyReqs(arg, {
+            baselineSec: this.baselineSec,
+            dedup: this.dedup,
+            scope: "milky",
+            formatRaw: sliceRaw,
+            logger: this.deps.logger,
+        });
         if (fresh.length === 0) {
             return;
         }

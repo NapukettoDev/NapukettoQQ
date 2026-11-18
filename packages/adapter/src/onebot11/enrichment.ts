@@ -8,6 +8,7 @@
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, errorMessage, toCanonicalElements } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../shared/log.js";
+import { resolveUidToUinWithFallback } from "../shared/uid-uin.js";
 import type { OneBotApi } from "./api/onebot-api.js";
 import { collectReceiveNeeds, type ReceiveTranslateContext } from "./helper/index.js";
 import type { SysMsgEnvelope, SysMsgField, SysMsgKindRuleOB11 } from "./helper/sysmsg.js";
@@ -17,9 +18,6 @@ export interface Ob11EnrichmentDeps {
     api: OneBotApi;
     logger?: AdapterLoggerLike | undefined;
 }
-
-/** 资料详情兜底的单批上限（好友申请批通常只有个位数，超限多为历史积压）。 */
-const MAX_PROFILE_LOOKUPS = 10;
 
 /** OB11 收链路异步回填器。 */
 export class Ob11Enrichment {
@@ -36,51 +34,17 @@ export class Ob11Enrichment {
      *
      * 群成员口径（`getUinByUids`）解析不到的 uid 用资料详情兜底（issue #122）：
      * 好友申请的申请人通常不在任何群里，群口径必然失败，不回退会让 `user_id` 恒 0。
+     * 批量 / 兜底的 fail-soft 留痕在共享原语内完成。
      */
     async uidToUinMap(uids: string[]): Promise<Map<string, string>> {
-        if (uids.length === 0) {
-            return new Map();
-        }
-        let map: Map<string, string>;
-        try {
-            map = await this.api.uidToUin(uids);
-        } catch (err) {
-            this.calibLogger?.warn(
-                { count: uids.length, error: errorMessage(err) },
-                "ob11: 请求 uid→uin 批量转换失败，退用 uid",
-            );
-            map = new Map();
-        }
-        await this.fillMissingUins(uids, map);
-        return map;
-    }
-
-    /**
-     * 群口径未命中的 uid 逐个走 `profileApi.getUinByUid` 兜底（原地补 map）。
-     * fail-soft：单条失败 / 查不到保持未命中（翻译层退 0）；条数设上限，防历史积压
-     * 批次把逐条 IPC 打满。
-     */
-    private async fillMissingUins(uids: string[], map: Map<string, string>): Promise<void> {
-        const missing = [...new Set(uids)].filter((uid) => uid !== "" && !map.has(uid));
-        for (const uid of missing.slice(0, MAX_PROFILE_LOOKUPS)) {
-            try {
-                const uin = await this.api.profileApi.getUinByUid(uid);
-                if (uin !== null) {
-                    map.set(uid, uin);
-                }
-            } catch (err) {
-                this.calibLogger?.debug(
-                    { error: errorMessage(err) },
-                    "ob11: uid→uin 资料兜底失败（该 uid 退 0）",
-                );
-            }
-        }
-        if (missing.length > MAX_PROFILE_LOOKUPS) {
-            this.calibLogger?.debug(
-                { missing: missing.length, limit: MAX_PROFILE_LOOKUPS },
-                "ob11: 待兜底 uid 超上限，其余保持未命中",
-            );
-        }
+        return resolveUidToUinWithFallback(uids, {
+            uidToUin: (batch) => this.api.uidToUin(batch),
+            getUinByUid: (uid) => this.api.profileApi.getUinByUid(uid),
+            logger: this.calibLogger,
+            scope: "ob11",
+            batchWarnMsg: "ob11: 请求 uid→uin 批量转换失败，退用 uid",
+            profileFallback: true,
+        });
     }
 
     /**

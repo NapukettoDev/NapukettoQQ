@@ -7,6 +7,7 @@
  */
 import type { CanonicalElement, RawMessage } from "@napuketto/kernel";
 import { ChatType, errorMessage } from "@napuketto/kernel";
+import { resolveUidToUinWithFallback } from "../shared/uid-uin.js";
 import type { MilkyApi } from "./api.js";
 import type { ReceiveTranslateContext } from "./helper/event/translate.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/message/entities.js";
@@ -15,9 +16,6 @@ import { toGroupEntity, toGroupMemberEntity } from "./helper/message/entities.js
 export interface MilkyEnrichmentDeps {
     api: MilkyApi;
 }
-
-/** 资料详情兜底的单批上限（好友申请批通常只有个位数，超限多为历史积压）。 */
-const MAX_PROFILE_LOOKUPS = 10;
 
 /** uid→uin 解析选项。 */
 export interface ResolveUidToUinOptions {
@@ -34,11 +32,12 @@ export class MilkyEnrichment {
     }
 
     /**
-     * uid 批量 → uin（空集/失败返回 undefined 语义：调用方用空 Map）。
+     * uid 批量 → uin（空集返回 undefined 语义：调用方据此决定是否展开 `uidToUin`
+     * 属性，空 Map 与「未查询」在事件载荷上不同）。
      *
      * `profileFallback` 时才做资料详情兜底（issue #122）：好友申请的申请人通常不在
      * 任何群里，群口径必然命中不了；而 grayTip 一类高频路径不做兜底——群口径整体失败
-     * 时逐 uid 打 IPC 会把收链路拖垮。
+     * 时逐 uid 打 IPC 会把收链路拖垮。批量 / 兜底的 fail-soft 留痕在共享原语内完成。
      */
     async resolveUidToUin(
         uids: string[],
@@ -48,45 +47,14 @@ export class MilkyEnrichment {
         if (unique.length === 0) {
             return undefined;
         }
-        const map = await this.api.uidToUin(unique).catch((err) => {
-            this.api.logger?.warn(
-                { count: unique.length, error: errorMessage(err) },
-                "milky: uid→uin 批量转换失败，事件退用 uid",
-            );
-            return new Map<string, string>();
+        return resolveUidToUinWithFallback(unique, {
+            uidToUin: (batch) => this.api.uidToUin(batch),
+            getUinByUid: (uid) => this.api.profileApi.getUinByUid(uid),
+            logger: this.api.logger,
+            scope: "milky",
+            batchWarnMsg: "milky: uid→uin 批量转换失败，事件退用 uid",
+            profileFallback: options.profileFallback === true,
         });
-        if (options.profileFallback === true) {
-            await this.fillMissingUins(unique, map);
-        }
-        return map;
-    }
-
-    /**
-     * 群口径未命中的 uid 逐个走 `profileApi.getUinByUid` 兜底（原地补 map）。
-     * fail-soft：单条失败 / 查不到保持未命中（翻译层退 0）；条数设上限，防历史积压
-     * 批次把逐条 IPC 打满。
-     */
-    private async fillMissingUins(uids: string[], map: Map<string, string>): Promise<void> {
-        const missing = uids.filter((uid) => !map.has(uid));
-        for (const uid of missing.slice(0, MAX_PROFILE_LOOKUPS)) {
-            try {
-                const uin = await this.api.profileApi.getUinByUid(uid);
-                if (uin !== null) {
-                    map.set(uid, uin);
-                }
-            } catch (err) {
-                this.api.logger?.debug(
-                    { error: errorMessage(err) },
-                    "milky: uid→uin 资料兜底失败（该 uid 退 0）",
-                );
-            }
-        }
-        if (missing.length > MAX_PROFILE_LOOKUPS) {
-            this.api.logger?.debug(
-                { missing: missing.length, limit: MAX_PROFILE_LOOKUPS },
-                "milky: 待兜底 uid 超上限，其余保持未命中",
-            );
-        }
     }
 
     /** at uid → uin 批量转换（mention.user_id 用；失败 mention 段跳过）。 */

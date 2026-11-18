@@ -10,6 +10,7 @@
  * （字段缺失一律放行）：这些字段名来自说明书参考，未实证，不能因缺字段就静默丢弃申请。
  */
 import { type BuddyReq, isRecord } from "@napuketto/kernel";
+import type { AdapterLoggerLike } from "./log.js";
 import { toUnixSeconds } from "./raw-message.js";
 
 /** `KMEINITIATORWAITPEERCONFIRM`：等对方确认中，仍属待处理（isDecide=true 也不丢）。 */
@@ -153,4 +154,50 @@ export class BuddyReqDedup {
         }
         return true;
     }
+}
+
+/** inbound 好友申请入口管线的装配参数（OB11 / Milky 同构）。 */
+export interface InboundBuddyReqOptions {
+    /** 启动 / 重连的历史积压基准（`reqTime` 早于此丢弃）。 */
+    baselineSec: number;
+    /** 实例级去重（跨 `reloadTransports` 保留）。 */
+    dedup: BuddyReqDedup;
+    /** 日志前缀口径（`ob11` / `milky`）。 */
+    scope: "ob11" | "milky";
+    /** raw 日志截断口径（OB11 `truncRaw` / Milky `sliceRaw`，两口径刻意并存）。 */
+    formatRaw: (raw: string | undefined) => string;
+    logger?: AdapterLoggerLike | undefined;
+}
+
+/**
+ * onBuddyReqChange 回调参数 → 待广播好友申请（四步守门管线，issue #122）。
+ *
+ * 批级 `unreadNums=0` 整批短路 → `narrowBuddyReqs` 收窄（未知形状打 raw warn）→
+ * `filterBuddyReqs` 剔除历史积压 / 已读 / 已处理 / 自己发起 → `dedup.claim` 去重。
+ * 返回空数组表示本批无需广播（调用方不再展开翻译与 uid→uin 回填）。
+ */
+export function processInboundBuddyReqs(arg: unknown, opts: InboundBuddyReqOptions): BuddyReq[] {
+    // 批级 unreadNums=0：整批没有未处理项（登录同步的旧列表），无需逐条判定
+    if (batchUnreadNums(arg) === 0) {
+        opts.logger?.debug({}, `${opts.scope}: onBuddyReqChange unreadNums=0（整批跳过）`);
+        return [];
+    }
+    const reqs = narrowBuddyReqs(arg);
+    if (reqs === null) {
+        // 未知形状：raw 日志积累校准数据（实测后回填 narrowBuddyReqs）
+        opts.logger?.warn(
+            { raw: opts.formatRaw(JSON.stringify(arg)) },
+            `${opts.scope}: onBuddyReqChange 未知参数形状`,
+        );
+        return [];
+    }
+    // 历史积压 / 已读 / 已处理 / 自己发起 → 丢弃；剩余项去重后才是待推申请
+    const fresh = filterBuddyReqs(reqs, opts.baselineSec).filter((req) => opts.dedup.claim(req));
+    if (fresh.length < reqs.length) {
+        opts.logger?.debug(
+            { total: reqs.length, kept: fresh.length },
+            `${opts.scope}: 好友申请过滤（历史积压 / 已读 / 已处理 / 重复）`,
+        );
+    }
+    return fresh;
 }
