@@ -2,48 +2,67 @@
     "$schema": "https://json.schemastore.org/package.json",
     "name": "NapukettoQQ",
     "version": "1.0.0",
-    "description": "",
+    "description": "High-performance modular QQ bot framework and protocol implementation.",
     "type": "module",
     "private": true,
-    "packageManager": "pnpm@12.4.1",
-    "engines": {
-        "node": ">=22.12.0"
+    "keywords": [
+        "qq",
+        "bot",
+        "napuketto",
+        "typescript",
+        "monorepo"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git"
     },
     "license": "MIT",
-    "author": "睦 <oppenheymu@gmail.com>",
-    "keywords": [],
+    "author": {
+        "name": "睦",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
+    "packageManager": "pnpm@12.4.1",
+    "engines": {
+        "node": ">=22.12.0",
+        "pnpm": ">=12.0.0"
+    },
     "scripts": {
+        "prepare": "git config core.hooksPath tooling/git-hooks && pnpm -r build",
+        "build": "pnpm -r build",
         "dev": "node apps/cli/dist/index.mjs",
         "start": "node apps/cli/dist/index.mjs",
         "config": "node apps/cli/dist/index.mjs config",
-        "prepare": "git config core.hooksPath tooling/git-hooks && pnpm -r build",
-        "build": "pnpm -r build",
-        "lint": "biome lint .",
-        "format": "biome format --write .",
         "check": "biome check . && tsc --noEmit",
         "fix": "biome check --write . && tsc --noEmit",
+        "format": "biome format --write .",
+        "lint": "biome lint .",
         "test": "vitest run",
-        "test:quiet": "vitest run --reporter=dot --silent=true",
         "test:watch": "vitest",
+        "test:quiet": "vitest run --reporter=dot --silent=true",
         "test:coverage": "vitest run --coverage",
         "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
         "changeset": "changeset",
+        "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts",
+        "release:dryrun": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts --dry-run",
         "release:version": "pnpm changeset version && pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile",
         "release:build": "pnpm -r build",
         "release:test": "pnpm test",
-        "release:publish": "node tooling/release/release-npm.ts",
-        "release:dryrun": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts --dry-run",
-        "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts"
+        "release:publish": "node tooling/release/release-npm.ts"
     },
     "devDependencies": {
-        "@biomejs/biome": "^2.6.7",
-        "@changesets/cli": "^3.0.3",
         "@napuketto/adapter": "workspace:*",
         "@napuketto/kernel": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
+        "vitest": "catalog:",
+        "@biomejs/biome": "^2.6.7",
+        "@changesets/cli": "^3.0.3",
         "fallow": "^3.42.0",
-        "typescript": "^7.0.2",
-        "vitest": "catalog:"
+        "typescript": "^7.0.2"
     }
 }

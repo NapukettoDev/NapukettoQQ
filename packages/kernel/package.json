@@ -1,8 +1,32 @@
 {
+    "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/kernel",
     "version": "0.15.1",
-    "description": "Core runtime kernel of NapukettoQQ",
     "type": "module",
+    "description": "Core runtime kernel of NapukettoQQ",
+    "keywords": [
+        "qq",
+        "qqnt",
+        "bot",
+        "napuketto",
+        "kernel",
+        "runtime"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/kernel#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/kernel"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "睦",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -23,20 +47,14 @@
         }
     },
     "scripts": {
-        "dev": "tsdown --watch",
-        "build": "tsdown"
-    },
-    "devDependencies": {
-        "tsdown": "catalog:"
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "packages/kernel"
+        "build": "tsdown",
+        "dev": "tsdown --watch"
     },
     "dependencies": {
         "pino": "^10.4.0",
         "smol-toml": "^1.9.1"
+    },
+    "devDependencies": {
+        "tsdown": "catalog:"
     }
 }

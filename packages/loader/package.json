@@ -1,8 +1,33 @@
 {
+    "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/loader",
     "version": "0.10.2",
-    "description": "NapukettoQQ 引导组件：自建宿主（标准 Node + stub QQNT.dll）dlopen wrapper.node 并启动 kernel，不拉起 QQ / 不注入",
     "type": "module",
+    "description": "Standalone host and native wrapper.node loader for NapukettoQQ (without launching or injecting into QQNT).",
+    "keywords": [
+        "qq",
+        "qqnt",
+        "bot",
+        "napuketto",
+        "loader",
+        "native",
+        "headless"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/loader#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/loader"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Oppenheymu",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -13,10 +38,10 @@
     },
     "files": [
         "dist",
-        "native/prebuilt/win32-x64",
+        "assets/7zip",
         "native/prebuilt/linux-x64",
-        "qq-releases.json",
-        "assets/7zip"
+        "native/prebuilt/win32-x64",
+        "qq-releases.json"
     ],
     "main": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
@@ -27,19 +52,13 @@
         }
     },
     "scripts": {
-        "dev": "tsdown --watch",
-        "build": "tsdown"
+        "build": "tsdown",
+        "dev": "tsdown --watch"
     },
     "dependencies": {
         "zod": "catalog:"
     },
     "devDependencies": {
         "tsdown": "catalog:"
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "packages/loader"
     }
 }

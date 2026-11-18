@@ -13,6 +13,7 @@
         "adapter": "connection",
         "kernel": "core",
         "loader": "plugin",
+        "native": "middleware",
         "network": "server",
         // tooling
         "git-hooks": "hook",

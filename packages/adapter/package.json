@@ -1,8 +1,34 @@
 {
+    "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/adapter",
     "version": "0.18.5",
-    "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
     "type": "module",
+    "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
+    "keywords": [
+        "qq",
+        "bot",
+        "napuketto",
+        "adapter",
+        "onebot",
+        "satori",
+        "kurobot",
+        "milky"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/adapter#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/adapter"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Oppenheymu",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -25,14 +51,6 @@
             "types": "./dist/core/index.d.mts",
             "default": "./dist/core/index.mjs"
         },
-        "./onebot11": {
-            "types": "./dist/onebot11/index.d.mts",
-            "default": "./dist/onebot11/index.mjs"
-        },
-        "./satori": {
-            "types": "./dist/satori/index.d.mts",
-            "default": "./dist/satori/index.mjs"
-        },
         "./kurobot": {
             "types": "./dist/kurobot/index.d.mts",
             "default": "./dist/kurobot/index.mjs"
@@ -40,37 +58,39 @@
         "./milky": {
             "types": "./dist/milky/index.d.mts",
             "default": "./dist/milky/index.mjs"
+        },
+        "./onebot11": {
+            "types": "./dist/onebot11/index.d.mts",
+            "default": "./dist/onebot11/index.mjs"
+        },
+        "./satori": {
+            "types": "./dist/satori/index.d.mts",
+            "default": "./dist/satori/index.mjs"
         }
     },
     "tsdown": {
         "entry": {
             "index": "src/index.ts",
             "core/index": "src/framework/index.ts",
-            "onebot11/index": "src/onebot11/index.ts",
-            "satori/index": "src/satori/index.ts",
             "kurobot/index": "src/kurobot/index.ts",
-            "milky/index": "src/milky/index.ts"
+            "milky/index": "src/milky/index.ts",
+            "onebot11/index": "src/onebot11/index.ts",
+            "satori/index": "src/satori/index.ts"
         }
     },
     "scripts": {
-        "dev": "tsdown --watch",
-        "build": "tsdown"
-    },
-    "devDependencies": {
-        "@types/ws": "catalog:",
-        "tsdown": "catalog:",
-        "ws": "catalog:"
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "packages/adapter"
+        "build": "tsdown",
+        "dev": "tsdown --watch"
     },
     "dependencies": {
         "@napuketto/kernel": "workspace:*",
         "@napuketto/media": "workspace:*",
         "@napuketto/network": "workspace:*",
         "zod": "catalog:"
+    },
+    "devDependencies": {
+        "@types/ws": "catalog:",
+        "tsdown": "catalog:",
+        "ws": "catalog:"
     }
 }

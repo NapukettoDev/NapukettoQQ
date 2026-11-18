@@ -1,8 +1,33 @@
 {
+    "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/network",
     "version": "0.4.1",
-    "description": "Network layer of NapukettoQQ",
     "type": "module",
+    "description": "Network layer of NapukettoQQ",
+    "keywords": [
+        "qq",
+        "bot",
+        "napuketto",
+        "network",
+        "websocket",
+        "http",
+        "hono"
+    ],
+    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/network#readme",
+    "bugs": {
+        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "directory": "packages/network"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Oppenheymu",
+        "email": "oppenheymu@gmail.com",
+        "url": "https://github.com/Oppenheymu"
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -23,22 +48,16 @@
         }
     },
     "scripts": {
-        "dev": "tsdown --watch",
-        "build": "tsdown"
-    },
-    "devDependencies": {
-        "@types/ws": "catalog:",
-        "tsdown": "catalog:"
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "packages/network"
+        "build": "tsdown",
+        "dev": "tsdown --watch"
     },
     "dependencies": {
         "@hono/node-server": "catalog:",
         "hono": "catalog:",
         "ws": "catalog:"
+    },
+    "devDependencies": {
+        "@types/ws": "catalog:",
+        "tsdown": "catalog:"
     }
 }
