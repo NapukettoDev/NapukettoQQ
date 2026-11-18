@@ -209,6 +209,10 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
 - **adapter 只做三件事**：订阅事件通道、读缓存、调语义化 API。禁止触碰 `wrapper.node`、
   session、原生 service，也禁止自己注册原生 listener（AGENTS.md 红线 3）。协议翻译是纯函数，
   可单测（ADR-008）。
+- **缓存层原语**：群精华列表缓存、首帧基线抑制与串行 diff 同步器
+  `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 在
+  `src/cache/essence-cache.ts`（ADR-028）；adapter 只注入列表拉取与广播回调，不持有列表状态
+  （`sysmsg` 732:1 的 protobuf 树字段提取仍属 adapter 协议层）。
 - **错误传播**：kernel 抛 `KernelError`；adapter 只做 `code → 协议码` 映射，不解析原生
   `{result, errMsg}`。事件链路异常经通道 `onError` 上报，不向原生回调抛出。
 - **类型与配置**：adapter 可 import kernel 的实体/枚举类型；配置由 kernel `ConfigBase` 读写，
@@ -223,7 +227,8 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
 - **错误分类只做一次**（ADR-009）：原生结果只在 `apis/result.ts` 解包，其他层不得重复判断
   `result` / `errMsg`。
 - **翻译纯函数、缓存只读**（ADR-008）：协议层不得在翻译过程中调 API 或写缓存；缓存由事件
-  主动维护、查询惰性回填。
+  主动维护、查询惰性回填。群精华列表的 diff / 首帧 baseline 与串行同步器归
+  `cache/essence-cache.ts`（ADR-028），协议层只消费回调结果。
 - **类型层只来自运行时探测**：未实证字段保持 `待探测校准`，不得凭猜测补字段或改枚举值。
 - **探测产物增量落盘**：探测与录制产物写 `NAPUTO_CFG_DIR`，可中途崩溃后定位；公共文档只写
   符号名与方法名，不写逆向地址。

@@ -3,12 +3,9 @@
  * EssenceListSync），sysmsg 732:1 作加速触发器；operator 仅 add 回填。
  */
 
-import type { EssenceAddedItem } from "../../shared/essence.js";
-import {
-    EssenceListSync,
-    extractEssenceSetSysMsg,
-    narrowEssenceGroupArg,
-} from "../../shared/essence.js";
+import type { EssenceAddedItem } from "@napuketto/kernel";
+import { EssenceListSync, narrowEssenceGroupArg } from "@napuketto/kernel";
+import { extractEssenceSetSysMsg } from "../../shared/essence.js";
 import { truncRaw } from "../../shared/log.js";
 import type { SysMsgField } from "../../shared/sysmsg.js";
 import { MS_TO_SEC, numericUin } from "../../shared/uid-uin.js";
