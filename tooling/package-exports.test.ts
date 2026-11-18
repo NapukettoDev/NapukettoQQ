@@ -232,7 +232,11 @@ describe("@napuketto/adapter 子路径 CJS 可达性", () => {
 
     it("每个子路径都有 default 条件", () => {
         const subpaths = Object.keys(pkg.exports ?? {}).filter((key) => key !== ".");
-        expect(subpaths).toEqual(["./core", "./onebot11", "./satori", "./kurobot", "./milky"]);
+        // 只断言子路径集合：exports 键序不参与解析（Node 按最长前缀匹配），
+        // 元数据整理会按字母序重排键，不能把「声明顺序」误当契约。
+        expect(subpaths.toSorted()).toEqual(
+            ["./core", "./kurobot", "./milky", "./onebot11", "./satori"].toSorted(),
+        );
         for (const key of subpaths) {
             expect(pkg.exports?.[key]?.["default"]).toBeDefined();
         }
