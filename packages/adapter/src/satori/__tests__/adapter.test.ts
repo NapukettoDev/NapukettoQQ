@@ -1,9 +1,9 @@
 /**
  * satori/adapter.test.ts：NapukettoSatoriAdapter 收链路与生命周期单测。
  *
- * （传输装配/重建语义见 adapter-reload.test.ts 与 transport.test.ts，此处
- * 聚焦消息事件广播：sn 递增、事件形状、grayTip 分流、退订幂等、无 broadcaster
- * 降级、翻译失败 warn 留痕。）
+ * （传输装配见 transport.test.ts；此处聚焦消息事件广播与本档 reload 覆盖：
+ * sn 递增、事件形状、grayTip 分流、退订幂等、无 broadcaster 降级、翻译失败
+ * warn 留痕、离线/在线重订阅。）
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
