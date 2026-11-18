@@ -86,6 +86,22 @@ describe("loadProtocolSections 内联分支", () => {
         expect(sections.satoriSection).toEqual({});
     });
 
+    it("sections 表与具名投影同源（协议键表驱动，具名属性仅兼容投影）", async () => {
+        const mod = await freshLoadConfig({
+            NAPKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
+        });
+        const sections = mod.loadProtocolSections(stubKernel({}), "10001");
+        expect(sections.sections.onebot11).toEqual({ token: "t1" });
+        expect(sections.sections.satori).toEqual({});
+        expect(sections.sections.kurobot).toEqual({ url: "ws://inline:9000" });
+        expect(sections.sections.milky).toEqual({});
+        // 同一引用：改具名投影即改表（不是两份拷贝）
+        expect(sections.ob11Section).toBe(sections.sections.onebot11);
+        expect(sections.satoriSection).toBe(sections.sections.satori);
+        expect(sections.kurobotSection).toBe(sections.sections.kurobot);
+        expect(sections.milkySection).toBe(sections.sections.milky);
+    });
+
     it("内联优先级高于 NAPKETTO_CONFIG 文件（文件内容不同的账号也不串）", async () => {
         const cfgFile = join(freshDir(), "napuketto.toml");
         writeFileSync(

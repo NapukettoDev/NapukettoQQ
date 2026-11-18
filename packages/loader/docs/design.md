@@ -150,7 +150,10 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 
 - OB11 / Satori / Milky 各自 `new EventBroadcaster()`，只传给对应 adapter 的
   `broadcaster` 选项；Kurobot 是出向纯客户端协议，无广播器。
-- 可选协议「账号段非空才装配」：satori 段空返回 `null`，kurobot / milky 同范式。
+- 协议段提取与 adapter 子路径校验由协议描述表驱动（`PROTOCOL_KEYS` +
+  `importSubpathModule`），不再逐协议手写分支。
+- 可选协议「账号段非空才装配」：satori 段空返回 `null`，kurobot / milky 同范式；
+  且段为空时不 `import` 对应 adapter 子路径（未启用协议零加载，兑现 ADR-014）。
 - IPC 桥的广播器在进程边界上独立，与 CLI 协议装配互不影响。
 
 ### 内联配置与退出码
