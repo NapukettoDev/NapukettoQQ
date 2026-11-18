@@ -9,6 +9,11 @@
  *
  * ⚠️ 本文件只允许从包入口/子路径导入（@napuketto/kernel、@napuketto/adapter 等），
  * 禁止 `../../kernel` 之类的源码相对路径——那是内部视角，不能证明发布产物可用。
+ *
+ * 位置：`tooling/`——与 `package-exports.test.ts` 同属**产物契约测试**，不是某个包的
+ * 模块单测（曾置于 `packages/adapter/src/__tests__/`，按模块单测口径被误读）。
+ * 本文件断言的是 dist 产物：本地须先 `pnpm -r build`，否则会对着旧 dist 给出假绿；
+ * CI 已把全量构建前置（ci.yml「check 与 test 的前置」）。
  */
 
 import {
