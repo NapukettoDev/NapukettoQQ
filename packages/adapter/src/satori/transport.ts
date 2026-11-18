@@ -11,13 +11,13 @@
  */
 import { isRecord } from "@napuketto/kernel";
 import type {
-    AuthorizeHook,
     EventBroadcaster,
     HttpRouteContext,
     Respond,
     TransportAdapter,
 } from "@napuketto/network";
 import { HttpServer, WsServer } from "@napuketto/network";
+import { createTokenAuthorize } from "../core/index.js";
 import { SatoriActionError, type SatoriActionRegistry } from "./action/index.js";
 import { HTTP_STATUS, type SatoriConfig } from "./helper/index.js";
 import { type Event, type Login, Opcode } from "./types/index.js";
@@ -26,9 +26,6 @@ import { type Event, type Login, Opcode } from "./types/index.js";
 const WS_EVENTS_PATH = "/v1/events";
 /** HTTP RPC 版本前缀。 */
 const V1_PREFIX = "/v1/";
-
-/** Authorization 头前缀。 */
-const BEARER_PREFIX = "Bearer ";
 
 /** resource.method 路径模式（resource 与 method 均为字母开头的小写标识符，可含连字符/数字）。 */
 const ACTION_PATH_RE = /^([a-z][a-z0-9-]*)(?:\.[a-z][a-z0-9-]*)+$/i;
@@ -65,12 +62,11 @@ export function assembleSatoriTransports(
             continue;
         }
         const token = item.token ?? config.token;
+        const authorize = createTokenAuthorize(token);
         const server = new HttpServer({
             host: item.host,
             port: item.port,
-            ...(token !== undefined && token !== ""
-                ? { authorize: makeBearerAuthorize(token) }
-                : {}),
+            ...(authorize !== undefined ? { authorize } : {}),
         });
         server.onPathRequest = (ctx, req, respond) => {
             handleHttpRequest(ctx, req, respond, registry, login);
@@ -107,17 +103,6 @@ export function assembleSatoriTransports(
                 broadcaster.unregister(adapter);
             }
         },
-    };
-}
-
-/** Bearer token 鉴权钩子。 */
-function makeBearerAuthorize(token: string): AuthorizeHook {
-    return (ctx) => {
-        const auth = ctx.headers["authorization"] ?? ctx.headers["Authorization"];
-        if (auth?.startsWith(BEARER_PREFIX)) {
-            return auth.slice(BEARER_PREFIX.length) === token;
-        }
-        return false;
     };
 }
 

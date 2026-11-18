@@ -14,16 +14,15 @@
 
 import { errorMessage } from "@napuketto/kernel";
 import type {
-    AuthorizeHook,
     EventBroadcaster,
     HttpRouteContext,
-    RequestContext,
     Respond,
     TransportAdapter,
     WsSocket,
 } from "@napuketto/network";
 import { createSseResponse, HttpClient, HttpServer, isWsOpen } from "@napuketto/network";
 import type { ActionRegistry } from "../core/index.js";
+import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../core/index.js";
 import type { MilkyAction } from "./action/index.js";
 import type { MilkyConfig } from "./config.js";
 
@@ -31,8 +30,6 @@ import type { MilkyConfig } from "./config.js";
 const EVENT_PATH = "/event";
 /** /api/ 前缀 + 动作名（小写字母开头，小写/数字/下划线）。 */
 const API_PATH_RE = /^\/api\/([a-z][a-z0-9_]*)$/;
-/** Bearer 前缀。 */
-const BEARER_PREFIX = "Bearer ";
 
 /** 校准 logger 最小面（webhook 失败 / 配置异常 / 事件校准数据；缺省静默）。 */
 export interface MilkyLoggerLike {
@@ -83,7 +80,10 @@ class MilkyEventHub implements TransportAdapter {
                 reject(404, "event mode ws disabled");
                 return;
             }
-            if (config.token !== "" && !tokenMatches(req, config.token)) {
+            if (
+                config.token !== "" &&
+                !matchTokenCredential(req, config.token, { allowQueryToken: true })
+            ) {
                 reject(401, "unauthorized");
                 return;
             }
@@ -145,7 +145,15 @@ export function assembleMilkyTransports(opts: {
     const { config, broadcaster, registry, logger } = opts;
     const hub = new MilkyEventHub();
     const token = config.token;
-    const authorize = token !== "" ? makeMilkyAuthorize(token, logger) : undefined;
+    const authorize = createTokenAuthorize(token, {
+        allowQueryToken: true,
+        onQueryParseError: (url, err) => {
+            logger?.debug(
+                { url, error: errorMessage(err) },
+                "milky: 鉴权 URL 解析失败，按未授权拒绝",
+            );
+        },
+    });
 
     const server = new HttpServer({
         host: config.host,
@@ -236,29 +244,6 @@ function handleMilkyHttpRequest(
             );
             respond({ status: "failed", retcode: -500, data: null, message: "internal error" });
         });
-}
-
-/** 鉴权钩子：Bearer 头或 access_token 查询参数（规范允许 SSE/WS 查询参数兜底）。 */
-function makeMilkyAuthorize(token: string, logger?: MilkyLoggerLike): AuthorizeHook {
-    return (ctx) => tokenMatches(ctx, token, logger);
-}
-
-/** 请求凭据匹配（头优先，查询参数兜底；URL 解析失败 fail-closed 拒绝并 debug 留痕）。 */
-function tokenMatches(ctx: RequestContext, token: string, logger?: MilkyLoggerLike): boolean {
-    const auth = ctx.headers["authorization"] ?? ctx.headers["Authorization"];
-    if (auth?.startsWith(BEARER_PREFIX)) {
-        return auth.slice(BEARER_PREFIX.length) === token;
-    }
-    try {
-        const url = new URL(ctx.url, "http://localhost");
-        return url.searchParams.get("access_token") === token;
-    } catch (err) {
-        logger?.debug(
-            { url: ctx.url, error: errorMessage(err) },
-            "milky: 鉴权 URL 解析失败，按未授权拒绝",
-        );
-        return false;
-    }
 }
 
 /** URL 路径部分（无 scheme 相对 url 容错）。 */

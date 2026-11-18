@@ -19,6 +19,8 @@ export {
 export type { ActionKernelSpec, ActionOutcome, ErrorCodeMap } from "./framework/action-kernel.js";
 export { runAction } from "./framework/action-kernel.js";
 export { ActionRegistry } from "./framework/action-registry.js";
+export type { TokenAuthOptions } from "./framework/auth.js";
+export { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "./framework/auth.js";
 export type { ProtocolHooks } from "./framework/base-protocol-adapter.js";
 export { BaseProtocolAdapter, resolveProtocolConfig } from "./framework/base-protocol-adapter.js";
 export { createServerSchema } from "./framework/transport-schema.js";
