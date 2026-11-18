@@ -16,7 +16,7 @@ import type {
     ProfileApi,
 } from "@napuketto/kernel";
 import { vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { SatoriActionHandler } from "../base-action.js";
 
 /**

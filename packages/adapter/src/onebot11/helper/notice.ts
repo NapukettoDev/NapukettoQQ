@@ -27,12 +27,12 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { toUnixSeconds } from "../../shared/raw-message.js";
-import { MS_TO_SEC, toUin } from "../../shared/uid-uin.js";
+import { toUnixSeconds } from "../../internal/qq/raw-message.js";
+import { MS_TO_SEC, toUin } from "../../internal/qq/uid-uin.js";
 
-export { collectGrayTipUids, hasGrayTip } from "../../shared/gray-tip.js";
+export { collectGrayTipUids, hasGrayTip } from "../../internal/qq/gray-tip.js";
 
-import { firstUntranslatedGrayTip } from "../../shared/gray-tip.js";
+import { firstUntranslatedGrayTip } from "../../internal/qq/gray-tip.js";
 
 import type {
     OB11Event,

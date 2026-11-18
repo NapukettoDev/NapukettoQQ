@@ -38,6 +38,8 @@
     "devDependencies": {
         "@biomejs/biome": "^2.6.7",
         "@changesets/cli": "^3.0.3",
+        "@napuketto/adapter": "workspace:*",
+        "@napuketto/kernel": "workspace:*",
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "fallow": "^3.42.0",

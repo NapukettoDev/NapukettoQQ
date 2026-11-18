@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
-import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../framework/index.js";
 import { type KurobotConfig, kurobotConfigDefaults, kurobotConfigSchema } from "./config.js";
 import type { KurobotConnectionOptions, KurobotLogger } from "./connection.js";
 import { KurobotConnection } from "./connection.js";

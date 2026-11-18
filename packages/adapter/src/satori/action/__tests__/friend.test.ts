@@ -7,7 +7,7 @@
 
 import type { BuddyReq } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { Friend, List } from "../../types/index.js";
 import type { FriendActionDeps } from "../friend.js";
 import { createFriendActions } from "../friend.js";

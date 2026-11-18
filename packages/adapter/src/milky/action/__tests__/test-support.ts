@@ -16,7 +16,7 @@ import {
     type Peer,
 } from "@napuketto/kernel";
 import { vi } from "vitest";
-import type { ActionRegistry } from "../../../core/index.js";
+import type { ActionRegistry } from "../../../framework/index.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
 import type { MilkyAction } from "../base-action.js";

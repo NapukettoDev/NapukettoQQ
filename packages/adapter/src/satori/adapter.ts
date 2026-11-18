@@ -10,9 +10,9 @@
  */
 import type { MsgEventChannel, RawMessage } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
-import { type AdapterLoggerLike, logEventFailure } from "../shared/log.js";
-import { subscribeRawMessages } from "../shared/raw-message.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../framework/index.js";
+import { type AdapterLoggerLike, logEventFailure } from "../internal/infra/log.js";
+import { subscribeRawMessages } from "../internal/qq/raw-message.js";
 import { createSatoriActionRegistry } from "./action/index.js";
 import type { SatoriApiOptions } from "./api/satori-api.js";
 import { SatoriApi } from "./api/satori-api.js";

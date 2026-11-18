@@ -16,7 +16,7 @@
 import type { GroupMember } from "@napuketto/kernel";
 import { type GroupNotify, NTGroupRequestOperateTypes } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import type { Guild, GuildMember, List } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";
 import type { GuildActionDeps } from "../guild.js";

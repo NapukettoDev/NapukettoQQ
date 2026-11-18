@@ -13,7 +13,7 @@
  */
 
 import { isRecord } from "@napuketto/kernel";
-import { MS_TO_SEC } from "../../shared/uid-uin.js";
+import { MS_TO_SEC } from "../../internal/qq/uid-uin.js";
 import type { OB11OfflineFileNoticeEvent } from "../event/index.js";
 
 /** 离线文件归一化项（收窄产物；字段名待真实事件校准）。 */

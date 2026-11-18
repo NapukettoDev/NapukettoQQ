@@ -15,9 +15,9 @@ import type {
 } from "@napuketto/kernel";
 import { isRecord } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
-import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../core/index.js";
-import type { AdapterLoggerLike } from "../shared/log.js";
-import { MS_TO_SEC } from "../shared/uid-uin.js";
+import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../framework/index.js";
+import type { AdapterLoggerLike } from "../internal/infra/log.js";
+import { MS_TO_SEC } from "../internal/qq/uid-uin.js";
 import type { ActionResult } from "./action/index.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/onebot-api.js";
@@ -27,7 +27,7 @@ import { type OB11Config, ob11ConfigSchema } from "./helper/index.js";
 import type { Ob11TransportSet } from "./transport.js";
 import { assembleOb11Transports } from "./transport.js";
 
-export type { AdapterLoggerLike } from "../shared/log.js";
+export type { AdapterLoggerLike } from "../internal/infra/log.js";
 
 /** 适配器构造参数（api 相关字段继承 OneBotApiOptions， 聚合）。 */
 export interface OneBot11AdapterOptions extends OneBotApiOptions {

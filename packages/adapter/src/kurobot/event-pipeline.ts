@@ -8,8 +8,8 @@
  * 不触发向服务端的回帧（issue #122）。
  */
 import type { MsgEventChannel } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "../shared/log.js";
-import { subscribeRawMessages } from "../shared/raw-message.js";
+import type { AdapterLoggerLike } from "../internal/infra/log.js";
+import { subscribeRawMessages } from "../internal/qq/raw-message.js";
 import type { KurobotMessageHandler } from "./inbound/message.js";
 
 /** 订阅接线板装配参数（频道与消息域处理器由 adapter 注入）。 */

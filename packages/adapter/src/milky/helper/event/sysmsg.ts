@@ -13,7 +13,7 @@
  *    （remove 走 onGroupEssenceListChange 列表 diff，shared/essence.ts）。
  *  - 528:349/381/382 多端设备同步族：不广播。
  */
-import { extractEssenceSetSysMsg } from "../../../shared/essence.js";
+import { extractEssenceSetSysMsg } from "../../../internal/qq/essence.js";
 import {
     nodeAt,
     OBSERVED_UNNAMED_SYSMSG_KEYS,
@@ -24,11 +24,11 @@ import {
     textOf,
     varintAt,
     varintOf,
-} from "../../../shared/sysmsg.js";
-import { NUMERIC_RE } from "../../../shared/uid-uin.js";
+} from "../../../internal/qq/sysmsg.js";
+import { NUMERIC_RE } from "../../../internal/qq/uid-uin.js";
 import type { GroupEssenceMessageChangeData, GroupMessageReactionData } from "../../types.js";
 
-export type { SysMsgKindRule, SysMsgRecognition } from "../../../shared/sysmsg.js";
+export type { SysMsgKindRule, SysMsgRecognition } from "../../../internal/qq/sysmsg.js";
 
 /** Milky 识别规则：data 体类型为各事件载荷联合（信封由适配器包装）。 */
 export type SysMsgKindRuleMilky = SysMsgKindRule<unknown>;

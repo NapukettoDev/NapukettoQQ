@@ -14,7 +14,10 @@ export default defineConfig({
         include: [
             "packages/*/src/**/*.test.ts",
             "apps/*/src/**/*.test.ts",
-            // 发布工具链（koishi 适配器依赖同步等）也纳入单测
+            // 发布工具链（koishi 适配器依赖同步等）与产物契约测试（package-exports /
+            // embedded-dx）也纳入单测。后者只走裸 specifier 并断言 dist 产物，前置
+            // `pnpm -r build`（CI 已保证）；放进 packages/ 会让「包内测试不依赖构建产物」
+            // 这条约束失真。
             "tooling/**/*.test.ts",
         ],
         environment: "node",

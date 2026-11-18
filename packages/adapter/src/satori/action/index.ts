@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { ActionRegistry } from "../../core/index.js";
+import { ActionRegistry } from "../../framework/index.js";
 import type { SatoriApi } from "../api/satori-api.js";
 import { defineSatoriAction, SatoriActionError, type SatoriActionHandler } from "./base-action.js";
 import { createChannelActions } from "./channel.js";

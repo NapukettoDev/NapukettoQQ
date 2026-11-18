@@ -10,7 +10,7 @@
 import type { ConfigBase } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../internal/__tests__/stub.js";
 import { BaseProtocolAdapter } from "../base-protocol-adapter.js";
 
 /** 记录钩子调用的测试适配器（公开包装 protected 成员供断言）。 */

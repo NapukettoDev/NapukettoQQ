@@ -12,7 +12,7 @@
  */
 import type { GroupNotify } from "@napuketto/kernel";
 import { errorMessage } from "@napuketto/kernel";
-import type { AdapterLoggerLike } from "./log.js";
+import type { AdapterLoggerLike } from "../infra/log.js";
 
 /** 毫秒 → 秒（Unix 时间戳换算）。 */
 export const MS_TO_SEC = 1000;

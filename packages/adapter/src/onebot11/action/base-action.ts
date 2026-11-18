@@ -8,8 +8,8 @@
  */
 import { ChatType, kernelError, type Peer, type RawMessage } from "@napuketto/kernel";
 import type { ZodType } from "zod";
-import type { ErrorCodeMap } from "../../core/index.js";
-import { runAction } from "../../core/index.js";
+import type { ErrorCodeMap } from "../../framework/index.js";
+import { runAction } from "../../framework/index.js";
 import type { MessageUnique } from "../helper/message-unique.js";
 import { resolveMsgIdAndPeer } from "../helper/message-unique.js";
 

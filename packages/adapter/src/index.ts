@@ -24,7 +24,7 @@ export type {
     ConfigSchema,
     ErrorCodeMap,
     ProtocolHooks,
-} from "./core/index.js";
+} from "./framework/index.js";
 export {
     ActionRegistry,
     BaseProtocolAdapter,
@@ -32,7 +32,7 @@ export {
     createServerSchema,
     ProtocolConfig,
     runAction,
-} from "./core/index.js";
+} from "./framework/index.js";
 export type { KurobotAdapterOptions, KurobotConfig } from "./kurobot/index.js";
 export { kurobotConfigSchema, NapukettoKurobotAdapter } from "./kurobot/index.js";
 export type { MilkyAdapterOptions, MilkyConfig } from "./milky/index.js";

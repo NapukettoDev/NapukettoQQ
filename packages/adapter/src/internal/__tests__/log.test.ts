@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { type AdapterLoggerLike, logEventFailure, sliceRaw, truncRaw } from "../log.js";
+import { type AdapterLoggerLike, logEventFailure, sliceRaw, truncRaw } from "../infra/log.js";
 
 /** 构造实现 AdapterLoggerLike 的 spy logger（强类型，不做暴力强转）。 */
 function makeLogger() {

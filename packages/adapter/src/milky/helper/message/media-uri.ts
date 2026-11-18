@@ -13,7 +13,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { kernelError } from "@napuketto/kernel";
 import { detectFileType, downloadUrl, inferExtension } from "@napuketto/media";
-import { fileUriToPath } from "../../../shared/media.js";
+import { fileUriToPath } from "../../../internal/qq/media.js";
 
 /** 解析远程媒体 URI 为本地绝对路径（base64:// / http(s)://；file:// 走同步面）。 */
 export async function resolveMediaUri(uri: string, mediaDir: string | undefined): Promise<string> {

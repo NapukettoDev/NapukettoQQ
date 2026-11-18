@@ -7,7 +7,7 @@
  * friend_add notice（diff/baseline 在 kernel BuddyCache，翻译纯函数）。
  */
 import type { BuddyListEntry } from "@napuketto/kernel";
-import { sliceRaw, truncRaw } from "../../shared/log.js";
+import { sliceRaw, truncRaw } from "../../internal/infra/log.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import { toFriendAdd } from "../helper/notice.js";
 import { narrowOfflineFiles, toOfflineFileNotice } from "../helper/notice-extra.js";

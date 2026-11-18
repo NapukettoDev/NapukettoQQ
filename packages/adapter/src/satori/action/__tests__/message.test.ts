@@ -10,7 +10,7 @@
  */
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import { stub } from "../../../shared/__tests__/stub.js";
+import { stub } from "../../../internal/__tests__/stub.js";
 import { makeRawMsg } from "../../__tests__/test-support.js";
 import type { BidiList, Message } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";

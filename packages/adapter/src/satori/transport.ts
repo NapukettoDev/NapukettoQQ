@@ -17,7 +17,7 @@ import type {
     TransportAdapter,
 } from "@napuketto/network";
 import { HttpServer, WsServer } from "@napuketto/network";
-import { createTokenAuthorize } from "../core/index.js";
+import { createTokenAuthorize } from "../framework/index.js";
 import { SatoriActionError, type SatoriActionRegistry } from "./action/index.js";
 import { HTTP_STATUS, type SatoriConfig } from "./helper/index.js";
 import { type Event, type Login, Opcode } from "./types/index.js";

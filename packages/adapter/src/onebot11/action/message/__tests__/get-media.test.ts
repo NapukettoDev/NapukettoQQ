@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgApi, RawMessage } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stub } from "../../../../shared/__tests__/stub.js";
+import { stub } from "../../../../internal/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
 import type { Ob11Action } from "../../base-action.js";

@@ -1,10 +1,28 @@
 # @napuketto/adapter 设计书
 
-> 协议适配器容器（ADR-013）：core 框架 + onebot11 / satori / kurobot / milky 四个协议目录。
+> 协议适配器容器（ADR-013）：framework 框架 + onebot11 / satori / kurobot / milky 四个协议目录。
 > 管协议信封、事件翻译、动作分发与传输装配；不管原生调用、传输原语与媒体编解码。
-> 源码入口：`src/core/`（框架与共享层）、`src/<protocol>/`（各协议薄映射）。
+> 源码入口：`src/framework/`（公开契约）、`src/internal/`（包内私有）、`src/<protocol>/`（各协议薄映射）。
 
 ## 核心机制
+
+### 目录分层与可见性
+
+| 目录 | 可见性 | 装什么 | 依赖约束 |
+|---|---|---|---|
+| `src/framework/` | **公开**：`exports["./core"]` | 适配器骨架：`BaseProtocolAdapter` / `ActionRegistry` / `runAction` / `auth` / `transport-schema` | 只依赖 kernel / network；禁止依赖 `internal/` 与任何协议目录 |
+| `src/<protocol>/` | 公开：各自子路径 | 协议信封、事件翻译、动作声明、传输装配 | 可依赖 `framework/` + `internal/`；协议之间互不依赖 |
+| `src/internal/qq/` | 包内私有 | NTQQ 数据语义与边界桥接：sysmsg 解码、uid↔uin 口径、grayTip、essence 字段提取、raw-message 归一、发送侧媒体准备 | 可依赖 `internal/infra/` 与 `@napuketto/media`；无 barrel |
+| `src/internal/infra/` | 包内私有 | 协议无关的运行期横切件：日志截断与校准 logger 面 | 叶子层，不依赖 `qq/` 与 `framework/` |
+
+- **可见性轴优先于「协议 / 非协议」轴**：公开契约（`framework/`）与包内实现（`internal/`）
+  物理分开，`internal/` 下不放任何 `index.ts`——防止顺手的 `re-export` 把私有实现变成
+  事实 API，也保住 ADR-014 的按需加载。
+- **源码名与产物名刻意不同**：`src/framework/index.ts` 经 `package.json` 的 tsdown 对象
+  entry `core/index` 构出 `dist/core/index.mjs`，公开子路径仍是 `@napuketto/adapter/core`。
+  loader 按 `adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs")` 字符串拼接取入口、
+  不看 `exports` 映射，故 `dist/` 镜像公开子路径、`src/` 镜像内部分层。
+- 边界靠门禁而非约定：biome `noRestrictedImports` 禁止 `framework/**` import `internal/**`。
 
 ### 统一模型与生命周期
 
@@ -12,7 +30,7 @@
   `{ name, schema, handle }` 声明式对象（各协议 `defineXxxAction` 工厂产出，
   信封差异收在各自 base-action 运行时）；事件保留各协议原生结构（OB11 事件 /
   Satori Event / Milky event / KuroBot 帧），不引入第二套内部事件抽象。
-- `BaseProtocolAdapter<TConfig>`（`src/core/framework/base-protocol-adapter.ts`）：
+- `BaseProtocolAdapter<TConfig>`（`src/framework/base-protocol-adapter.ts`）：
   `start()` = `config.load()` → `hooks.onStart`；`stop()` → `onStop`；
   `reload()` = 重新 `load()` → `hooks.onReload`。start/stop 幂等（started 标记），
   事件出口 `broadcastEvent` 只写构造时注入的 broadcaster。钩子面
@@ -20,7 +38,7 @@
   协议层不再手动收窄。
 - 配置直接复用 kernel `ConfigBase`：TOML/JSON 读写 + zod 校验 + `seed` 内存初值；
   协议 schema 归各协议目录（ADR-012）。装配层按账号段注入 seed，adapter 不读独立协议配置文件。
-- 动作执行内核 `runAction`（`src/core/framework/action-kernel.ts`，三协议共用）：
+- 动作执行内核 `runAction`（`src/framework/action-kernel.ts`，三协议共用）：
   safeParse → 执行 → `isKernelError` 统一判别映射（ADR-017）。差异全部参数化——
   校验失败 retcode（OB11 400/1400、Milky -400、Satori 400）、校验失败消息、
   结果包装（OB11/Milky 组信封、Satori 抛 `SatoriActionError`）与协议自有错误透传
@@ -38,7 +56,7 @@
   按领域工厂顺序遍历注册。
 - 协议目录内不设转发 barrel：`index.ts` 只保留 `package.json` `exports` 声明的
   6 个子路径入口与实际聚合面（注册表/类型聚合）；单模块转发壳一律直引目标模块。
-- `core/framework/auth.ts` 提供协议层 Token 鉴权原语：`matchTokenCredential` 按
+- `framework/auth.ts` 提供协议层 Token 鉴权原语：`matchTokenCredential` 按
   `TokenAuthOptions` 参数化 Bearer 头、可选裸 `authorization` 头（OB11 兼容）与
   可选 `?access_token=` 查询参数（OB11 / Milky，固定以 `http://localhost` 为 base
   解析相对路径）；`createTokenAuthorize` 在 token 为空时返回 `undefined`（不装钩子）。
@@ -47,13 +65,13 @@
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
   不引 logger；保留项：sysmsg `decodeText` 三态与 satori 翻译层（无 logger 基建）。
-- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `shared/__tests__/stub.ts`
+- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `internal/__tests__/stub.ts`
   的 `stub<T>`/`stubList<T>` 与各协议 `test-support.ts` 强类型工厂。豁免：私有字段
   窥视、故意畸形输入、私有 internals 断言；碎片测试（`*-branches`/`*-extra`）并入
   主测试文件，不新增。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
-- 跨协议 QQ 共享原语收在包内 `src/shared/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
+- 跨协议 QQ 共享原语收在包内 `src/internal/qq/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
   `numericUin`（number / string / 数字串口径）、`collectGroupNotifyUids`（群通知 user1/user2
   双方 uid）与 `resolveUidToUinWithFallback`（去重空串 → 批量 `uidToUin` → 群口径未命中的
   前 `MAX_PROFILE_LOOKUPS` 条逐条资料兜底，fail-soft 留痕；OB11 / Milky enrichment 共用）、
@@ -68,7 +86,7 @@
   识别表、错误口径——NOT_FOUND 抛错类型与消息归调用方）。
 - 群精华列表缓存 / 首帧基线抑制 / 串行 diff 同步器已下沉 kernel 缓存层（ADR-028）：
   `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 从 `@napuketto/kernel`
-  导入；`src/shared/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
+  导入；`src/internal/qq/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
   `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与
@@ -78,7 +96,7 @@
   ≤110 行；kurobot 双向流另有 session.ts 共享状态）；`enrichment.ts` 接管翻译
   前的异步查询（批量 uidToUin、群实体回填、msgId 反查），翻译函数保持纯函数
   （ADR-008）。sysmsg 单条字节块的解码 → 信封 → 识别 → 分流管线收拢
-  `shared/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
+  `internal/qq/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
 
 ### OneBot 11 事件链
 
@@ -178,7 +196,7 @@
 ### sysmsg 解码与识别
 
 - `Msg/onRecvSysMsg` 是群名片/头衔/精华/表情回应等系统事件的总闸，payload 是原始
-  protobuf 字节（带符号 int8 数组）。共享层在 `src/shared/sysmsg.ts`，OB11 与
+  protobuf 字节（带符号 int8 数组）。共享层在 `src/internal/qq/sysmsg.ts`，OB11 与
   Milky 各自只维护识别表。
 - 解码：`decodeProtoTree` 手写 wire-format（varint + length-delimited，BigInt 保 64 位；
   定长 wire 跳过；深度/字段数/varint 长度设上限），length-delimited 递归 try-parse，
@@ -191,7 +209,7 @@
 - 通用管线：`processSysMsgBlob`（单条字节块：解码 → 信封 → 识别 → onNotice 分流 →
   未识别 debug 校准日志）为 OB11 / Milky 共用流程；协议差异只在识别表、命中处理
   与解码失败日志级别（OB11 warn / Milky debug，既有口径刻意不统一）。
-- 732:1 精华的字段提取器（`extractEssenceSetSysMsg`）留在 `src/shared/essence.ts`；
+- 732:1 精华的字段提取器（`extractEssenceSetSysMsg`）留在 `src/internal/qq/essence.ts`；
   其上的列表缓存 / diff / 首帧基线抑制由 kernel `cache/essence-cache.ts` 承担（ADR-028）。
 - 字节布局、样本清单与字段号依据见 [evidence](./evidence.md#msgonrecvsysmsg-字节布局)。
 

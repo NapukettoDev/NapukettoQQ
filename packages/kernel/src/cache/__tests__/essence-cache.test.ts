@@ -1,5 +1,5 @@
 /**
- * essence-cache.ts 单测（ADR-028，自 adapter/shared/__tests__/essence.test.ts 迁入）
+ * essence-cache.ts 单测（ADR-028，自 adapter/internal/__tests__/essence.test.ts 迁入）
  *
  * 覆盖：群号收窄、列表 diff 四情形（首帧基线 / 新增 / 移除 / 无变化）与串行同步器
  * （基线抑制 / 回调 / 串行链 / 拉取失败不中断）。不依赖原生 service。

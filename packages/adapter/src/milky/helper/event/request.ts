@@ -12,8 +12,8 @@
  */
 import type { BuddyReq, GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
-import { firstNonEmptyString, stringOrUndefined } from "../../../shared/text.js";
-import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../shared/uid-uin.js";
+import { firstNonEmptyString, stringOrUndefined } from "../../../internal/qq/text.js";
+import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../../internal/qq/uid-uin.js";
 import type {
     FriendRequestData,
     GroupInvitationData,
