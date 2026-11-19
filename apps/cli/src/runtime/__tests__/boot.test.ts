@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import { ConfigError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -45,7 +46,10 @@ vi.mock("../../logger.js", () => ({
     effectiveConsoleEnv: mocks.effectiveConsoleEnv,
 }));
 vi.mock("../qr.js", () => ({ renderQrAnsi: mocks.renderQrAnsi }));
-vi.mock("../state.js", () => ({ writeAccountRuntime: mocks.writeAccountRuntime }));
+vi.mock("../state.js", async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return { ...actual, writeAccountRuntime: mocks.writeAccountRuntime };
+});
 
 import { runSingleAccount } from "../boot.js";
 import { type FakeChild, flushAsync, makeFakeChild } from "./test-support.js";
@@ -127,6 +131,22 @@ afterEach(() => {
     delete process.env["NAPUTO_STUB_DIR"];
     delete process.env["NAPKETTO_CONFIG"];
     rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("账号目录边界防御（不拉起子进程）", () => {
+    it("路径穿越 -q → ConfigError，QQ 文件定位 / 实例锁 / 拉起均不发生", async () => {
+        await expect(runSingleAccount({ qq: "../../escape", dataDir: tmp })).rejects.toThrow(
+            ConfigError,
+        );
+        expect(mocks.resolveQqFiles).not.toHaveBeenCalled();
+        expect(mocks.checkInstanceLock).not.toHaveBeenCalled();
+        expect(mocks.launchSelfHost).not.toHaveBeenCalled();
+    });
+
+    it("停止哨兵保留值 all → ConfigError（避免单账号启动污染全局停止）", async () => {
+        await expect(runSingleAccount({ qq: "all", dataDir: tmp })).rejects.toThrow(ConfigError);
+        expect(mocks.launchSelfHost).not.toHaveBeenCalled();
+    });
 });
 
 describe("失败前置路径（不拉起子进程）", () => {

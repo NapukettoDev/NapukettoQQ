@@ -9,7 +9,7 @@
 
 import { ConfigError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { parseCliConfig } from "../schema.js";
+import { parseCliConfig, parseCliQq } from "../schema.js";
 
 /** 构造最小合法主配置（含单个账号，qq 由调用方指定）。 */
 function configWithQq(qq: string): Record<string, unknown> {
@@ -80,6 +80,48 @@ describe("parseCliConfig accounts.qq 校验", () => {
 
     it("拒绝过短（4 位）", () => {
         expect(() => parseCliConfig(configWithQq("1234"))).toThrow(/5-11 位/);
+    });
+});
+
+describe("parseCliConfig accounts 重复 qq", () => {
+    it("两个不同 qq 正常通过", () => {
+        const config = parseCliConfig({
+            ...configWithQq("10000"),
+            accounts: [{ qq: "10000" }, { qq: "20000" }],
+        });
+        expect(config.accounts.map((account) => account.qq)).toEqual(["10000", "20000"]);
+    });
+
+    it("重复 qq → ConfigError（禁止同一账号被并发拉起）", () => {
+        expect(() =>
+            parseCliConfig({
+                ...configWithQq("10000"),
+                accounts: [{ qq: "10000" }, { qq: "10000" }],
+            }),
+        ).toThrow(/重复/);
+        expect(() =>
+            parseCliConfig({
+                ...configWithQq("10000"),
+                accounts: [{ qq: "10000" }, { qq: "10000" }],
+            }),
+        ).toThrow(ConfigError);
+    });
+});
+
+describe("parseCliQq（CLI -q 入口校验，复用主配置规则）", () => {
+    it("合法 5/11 位纯数字通过并原样返回", () => {
+        expect(parseCliQq("10000")).toBe("10000");
+        expect(parseCliQq("12345678901")).toBe("12345678901");
+    });
+
+    it("路径穿越 / 哨兵值 / 非数字 / 长度越界 → ConfigError", () => {
+        for (const qq of ["../../etc", "all", "10001/../2", "12a456", "1234", "123456789012"]) {
+            expect(() => parseCliQq(qq)).toThrow(ConfigError);
+        }
+    });
+
+    it("模板占位值 → ConfigError（文案指路占位值）", () => {
+        expect(() => parseCliQq("123456")).toThrow(/占位值/);
     });
 });
 

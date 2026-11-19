@@ -15,11 +15,11 @@
  * 路线 B（拉起 QQ + 注入）已淘汰（launchQqWithLoader 已移除，cli 只走自建宿主）。
  */
 import type { ChildProcess } from "node:child_process";
-import path from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import {
+    configError,
     errorMessage,
     hasStringProp,
     isRecord,
@@ -42,7 +42,7 @@ import {
 import { isInlineConfigActive } from "../config/inline.js";
 import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "../logger.js";
 import { renderQrAnsi } from "./qr.js";
-import { writeAccountRuntime } from "./state.js";
+import { accountDir, writeAccountRuntime } from "./state.js";
 
 /** 单账号启动选项。 */
 export interface BootOptions {
@@ -353,12 +353,17 @@ async function waitSelfHostExit(
 /** 启动单个账号（自建宿主 + 常驻）。 */
 export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
+    const account = opts.qq ?? "default";
+    // 边界防御前置：非法账号不触发 QQ 文件定位/下载，也不得拼出数据根之外的目录。
+    // "all" 是停止哨兵保留值（写它等于全局停止），单账号启动必须拒绝。
+    if (account === "all") {
+        throw configError('账号 "all" 是停止哨兵保留值，拒绝启动');
+    }
+    const cfgDir = accountDir(dataRoot, account);
     const qq = await locateQqFiles(dataRoot, opts);
     if (qq === undefined) {
         return;
     }
-    const account = opts.qq ?? "default";
-    const cfgDir = path.join(dataRoot, account);
     if (!ensureInstanceLockFree(cfgDir)) {
         return;
     }

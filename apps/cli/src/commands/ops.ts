@@ -11,6 +11,7 @@
  */
 import process from "node:process";
 import { removeStopSentinel, writeStopSentinel } from "@napuketto/loader";
+import { parseCliQq } from "../config/schema.js";
 import { logger } from "../logger.js";
 import {
     type AccountRuntime,
@@ -34,6 +35,16 @@ const GRACEFUL_STOP_WAIT_MS = 8000;
 /** 存活轮询间隔（毫秒）。 */
 const LIVENESS_POLL_MS = 200;
 
+/**
+ * 运维命令 `-q` 入口校验（复用主配置 QQ 规则）：非法值抛 ConfigError（exit 78），
+ * 避免 `-q all` 命中全局停止哨兵或 `-q ../..` 拼出数据根之外的路径。
+ */
+function assertOpsQq(opts: OpsOptions): void {
+    if (opts.qq !== undefined) {
+        parseCliQq(opts.qq);
+    }
+}
+
 /** 等待 pid 列表全部退出（返回超时仍未退的 pid）。 */
 async function waitForPidsExit(pids: number[]): Promise<number[]> {
     const deadline = Date.now() + GRACEFUL_STOP_WAIT_MS;
@@ -47,6 +58,7 @@ async function waitForPidsExit(pids: number[]): Promise<number[]> {
 
 /** status：聚合输出各账号运行状态（含 supervisor 自身）。 */
 export function cmdStatus(dataRoot: string, opts: OpsOptions): void {
+    assertOpsQq(opts);
     const supervisor = readSupervisorRuntime(dataRoot);
     if (supervisor !== null) {
         logger.info(
@@ -116,6 +128,7 @@ async function stopSingleAccount(dataRoot: string, target: AccountRuntime): Prom
 }
 
 export async function cmdStop(dataRoot: string, opts: OpsOptions): Promise<void> {
+    assertOpsQq(opts);
     const runtimes = listAccountRuntimes(dataRoot);
     if (opts.qq !== undefined) {
         const target = runtimes.find((r) => r.uin === opts.qq);
@@ -152,6 +165,7 @@ export async function cmdStop(dataRoot: string, opts: OpsOptions): Promise<void>
 
 /** restart：stop 同目标 + detached 拉起。 */
 export async function cmdRestart(dataRoot: string, opts: OpsOptions): Promise<void> {
+    assertOpsQq(opts);
     await cmdStop(dataRoot, opts);
     // 等待进程树退出（实例锁：同账号数据目录单实例，立即拉起会抢锁失败）
     await new Promise((resolve) => setTimeout(resolve, 1500));

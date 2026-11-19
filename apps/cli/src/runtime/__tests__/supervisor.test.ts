@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { PassThrough } from "node:stream";
+import { ConfigError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -174,6 +175,37 @@ describe("runSupervisor 子进程拉起", () => {
         const outSpy = spyStdoutPassthrough();
         child.stdout.write("hello\n");
         await vi.waitFor(() => expect(outSpy).toHaveBeenCalledWith("[10001] hello\n"));
+    });
+});
+
+describe("runSupervisor 显式 -q 校验", () => {
+    beforeEach(() => {
+        mocks.loadCliConfigWithSource.mockResolvedValue({
+            config: {
+                dataDir: tmp,
+                accounts: [],
+                autoRestart: false,
+                restartDelayMs: 30,
+            },
+            source: "file",
+            path: join(tmp, "napuketto.toml"),
+        });
+    });
+
+    it("重复 -q → ConfigError，不 spawn、不写 supervisor 状态", async () => {
+        await expect(runSupervisor({ dataDir: tmp, qqs: ["10001", "10001"] })).rejects.toThrow(
+            ConfigError,
+        );
+        expect(mocks.spawn).not.toHaveBeenCalled();
+        expect(mocks.writeSupervisorRuntime).not.toHaveBeenCalled();
+    });
+
+    it("非法 -q → ConfigError，不进入编排", async () => {
+        await expect(runSupervisor({ dataDir: tmp, qqs: ["all"] })).rejects.toThrow(ConfigError);
+        await expect(runSupervisor({ dataDir: tmp, qqs: ["../escape"] })).rejects.toThrow(
+            ConfigError,
+        );
+        expect(mocks.spawn).not.toHaveBeenCalled();
     });
 });
 

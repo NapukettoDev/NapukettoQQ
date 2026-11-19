@@ -11,12 +11,13 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import { createInterface } from "node:readline";
-import { EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
+import { configError, EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
 import {
     type CliAccountConfig,
     type CliConfig,
     DEFAULT_RESTART_DELAY_MS,
+    parseCliQq,
 } from "../config/schema.js";
 import { loadCliConfigWithSource } from "../config/store.js";
 import {
@@ -60,10 +61,22 @@ export interface SupervisorOptions {
     stubDir?: string;
 }
 
-/** 解析账号列表（显式 -q 优先，否则主配置 accounts 过滤启用项）。 */
+/**
+ * 解析账号列表（显式 -q 优先，否则主配置 accounts 过滤启用项）。
+ * 显式 -q 在此再次校验格式并拒绝重复：重复 qq 会并发拉起同一账号，后一个
+ * 子进程覆盖 ctx.children 的 Map 项，导致实例锁冲突与状态文件互相覆盖。
+ */
 function resolveAccounts(opts: SupervisorOptions, config: CliConfig): CliAccountConfig[] {
     if (opts.qqs !== undefined && opts.qqs.length > 0) {
-        return opts.qqs.map((qq) => ({ qq }));
+        const seen = new Set<string>();
+        return opts.qqs.map((qq) => {
+            parseCliQq(qq);
+            if (seen.has(qq)) {
+                throw configError(`-q/--qq 重复指定账号: "${qq}"（每个账号只能出现一次）`);
+            }
+            seen.add(qq);
+            return { qq };
+        });
     }
     return config.accounts.filter((acct) => acct.enabled !== false);
 }

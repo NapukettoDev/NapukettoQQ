@@ -1,12 +1,12 @@
 /**
- * 协议段严格校验（`config validate` 专用）。
+ * 协议段严格校验（`config validate` / `config apply` 共用）。
  *
  * 主配置解析（schema.ts）刻意保持协议段为宽松对象：普通启动路径不把协议包
  * 拉进 CLI 进程，字段级校验由 loader 装配时用各协议自己的 zod schema 完成。
  * 但 `config validate` 的承诺是「与运行时同一校验器落地」——只做 `isRecord`
  * 浅校验会让 `httpServers = "not-an-array"` 报「配置合法」，真正启动却以 78
- * 退出。这里在 validate 路径补齐同一层 schema 校验，且只在 validate 时懒加载
- * adapter（普通 CLI 启动与 supervisor 不引入协议包）。
+ * 退出；`config apply` 若跳过这层，则会把非法协议段写进主配置。因此两条路径
+ * 懒加载 adapter 补校验（普通 CLI 启动与 supervisor 不引入协议包）。
  *
  * 空段与 loader 装配语义一致：`{}` = 不启用该协议，跳过校验（kurobot 的
  * url 必填只在段非空时生效）。

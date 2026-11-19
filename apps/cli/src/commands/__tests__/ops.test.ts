@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import { ConfigError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountRuntime } from "../../runtime/state.js";
 
@@ -140,6 +141,25 @@ describe("cmdStatus", () => {
         mocks.aggregateStatus.mockReturnValue([]);
         cmdStatus(tmp, { qq: "20002" });
         expect(mocks.aggregateStatus).toHaveBeenCalledWith([runtimeOf("20002", 2)]);
+    });
+});
+
+describe("-q 入口校验（防止路径穿越 / 哨兵污染）", () => {
+    it("cmdStatus 非法 -q → ConfigError，不读取运行时状态", () => {
+        expect(() => cmdStatus(tmp, { qq: "../escape" })).toThrow(ConfigError);
+        expect(mocks.readSupervisorRuntime).not.toHaveBeenCalled();
+    });
+
+    it("cmdStop 非法 -q（all / 路径穿越）→ ConfigError，绝不写停止哨兵", async () => {
+        await expect(cmdStop(tmp, { qq: "all" })).rejects.toThrow(ConfigError);
+        await expect(cmdStop(tmp, { qq: "../../escape" })).rejects.toThrow(ConfigError);
+        expect(mocks.writeStopSentinel).not.toHaveBeenCalled();
+        expect(mocks.listAccountRuntimes).not.toHaveBeenCalled();
+    });
+
+    it("cmdRestart 非法 -q → ConfigError，不 detached 拉起", async () => {
+        await expect(cmdRestart(tmp, { qq: "../escape" })).rejects.toThrow(ConfigError);
+        expect(mocks.spawnDetached).not.toHaveBeenCalled();
     });
 });
 

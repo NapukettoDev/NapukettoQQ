@@ -7,11 +7,19 @@
  * 非法输入（缺失文件 / 非 JSON / 非对象 / 合并结果非法不写回）。
  * 错误一概 ConfigError（宿主/脚本消费 exit 78），文件形态文案与运行时逐字一致。
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    statSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { ConfigError } from "@napuketto/kernel";
+import { ConfigError, KernelError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../logger.js", () => ({
@@ -23,6 +31,21 @@ import { cmdConfigApply, cmdConfigInit, cmdConfigList, cmdConfigValidate } from 
 
 let tmp = "";
 const inline = JSON.stringify({ autoRestart: true, accounts: [{ qq: "10086" }] });
+
+/** 捕获一次异步命令的 stdout 输出（spy 内转发到原 stdout，避免吞掉测试输出）。 */
+async function captureStdout(run: () => Promise<void>): Promise<string> {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+        writes.push(String(chunk));
+        return true;
+    }) as never);
+    try {
+        await run();
+    } finally {
+        spy.mockRestore();
+    }
+    return writes.join("");
+}
 
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-validate-test-"));
@@ -199,6 +222,13 @@ describe("cmdConfigInit", () => {
             "全局配置已存在（跳过生成，避免覆盖用户配置）",
         );
     });
+
+    it.runIf(process.platform !== "win32")("生成的配置文件权限 0o600（POSIX）", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        await captureStdout(() => cmdConfigInit({ dataDir: tmp }));
+        expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
+    });
 });
 
 describe("cmdConfigList", () => {
@@ -234,6 +264,22 @@ describe("cmdConfigList", () => {
         expect(infoCalls).toContainEqual([{ account: "账号B", files: "（未初始化）" }, "账号配置"]);
         // 非目录文件不作为账号列出
         expect(infoCalls.some((call) => JSON.stringify(call).includes("非目录.txt"))).toBe(false);
+    });
+
+    it("协议段 token 默认脱敏；--show-secrets 输出明文（文件始终保留明文）", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        writeFileSync(
+            cfgPath,
+            '[[accounts]]\nqq = "10001"\n[accounts.onebot11]\ntoken = "s3cret"\n',
+            "utf8",
+        );
+        const masked = await captureStdout(() => cmdConfigList({ dataDir: tmp }));
+        expect(masked).toContain('token = "***"');
+        expect(masked).not.toContain("s3cret");
+        const plain = await captureStdout(() => cmdConfigList({ dataDir: tmp, showSecrets: true }));
+        expect(plain).toContain('token = "s3cret"');
+        expect(readFileSync(cfgPath, "utf8")).toContain('token = "s3cret"');
     });
 
     it("配置缺失 → store.load 报 ConfigError 且不落盘（模板兜底在 loadCliConfigWithSource 层）", async () => {
@@ -316,5 +362,71 @@ describe("cmdConfigApply", () => {
         writeFileSync(patchPath, '{"accounts": []}', "utf8");
         await expect(cmdConfigApply(patchPath, { dataDir: tmp })).rejects.toThrow(ConfigError);
         expect(readFileSync(cfgPath, "utf8")).toBe(original);
+    });
+
+    it("协议段字段非法 → ConfigError 且不写回（与 config validate 同口径）", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        const original = 'autoRestart = true\n[[accounts]]\nqq = "10001"\n';
+        writeFileSync(cfgPath, original, "utf8");
+        const patchPath = join(tmp, "bad-protocol.json");
+        writeFileSync(
+            patchPath,
+            JSON.stringify({
+                accounts: [{ qq: "10001", onebot11: { httpServers: "not-an-array" } }],
+            }),
+            "utf8",
+        );
+        await expect(cmdConfigApply(patchPath, { dataDir: tmp })).rejects.toThrow(
+            /onebot11 段校验失败/,
+        );
+        expect(readFileSync(cfgPath, "utf8")).toBe(original);
+    });
+
+    it("TOML 语法错误 → KernelError（INVALID_PARAM，与 JSON 解析失败同口径）", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
+        const patchPath = join(tmp, "bad.toml");
+        writeFileSync(patchPath, "autoRestart = [[\n", "utf8");
+        try {
+            await cmdConfigApply(patchPath, { dataDir: tmp });
+            expect.unreachable("应抛出 KernelError");
+        } catch (err) {
+            expect(err).toBeInstanceOf(KernelError);
+            expect(err).not.toBeInstanceOf(ConfigError);
+            expect((err as KernelError).code).toBe("INVALID_PARAM");
+            expect((err as Error).message).toContain("不是合法 TOML");
+        }
+    });
+
+    it("token 写盘保留明文、stdout 默认脱敏；--show-secrets 输出明文", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
+        const patchPath = join(tmp, "token.json");
+        writeFileSync(
+            patchPath,
+            JSON.stringify({ accounts: [{ qq: "10001", onebot11: { token: "s3cret" } }] }),
+            "utf8",
+        );
+        const masked = await captureStdout(() => cmdConfigApply(patchPath, { dataDir: tmp }));
+        expect(masked).toContain('token = "***"');
+        expect(masked).not.toContain("s3cret");
+        expect(readFileSync(cfgPath, "utf8")).toContain('token = "s3cret"');
+        const plain = await captureStdout(() =>
+            cmdConfigApply(patchPath, { dataDir: tmp, showSecrets: true }),
+        );
+        expect(plain).toContain('token = "s3cret"');
+    });
+
+    it.runIf(process.platform !== "win32")("写回配置文件权限 0o600（POSIX）", async () => {
+        const cfgPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
+        const patchPath = join(tmp, "patch.json");
+        writeFileSync(patchPath, '{"autoRestart": false}', "utf8");
+        await captureStdout(() => cmdConfigApply(patchPath, { dataDir: tmp }));
+        expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
     });
 });

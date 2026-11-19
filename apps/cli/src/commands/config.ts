@@ -39,6 +39,7 @@ import { dirname, extname, join } from "node:path";
 import process from "node:process";
 import type { ConfigSchema } from "@napuketto/kernel";
 import {
+    CONFIG_FILE_MODE,
     ConfigBase,
     configError,
     errorMessage,
@@ -71,6 +72,46 @@ function toRecord(config: CliConfig): Record<string, unknown> {
     };
 }
 
+/** stdout 敏感字段默认脱敏（协议段 token 等；`--show-secrets` 才输出明文）。 */
+const SENSITIVE_KEY_RE = /^(?:token|access[_-]?token|secret|password)$/i;
+/** 脱敏占位（保持 TOML 字符串类型，便于脚本继续 parse）。 */
+const SECRET_MASK = "***";
+
+/** 深度复制并脱敏敏感字段（空串 = 未配置凭据，保持原样）。 */
+function maskSecrets(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map(maskSecrets);
+    }
+    if (!isRecord(value)) {
+        return value;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+        const isSecret = SENSITIVE_KEY_RE.test(key) && typeof val === "string" && val !== "";
+        out[key] = isSecret ? SECRET_MASK : maskSecrets(val);
+    }
+    return out;
+}
+
+/** stdout 输出用配置对象（默认脱敏；写盘始终用未脱敏原对象）。 */
+function toOutputRecord(
+    config: CliConfig,
+    showSecrets: boolean | undefined,
+): Record<string, unknown> {
+    const record = toRecord(config);
+    if (showSecrets === true) {
+        return record;
+    }
+    return maskSecrets(record) as Record<string, unknown>;
+}
+
+/** 配置命令选项（`--show-secrets` 仅影响 stdout，不影响落盘）。 */
+export interface ConfigOutputOptions {
+    dataDir?: string;
+    /** true = stdout 输出明文敏感字段；缺省 false（脱敏）。 */
+    showSecrets?: boolean;
+}
+
 /** config init：生成全局 TOML 配置文件（项目根）+ 数据根目录。
  * 文件不存在 → 写带注释模板；已存在 → 跳过（不覆盖用户配置）。
  * 输出原始模板内容（账号未填时解析会校验失败，init 只负责生成不校验）。 */
@@ -83,7 +124,10 @@ export async function cmdConfigInit(opts: { dataDir?: string }): Promise<void> {
         await access(store.path);
     } catch {
         mkdirSync(dirname(store.path), { recursive: true });
-        await writeFile(store.path, `${configTemplate()}\n`, "utf8");
+        await writeFile(store.path, `${configTemplate()}\n`, {
+            encoding: "utf8",
+            ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
+        });
         created = true;
     }
     const raw = await readFile(store.path, "utf8");
@@ -97,14 +141,14 @@ export async function cmdConfigInit(opts: { dataDir?: string }): Promise<void> {
     process.stdout.write(raw);
 }
 
-/** config list：列出全局配置与各账号目录。 */
-export async function cmdConfigList(opts: { dataDir?: string }): Promise<void> {
+/** config list：列出全局配置与各账号目录（stdout 敏感字段默认脱敏）。 */
+export async function cmdConfigList(opts: ConfigOutputOptions): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
     const store = new CliConfigStore(dataRoot);
     const config = await store.load();
     logger.info({ dataRoot }, "数据根");
     logger.info({ path: store.path }, "全局配置");
-    process.stdout.write(`${stringifyToml(toRecord(config))}\n`);
+    process.stdout.write(`${stringifyToml(toOutputRecord(config, opts.showSecrets))}\n`);
     // 账号目录（数据根下的子目录）
     let entries: Dirent[];
     try {
@@ -137,21 +181,19 @@ function printAccountConfig(account: string, dataRoot: string): void {
     logger.info({ account, files: fileList }, "账号配置");
 }
 
-/** 解析外部配置文本（按扩展名推断 TOML/JSON）。 */
+/** 解析外部配置文本（按扩展名推断 TOML/JSON，语法错误统一 INVALID_PARAM）。 */
 function parseExternalConfig(file: string, rawText: string): unknown {
-    if (extname(file).toLowerCase() === ".toml") {
-        return parseToml(rawText);
-    }
+    const format = extname(file).toLowerCase() === ".toml" ? "TOML" : "JSON";
     try {
-        const parsed: unknown = JSON.parse(rawText);
+        const parsed: unknown = format === "TOML" ? parseToml(rawText) : JSON.parse(rawText);
         return parsed;
-    } catch {
-        throw kernelError(`外部配置 ${file} 不是合法 JSON`, "INVALID_PARAM");
+    } catch (err) {
+        throw kernelError(`外部配置 ${file} 不是合法 ${format}`, "INVALID_PARAM", { cause: err });
     }
 }
 
-/** config apply：应用外部配置（顶层覆盖合并后写回全局配置）。 */
-export async function cmdConfigApply(file: string, opts: { dataDir?: string }): Promise<void> {
+/** config apply：应用外部配置（顶层覆盖合并、主配置 + 协议段校验后写回全局配置）。 */
+export async function cmdConfigApply(file: string, opts: ConfigOutputOptions): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
     const store = new CliConfigStore(dataRoot);
     const existing = await store.load();
@@ -168,10 +210,12 @@ export async function cmdConfigApply(file: string, opts: { dataDir?: string }): 
     }
     const merged: Record<string, unknown> = { ...existing, ...partial };
     const next = parseCliConfig(merged);
+    // 与 config validate 同口径：非法协议段不得写入主配置（否则「apply 通过、启动 78」）
+    await validateProtocolSections(next);
     await store.save(next);
     logger.info({ path: store.path }, "全局配置已更新");
-    // TOML 内容为功能输出（机器可读），保持原样 stdout，不做日志包装
-    process.stdout.write(`${stringifyToml(toRecord(next))}\n`);
+    // TOML 内容为功能输出（机器可读），保持原样 stdout，不做日志包装；凭据默认脱敏
+    process.stdout.write(`${stringifyToml(toOutputRecord(next, opts.showSecrets))}\n`);
 }
 
 /** 读取配置文件文本（validate 纯只读：ENOENT 不落模板，按「配置缺失」报 ConfigError）。 */

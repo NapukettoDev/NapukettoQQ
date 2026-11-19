@@ -10,9 +10,9 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
-import { hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
+import { configError, hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
 
 /** 账号运行时状态（runtime.json）。 */
 export interface AccountRuntime {
@@ -47,9 +47,30 @@ const RUNTIME_FILE = "runtime.json";
 /** supervisor.json 文件名。 */
 const SUPERVISOR_FILE = "supervisor.json";
 
-/** 账号状态文件路径。 */
+/**
+ * 账号数据目录（数据根路径边界防御）：uin 必须是单一路径段，解析后必须落在
+ * dataRoot 内。CLI `-q` 入口已按 QQ 号格式校验，这里兜底任何直接调用方
+ * （`-q ../../x` / 绝对路径等不得逃出数据根）。非法值抛 ConfigError（exit 78）。
+ */
+export function accountDir(dataRoot: string, uin: string): string {
+    if (uin === "" || uin === "." || uin === ".." || isAbsolute(uin)) {
+        throw configError(`非法账号标识 "${uin}"：必须是单个路径段（不允许绝对路径）`);
+    }
+    if (uin.includes("/") || uin.includes("\\")) {
+        throw configError(`非法账号标识 "${uin}"：不允许包含路径分隔符`);
+    }
+    const root = resolve(dataRoot);
+    const resolved = resolve(root, uin);
+    if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
+        throw configError(`账号数据目录越界: ${resolved} 不在数据根 ${root} 内`);
+    }
+    // 校验用绝对路径，返回保持既有语义（相对 dataRoot 仍返回相对路径，避免调用方行为漂移）
+    return join(dataRoot, uin);
+}
+
+/** 账号状态文件路径（经 accountDir 边界校验）。 */
 export function runtimeStatePath(dataRoot: string, uin: string): string {
-    return join(dataRoot, uin, RUNTIME_FILE);
+    return join(accountDir(dataRoot, uin), RUNTIME_FILE);
 }
 
 /** supervisor 状态文件路径。 */

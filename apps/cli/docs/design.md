@@ -15,19 +15,19 @@ apps/cli/src/
 │   ├── version.ts               # cliVersion()：运行时读自身 package.json 的 version
 │   └── error.ts                 # handleActionError：ConfigError -> 78，其余 -> 1
 ├── commands/                    # 用例实现（不 import commander）
-│   ├── start.ts                 # 默认动作：-q 单账号 / 多 -q / 无 -q 读配置
-│   ├── config.ts                # config init/list/apply/validate
-│   └── ops.ts                   # status/stop/restart
+│   ├── start.ts                 # 默认动作：-q 单账号 / 多 -q / 无 -q 读配置（-q 入口校验）
+│   ├── config.ts                # config init/list/apply/validate（输出脱敏）
+│   └── ops.ts                   # status/stop/restart（-q 入口校验）
 ├── config/                      # 配置领域
-│   ├── schema.ts                # CliConfig 类型 + parseCliConfig + 占位号常量
+│   ├── schema.ts                # CliConfig 类型 + parseCliConfig + QQ 号校验（主配置/-q 共用）
 │   ├── inline.ts                # NAPKETTO_CONFIG_JSON 文本/文档/严格解析
 │   ├── template.ts              # TOML 模板文本
 │   └── store.ts                 # CliConfigStore + 默认值 + 模板落盘 + 来源决议/加载
 └── runtime/                     # 进程运行期
-    ├── boot.ts                  # 单账号自建宿主启动
+    ├── boot.ts                  # 单账号自建宿主启动（账号目录边界校验）
     ├── qr.ts                    # 终端二维码渲染（uqr 编码 + 白底黑块 ANSI）
-    ├── supervisor.ts            # 多账号子进程编排
-    └── state.ts                 # runtime.json + pid/树杀/detached + 状态聚合
+    ├── supervisor.ts            # 多账号子进程编排（显式 -q 去重拒绝）
+    └── state.ts                 # runtime.json + pid/树杀/detached + 状态聚合（路径边界）
 ```
 
 顶层只允许 `index.ts` 与 `logger.ts`。`logger.ts` 是唯一的跨切面单例：
@@ -87,14 +87,27 @@ strict/78 契约相反。两套读取是有意分层，不是重复实现。只�
 loader 需要严格校验、或内联契约再次变化时，才评估在 kernel 提供纯函数原语
 （env 键、文本读取、JSON 对象解析），并由 loader 经 `KernelLike` 特性探测采用。
 
-**`config validate` 的协议段校验**：主配置解析保持协议段为宽松对象，但 validate
-路径会懒加载 `@napuketto/adapter` 的四个协议 schema，对**非空**协议段做与 loader
-装配同口径的字段校验（空段 = 不启用，跳过）。这一层只在 validate 引入，普通启动与
-supervisor 不加载协议包——否则 validate 只做 `isRecord` 浅校验，会出现「校验通过但
-启动 exit 78」的假承诺。新增协议时要同步登记进 `config/protocol-validate.ts`。
+**`config validate` / `config apply` 的协议段校验**：主配置解析保持协议段为宽松对象，
+但这两条路径会懒加载 `@napuketto/adapter` 的四个协议 schema，对**非空**协议段做与
+loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config apply` 必须在写盘前完成
+同一层校验，否则非法协议段会落进主配置、演化成「apply 通过但启动 exit 78」。
+普通启动与 supervisor 不加载协议包。新增协议时要同步登记进
+`config/protocol-validate.ts`。
+
+## 凭据保护口径
+
+- **stdout 脱敏**：`config list` / `config apply` 输出 TOML 时，`token` 等敏感字段
+  默认替换为 `***`；`--show-secrets` 才输出明文。写盘始终使用未脱敏配置。
+- **落盘权限**：主配置文件在 POSIX 以 `0o600` 写入（kernel `CONFIG_FILE_MODE`），
+  避免协议 token 被同机其他用户读取；Windows 以 ACL 为准，忽略 mode 位。
 
 ## runtime 进程治理口径
 
+- **`-q` 入口校验**：`-q` 不是自由文本账号名，必须复用 `config/schema.ts` 的 QQ 号
+  规则（5-11 位纯数字、拒绝模板占位值）。`commands/start.ts` 与 `commands/ops.ts`
+  在分发前校验并拒绝重复值；`runtime/state.ts` 的 `accountDir` 再做一次数据根边界
+  防御（拒绝绝对路径/分隔符/越界），`boot.ts` 拒绝停止哨兵保留值 `all`——否则
+  `-q ../../x` 会把 runtime.json 写出数据根、`-q all` 会污染全局 `napuketto.stop`。
 - **退出码透传**（issue #144）：单账号 boot 等待 self-host 退出时，非停止状态下的异常
   退出码（含 `78`）必须透传给 boot 进程；收到停止请求恒 `0`。supervisor 依赖 `78` 判定
   「配置未修复、不守护重启」，boot 吞码会让该契约失效、把配置失败变成无限重启。
@@ -103,25 +116,28 @@ supervisor 不加载协议包——否则 validate 只做 `isRecord` 浅校验�
   失败次数与下次延迟，避免登录后秒退演变成高频循环重登（易触发 QQ 风控）。
 
 ## 测试布局
-测试与源码同目录，文件名对应被测模块；跨模块的领域套件可用领域名：
+测试收拢在模块目录的 `__tests__/` 下，文件名对应被测模块；跨模块的领域套件可用领域名
+（`cli/error.test.ts` 与根级 `logger.test.ts` 保持原位）：
 
 ```text
 cli/error.test.ts
-cli/version.test.ts          # cliVersion() 读到的值 == 包 package.json version
-commands/config.test.ts
-commands/ops.test.ts
-config/schema.test.ts
-config/source.test.ts        # inline + store 来源优先级
-runtime/state.test.ts
-runtime/supervisor.test.ts
-runtime/qr.test.ts           # 终端二维码渲染（uqr 矩阵 roundtrip）
+commands/__tests__/config.test.ts
+commands/__tests__/ops.test.ts
+commands/__tests__/start.test.ts
+config/__tests__/schema.test.ts
+config/__tests__/store.test.ts
+config/__tests__/source.test.ts   # inline + store 来源优先级
+runtime/__tests__/boot.test.ts
+runtime/__tests__/state.test.ts
+runtime/__tests__/supervisor.test.ts
+runtime/__tests__/qr.test.ts      # 终端二维码渲染（uqr 矩阵 roundtrip）
 logger.test.ts
 ```
 
 约束：
 
-- 同一条领域规则只在一个测试文件断言（例如占位 QQ 号规则归 `config/schema.test.ts`），
-  其他文件只验证该路径把 `ConfigError` 透出。
+- 同一条领域规则只在一个测试文件断言（例如占位 QQ 号规则归
+  `config/__tests__/schema.test.ts`），其他文件只验证该路径把 `ConfigError` 透出。
 - 搬移文件后必须核对 `vi.mock` 说明符：它按测试文件位置解析，tsc 不会报错。
 - POSIX-only 用例（环境变量大小写别名）保持 `it.runIf(process.platform !== "win32")`。
 

@@ -5,9 +5,10 @@
  * load() 缺失文件落默认值行为不回退、save() 往返校验。不触真实 wrapper.node
  * （infra 层纯逻辑）。
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
 import { ConfigBase } from "../config.js";
 import { ConfigError } from "../errors.js";
@@ -112,4 +113,14 @@ describe("ConfigBase.load()/save() 行为不回退", () => {
         expect(readFileSync(store.path, "utf8")).toContain("next");
         expect(store.get()).toEqual({ name: "next" });
     });
+
+    it.runIf(process.platform !== "win32")(
+        "save() 落盘权限 0o600（POSIX，配置可能含 token）",
+        async () => {
+            const store = makeStore("item.toml");
+            await store.load();
+            await store.save({ name: "secret" });
+            expect(statSync(store.path).mode & 0o777).toBe(0o600);
+        },
+    );
 });
