@@ -7,13 +7,13 @@
  * 都依赖 @napuketto/media，只发生在 adapter 层；kernel 不 import media（红线），
  * 只接收「文件齐全」的 canonical 元素。
  */
-import { mkdir, mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
-import { encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
+import { downloadUrl, encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
 
 /** file:// 前缀（fileURLToPath 解析失败时的裸剥离兜底）。 */
@@ -32,13 +32,14 @@ export function fileUriToPath(uri: string): string {
 }
 
 /**
- * 远程 URL → 本地文件（异步 mkdir + writeFile，全仓协议层唯一落盘入口）。
+ * 远程 URL → 本地文件（异步 mkdir + 流式落盘，全仓协议层唯一落盘入口）。
  *
- * - 父目录不存在时自动创建（替代各协议侧的 mkdirSync / 裸 writeFile）；
- * - 非 2xx 抛 KernelError SEND_FAILED（`label` 供调用方定制前缀，如「头像下载失败」）；
+ * - 走 `@napuketto/media` 的 `downloadUrl`：超时、大小上限、流式落盘、协议白名单
+ *   与「逐跳复检」的重定向策略都在那里统一（此前这里是裸 `fetch` + `arrayBuffer()`，
+ *   无超时无上限：恶意超大响应可直接打爆 Node 堆）；
+ * - 父目录不存在时自动创建；
+ * - 失败统一包成 KernelError SEND_FAILED（`label` 供调用方定制前缀，如「头像下载失败」）；
  * - 返回落盘路径（便于调用方直接回传）。
- *
- * 只在这里碰 `fetch` + `writeFile`：协议动作层不再各写一份同步阻塞 I/O。
  */
 export async function downloadBufferToFile(
     url: string,
@@ -46,15 +47,22 @@ export async function downloadBufferToFile(
     init?: RequestInit,
     label = "下载失败",
 ): Promise<string> {
-    // init 缺省时不传第二参（保留既有调用形态：仅 url 的 fetch 调用）
-    const res = init === undefined ? await fetch(url) : await fetch(url, init);
-    if (!res.ok) {
-        throw kernelError(`${label}: ${res.status} ${res.statusText}`, "SEND_FAILED");
+    try {
+        const headers = init?.headers === undefined ? undefined : normalizeHeaders(init.headers);
+        await downloadUrl(url, filePath, headers === undefined ? {} : { headers });
+    } catch (err) {
+        throw kernelError(`${label}: ${errorMessage(err)}`, "SEND_FAILED", { cause: err });
     }
-    const buf = new Uint8Array(await res.arrayBuffer());
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, buf);
     return filePath;
+}
+
+/** RequestInit.headers（Headers / 元组数组 / 普通对象）→ 普通字符串对象。 */
+function normalizeHeaders(headers: NonNullable<RequestInit["headers"]>): Record<string, string> {
+    const out: Record<string, string> = {};
+    new Headers(headers).forEach((value, key) => {
+        out[key] = value;
+    });
+    return out;
 }
 
 /** 读文件头 8 字节（判断 silk 魔数）。 */

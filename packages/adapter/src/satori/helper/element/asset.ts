@@ -27,6 +27,9 @@ const HTTP_URL_RE = /^https?:\/\//i;
 /** 文件名不安全字符（URL 尾部段转文件名时替换）。 */
 const UNSAFE_NAME_RE = /[^a-zA-Z0-9._-]/g;
 
+/** 会逃出缓存目录或不可用的纯点文件名。 */
+const SUSPICIOUS_NAMES: ReadonlySet<string> = new Set(["", ".", ".."]);
+
 /**
  * 解析资源 src：
  * - internal:{platform}/{user.id}/{path} → 本地路径（第一版仅支持 _tmp 保留路径）
@@ -45,7 +48,9 @@ export async function resolveAsset(src: string, cacheDir: string): Promise<strin
 
 /** 下载 URL 资源到缓存目录（返回本地路径）。 */
 async function downloadAsset(url: string, cacheDir: string): Promise<string> {
-    const rawName = url.split("/").pop() ?? `asset-${Date.now()}`;
-    const safeName = rawName.replace(UNSAFE_NAME_RE, "_") || `asset-${Date.now()}`;
-    return await downloadBufferToFile(url, join(cacheDir, safeName), undefined, "下载资源失败");
+    const rawName = url.split("/").pop() ?? "";
+    const safeName = rawName.replace(UNSAFE_NAME_RE, "_");
+    // "." / ".." 经 join 会指向缓存目录之外（写到上级目录或失败），统一下沉为时间戳名
+    const fileName = SUSPICIOUS_NAMES.has(safeName) ? `asset-${Date.now()}` : safeName;
+    return await downloadBufferToFile(url, join(cacheDir, fileName), undefined, "下载资源失败");
 }

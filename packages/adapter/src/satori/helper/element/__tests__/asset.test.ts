@@ -61,7 +61,11 @@ describe("resolveAsset：http(s) 下载", () => {
         const fetchMock = vi.fn(async () => new Response(body, { status: 200 }));
         vi.stubGlobal("fetch", fetchMock);
         const out = await resolveAsset("http://example.com/pics/a%20b.png", cacheDir);
-        expect(fetchMock).toHaveBeenCalledWith("http://example.com/pics/a%20b.png");
+        // 下载器手动跟随重定向（逐跳校验），fetch 第二参带 redirect/signal
+        expect(fetchMock).toHaveBeenCalledWith(
+            "http://example.com/pics/a%20b.png",
+            expect.objectContaining({ redirect: "manual" }),
+        );
         // 文件名消毒：'%' 替换为 _（数字 2/0 是安全字符保留）
         const expected = join(cacheDir, "a_20b.png");
         expect(out).toBe(expected);
@@ -96,5 +100,16 @@ describe("resolveAsset：http(s) 下载", () => {
         const out = await resolveAsset("https://example.com/", cacheDir);
         // split("/") 尾段为空串 → 消毒后空 → 回退 asset-*
         expect(out.startsWith(join(cacheDir, "asset-"))).toBe(true);
+    });
+
+    it("URL 尾段为 .. / .：回退 asset-<时间戳>，不写出缓存目录", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
+        );
+        const dots = await resolveAsset("https://example.com/..", cacheDir);
+        const dot = await resolveAsset("https://example.com/.", cacheDir);
+        expect(dots.startsWith(join(cacheDir, "asset-"))).toBe(true);
+        expect(dot.startsWith(join(cacheDir, "asset-"))).toBe(true);
     });
 });
