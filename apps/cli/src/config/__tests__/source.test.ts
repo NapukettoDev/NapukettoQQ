@@ -35,6 +35,7 @@ let tmp = "";
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-inline-test-"));
     delete process.env["NAPKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
     delete process.env["NAPKETTO_CONFIG"];
     delete process.env["NAPKETTO_DATA"];
     for (const fn of Object.values(mocks.logger)) {
@@ -44,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
     delete process.env["NAPKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
     delete process.env["NAPKETTO_CONFIG"];
     delete process.env["NAPKETTO_DATA"];
     if (tmp !== "") {

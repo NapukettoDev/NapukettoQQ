@@ -49,6 +49,7 @@ async function autoStart(opts: StartOptions): Promise<void> {
     await runSupervisor({
         ...(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir }),
         ...(opts.stubDir === undefined ? {} : { stubDir: opts.stubDir }),
+        ...(opts.qqPath === undefined ? {} : { qqPath: opts.qqPath }),
     });
 }
 
@@ -83,10 +84,17 @@ export async function dispatchMainAction(opts: StartOptions): Promise<void> {
         qqs,
         ...(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir }),
         ...(opts.stubDir === undefined ? {} : { stubDir: opts.stubDir }),
+        ...(opts.qqPath === undefined ? {} : { qqPath: opts.qqPath }),
     });
 }
 
-/** supervisor 子命令用例（读主配置 accounts 批量拉起；-d 复用主命令 option）。 */
-export async function runSupervisorCommand(opts: { dataDir?: string }): Promise<void> {
-    await runSupervisor(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir });
+/** supervisor 子命令用例（读主配置 accounts 批量拉起；-d / --qq-path 复用主命令 option）。 */
+export async function runSupervisorCommand(opts: {
+    dataDir?: string;
+    qqPath?: string;
+}): Promise<void> {
+    await runSupervisor({
+        ...(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir }),
+        ...(opts.qqPath === undefined ? {} : { qqPath: opts.qqPath }),
+    });
 }

@@ -17,7 +17,12 @@ import {
     resolveConfigPath,
     resolveDataRoot,
 } from "@napuketto/kernel";
-import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "./inline.js";
+import {
+    type ConfigSource,
+    inlineConfigEnvName,
+    parseInlineConfig,
+    readInlineConfigText,
+} from "./inline.js";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 import { configTemplate } from "./template.js";
 
@@ -106,7 +111,7 @@ let sourceLogged = false;
 
 /**
  * 加载主配置（内联优先，2026-10-25 嵌入式契约）：
- * NAPKETTO_CONFIG_JSON 非空 → 内存文档校验（不读 / 不写 / 不校验任何 toml
+ * NAPUKETTO_CONFIG_JSON 非空 → 内存文档校验（不读 / 不写 / 不校验任何 toml
  * 文件），打一行来源日志；否则现行文件链路（缺失自动落模板）。校验失败两形态
  * 同为 ConfigError（exit 78），文案区别只在来源标注。
  */
@@ -118,7 +123,9 @@ export async function loadCliConfigWithSource(
         const config = parseInlineConfig(resolved.text);
         if (!sourceLogged) {
             sourceLogged = true;
-            opts.onInfo?.("配置来源: inline（NAPKETTO_CONFIG_JSON）");
+            // 旧前缀 NAPKETTO_CONFIG_JSON 仍在兼容期内，日志输出实际命中的键名，
+            // 避免按新名排查环境变量却对不上。
+            opts.onInfo?.(`配置来源: inline（${inlineConfigEnvName() ?? "环境变量"}）`);
         }
         return { config, source: "inline" };
     }

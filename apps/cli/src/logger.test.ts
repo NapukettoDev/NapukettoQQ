@@ -8,7 +8,7 @@
  *
  * 模块带缓存（cachedConfig / cachedDataRoot）——每用例 resetModules 后重导。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -137,6 +137,23 @@ describe("resolveCliLogConfig", () => {
     it("同一模块实例内缓存（二次调用返回同对象）", async () => {
         const mod = await freshCliLogger({ NAPKETTO_CONFIG: join(freshDir(), "不存在.toml") });
         expect(mod.resolveCliLogConfig()).toBe(mod.resolveCliLogConfig());
+    });
+
+    it("先无参解析后显式 dataDir：重新解析并按新数据根展开 [log.file]", async () => {
+        const base = freshDir();
+        const configPath = join(base, "napuketto.toml");
+        writeFileSync(configPath, '[log.file]\npath = "relative.log"\n', "utf8");
+        const mod = await freshCliLogger({ NAPKETTO_CONFIG: configPath });
+        // 早期无参调用（缺省数据根）先写入缓存
+        mod.resolveCliLogConfig();
+        const dataRoot = join(base, "explicit-data-root");
+        mkdirSync(dataRoot, { recursive: true });
+        // 后续显式 -d 不得被早期缓存锁死：重新解析并更新相对路径展开基准
+        mod.resolveCliLogConfig(dataRoot);
+        const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+        mod.logger.info({ mark: "cache-rebind" }, "行");
+        expect(existsSync(join(dataRoot, "relative.log"))).toBe(true);
+        writeSpy.mockRestore();
     });
 });
 

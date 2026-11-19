@@ -47,17 +47,21 @@ describe("dispatchMainAction 无 -q 分支（读配置拉起）", () => {
         expect(mocks.runSupervisor).toHaveBeenCalledWith({});
     });
 
-    it("dataDir / stubDir 透传给 supervisor（qqPath 不透传）", async () => {
+    it("dataDir / stubDir / qqPath 全量透传给 supervisor", async () => {
         mocks.loadCliConfigWithSource.mockResolvedValue({
             config: { accounts: [{ qq: "10001" }] },
             source: "inline",
         });
-        await dispatchMainAction({ dataDir: "d", stubDir: "s" });
+        await dispatchMainAction({ dataDir: "d", stubDir: "s", qqPath: "p" });
         expect(mocks.loadCliConfigWithSource).toHaveBeenCalledWith({
             dataDir: "d",
             onInfo: expect.any(Function),
         });
-        expect(mocks.runSupervisor).toHaveBeenCalledWith({ dataDir: "d", stubDir: "s" });
+        expect(mocks.runSupervisor).toHaveBeenCalledWith({
+            dataDir: "d",
+            stubDir: "s",
+            qqPath: "p",
+        });
     });
 
     it("配置无账号（防御分支）→ 抛错提示编辑模板，不拉起", async () => {
@@ -108,21 +112,27 @@ describe("dispatchMainAction 单 -q 分支", () => {
 });
 
 describe("dispatchMainAction 多 -q 分支", () => {
-    it("多账号 → supervisor 以 qqs 列表拉起", async () => {
-        await dispatchMainAction({ qq: ["10001", "10002"], dataDir: "d", stubDir: "s" });
+    it("多账号 → supervisor 以 qqs 列表拉起（含 qqPath 透传）", async () => {
+        await dispatchMainAction({
+            qq: ["10001", "10002"],
+            dataDir: "d",
+            stubDir: "s",
+            qqPath: "p",
+        });
         expect(mocks.runSupervisor).toHaveBeenCalledWith({
             qqs: ["10001", "10002"],
             dataDir: "d",
             stubDir: "s",
+            qqPath: "p",
         });
         expect(mocks.runSingleAccount).not.toHaveBeenCalled();
     });
 });
 
 describe("runSupervisorCommand", () => {
-    it("透传 dataDir；缺省时不带该键", async () => {
-        await runSupervisorCommand({ dataDir: "d" });
-        expect(mocks.runSupervisor).toHaveBeenCalledWith({ dataDir: "d" });
+    it("透传 dataDir / qqPath；缺省时不带对应键", async () => {
+        await runSupervisorCommand({ dataDir: "d", qqPath: "p" });
+        expect(mocks.runSupervisor).toHaveBeenCalledWith({ dataDir: "d", qqPath: "p" });
         await runSupervisorCommand({});
         expect(mocks.runSupervisor).toHaveBeenLastCalledWith({});
     });

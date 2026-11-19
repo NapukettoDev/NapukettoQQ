@@ -65,6 +65,8 @@ import { type FakeChild, flushAsync, makeFakeChild } from "./test-support.js";
 let tmp = "";
 let child: FakeChild;
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
+let offSpy: ReturnType<typeof vi.spyOn>;
+let sentinelCancel: ReturnType<typeof vi.fn>;
 const signalHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
 let onSpy: ReturnType<typeof vi.spyOn>;
 let exitCodeBefore: number | undefined;
@@ -122,12 +124,15 @@ beforeEach(() => {
     mocks.resolveCliLogConfig.mockReturnValue({ banner: false });
     mocks.effectiveConsoleEnv.mockReturnValue({ NAPUKETTO_LOG_FORMAT: "single-line" });
     mocks.launchSelfHost.mockResolvedValue({ child });
+    sentinelCancel = vi.fn();
+    mocks.watchStopSentinel.mockReturnValue(sentinelCancel);
     onSpy = vi.spyOn(process, "on").mockImplementation(((event: string, handler: never) => {
         const list = signalHandlers.get(event) ?? [];
         list.push(handler as (...args: unknown[]) => void);
         signalHandlers.set(event, list);
         return process;
     }) as never);
+    offSpy = vi.spyOn(process, "off");
     const bound = process.stdout.write.bind(process.stdout);
     stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
         bound(chunk);
@@ -137,6 +142,7 @@ beforeEach(() => {
 
 afterEach(() => {
     onSpy.mockRestore();
+    offSpy.mockRestore();
     stdoutSpy.mockRestore();
     process.exitCode = exitCodeBefore as number | undefined;
     delete process.env["NAPUTO_STUB_DIR"];
@@ -239,6 +245,19 @@ describe("运行态落盘与退出等待", () => {
         child.emit("exit", 1, null);
         await p;
         expect(process.exitCode).toBe(0);
+    });
+
+    it("常驻结束统一收尾：解绑三个信号监听 + 取消停止哨兵 watcher", async () => {
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        expect(signalHandlers.get("SIGINT")).toHaveLength(1);
+        child.emit("exit", 0, null);
+        await p;
+        // watchStopSentinel 返回的取消函数必须被调用（否则哨兵轮询定时器残留）
+        expect(sentinelCancel).toHaveBeenCalledOnce();
+        for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"]) {
+            expect(offSpy).toHaveBeenCalledWith(signal, expect.any(Function));
+        }
     });
 
     it("托管模式：合并写入（保留 supervisor 的 kind/restartCount，只补 selfHostPid）", async () => {

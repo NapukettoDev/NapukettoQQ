@@ -16,7 +16,6 @@
  */
 import type { ChildProcess } from "node:child_process";
 import process from "node:process";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import {
     configError,
@@ -41,6 +40,7 @@ import {
 } from "@napuketto/loader";
 import { isInlineConfigActive } from "../config/inline.js";
 import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "../logger.js";
+import { forwardLines } from "./lines.js";
 import { renderQrAnsi } from "./qr.js";
 import {
     type AccountRuntime,
@@ -85,8 +85,7 @@ const GRACEFUL_STOP_TIMEOUT_MS = 10_000;
  * 噪音判定走 loader 共享单一来源（isNativeNoiseLine，与 koishi IPC 路径同源）。
  */
 function forwardFiltered(input: NodeJS.ReadableStream, out: NodeJS.WritableStream): void {
-    const lines = createInterface({ input });
-    lines.on("line", (line) => {
+    forwardLines(input, (line) => {
         if (line.startsWith(QR_LINE_PREFIX)) {
             renderTerminalQr(line.slice(QR_LINE_PREFIX.length));
             return;
@@ -335,16 +334,22 @@ function recordRuntimeState(
     });
 }
 
+/** 优雅停编排句柄：运行结束时必须 dispose（解绑信号监听 + 取消哨兵 watcher）。 */
+interface GracefulStop {
+    /** 「是否已收到停止请求」查询（退出日志 graceful 标注）。 */
+    isStopping: () => boolean;
+    /** 解绑本进程信号监听、取消停止哨兵轮询、清理未触发的超时兜底。 */
+    dispose: () => void;
+}
+
 /** 优雅关停编排（2026-10-25 生命周期契约）：触发后等 self-host 经自身哨兵/信号
  * 处理自行退出（exit 0），10s 未退则 kill 兜底（Windows 下为硬杀）——
  * boot 进程随后随 child 退出自然返回（退出码 0 = 请求式正常退出）。
- * @returns 「是否已收到停止请求」查询（退出日志 graceful 标注） */
-function installGracefulStop(
-    child: ChildProcess,
-    dataRoot: string,
-    account: string,
-): () => boolean {
+ * 返回句柄由 runSingleAccount 在 waitSelfHostExit 的 finally 中 dispose：
+ * 常驻结束后不残留信号监听/哨兵定时器。 */
+function installGracefulStop(child: ChildProcess, dataRoot: string, account: string): GracefulStop {
     let stopArmed = false;
+    let fallback: NodeJS.Timeout | undefined;
     const killIfHung = (): void => {
         if (child.exitCode !== null || child.killed) {
             return;
@@ -366,10 +371,14 @@ function installGracefulStop(
         }
         stopArmed = true;
         logger.info({ account, reason }, "收到停止请求，等待自建宿主退出");
-        const fallback = setTimeout(killIfHung, GRACEFUL_STOP_TIMEOUT_MS);
+        fallback = setTimeout(killIfHung, GRACEFUL_STOP_TIMEOUT_MS);
         fallback.unref?.();
     };
-    watchStopSentinel({ dataRoot, account, onTrigger: () => armGracefulStop("停止哨兵") });
+    const cancelSentinel = watchStopSentinel({
+        dataRoot,
+        account,
+        onTrigger: () => armGracefulStop("停止哨兵"),
+    });
     const onSignal = (signal: string): void => {
         // 写单账号独立哨兵（并发 stop 不互相覆盖）覆盖非控制台信号场景
         // （self-host 同目录观察同一文件）；终端 Ctrl+C 下 self-host 也会直接
@@ -377,10 +386,26 @@ function installGracefulStop(
         writeAccountStopSentinel(dataRoot, account);
         armGracefulStop(`信号 ${signal}`);
     };
-    process.on("SIGINT", () => onSignal("SIGINT"));
-    process.on("SIGTERM", () => onSignal("SIGTERM"));
-    process.on("SIGBREAK", () => onSignal("SIGBREAK"));
-    return () => stopArmed;
+    const signalHandlers: Array<{ signal: NodeJS.Signals; listener: () => void }> = [
+        { signal: "SIGINT", listener: () => onSignal("SIGINT") },
+        { signal: "SIGTERM", listener: () => onSignal("SIGTERM") },
+        { signal: "SIGBREAK", listener: () => onSignal("SIGBREAK") },
+    ];
+    for (const { signal, listener } of signalHandlers) {
+        process.on(signal, listener);
+    }
+    return {
+        isStopping: () => stopArmed,
+        dispose: () => {
+            for (const { signal, listener } of signalHandlers) {
+                process.off(signal, listener);
+            }
+            cancelSentinel();
+            if (fallback !== undefined) {
+                clearTimeout(fallback);
+            }
+        },
+    };
 }
 
 /**
@@ -440,6 +465,12 @@ export async function runSingleAccount(opts: BootOptions = {}): Promise<void> {
     const { child } = await startSelfHost(opts, qq, cfgDir, dataRoot);
     forwardChildOutput(child);
     recordRuntimeState(dataRoot, account, child, "running");
-    const isStopping = installGracefulStop(child, dataRoot, account);
-    await waitSelfHostExit(child, dataRoot, account, isStopping);
+    const stop = installGracefulStop(child, dataRoot, account);
+    try {
+        await waitSelfHostExit(child, dataRoot, account, stop.isStopping);
+    } finally {
+        // 常驻结束：解绑 SIGINT/SIGTERM/SIGBREAK 监听并取消哨兵轮询，
+        // 避免进程内残留 handler 与定时器（测试/嵌入式复用同一进程时尤其重要）。
+        stop.dispose();
+    }
 }

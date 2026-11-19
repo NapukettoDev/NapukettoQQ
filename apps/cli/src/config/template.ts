@@ -154,6 +154,8 @@ port = 3001
 # # pingIntervalMs = 15000               # 可选：应用层心跳间隔（毫秒，须 < 30000）
 # # chatTemplate = "[{player}] {content}"    # 游戏聊天渲染模板
 # # joinTemplate = "{player} 加入了服务器"    # 玩家进服模板
+# # leaveTemplate = "{player} 离开了服务器"   # 玩家退服模板
+# # deathTemplate = "{player} {message}"     # 玩家死亡模板（空消息显示「死亡了」）
 
 # ------------------------------------------------------------
 # Milky 协议（P0）
@@ -168,7 +170,5 @@ port = 3001
 # # eventModes = ["sse", "ws"]           # /event 允许的连接形态
 # # webhooks = []                        # 可选：额外事件推送地址（WebHook POST）
 # # cacheDir = "cache"                   # 可选：发送远程媒体 URI 的下载缓存目录
-# # leaveTemplate = "{player} 离开了服务器"   # 玩家退服模板
-# # deathTemplate = "{player} {message}"     # 玩家死亡模板（空消息显示「死亡了」）
 `;
 }

@@ -110,14 +110,18 @@ function registerConfigCommands(program: Command): void {
         });
 }
 
-/** 注册 supervisor 子命令（读主配置 accounts 批量拉起，P6；-d 复用主命令 option）。 */
+/** 注册 supervisor 子命令（读主配置 accounts 批量拉起，P6；-d / --qq-path 复用主命令 option）。 */
 function registerSupervisorCommand(program: Command): void {
     program
         .command("supervisor")
         .description("多账号编排（读全局配置 accounts 拉起子进程）")
         .action(async () => {
             try {
-                await runSupervisorCommand(rootDataDir(program));
+                const { dataDir, qqPath } = program.opts<{ dataDir?: string; qqPath?: string }>();
+                await runSupervisorCommand({
+                    ...(dataDir === undefined ? {} : { dataDir }),
+                    ...(qqPath === undefined ? {} : { qqPath }),
+                });
             } catch (err) {
                 handleActionError(err);
             }

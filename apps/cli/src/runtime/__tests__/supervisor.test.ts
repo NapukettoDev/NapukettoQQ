@@ -207,6 +207,32 @@ describe("runSupervisor 子进程拉起", () => {
         );
         child.emit("exit", 0, null);
     });
+
+    it("--qq-path 透传子进程参数与 runtime.json 命令行指纹", async () => {
+        setTty(false);
+        const child = makeFakeChild(4260);
+        mocks.spawn.mockImplementation(() => child);
+        mocks.loadCliConfigWithSource.mockResolvedValue({
+            config: {
+                dataDir: tmp,
+                accounts: [{ qq: "10001" }],
+                autoRestart: false,
+                restartDelayMs: 30,
+            },
+            source: "file",
+            path: join(tmp, "napuketto.toml"),
+        });
+        const running = runSupervisor({ dataDir: tmp, qqPath: "/opt/qq" });
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+        const args = mocks.spawn.mock.calls[0]?.[1] as string[];
+        expect(args.slice(-2)).toEqual(["--qq-path", "/opt/qq"]);
+        expect(mocks.writeAccountRuntime).toHaveBeenCalledWith(
+            tmp,
+            expect.objectContaining({ cmdline: expect.stringContaining("--qq-path /opt/qq") }),
+        );
+        child.emit("exit", 0, null);
+        await running;
+    });
 });
 
 describe("runSupervisor 显式 -q 校验", () => {
