@@ -92,6 +92,7 @@ export type {
     TimestampMode,
 } from "./infra/index.js";
 export {
+    CONFIG_FILE_MODE,
     ConfigBase,
     ConfigError,
     configError,

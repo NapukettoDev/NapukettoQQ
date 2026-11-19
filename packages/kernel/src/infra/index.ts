@@ -5,7 +5,7 @@
  * 禁止反向依赖 apis / bridge / core 等业务模块（依赖方向硬约束）。
  */
 export type { ConfigFormat, ConfigOptions, ConfigSchema } from "./config.js";
-export { ConfigBase, parseToml, stringifyToml } from "./config.js";
+export { CONFIG_FILE_MODE, ConfigBase, parseToml, stringifyToml } from "./config.js";
 export type { KernelErrorCode } from "./errors.js";
 export {
     ConfigError,

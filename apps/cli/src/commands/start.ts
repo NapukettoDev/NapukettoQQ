@@ -5,6 +5,7 @@
  * 参数解析、帮助文案与退出码收敛在 cli/program.ts。
  */
 import { configError } from "@napuketto/kernel";
+import { parseCliQq } from "../config/schema.js";
 import { loadCliConfigWithSource } from "../config/store.js";
 import { logger } from "../logger.js";
 import { runSingleAccount } from "../runtime/boot.js";
@@ -51,9 +52,25 @@ async function autoStart(opts: StartOptions): Promise<void> {
     });
 }
 
+/**
+ * -q 列表入口校验（2026-11 安全加固）：格式/占位值复用主配置规则，重复值直接报错。
+ * ConfigError → exit 78；放在分发最前，非法值不会进入数据目录拼接或 supervisor。
+ */
+function parseQqList(qqs: string[]): string[] {
+    const seen = new Set<string>();
+    for (const qq of qqs) {
+        parseCliQq(qq);
+        if (seen.has(qq)) {
+            throw configError(`-q/--qq 重复指定账号: "${qq}"（每个账号只能出现一次）`);
+        }
+        seen.add(qq);
+    }
+    return qqs;
+}
+
 /** 主命令分发：无 -q 读配置 supervisor 拉起 / 单 -q 单账号 / 多 -q supervisor。 */
 export async function dispatchMainAction(opts: StartOptions): Promise<void> {
-    const qqs = opts.qq ?? [];
+    const qqs = parseQqList(opts.qq ?? []);
     if (qqs.length === 0) {
         await autoStart(opts);
         return;

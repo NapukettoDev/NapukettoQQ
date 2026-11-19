@@ -9,8 +9,14 @@
 import { mkdirSync } from "node:fs";
 import { access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import process from "node:process";
 import type { ConfigSchema } from "@napuketto/kernel";
-import { ConfigBase, resolveConfigPath, resolveDataRoot } from "@napuketto/kernel";
+import {
+    CONFIG_FILE_MODE,
+    ConfigBase,
+    resolveConfigPath,
+    resolveDataRoot,
+} from "@napuketto/kernel";
 import { type ConfigSource, parseInlineConfig, readInlineConfigText } from "./inline.js";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 import { configTemplate } from "./template.js";
@@ -42,7 +48,10 @@ async function ensureConfigTemplate(path: string, onInfo?: ConfigInfoLogger): Pr
         await access(path);
     } catch {
         mkdirSync(dirname(path), { recursive: true });
-        await writeFile(path, `${configTemplate()}\n`, "utf8");
+        await writeFile(path, `${configTemplate()}\n`, {
+            encoding: "utf8",
+            ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
+        });
         onInfo?.({ path }, "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）");
     }
 }

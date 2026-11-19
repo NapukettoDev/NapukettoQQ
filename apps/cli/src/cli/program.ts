@@ -57,9 +57,13 @@ function registerConfigCommands(program: Command): void {
     configCmd
         .command("list")
         .description("列出全局配置与账号配置")
-        .action(async () => {
+        .option("--show-secrets", "输出明文敏感字段（协议 token 等；默认脱敏）")
+        .action(async (opts: { showSecrets?: boolean }) => {
             try {
-                await cmdConfigList(rootDataDir(program));
+                await cmdConfigList({
+                    ...rootDataDir(program),
+                    ...(opts.showSecrets === true ? { showSecrets: true } : {}),
+                });
             } catch (err) {
                 handleActionError(err);
             }
@@ -67,9 +71,13 @@ function registerConfigCommands(program: Command): void {
     configCmd
         .command("apply <file>")
         .description("应用外部配置（TOML/JSON，校验后写回全局配置）")
-        .action(async (file: string) => {
+        .option("--show-secrets", "输出明文敏感字段（协议 token 等；默认脱敏）")
+        .action(async (file: string, opts: { showSecrets?: boolean }) => {
             try {
-                await cmdConfigApply(file, rootDataDir(program));
+                await cmdConfigApply(file, {
+                    ...rootDataDir(program),
+                    ...(opts.showSecrets === true ? { showSecrets: true } : {}),
+                });
             } catch (err) {
                 handleActionError(err);
             }

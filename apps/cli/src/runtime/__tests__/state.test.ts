@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import { ConfigError } from "@napuketto/kernel";
 import { afterAll, describe, expect, it } from "vitest";
 import {
     type AccountRuntime,
@@ -56,6 +57,22 @@ describe("runtime-state 读写", () => {
         );
         expect(supervisorStatePath("C:/data").replaceAll("\\", "/")).toBe(
             "C:/data/supervisor.json",
+        );
+        // 相对数据根保持相对返回（边界校验用绝对路径，但不改变既有路径语义）
+        expect(runtimeStatePath(".napuketto", "10001")).toBe(
+            join(".napuketto", "10001", "runtime.json"),
+        );
+    });
+
+    it("账号路径边界：绝对路径 / 分隔符 / .. → ConfigError（不逃出数据根）", () => {
+        for (const uin of ["../escape", "..", ".", "/abs", "a/b", "a\\b"]) {
+            expect(() => runtimeStatePath("C:/data", uin)).toThrow(ConfigError);
+        }
+    });
+
+    it("writeAccountRuntime 拒绝越界 uin（不落盘到数据根之外）", () => {
+        expect(() => writeAccountRuntime(tempDir(), makeRuntime({ uin: "../escape" }))).toThrow(
+            ConfigError,
         );
     });
 

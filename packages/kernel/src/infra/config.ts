@@ -9,14 +9,22 @@
  * 协议配置 schema 在各自协议包，见各包 docs/design.md。
  */
 import { mkdirSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, extname } from "node:path";
+import process from "node:process";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
 import { getErrorCode, isRecord } from "../utils/type-guards.js";
 import { configError } from "./errors.js";
 
 /** 配置文本格式。 */
 export type ConfigFormat = "json" | "toml";
+
+/**
+ * 配置落盘权限（POSIX 0o600：仅属主可读写）。配置可能含协议鉴权 token，
+ * 不得按默认 umask（常见 0o644）暴露给同机其他用户；Windows 以 ACL 为准，
+ * 忽略 mode 位。
+ */
+export const CONFIG_FILE_MODE = 0o600;
 
 /** 按扩展名推断格式（.toml → toml，其余 → json）。 */
 function inferFormat(path: string): ConfigFormat {
@@ -122,7 +130,14 @@ export class ConfigBase<T> {
         const parsed = this.parse(this.serialize(next));
         mkdirSync(dirname(this.path), { recursive: true });
         const tmpPath = `${this.path}.tmp`;
-        await writeFile(tmpPath, `${this.serialize(parsed)}\n`, "utf8");
+        await writeFile(tmpPath, `${this.serialize(parsed)}\n`, {
+            encoding: "utf8",
+            ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
+        });
+        if (process.platform !== "win32") {
+            // 陈旧临时文件可能带着更宽的权限：显式收紧后再 rename 覆盖目标。
+            await chmod(tmpPath, CONFIG_FILE_MODE);
+        }
         await rename(tmpPath, this.path);
         this.value = parsed;
     }

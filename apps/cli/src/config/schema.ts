@@ -5,8 +5,8 @@
  * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
  * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
  * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验；
- * `config validate` 例外（见 protocol-validate.ts：validate 承诺与装配同 schema，
- * 否则「校验通过但启动 78」，故仅在 validate 路径懒加载 adapter 补校验）。
+ * `config validate` / `config apply` 例外（见 protocol-validate.ts：两条路径承诺与
+ * 装配同 schema，否则「校验/apply 通过但启动 78」，故仅在这两处懒加载 adapter 补校验）。
  * 全部校验错误为 ConfigError（2026-10-25 嵌入式退出码契约：CLI exit 78 一族，
  * 内联与文件两形态共用本校验器）。
  */
@@ -31,6 +31,35 @@ export const DEFAULT_RESTART_DELAY_MS = 2000;
 
 /** QQ 号格式：纯数字 5-11 位（QQ 号合法范围，勿写死 11 位）。 */
 const QQ_IN_FORMAT_RE = /^\d{5,11}$/;
+
+/** QQ 号非法原因（主配置与 CLI -q 共用同一判定，避免两套规则漂移）。 */
+type QqInvalidReason = "format" | "placeholder";
+
+/** 判定 QQ 号是否非法（undefined = 合法）。主配置校验与 CLI `-q` 入口共用。 */
+function qqInvalidReason(qq: string): QqInvalidReason | undefined {
+    if (!QQ_IN_FORMAT_RE.test(qq)) {
+        return "format";
+    }
+    if (RESERVED_PLACEHOLDER_QINS.some((placeholder) => placeholder === qq)) {
+        return "placeholder";
+    }
+    return;
+}
+
+/**
+ * CLI `-q/--qq` 入口校验（复用主配置 QQ 号规则）：非法格式 / 模板占位值 /
+ * 路径穿越值一律 ConfigError（exit 78 一族）。返回原值便于链式使用。
+ */
+export function parseCliQq(qq: string): string {
+    const reason = qqInvalidReason(qq);
+    if (reason === "format") {
+        throw configError(`-q/--qq 参数 "${qq}" 非法：必须是 5-11 位纯数字 QQ 号`);
+    }
+    if (reason === "placeholder") {
+        throw configError(`-q/--qq 参数 "${qq}" 是模板占位值，请传入真实 QQ 号`);
+    }
+    return qq;
+}
 
 /** 协议段键（宽松对象，装配时 zod 严格校验）。 */
 type ProtocolKey = "onebot11" | "satori" | "kurobot" | "milky";
@@ -149,8 +178,17 @@ function parseAccounts(raw: Record<string, unknown>): CliAccountConfig[] {
         );
     }
     const accounts: CliAccountConfig[] = [];
+    const seen = new Set<string>();
     for (const item of raw["accounts"]) {
-        accounts.push(parseAccount(item));
+        const account = parseAccount(item);
+        if (seen.has(account.qq)) {
+            // 重复 qq 会让 supervisor 并发拉起同一账号（实例锁冲突 + children Map 覆盖）
+            throw configError(
+                `主配置账号 qq 重复: "${account.qq}"（一个 QQ 号只允许一个 [[accounts]] 段）`,
+            );
+        }
+        seen.add(account.qq);
+        accounts.push(account);
     }
     return accounts;
 }
@@ -167,10 +205,11 @@ function parseAccountQq(raw: Record<string, unknown>): string {
 
 /** qq 格式与占位值校验（5-11 位纯数字；模板占位号显式指路不静默）。 */
 function assertValidQqFormat(qq: string): void {
-    if (!QQ_IN_FORMAT_RE.test(qq)) {
+    const reason = qqInvalidReason(qq);
+    if (reason === "format") {
         throw configError("主配置账号 qq 必须是 5-11 位纯数字 QQ 号");
     }
-    if (RESERVED_PLACEHOLDER_QINS.some((placeholder) => placeholder === qq)) {
+    if (reason === "placeholder") {
         throw configError(
             `主配置账号 qq "${qq}" 是模板占位值，请编辑配置文件填入真实 QQ 号后再启动`,
         );

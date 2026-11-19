@@ -5,7 +5,7 @@
  * store 路径决议（NAPKETTO_CONFIG 显式）、save/load 往返、配置缺失时
  * ensureConfigTemplate 自动生成模板（生成后再 load 报占位值 ConfigError）。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -161,5 +161,12 @@ describe("loadCliConfigWithSource 文件形态补充", () => {
             { path: configPath },
             "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）",
         );
+    });
+
+    it.runIf(process.platform !== "win32")("模板兜底落盘权限 0o600（POSIX）", async () => {
+        const configPath = join(tmp, "napuketto.toml");
+        process.env["NAPKETTO_CONFIG"] = configPath;
+        await expect(loadCliConfigWithSource({ dataDir: tmp })).rejects.toThrow(ConfigError);
+        expect(statSync(configPath).mode & 0o777).toBe(0o600);
     });
 });
