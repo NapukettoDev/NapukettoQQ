@@ -144,6 +144,10 @@
 - 媒体：img / audio / video / file → canonical；audio 走 `ensureSilk`（非 silk 转码）；
   video 非 mp4 走 `transcodeVideo`，ffmpeg 缺失或失败 fail-soft 原样透传；file 的
   `title` 映射为 canonical `name`。
+- WS 鉴权（`SatoriEventHub`）：Satori 是连接后带内鉴权，握手期无凭据，因此不复用
+  `WsServer.authorize`。hub 接管 wsServers 的 `send`/`open`/`close`，只向完成
+  `IDENTIFY` 的连接广播 `EVENT`；token 不符或 10s 内未 `IDENTIFY` 以 4004 关闭；
+  token 为空时连接即视为已认证（空 token = 不鉴权）。
 
 ### KuroBot 自建连接层
 
