@@ -1206,6 +1206,47 @@ describe("传输装配（start + 真传输）", () => {
         expect(events[0]).toMatchObject({ meta_event_type: "lifecycle" });
         await adapter.stop();
     });
+
+    it("正向 WS 对端未启动 → start 不抛错，warn 后后台重连并最终停止（issue #144）", async () => {
+        // 127.0.0.1:1 无监听 → 稳定 ECONNREFUSED（不依赖外部网络）
+        const warn = vi.fn();
+        const seed = {
+            wsReverseUrls: [
+                {
+                    enabled: true,
+                    url: "ws://127.0.0.1:1/onebot",
+                    reconnectDelayMs: 20,
+                    maxReconnectAttempts: 1,
+                    heartbeatInterval: 0,
+                },
+            ],
+            heartbeatInterval: 0,
+        };
+        const { adapter, events } = makeEventAdapter({
+            seed,
+            logger: { warn, info: vi.fn(), debug: vi.fn() },
+        });
+        // 核心契约：对端 WS 不可达不能中断协议装配（此前会抛错 → self-host exit 1）
+        await expect(adapter.start()).resolves.toBeUndefined();
+        expect(events[0]).toMatchObject({ meta_event_type: "lifecycle" });
+
+        await vi.waitFor(() => {
+            expect(warn).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    label: expect.stringContaining("ws://127.0.0.1:1/onebot"),
+                }),
+                expect.stringContaining("后台按重连策略重试"),
+            );
+        });
+        // 重试一次后达最大次数：明确告警且停止（不无限刷日志）
+        await vi.waitFor(() => {
+            expect(warn).toHaveBeenCalledWith(
+                expect.objectContaining({ attempts: 1 }),
+                expect.stringContaining("已达最大重连次数"),
+            );
+        });
+        await adapter.stop();
+    });
 });
 
 describe("精华链补充分支", () => {

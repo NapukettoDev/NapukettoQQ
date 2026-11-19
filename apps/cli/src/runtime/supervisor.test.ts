@@ -57,7 +57,7 @@ vi.mock("../logger.js", async (importOriginal) => {
     return { ...actual, logger: mocks.logger };
 });
 
-import { runSupervisor } from "./supervisor.js";
+import { computeRestartDelayMs, runSupervisor } from "./supervisor.js";
 
 interface FakeChild extends EventEmitter {
     stdout: PassThrough;
@@ -251,6 +251,98 @@ describe("runSupervisor 账号退出", () => {
             expect.objectContaining({ qq: "10001" }),
             expect.stringContaining("账号启动失败"),
         );
+    });
+});
+
+describe("runSupervisor 秒退指数退避（issue #144）", () => {
+    it("computeRestartDelayMs：按 2^n 增长并封顶 60s", () => {
+        expect(computeRestartDelayMs(2000, 1)).toBe(2000);
+        expect(computeRestartDelayMs(2000, 2)).toBe(4000);
+        expect(computeRestartDelayMs(30_000, 2)).toBe(60_000);
+        expect(computeRestartDelayMs(30_000, 3)).toBe(60_000);
+        expect(computeRestartDelayMs(30_000, 100)).toBe(60_000);
+    });
+
+    it("连续秒退 → 延迟从 30ms 翻倍到 60ms，日志带连续失败次数与下次延迟", async () => {
+        const first = makeFakeChild(4300);
+        const second = makeFakeChild(4301);
+        const third = makeFakeChild(4302);
+        mocks.spawn
+            .mockImplementationOnce(() => first)
+            .mockImplementationOnce(() => second)
+            .mockImplementation(() => third);
+        startWithAccounts([{ qq: "10001" }], true);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(1));
+
+        first.emit("exit", 1, null);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(2));
+        expect(mocks.logger.warn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                qq: "10001",
+                consecutiveFailures: 1,
+                nextDelayMs: 30,
+            }),
+            expect.stringContaining("指数退避"),
+        );
+
+        // 第二次仍在阈值内退出 → 退避翻倍（60ms），由日志延迟值断言（不依赖墙钟）
+        second.emit("exit", 1, null);
+        await vi.waitFor(() => {
+            expect(mocks.logger.warn).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    qq: "10001",
+                    consecutiveFailures: 2,
+                    nextDelayMs: 60,
+                }),
+                expect.stringContaining("指数退避"),
+            );
+        });
+        // 退避到期后第三次拉起
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(3));
+
+        // 收尾：停止守护，避免常驻
+        await vi.waitFor(() => expect(watchOpts.length).toBe(1));
+        watchOpts[0]?.onTrigger();
+        third.emit("exit", 0, null);
+    });
+
+    it("稳定运行超过 30s → 退避计数清零，恢复基础延迟", async () => {
+        const first = makeFakeChild(4310);
+        const second = makeFakeChild(4311);
+        const third = makeFakeChild(4312);
+        mocks.spawn
+            .mockImplementationOnce(() => first)
+            .mockImplementationOnce(() => second)
+            .mockImplementation(() => third);
+        startWithAccounts([{ qq: "10001" }], true);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(1));
+
+        first.emit("exit", 1, null);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(2));
+
+        // 第二次进程「已稳定运行 31s」→ Date.now 前移跨过阈值
+        const stableNow = Date.now() + 31_000;
+        const nowSpy = vi.spyOn(Date, "now").mockReturnValue(stableNow);
+        try {
+            second.emit("exit", 1, null);
+            await vi.waitFor(() => {
+                expect(mocks.logger.info).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        qq: "10001",
+                        consecutiveFailures: 0,
+                        nextDelayMs: 30,
+                    }),
+                    expect.stringContaining("准备重启"),
+                );
+            });
+        } finally {
+            nowSpy.mockRestore();
+        }
+
+        // 收尾：阻止退避定时器再拉起子进程
+        await vi.waitFor(() => expect(watchOpts.length).toBe(1));
+        watchOpts[0]?.onTrigger();
+        third.emit("exit", 0, null);
     });
 });
 

@@ -6,6 +6,7 @@
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import { env } from "./env.js";
 import { getErrorMessage } from "./type-guards.js";
 
@@ -21,6 +22,24 @@ export function log(msg: string): void {
     } catch {
         // ignore
     }
+}
+
+/** boot 日志路径（致命错误提示 / 排障用）。 */
+export function bootLogPath(): string {
+    return LOG_PATH;
+}
+
+/**
+ * 致命引导错误输出（issue #144）：写 napuketto-boot.log，并同步到 stderr。
+ *
+ * 此前致命失败只落 boot 日志，Docker / 终端只看到 code=1 而没有任何原因。
+ * 严禁写 stdout：IPC 模式（NAPUTO_IPC=1）stdout 专用于 JSON 行协议，写入会撕裂
+ * 协议行；stderr 是独立通道，cli/boot.ts 的 forwardChildOutput 与 supervisor
+ * 都会逐行转发（非 IPC / IPC 两种宿主都可见）。
+ */
+export function logFatal(msg: string): void {
+    log(msg);
+    process.stderr.write(`[napuketto] ${msg}\n[napuketto] 详细日志: ${LOG_PATH}\n`);
 }
 
 /** 错误信息提取（保留 JS 原语义：message 存在用 message，否则用错误对象本身）。 */
@@ -66,7 +85,7 @@ export function convergeBootstrapFailure(e: unknown, phase: string): false {
     if (isConfigError(e)) {
         throw e;
     }
-    log(`bootstrap: ${phase}: ${errMsg(e)}`);
+    logFatal(`bootstrap: ${phase}: ${errMsg(e)}`);
     return false;
 }
 

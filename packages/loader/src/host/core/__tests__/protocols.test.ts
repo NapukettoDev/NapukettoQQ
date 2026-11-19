@@ -100,11 +100,20 @@ describe("startProtocols", () => {
         ).rejects.toMatchObject({ name: "ConfigError" });
     });
 
-    it("装配抛其他错误 → 收敛 null（引导失败）", async () => {
+    it("装配抛其他错误 → 收敛 null，具体原因写 stderr（issue #144）", async () => {
         vi.stubEnv("NAPUTO_IPC", "");
         h.throws = new Error("adapter 入口损坏");
-        const protocols = await freshProtocols();
-        const result = await protocols.startProtocols(KERNEL, { session: {} }, LOGIN);
-        expect(result).toBeNull();
+        const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        try {
+            const protocols = await freshProtocols();
+            const result = await protocols.startProtocols(KERNEL, { session: {} }, LOGIN);
+            expect(result).toBeNull();
+            const text = stderrSpy.mock.calls.map((call) => String(call[0])).join("");
+            expect(text).toContain("协议装配失败");
+            expect(text).toContain("adapter 入口损坏");
+            expect(text).toContain("napuketto-boot.log");
+        } finally {
+            stderrSpy.mockRestore();
+        }
     });
 });

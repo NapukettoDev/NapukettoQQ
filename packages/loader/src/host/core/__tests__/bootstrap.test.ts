@@ -13,7 +13,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SharedState } from "../../util.js";
 
 let tmpRoot = "";
@@ -51,9 +51,15 @@ function stubBootEnv(kernelSource: string): void {
     vi.stubEnv("NAPUTO_IPC", "");
 }
 
+beforeEach(() => {
+    // 引导失败自 issue #144 起同步写 stderr——测试静默，避免污染输出
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+});
+
 afterEach(() => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
+    vi.restoreAllMocks();
 });
 
 afterAll(() => {
