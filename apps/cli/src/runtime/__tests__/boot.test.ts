@@ -20,10 +20,12 @@ const mocks = vi.hoisted(() => ({
     isNativeNoiseLine: vi.fn(),
     launchSelfHost: vi.fn(),
     watchStopSentinel: vi.fn(),
-    writeStopSentinel: vi.fn(),
+    writeAccountStopSentinel: vi.fn(),
     isInlineConfigActive: vi.fn(),
     renderQrAnsi: vi.fn(),
     writeAccountRuntime: vi.fn(),
+    patchAccountRuntime: vi.fn(),
+    killProcessTree: vi.fn(),
     resolveCliLogConfig: vi.fn(),
     effectiveConsoleEnv: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -37,7 +39,7 @@ vi.mock("@napuketto/loader", () => ({
     isNativeNoiseLine: mocks.isNativeNoiseLine,
     launchSelfHost: mocks.launchSelfHost,
     watchStopSentinel: mocks.watchStopSentinel,
-    writeStopSentinel: mocks.writeStopSentinel,
+    writeAccountStopSentinel: mocks.writeAccountStopSentinel,
 }));
 vi.mock("../../config/inline.js", () => ({ isInlineConfigActive: mocks.isInlineConfigActive }));
 vi.mock("../../logger.js", () => ({
@@ -48,10 +50,16 @@ vi.mock("../../logger.js", () => ({
 vi.mock("../qr.js", () => ({ renderQrAnsi: mocks.renderQrAnsi }));
 vi.mock("../state.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
-    return { ...actual, writeAccountRuntime: mocks.writeAccountRuntime };
+    return {
+        ...actual,
+        writeAccountRuntime: mocks.writeAccountRuntime,
+        patchAccountRuntime: mocks.patchAccountRuntime,
+        killProcessTree: mocks.killProcessTree,
+    };
 });
 
 import { runSingleAccount } from "../boot.js";
+import { SUPERVISOR_CHILD_ENV } from "../state.js";
 import { type FakeChild, flushAsync, makeFakeChild } from "./test-support.js";
 
 let tmp = "";
@@ -82,6 +90,7 @@ beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-boot-test-"));
     child = makeFakeChild();
     delete process.env["NAPUTO_STUB_DIR"];
+    delete process.env[SUPERVISOR_CHILD_ENV];
     process.env["NAPKETTO_CONFIG"] = join(tmp, "napuketto.toml");
     resetSignalHandlers();
     exitCodeBefore = process.exitCode as number | undefined;
@@ -93,10 +102,12 @@ beforeEach(() => {
         mocks.isNativeNoiseLine,
         mocks.launchSelfHost,
         mocks.watchStopSentinel,
-        mocks.writeStopSentinel,
+        mocks.writeAccountStopSentinel,
         mocks.isInlineConfigActive,
         mocks.renderQrAnsi,
         mocks.writeAccountRuntime,
+        mocks.patchAccountRuntime,
+        mocks.killProcessTree,
         mocks.resolveCliLogConfig,
         mocks.effectiveConsoleEnv,
         ...Object.values(mocks.logger),
@@ -129,6 +140,7 @@ afterEach(() => {
     stdoutSpy.mockRestore();
     process.exitCode = exitCodeBefore as number | undefined;
     delete process.env["NAPUTO_STUB_DIR"];
+    delete process.env[SUPERVISOR_CHILD_ENV];
     delete process.env["NAPKETTO_CONFIG"];
     rmSync(tmp, { recursive: true, force: true });
 });
@@ -228,6 +240,29 @@ describe("运行态落盘与退出等待", () => {
         await p;
         expect(process.exitCode).toBe(0);
     });
+
+    it("托管模式：合并写入（保留 supervisor 的 kind/restartCount，只补 selfHostPid）", async () => {
+        process.env[SUPERVISOR_CHILD_ENV] = "1";
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        expect(mocks.writeAccountRuntime).not.toHaveBeenCalled();
+        expect(mocks.patchAccountRuntime).toHaveBeenCalledWith(
+            tmp,
+            "10001",
+            expect.objectContaining({ pid: process.pid, status: "running", selfHostPid: 4242 }),
+            expect.objectContaining({ kind: "supervisor-child", restartCount: 0 }),
+        );
+        child.emit("exit", 0);
+        await p;
+        expect(mocks.patchAccountRuntime).toHaveBeenLastCalledWith(
+            tmp,
+            "10001",
+            expect.objectContaining({ status: "exited", exitCode: 0, selfHostPid: 4242 }),
+            expect.objectContaining({ kind: "supervisor-child" }),
+        );
+        // 非托管路径（完整覆盖 single-boot）不得触发
+        expect(mocks.writeAccountRuntime).not.toHaveBeenCalled();
+    });
 });
 
 describe("输出转发（forwardFiltered）", () => {
@@ -297,7 +332,10 @@ describe("优雅停（哨兵 / 信号 / 超时兜底）", () => {
                 "收到停止请求，等待自建宿主退出",
             );
             await vi.advanceTimersByTimeAsync(10_000);
-            expect(child.kill).toHaveBeenCalledTimes(1);
+            expect(mocks.killProcessTree).toHaveBeenCalledWith(
+                4242,
+                expect.objectContaining({ onError: expect.any(Function) }),
+            );
             expect(mocks.logger.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ account: "10001" }),
                 "自建宿主未在限时内退出，强制结束",
@@ -316,7 +354,7 @@ describe("优雅停（哨兵 / 信号 / 超时兜底）", () => {
         expect(signalHandlers.has("SIGTERM")).toBe(true);
         const handler = signalHandlers.get("SIGINT")?.[0] as (signal: string) => void;
         handler("SIGINT");
-        expect(mocks.writeStopSentinel).toHaveBeenCalledWith(tmp, "10001");
+        expect(mocks.writeAccountStopSentinel).toHaveBeenCalledWith(tmp, "10001");
         expect(mocks.logger.info).toHaveBeenCalledWith(
             expect.objectContaining({ reason: "信号 SIGINT" }),
             "收到停止请求，等待自建宿主退出",
@@ -341,7 +379,7 @@ describe("优雅停（哨兵 / 信号 / 超时兜底）", () => {
             watchOpts.onTrigger();
             child.exitCode = 0;
             await vi.advanceTimersByTimeAsync(10_000);
-            expect(child.kill).not.toHaveBeenCalled();
+            expect(mocks.killProcessTree).not.toHaveBeenCalled();
             child.emit("exit", 0);
             await p;
         } finally {

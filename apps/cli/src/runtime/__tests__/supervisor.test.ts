@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
     watchStopSentinel: vi.fn(),
     writeSupervisorRuntime: vi.fn(),
     writeAccountRuntime: vi.fn(),
+    patchAccountRuntime: vi.fn(),
+    killProcessTree: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -50,6 +52,8 @@ vi.mock("../state.js", async (importOriginal) => {
         ...actual,
         writeSupervisorRuntime: mocks.writeSupervisorRuntime,
         writeAccountRuntime: mocks.writeAccountRuntime,
+        patchAccountRuntime: mocks.patchAccountRuntime,
+        killProcessTree: mocks.killProcessTree,
     };
 });
 // logger 换桩（避免真实 stdout 噪音 + 断言 warn/error），渲染决策函数保留真实实现
@@ -58,6 +62,7 @@ vi.mock("../../logger.js", async (importOriginal) => {
     return { ...actual, logger: mocks.logger };
 });
 
+import { SUPERVISOR_CHILD_ENV } from "../state.js";
 import { computeRestartDelayMs, runSupervisor } from "../supervisor.js";
 
 interface FakeChild extends EventEmitter {
@@ -95,6 +100,7 @@ function spyStdoutPassthrough(): ReturnType<typeof vi.spyOn> {
 
 let tmp = "";
 let exitSpy: ReturnType<typeof vi.spyOn>;
+let exitCodeBefore: number | undefined;
 const watchOpts: Array<{ dataRoot: string; onTrigger: () => void }> = [];
 
 beforeEach(() => {
@@ -103,6 +109,8 @@ beforeEach(() => {
     process.env["NAPKETTO_CONFIG"] = join(tmp, "不存在.toml");
     delete process.env["NAPUKETTO_LOG_FORMAT"];
     delete process.env["NAPUKETTO_LOG_COLORIZE"];
+    exitCodeBefore = process.exitCode as number | undefined;
+    process.exitCode = undefined;
     for (const fn of [
         mocks.spawn,
         mocks.loadCliConfigWithSource,
@@ -110,6 +118,8 @@ beforeEach(() => {
         mocks.watchStopSentinel,
         mocks.writeSupervisorRuntime,
         mocks.writeAccountRuntime,
+        mocks.patchAccountRuntime,
+        mocks.killProcessTree,
         ...Object.values(mocks.logger),
     ]) {
         fn.mockReset();
@@ -129,6 +139,7 @@ beforeEach(() => {
 afterEach(() => {
     setTty(undefined);
     delete process.env["NAPKETTO_CONFIG"];
+    process.exitCode = exitCodeBefore as number | undefined;
     vi.restoreAllMocks();
     if (tmp !== "") {
         rmSync(tmp, { recursive: true, force: true });
@@ -136,8 +147,8 @@ afterEach(() => {
     }
 });
 
-/** 配置单账号并启动 supervisor（挂起 promise 属预期，不 await）。 */
-function startWithAccounts(accounts: { qq: string }[], autoRestart: boolean): void {
+/** 配置单账号并启动 supervisor（返回常驻 promise；多数用例无需等待其结束）。 */
+function startWithAccounts(accounts: { qq: string }[], autoRestart: boolean): Promise<void> {
     mocks.loadCliConfigWithSource.mockResolvedValue({
         config: {
             dataDir: tmp,
@@ -148,7 +159,7 @@ function startWithAccounts(accounts: { qq: string }[], autoRestart: boolean): vo
         source: "file",
         path: join(tmp, "napuketto.toml"),
     });
-    void runSupervisor({ dataDir: tmp });
+    return runSupervisor({ dataDir: tmp });
 }
 
 describe("runSupervisor 子进程拉起", () => {
@@ -156,7 +167,7 @@ describe("runSupervisor 子进程拉起", () => {
         setTty(false);
         const child = makeFakeChild(4243);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        void startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         const opts = mocks.spawn.mock.calls[0]?.[2] as { env: Record<string, string> };
         expect(opts.env["NAPUKETTO_LOG_FORMAT"]).toBe("single-line");
@@ -170,11 +181,31 @@ describe("runSupervisor 子进程拉起", () => {
         setTty(true);
         const child = makeFakeChild(4244);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        void startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         const outSpy = spyStdoutPassthrough();
         child.stdout.write("hello\n");
         await vi.waitFor(() => expect(outSpy).toHaveBeenCalledWith("[10001] hello\n"));
+    });
+
+    it("注入托管标记 + 落 supervisor-child 状态与命令行指纹", async () => {
+        setTty(false);
+        const child = makeFakeChild(4245);
+        mocks.spawn.mockImplementation(() => child);
+        void startWithAccounts([{ qq: "10001" }], false);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+        const opts = mocks.spawn.mock.calls[0]?.[2] as { env: Record<string, string> };
+        expect(opts.env[SUPERVISOR_CHILD_ENV]).toBe("1");
+        expect(mocks.writeAccountRuntime).toHaveBeenCalledWith(
+            tmp,
+            expect.objectContaining({
+                uin: "10001",
+                kind: "supervisor-child",
+                status: "running",
+                cmdline: expect.stringContaining(`-q 10001 --data-dir ${tmp}`),
+            }),
+        );
+        child.emit("exit", 0, null);
     });
 });
 
@@ -228,7 +259,7 @@ describe("runSupervisor 账号退出", () => {
     it("autoRestart 开启：账号退出后延迟重启", async () => {
         const child = makeFakeChild(4245);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], true);
+        void startWithAccounts([{ qq: "10001" }], true);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         child.emit("exit", 1, null);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(2));
@@ -238,16 +269,18 @@ describe("runSupervisor 账号退出", () => {
         );
     });
 
-    it("autoRestart 关闭：账号退出写 runtime exited", async () => {
+    it("autoRestart 关闭：账号退出合并写 runtime exited", async () => {
         const child = makeFakeChild(4246);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        void startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         child.emit("exit", 1, "SIGTERM");
         await vi.waitFor(() =>
-            expect(mocks.writeAccountRuntime).toHaveBeenCalledWith(
+            expect(mocks.patchAccountRuntime).toHaveBeenCalledWith(
                 tmp,
-                expect.objectContaining({ uin: "10001", status: "exited", exitCode: 1 }),
+                "10001",
+                expect.objectContaining({ status: "exited", exitCode: 1 }),
+                expect.objectContaining({ uin: "10001", kind: "supervisor-child" }),
             ),
         );
     });
@@ -255,13 +288,15 @@ describe("runSupervisor 账号退出", () => {
     it("退出码 78（配置校验失败）：autoRestart 开启也不重启（2026-10-25 契约）", async () => {
         const child = makeFakeChild(4250);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], true);
+        void startWithAccounts([{ qq: "10001" }], true);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         child.emit("exit", 78, null);
         await vi.waitFor(() =>
-            expect(mocks.writeAccountRuntime).toHaveBeenCalledWith(
+            expect(mocks.patchAccountRuntime).toHaveBeenCalledWith(
                 tmp,
-                expect.objectContaining({ uin: "10001", status: "exited", exitCode: 78 }),
+                "10001",
+                expect.objectContaining({ status: "exited", exitCode: 78 }),
+                expect.objectContaining({ uin: "10001", kind: "supervisor-child" }),
             ),
         );
         // 不重启：延迟（30ms）后 spawn 仍只发生一次
@@ -276,7 +311,7 @@ describe("runSupervisor 账号退出", () => {
     it("spawn error 兜底：logger.error 且不崩进程", async () => {
         const child = makeFakeChild(4247);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        void startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         child.emit("error", new Error("spawn 失败"));
         expect(mocks.logger.error).toHaveBeenCalledWith(
@@ -303,7 +338,7 @@ describe("runSupervisor 秒退指数退避（issue #144）", () => {
             .mockImplementationOnce(() => first)
             .mockImplementationOnce(() => second)
             .mockImplementation(() => third);
-        startWithAccounts([{ qq: "10001" }], true);
+        void startWithAccounts([{ qq: "10001" }], true);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(1));
 
         first.emit("exit", 1, null);
@@ -346,7 +381,7 @@ describe("runSupervisor 秒退指数退避（issue #144）", () => {
             .mockImplementationOnce(() => first)
             .mockImplementationOnce(() => second)
             .mockImplementation(() => third);
-        startWithAccounts([{ qq: "10001" }], true);
+        void startWithAccounts([{ qq: "10001" }], true);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(1));
 
         first.emit("exit", 1, null);
@@ -378,12 +413,66 @@ describe("runSupervisor 秒退指数退避（issue #144）", () => {
     });
 });
 
+describe("runSupervisor 空闲收尾（无子进程且无待重启）", () => {
+    it("autoRestart 关闭：唯一子进程退出后结束常驻并返回 0", async () => {
+        const child = makeFakeChild(4400);
+        mocks.spawn.mockImplementation(() => child);
+        const running = startWithAccounts([{ qq: "10001" }], false);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+        child.emit("exit", 0, null);
+        await running;
+        expect(process.exitCode).toBe(0);
+    });
+
+    it("全部账号因 78 退出（autoRestart 开启）：结束常驻并透传 78", async () => {
+        const first = makeFakeChild(4401);
+        const second = makeFakeChild(4402);
+        mocks.spawn.mockImplementationOnce(() => first).mockImplementationOnce(() => second);
+        const running = startWithAccounts([{ qq: "10001" }, { qq: "20002" }], true);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledTimes(2));
+        first.emit("exit", 78, null);
+        second.emit("exit", 78, null);
+        await running;
+        expect(process.exitCode).toBe(78);
+    });
+
+    it("spawn error 且无其他子进程：结束常驻并返回 1", async () => {
+        const child = makeFakeChild(4405);
+        mocks.spawn.mockImplementation(() => child);
+        const running = startWithAccounts([{ qq: "10001" }], false);
+        await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
+        child.emit("error", new Error("spawn 失败"));
+        await running;
+        expect(process.exitCode).toBe(1);
+    });
+
+    it("stopAll 清理待重启定时器：停止后不再拉起子进程", async () => {
+        vi.useFakeTimers();
+        try {
+            const first = makeFakeChild(4403);
+            mocks.spawn
+                .mockImplementationOnce(() => first)
+                .mockImplementation(() => makeFakeChild(4404));
+            void startWithAccounts([{ qq: "10001" }], true);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(mocks.spawn).toHaveBeenCalledOnce();
+            // 子进程退出 → 30ms 退避重启定时器已排程（尚未到期）
+            first.emit("exit", 1, null);
+            watchOpts[0]?.onTrigger();
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(mocks.spawn).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
 describe("runSupervisor 优雅停树", () => {
     it("停止哨兵触发 → 写 all 哨兵 → 子进程退出后 exit 0", async () => {
         setTty(true);
         const child = makeFakeChild(4248);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        void startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(watchOpts.length).toBe(1));
         watchOpts[0]?.onTrigger();
         expect(mocks.writeStopSentinel).toHaveBeenCalledWith(tmp, "all");
@@ -391,13 +480,16 @@ describe("runSupervisor 优雅停树", () => {
         await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
     });
 
-    it("无运行账号时哨兵触发直接 exit 0", async () => {
+    it("无运行账号（子进程已退出）：空闲收尾直接结束，不再依赖哨兵", async () => {
         const child = makeFakeChild(4249);
         mocks.spawn.mockImplementation(() => child);
-        startWithAccounts([{ qq: "10001" }], false);
+        const running = startWithAccounts([{ qq: "10001" }], false);
         await vi.waitFor(() => expect(mocks.spawn).toHaveBeenCalledOnce());
         child.emit("exit", 0, null);
+        await running;
+        expect(process.exitCode).toBe(0);
+        // 已结束常驻：迟到的哨兵不再触发 stopAll（避免重复退出路径）
         watchOpts[0]?.onTrigger();
-        await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+        expect(exitSpy).not.toHaveBeenCalled();
     });
 });

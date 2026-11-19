@@ -20,9 +20,17 @@
 
 ### 两种优雅停
 
-- **停止哨兵**：向 `<数据根>/napuketto.stop` 写文件，内容为目标 uin 或 `all`（空文件等同 all），
-  mtime 晚于进程启动才触发，每进程至多一次；`stop`/`restart` 先等 8 秒，未退再树杀（Windows `taskkill /T /F`，POSIX SIGTERM）。
+- **停止哨兵**：全局 `<数据根>/napuketto.stop`（内容为目标 uin 或 `all`，空文件等同 all）；
+  单账号 `stop -q <uin>` 写独立文件 `<数据根>/napuketto.stop.<uin>`（文件存在即目标命中，
+  并发停不同账号互不覆盖）。mtime 晚于进程启动才触发，每进程至多一次；`stop`/`restart`
+  先等 8 秒，未退再树杀（Windows `taskkill /T /F`；POSIX 先 SIGTERM，宽限后对仍存活的
+  进程组 / self-host 子进程补 SIGKILL）。
 - **信号**：SIGINT / SIGTERM / SIGBREAK；Windows 的 `CTRL_BREAK_EVENT` 以 SIGBREAK 到达，`CREATE_NEW_PROCESS_GROUP` 拉起后可优雅停整树。
+
+`stop`/`restart` 在杀 supervisor 或账号进程前会比对状态文件里的启动命令行指纹
+（PID 复用校验）：不匹配说明 PID 已被无关进程复用，跳过树杀并告警；旧状态文件没有
+指纹时保持旧行为。`supervisor` 在全部子进程退出且无待重启任务时会自行结束
+（`autoRestart=false` 收尾为 0；全部因配置校验失败 `78` 退出则透传 `78`）。
 
 ### 退出码契约
 
@@ -45,8 +53,8 @@
 | `<账号目录>/logs/napuketto.log` | kernel 文件日志（登录、session、API） |
 | `<账号目录>/logs/loader.log` | loader 业务/消息日志与协议校准 |
 | `<账号目录>/napuketto-boot.log` | 引导阶段纯文本日志（失败根因常在此） |
-| `<账号目录>/runtime.json` | 进程 pid、启动时间、重启数、退出码 |
-| `<数据根>/supervisor.json` | supervisor pid、启动时间、账号列表 |
+| `<账号目录>/runtime.json` | 进程 pid、self-host pid、启动时间、运行形态、重启数、退出码、命令行指纹 |
+| `<数据根>/supervisor.json` | supervisor pid、启动时间、账号列表、命令行指纹 |
 | `<账号目录>/cache/qrcode.png` | 扫码登录二维码图片 |
 
 `status` 读状态文件后再用 pid 存活探测修正，不只看文件记录；CLI 逐行转发子进程

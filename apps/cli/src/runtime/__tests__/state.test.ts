@@ -1,21 +1,38 @@
 /**
  * state.test.ts：运行时状态文件 + 运维原语单测（2026-09-08 T8）。
  *
- * 覆盖：路径计算、状态读写 roundtrip、损坏文件容错、listAccountRuntimes
- * 目录扫描、isPidAlive（自身 pid / 不存在 pid）、aggregateStatus 的
- * liveness 修正。
+ * 覆盖：路径计算、状态读写 roundtrip、原子替换（无 .tmp 残留 / 失败清理）、
+ * 托管模式合并写入、损坏文件容错、listAccountRuntimes 目录扫描、isPidAlive
+ * （自身 pid / 不存在 pid）、PID 身份校验、POSIX 强杀信号升级、
+ * aggregateStatus 的 liveness 修正。
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { ConfigError } from "@napuketto/kernel";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+const loaderMocks = vi.hoisted(() => ({ readCmdlineForPid: vi.fn() }));
+
+vi.mock("@napuketto/loader", async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        // 固定可控探针：不真的走 PowerShell / /proc，用例跨平台确定。
+        CMDLINE_PROBE_SUPPORTED: true,
+        readCmdlineForPid: loaderMocks.readCmdlineForPid,
+    };
+});
+
 import {
     type AccountRuntime,
     aggregateStatus,
+    checkProcessIdentity,
     isPidAlive,
+    killProcessTree,
     listAccountRuntimes,
+    patchAccountRuntime,
     readAccountRuntime,
     readSupervisorRuntime,
     runtimeStatePath,
@@ -104,6 +121,32 @@ describe("runtime-state 读写", () => {
         });
     });
 
+    it("原子替换：覆盖后读到新内容，目录内无 .tmp 残留", () => {
+        const root = tempDir();
+        writeAccountRuntime(root, makeRuntime({ restartCount: 1 }));
+        writeAccountRuntime(root, makeRuntime({ restartCount: 7 }));
+        expect(readAccountRuntime(root, "10001")).toMatchObject({ restartCount: 7 });
+        expect(readdirSync(join(root, "10001"))).toEqual(["runtime.json"]);
+        writeSupervisorRuntime(root, { pid: 44, startedAt: "t", accounts: [] });
+        writeSupervisorRuntime(root, { pid: 45, startedAt: "t", accounts: [] });
+        expect(readSupervisorRuntime(root)).toMatchObject({ pid: 45 });
+        expect(readdirSync(root).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    });
+
+    it("替换失败（目标被目录占用）：清理临时文件并抛出原始错误", () => {
+        const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-atomic-"));
+        try {
+            // 目标路径被目录占用 → rename 替换失败（POSIX EISDIR / Windows EPERM）
+            mkdirSync(join(root, "10001", "runtime.json"), { recursive: true });
+            expect(() => writeAccountRuntime(root, makeRuntime())).toThrow();
+            expect(
+                readdirSync(join(root, "10001")).filter((name) => name.endsWith(".tmp")),
+            ).toEqual([]);
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     it("损坏 JSON 容错返回 null", () => {
         const root = tempDir();
         mkdirSync(join(root, "10002"), { recursive: true });
@@ -174,8 +217,196 @@ describe("aggregateStatus", () => {
         expect(rows[1]).toMatchObject({ uin: "2", alive: false, exitCode: 1 });
     });
 
-    it("restartCount 缺省 0；kind/startedAt 透传", () => {
-        const [row] = aggregateStatus([makeRuntime({ uin: "3", kind: "single-boot" })], () => true);
-        expect(row).toMatchObject({ uin: "3", kind: "single-boot", restartCount: 0 });
+    it("restartCount 缺省 0；kind/startedAt/selfHostPid 透传", () => {
+        const [row] = aggregateStatus(
+            [makeRuntime({ uin: "3", kind: "single-boot", selfHostPid: 77 })],
+            () => true,
+        );
+        expect(row).toMatchObject({
+            uin: "3",
+            kind: "single-boot",
+            restartCount: 0,
+            selfHostPid: 77,
+        });
+    });
+});
+
+describe("patchAccountRuntime（托管模式合并写入）", () => {
+    it("保留 supervisor 的 kind/restartCount/cmdline，补充 selfHostPid", () => {
+        const root = tempDir();
+        writeAccountRuntime(
+            root,
+            makeRuntime({
+                uin: "30001",
+                pid: 111,
+                restartCount: 4,
+                cmdline: "entry.mjs -q 30001 --data-dir x",
+            }),
+        );
+        patchAccountRuntime(
+            root,
+            "30001",
+            {
+                pid: 111,
+                selfHostPid: 222,
+                selfHostCmdline: "self-host.cjs",
+                status: "running",
+            },
+            makeRuntime({ uin: "30001", pid: 111 }),
+        );
+        expect(readAccountRuntime(root, "30001")).toMatchObject({
+            kind: "supervisor-child",
+            restartCount: 4,
+            selfHostPid: 222,
+            selfHostCmdline: "self-host.cjs",
+            cmdline: "entry.mjs -q 30001 --data-dir x",
+            status: "running",
+        });
+    });
+
+    it("running 丢弃上一轮 exitCode；exited 保留 selfHostPid 并写退出码", () => {
+        const root = tempDir();
+        writeAccountRuntime(
+            root,
+            makeRuntime({
+                uin: "30002",
+                status: "exited",
+                exitCode: 1,
+                restartCount: 2,
+                selfHostPid: 5,
+            }),
+        );
+        patchAccountRuntime(
+            root,
+            "30002",
+            { status: "running", restartCount: 2 },
+            makeRuntime({ uin: "30002" }),
+        );
+        expect(readAccountRuntime(root, "30002")?.exitCode).toBeUndefined();
+        patchAccountRuntime(
+            root,
+            "30002",
+            { status: "exited", exitCode: 78 },
+            makeRuntime({ uin: "30002" }),
+        );
+        expect(readAccountRuntime(root, "30002")).toMatchObject({
+            status: "exited",
+            exitCode: 78,
+            selfHostPid: 5,
+            restartCount: 2,
+        });
+    });
+
+    it("无现有状态时用 fallback 落盘", () => {
+        const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-patch-"));
+        try {
+            patchAccountRuntime(
+                root,
+                "30003",
+                { status: "exited", exitCode: 78 },
+                makeRuntime({ uin: "30003", restartCount: 1 }),
+            );
+            expect(readAccountRuntime(root, "30003")).toMatchObject({
+                kind: "supervisor-child",
+                status: "exited",
+                exitCode: 78,
+                restartCount: 1,
+            });
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+});
+
+describe("checkProcessIdentity（PID 复用校验）", () => {
+    beforeEach(() => {
+        loaderMocks.readCmdlineForPid.mockReset();
+    });
+
+    it("无指纹 / 空指纹 → unverified（不查询命令行）", () => {
+        expect(checkProcessIdentity(process.pid, undefined)).toBe("unverified");
+        expect(checkProcessIdentity(process.pid, "")).toBe("unverified");
+        expect(loaderMocks.readCmdlineForPid).not.toHaveBeenCalled();
+    });
+
+    it("指纹出现在目标命令行中 → match（对可执行文件路径/引号不敏感）", () => {
+        loaderMocks.readCmdlineForPid.mockReturnValue(
+            '"C:\\Program Files\\nodejs\\node.exe" "C:\\app\\index.mjs" -q 10001 --data-dir "C:\\data"',
+        );
+        expect(checkProcessIdentity(123, "index.mjs -q 10001 --data-dir C:/data")).toBe("match");
+    });
+
+    it("命令行不匹配 / 查不到 → mismatch（PID 已被复用）", () => {
+        loaderMocks.readCmdlineForPid.mockReturnValue("C:\\Windows\\notepad.exe");
+        expect(checkProcessIdentity(123, "-q 10001 --data-dir C:/data")).toBe("mismatch");
+        loaderMocks.readCmdlineForPid.mockReturnValue(null);
+        expect(checkProcessIdentity(123, "-q 10001 --data-dir C:/data")).toBe("mismatch");
+    });
+});
+
+describe("killProcessTree（POSIX 信号升级）", () => {
+    it.runIf(process.platform !== "win32")(
+        "SIGTERM 后宽限结束仍存活 → 对进程组与单进程补 SIGKILL（含 extraPids）",
+        () => {
+            vi.useFakeTimers();
+            const calls: Array<{ target: number; signal: number | NodeJS.Signals }> = [];
+            const killSpy = vi.spyOn(process, "kill").mockImplementation(((
+                target: number,
+                signal?: number | NodeJS.Signals,
+            ) => {
+                calls.push({ target, signal: signal ?? 0 });
+                return true;
+            }) as typeof process.kill);
+            try {
+                killProcessTree(4321, { extraPids: [4322], graceMs: 100 });
+                expect(calls).toEqual(
+                    expect.arrayContaining([
+                        { target: -4321, signal: "SIGTERM" },
+                        { target: 4321, signal: "SIGTERM" },
+                        { target: -4322, signal: "SIGTERM" },
+                        { target: 4322, signal: "SIGTERM" },
+                    ]),
+                );
+                expect(calls.some((call) => call.signal === "SIGKILL")).toBe(false);
+                vi.advanceTimersByTime(100);
+                expect(calls).toEqual(
+                    expect.arrayContaining([
+                        { target: -4321, signal: "SIGKILL" },
+                        { target: 4321, signal: "SIGKILL" },
+                        { target: -4322, signal: "SIGKILL" },
+                        { target: 4322, signal: "SIGKILL" },
+                    ]),
+                );
+            } finally {
+                killSpy.mockRestore();
+                vi.useRealTimers();
+            }
+        },
+    );
+
+    it.runIf(process.platform !== "win32")("目标已退出（ESRCH）→ 不补 SIGKILL", () => {
+        vi.useFakeTimers();
+        const calls: Array<{ target: number; signal: number | NodeJS.Signals }> = [];
+        const killSpy = vi.spyOn(process, "kill").mockImplementation(((
+            target: number,
+            signal?: number | NodeJS.Signals,
+        ) => {
+            const effective = signal ?? 0;
+            calls.push({ target, signal: effective });
+            if (effective === 0) {
+                const err = new Error("ESRCH") as NodeJS.ErrnoException;
+                err.code = "ESRCH";
+                throw err;
+            }
+            return true;
+        }) as typeof process.kill);
+        try {
+            killProcessTree(4321, { graceMs: 100 });
+            vi.advanceTimersByTime(100);
+            expect(calls.some((call) => call.signal === "SIGKILL")).toBe(false);
+        } finally {
+            killSpy.mockRestore();
+            vi.useRealTimers();
+        }
     });
 });

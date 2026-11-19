@@ -37,12 +37,20 @@ import {
     QR_LINE_PREFIX,
     resolveQqFiles,
     watchStopSentinel,
-    writeStopSentinel,
+    writeAccountStopSentinel,
 } from "@napuketto/loader";
 import { isInlineConfigActive } from "../config/inline.js";
 import { effectiveConsoleEnv, logger, resolveCliLogConfig } from "../logger.js";
 import { renderQrAnsi } from "./qr.js";
-import { accountDir, writeAccountRuntime } from "./state.js";
+import {
+    type AccountRuntime,
+    accountDir,
+    killProcessTree,
+    patchAccountRuntime,
+    SUPERVISOR_CHILD_ENV,
+    selfArgvFingerprint,
+    writeAccountRuntime,
+} from "./state.js";
 
 /** 单账号启动选项。 */
 export interface BootOptions {
@@ -254,8 +262,33 @@ function forwardChildOutput(child: ChildProcess): void {
     }
 }
 
-/** 单账号运行时状态落盘（napuketto status/stop 消费，2026-09-08 T8；
- * pid 记 boot 进程——树杀连带 self-host 孙进程）。 */
+/** self-host 子进程命令行参数指纹（spawnargs 去掉可执行文件本身；不可得时 undefined）。 */
+function childCmdline(child: ChildProcess): string | undefined {
+    const args: unknown = child.spawnargs;
+    if (!Array.isArray(args)) {
+        return undefined;
+    }
+    const tail = args
+        .slice(1)
+        .filter((arg): arg is string => typeof arg === "string")
+        .join(" ");
+    return tail === "" ? undefined : tail;
+}
+
+/** 是否由 supervisor 托管拉起（决定 runtime.json 的写入权责）。 */
+function isSupervisedChild(): boolean {
+    return process.env[SUPERVISOR_CHILD_ENV] === "1";
+}
+
+/**
+ * 单账号运行时状态落盘（napuketto status/stop 消费，2026-09-08 T8；
+ * pid 记 boot 进程——树杀连带 self-host 孙进程）。
+ *
+ * 托管模式（supervisor 拉起）下 runtime.json 的所有权在 supervisor：`kind`、
+ * `restartCount`、启动时间与 boot pid 由它写入，本函数只合并补充 selfHostPid /
+ * selfHostCmdline / 生命周期状态。否则受管 boot 一启动就把 supervisor 写的
+ * `supervisor-child` 覆写成 `single-boot` 并丢掉 restartCount（退出时再互相覆盖）。
+ */
 function recordRuntimeState(
     dataRoot: string,
     account: string,
@@ -263,13 +296,41 @@ function recordRuntimeState(
     status: "running" | "exited",
     exitCode?: number | null,
 ): void {
+    const startedAt = new Date().toISOString();
+    const selfHostPid = child.pid;
+    const selfHostCmdline = childCmdline(child);
+    const cmdline = selfArgvFingerprint();
+    const common = {
+        pid: process.pid,
+        ...(selfHostPid !== undefined ? { selfHostPid } : {}),
+        ...(selfHostCmdline !== undefined ? { selfHostCmdline } : {}),
+        status,
+        ...(exitCode !== undefined ? { exitCode } : {}),
+    };
+    if (isSupervisedChild()) {
+        const fallback: AccountRuntime = {
+            uin: account,
+            pid: process.pid,
+            startedAt,
+            kind: "supervisor-child",
+            status,
+            restartCount: 0,
+            ...(selfHostPid !== undefined ? { selfHostPid } : {}),
+            ...(selfHostCmdline !== undefined ? { selfHostCmdline } : {}),
+            ...(exitCode !== undefined ? { exitCode } : {}),
+        };
+        patchAccountRuntime(dataRoot, account, common, fallback);
+        return;
+    }
     writeAccountRuntime(dataRoot, {
         uin: account,
         pid: process.pid,
-        ...(child.pid !== undefined ? { selfHostPid: child.pid } : {}),
-        startedAt: new Date().toISOString(),
+        ...(selfHostPid !== undefined ? { selfHostPid } : {}),
+        ...(selfHostCmdline !== undefined ? { selfHostCmdline } : {}),
+        startedAt,
         kind: "single-boot",
         status,
+        ...(cmdline !== undefined ? { cmdline } : {}),
         ...(exitCode !== undefined ? { exitCode } : {}),
     });
 }
@@ -289,7 +350,15 @@ function installGracefulStop(
             return;
         }
         logger.warn({ account }, "自建宿主未在限时内退出，强制结束");
-        child.kill();
+        const pid = child.pid;
+        if (pid === undefined) {
+            return;
+        }
+        // POSIX：killProcessTree 会 SIGTERM 后升级 SIGKILL（child.kill 只有 SIGTERM，
+        // 忽略信号的卡死 self-host 会一直残留）。
+        killProcessTree(pid, {
+            onError: (message) => logger.warn({ account, message }, "强制结束失败"),
+        });
     };
     const armGracefulStop = (reason: string): void => {
         if (stopArmed) {
@@ -302,9 +371,10 @@ function installGracefulStop(
     };
     watchStopSentinel({ dataRoot, account, onTrigger: () => armGracefulStop("停止哨兵") });
     const onSignal = (signal: string): void => {
-        // 写哨兵覆盖非控制台信号场景（self-host 同目录观察同一文件）；终端
-        // Ctrl+C 下 self-host 也会直接收到 SIGINT，双路径收敛
-        writeStopSentinel(dataRoot, account);
+        // 写单账号独立哨兵（并发 stop 不互相覆盖）覆盖非控制台信号场景
+        // （self-host 同目录观察同一文件）；终端 Ctrl+C 下 self-host 也会直接
+        // 收到 SIGINT，双路径收敛
+        writeAccountStopSentinel(dataRoot, account);
         armGracefulStop(`信号 ${signal}`);
     };
     process.on("SIGINT", () => onSignal("SIGINT"));

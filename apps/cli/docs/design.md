@@ -114,6 +114,26 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
 - **守护重启退避**（issue #144）：子进程运行不足 30s 视为连续秒退，重启延迟按
   `restartDelayMs × 2^n` 增长、60s 封顶；稳定运行超过 30s 清零退避计数。日志打印连续
   失败次数与下次延迟，避免登录后秒退演变成高频循环重登（易触发 QQ 风控）。
+- **runtime.json 写入权责**：supervisor 与受管 boot 共享同一账号状态文件，supervisor
+  拥有 `kind`/`restartCount`/启动时间与 boot pid，受管 boot 通过
+  `SUPERVISOR_CHILD_ENV`（supervisor spawn 时注入）识别托管模式，只以
+  `patchAccountRuntime` 合并补充 `selfHostPid`/`selfHostCmdline` 与生命周期状态；退出时
+  双方都走合并写，禁止整文件覆盖。`status` 聚合输出 `kind`、`selfHostPid` 与
+  `restartCount`，便于区分托管子进程与单账号 boot。
+- **状态文件原子写**：`runtime.json` / `supervisor.json` 统一走「同目录唯一临时文件 +
+  rename」（Windows 由 libuv 以 `MOVEFILE_REPLACE_EXISTING` 覆盖，不先删目标），
+  异常时清理临时文件；并发 `status`/`stop` 不会读到截断 JSON。
+- **supervisor 空闲退出**：追踪每条守护重启的定时器（`pendingRestarts`），`stopAll`
+  统一 `clearTimeout`；当 `children` 与 `pendingRestarts` 均空时结束常驻——
+  `autoRestart=false` 全部退出收尾为 0，全部因 `78` 退出透传 `78`，其他异常收尾为 1。
+- **树杀安全**：`killProcessTree` 在 POSIX 先 SIGTERM，宽限后对仍存活目标（含进程组与
+  `selfHostPid`）补 SIGKILL；Windows 监听 `taskkill` 的 `error` 事件。`ops` 在杀
+  supervisor / 账号前用记录的命令行参数指纹做 PID 复用校验（`checkProcessIdentity`，
+  规范化子串比对），不匹配则跳过并告警；旧状态无指纹时保持旧行为。
+- **单账号哨兵隔离**：`stop -q <uin>` 写 `<数据根>/napuketto.stop.<uin>` 独立文件而非
+  覆盖全局单文件，并发 stop 不同账号互不覆盖/提前删除；全局 `all` 仍走
+  `napuketto.stop`。`cmdRestart` 在 `cmdStop` 置非 0 退出码或 `process.argv[1]` 为空时
+  立即中断，不 detached 拉起空 `node` 进程。
 
 ## 测试布局
 测试收拢在模块目录的 `__tests__/` 下，文件名对应被测模块；跨模块的领域套件可用领域名
