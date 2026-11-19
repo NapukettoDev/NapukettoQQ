@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.18.9
+
+### Patch Changes
+
+- Updated dependencies [cd2694e]
+  - @napuketto/kernel@0.15.4
+
 ## 0.18.8
 
 ### Patch Changes
