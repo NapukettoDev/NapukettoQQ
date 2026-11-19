@@ -26,7 +26,16 @@ import {
     logger,
     resolveCliLogConfig,
 } from "../logger.js";
-import { writeAccountRuntime, writeSupervisorRuntime } from "./state.js";
+import {
+    type AccountRuntime,
+    killProcessTree,
+    patchAccountRuntime,
+    readAccountRuntime,
+    SUPERVISOR_CHILD_ENV,
+    selfArgvFingerprint,
+    writeAccountRuntime,
+    writeSupervisorRuntime,
+} from "./state.js";
 
 /** 退出轮询间隔（毫秒）。 */
 const EXIT_POLL_MS = 100;
@@ -101,6 +110,14 @@ interface SupervisorCtx {
     restartCounts: Map<string, number>;
     /** 每账号连续短生命周期崩溃计数（指数退避用，稳定运行后清零）。 */
     crashCounts: Map<string, number>;
+    /** 待执行的重启定时器（stopAll / 空闲收尾时统一 clearTimeout）。 */
+    pendingRestarts: Map<string, NodeJS.Timeout>;
+    /** 已退出且未重启的账号退出码（空闲收尾据此透传 78）。 */
+    exitedCodes: Map<string, number | null>;
+    /** 子进程退出 / 重启定时器变化后的收尾检查（无子进程且无待重启 → 结束常驻）。 */
+    onSettled: () => void;
+    /** 是否已结束常驻（结束后的迟到事件一律忽略）。 */
+    isFinished: () => boolean;
     /** 子进程追加 env（NO_BANNER + 渲染决策传播）。 */
     childEnv: Record<string, string>;
     /** pretty 模式才加 [uin] 前缀转发（single-line/json 记录自带 account 字段）。 */
@@ -127,7 +144,22 @@ function forwardPrefixed(
     });
 }
 
-/** 账号进程退出落 runtime exited（status/stop 消费）。 */
+/** 子进程启动参数（spawn 与 runtime.json cmdline 共用，防两处漂移）。 */
+function childArgs(ctx: SupervisorCtx, acct: CliAccountConfig): string[] {
+    const args = [ctx.entry, "-q", acct.qq, "--data-dir", ctx.dataRoot];
+    if (ctx.stubDir !== undefined) {
+        args.push("--stub-dir", ctx.stubDir);
+    }
+    return args;
+}
+
+/** 托管子进程（boot）命令行参数指纹：树杀前 PID 复用校验用（不含可执行文件）。 */
+function childCmdline(ctx: SupervisorCtx, acct: CliAccountConfig): string {
+    return childArgs(ctx, acct).join(" ");
+}
+
+/** 账号进程退出落 runtime exited（status/stop 消费）。
+ * 合并写入：保留受管 boot 已记录的 selfHostPid / selfHostCmdline，不整文件覆盖。 */
 function writeAccountExited(
     ctx: SupervisorCtx,
     acct: CliAccountConfig,
@@ -135,7 +167,8 @@ function writeAccountExited(
     exitCode: number | null,
     restartCount: number,
 ): void {
-    writeAccountRuntime(ctx.dataRoot, {
+    const cmdline = childCmdline(ctx, acct);
+    const fallback: AccountRuntime = {
         uin: acct.qq,
         pid: child.pid ?? 0,
         startedAt: new Date().toISOString(),
@@ -143,7 +176,19 @@ function writeAccountExited(
         status: "exited",
         exitCode,
         restartCount,
-    });
+        cmdline,
+    };
+    patchAccountRuntime(
+        ctx.dataRoot,
+        acct.qq,
+        {
+            ...(child.pid !== undefined ? { pid: child.pid } : {}),
+            status: "exited",
+            exitCode,
+            restartCount,
+        },
+        fallback,
+    );
 }
 
 /**
@@ -180,9 +225,13 @@ function scheduleRestart(
         logger.info(fields, "账号退出，准备重启");
     }
     ctx.restartCounts.set(acct.qq, restartCount + 1);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+        ctx.pendingRestarts.delete(acct.qq);
         startAccount(ctx, acct);
     }, delayMs);
+    // 追踪定时器：stopAll 必须清理（否则停止后仍会拉起子进程），空闲收尾也依赖
+    // 「无待重启」判定。
+    ctx.pendingRestarts.set(acct.qq, timer);
 }
 
 /** 账号子进程退出编排：配置失败免重启（78）/ 守护重启 / 落 runtime exited。 */
@@ -195,6 +244,9 @@ function handleAccountExit(
     startedAtMs: number,
     restartCount: number,
 ): void {
+    if (ctx.isFinished()) {
+        return;
+    }
     ctx.children.delete(acct.qq);
     logger.info({ qq: acct.qq, code, signal: signal ?? "none" }, "账号退出");
     if (code === EXIT_CONFIG_INVALID) {
@@ -202,6 +254,8 @@ function handleAccountExit(
         // 不进守护重启，落 runtime exited 供 status 消费。
         logger.error({ qq: acct.qq, code }, "账号因配置校验失败退出（78），不自动重启");
         writeAccountExited(ctx, acct, child, code, restartCount);
+        ctx.exitedCodes.set(acct.qq, code);
+        ctx.onSettled();
         return;
     }
     if (!ctx.isStopping() && ctx.autoRestart) {
@@ -210,29 +264,33 @@ function handleAccountExit(
         return;
     }
     writeAccountExited(ctx, acct, child, code, restartCount);
+    ctx.exitedCodes.set(acct.qq, code);
+    ctx.onSettled();
 }
 
 /** 启动一个账号子进程（exit 后按 autoRestart 守护重启）。 */
 function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
-    if (ctx.isStopping()) {
+    if (ctx.isStopping() || ctx.isFinished()) {
         return;
     }
     const restartCount = ctx.restartCounts.get(acct.qq) ?? 0;
+    // 新一轮生命周期：清掉上一次退出的记录（空闲收尾只看「当前」退出码）。
+    ctx.exitedCodes.delete(acct.qq);
     // 引导细节（2026-10-25 级别重分配）：账号上线由子进程登录日志报告，此处降 debug
     logger.debug({ qq: acct.qq, pid: process.pid, restartCount }, "启动账号");
-    const args = [ctx.entry, "-q", acct.qq, "--data-dir", ctx.dataRoot];
-    if (ctx.stubDir !== undefined) {
-        args.push("--stub-dir", ctx.stubDir);
-    }
+    const args = childArgs(ctx, acct);
     // stdio 管道化（2026-09-08 T8）：逐行前缀转发（多账号输出可辨别），
     // 替代 inherit——结构化状态（runtime.json：pid/启动时间/重启计数）同步落盘。
     // env：banner 由 supervisor 统一打（每树至多一次），子进程注入 NO_BANNER；
-    // 渲染决策（format/colorize）按本进程最终控制台形态传播（子进程 stdout 恒 pipe）。
+    // 渲染决策（format/colorize）按本进程最终控制台形态传播（子进程 stdout 恒 pipe）；
+    // SUPERVISOR_CHILD_ENV 标记托管模式（受管 boot 只合并更新 runtime.json，不覆盖
+    // supervisor 写入的 kind/restartCount）。
     const child = spawn(process.execPath, args, {
         stdio: ["inherit", "pipe", "pipe"],
         env: {
             ...process.env,
             NAPUKETTO_NO_BANNER: "1",
+            [SUPERVISOR_CHILD_ENV]: "1",
             ...ctx.childEnv,
         },
     });
@@ -248,14 +306,20 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
         kind: "supervisor-child",
         status: "running",
         restartCount,
+        cmdline: childCmdline(ctx, acct),
     });
     child.on("exit", (code, signal) => {
         handleAccountExit(ctx, acct, child, code, signal, startedAtMs, restartCount);
     });
     child.on("error", (err) => {
+        if (ctx.isFinished()) {
+            return;
+        }
         const { message } = err;
         logger.error({ qq: acct.qq, err }, `账号启动失败: ${message}`);
         ctx.children.delete(acct.qq);
+        ctx.exitedCodes.set(acct.qq, 1);
+        ctx.onSettled();
     });
 }
 
@@ -268,11 +332,26 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
  */
 function stopAll(ctx: SupervisorCtx): void {
     logger.info("收到退出信号，停止全部账号");
+    // 待重启定时器必须清理：停止后不能再拉起子进程（否则父进程退出前又 spawn 出孤儿）。
+    for (const timer of ctx.pendingRestarts.values()) {
+        clearTimeout(timer);
+    }
+    ctx.pendingRestarts.clear();
     writeStopSentinel(ctx.dataRoot, "all");
-    // 超时兜底：子进程不响应（自建宿主卡死等）时强杀残留，父进程不再死等
+    // 超时兜底：子进程不响应（自建宿主卡死等）时强杀残留，父进程不再死等。
+    // 强杀覆盖 boot pid + runtime.json 记录的 selfHostPid（POSIX SIGTERM→SIGKILL），
+    // 否则只 kill boot 会留下忽略信号的 self-host 孤儿。
     const forceTimer = setTimeout(() => {
-        for (const child of ctx.children.values()) {
-            child.kill();
+        for (const [uin, child] of ctx.children) {
+            const pid = child.pid;
+            if (pid === undefined) {
+                continue;
+            }
+            const runtime = readAccountRuntime(ctx.dataRoot, uin);
+            killProcessTree(pid, {
+                ...(runtime?.selfHostPid !== undefined ? { extraPids: [runtime.selfHostPid] } : {}),
+                onError: (message) => logger.warn({ uin, message }, "强制停止失败"),
+            });
         }
         process.exit(0);
     }, FORCE_EXIT_MS);
@@ -305,7 +384,53 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     const children = new Map<string, ChildProcess>();
     const restartCounts = new Map<string, number>();
     const crashCounts = new Map<string, number>();
+    const pendingRestarts = new Map<string, NodeJS.Timeout>();
+    const exitedCodes = new Map<string, number | null>();
     let stopping = false;
+    let finished = false;
+    let resolveResident: (() => void) | undefined;
+    // 常驻 promise 必须早于 startAccount 创建：子进程可能在任何 await 之前就退出，
+    // 空闲收尾（finish）需要能即时 resolve 它。
+    const resident = new Promise<void>((resolve) => {
+        resolveResident = resolve;
+    });
+    const signalHandlers: Array<{ signal: NodeJS.Signals; listener: () => void }> = [];
+    /** 结束常驻：清理定时器/信号监听 → 写退出码 → 释放 runSupervisor 的 await。 */
+    const finish = (code: number): void => {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        for (const timer of pendingRestarts.values()) {
+            clearTimeout(timer);
+        }
+        pendingRestarts.clear();
+        for (const { signal, listener } of signalHandlers) {
+            process.off(signal, listener);
+        }
+        process.exitCode = code;
+        resolveResident?.();
+    };
+    /**
+     * 空闲收尾：既无存活子进程也无待重启定时器时不再常驻。
+     * 典型场景：autoRestart=false 且全部子进程退出；全部账号因配置失败（78）退出
+     * （不进重启队列）。没有这一步，supervisor 会被信号监听句柄永久挂起，即便
+     * 早已没有任何账号在跑。
+     */
+    const maybeFinish = (): void => {
+        if (stopping || finished || children.size > 0 || pendingRestarts.size > 0) {
+            return;
+        }
+        const codes = [...exitedCodes.values()];
+        const allConfigInvalid =
+            codes.length > 0 && codes.every((code) => code === EXIT_CONFIG_INVALID);
+        if (allConfigInvalid) {
+            finish(EXIT_CONFIG_INVALID);
+            return;
+        }
+        // 非 78 的异常退出（含信号杀死 code=null）收尾为 1，正常结束为 0。
+        finish(codes.some((code) => code !== 0) ? 1 : 0);
+    };
     // 渲染决策：按本进程最终控制台形态解析（[log] 配置 + TTY），传播给子进程
     const logCfg = resolveCliLogConfig(opts.dataDir);
     const ctx: SupervisorCtx = {
@@ -317,6 +442,10 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         children,
         restartCounts,
         crashCounts,
+        pendingRestarts,
+        exitedCodes,
+        onSettled: maybeFinish,
+        isFinished: () => finished,
         // 入站图片自动下载补丁 killswitch（issue #105）：config.nativeMediaPatch=false
         // 时注入（子进程 -q 直跑继承，launchSelfHost 不再覆盖——同名 env 优先级见 launcher）。
         childEnv: {
@@ -327,11 +456,13 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         isStopping: () => stopping,
     };
 
-    // supervisor 自身状态落盘（napuketto status/stop 消费）
+    // supervisor 自身状态落盘（napuketto status/stop 消费；cmdline 指纹供 stop 前 PID 复用校验）
+    const supervisorCmdline = selfArgvFingerprint();
     writeSupervisorRuntime(dataRoot, {
         pid: process.pid,
         startedAt: new Date().toISOString(),
         accounts: accounts.map((a) => a.qq),
+        ...(supervisorCmdline !== undefined ? { cmdline: supervisorCmdline } : {}),
     });
 
     for (const acct of accounts) {
@@ -342,20 +473,20 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     // SIGBREAK = Windows CTRL_BREAK_EVENT（嵌入式宿主 CREATE_NEW_PROCESS_GROUP +
     // GenerateConsoleCtrlEvent 可优雅停整树）；另接停止哨兵（宿主/脚本写文件即可）。
     const shutdown = (): void => {
-        if (stopping) {
+        if (stopping || finished) {
             return;
         }
         stopping = true;
         stopAll(ctx);
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
-    process.on("SIGBREAK", shutdown);
+    for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) {
+        process.on(signal, shutdown);
+        signalHandlers.push({ signal, listener: shutdown });
+    }
     // supervisor 不持有账号：仅响应 all/空内容哨兵（单账号哨兵由对应 boot/self-host 自行消费）
     watchStopSentinel({ dataRoot, onTrigger: shutdown });
 
-    // 常驻：直到收到退出信号（stopAll 内 process.exit）
-    await new Promise<void>(() => {
-        // 永不 resolve，由 stopAll 的 process.exit 结束进程
-    });
+    // 常驻：收到退出信号由 stopAll 的 process.exit 结束；全部子进程退出且无待重启
+    // 时由 maybeFinish 结束（返回退出码契约：全 78 → 78，否则 0）。
+    await resident;
 }

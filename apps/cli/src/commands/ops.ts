@@ -10,12 +10,18 @@
  *    supervisor autoStart）。
  */
 import process from "node:process";
-import { removeStopSentinel, writeStopSentinel } from "@napuketto/loader";
+import {
+    removeAccountStopSentinel,
+    removeStopSentinel,
+    writeAccountStopSentinel,
+    writeStopSentinel,
+} from "@napuketto/loader";
 import { parseCliQq } from "../config/schema.js";
 import { logger } from "../logger.js";
 import {
     type AccountRuntime,
     aggregateStatus,
+    checkProcessIdentity,
     isPidAlive,
     killProcessTree,
     listAccountRuntimes,
@@ -86,6 +92,7 @@ export function cmdStatus(dataRoot: string, opts: OpsOptions): void {
                 uin: row.uin,
                 alive: row.alive,
                 pid: row.pid,
+                ...(row.selfHostPid !== undefined ? { selfHostPid: row.selfHostPid } : {}),
                 kind: row.kind,
                 startedAt: row.startedAt,
                 restartCount: row.restartCount,
@@ -96,10 +103,73 @@ export function cmdStatus(dataRoot: string, opts: OpsOptions): void {
     }
 }
 
-/** 树杀目标账号（按 runtime pid）。 */
-function stopAccount(runtime: AccountRuntime): void {
-    killProcessTree(runtime.pid);
-    logger.info({ uin: runtime.uin, pid: runtime.pid }, "已发送停止（树杀）");
+/**
+ * 树杀前 PID 身份校验（防 PID 复用误杀，口径同 loader `checkInstanceLock`）：
+ * mismatch 直接跳过；unverified（旧状态无 cmdline 摘要 / 平台不支持探针）默认沿用
+ * 旧行为并记 debug，`allowUnverified: false` 时拒绝（调用方无法证明 pid 身份）。
+ */
+function canKillProcess(
+    pid: number,
+    cmdline: string | undefined,
+    fields: Record<string, unknown>,
+    options: { allowUnverified?: boolean } = {},
+): boolean {
+    const identity = checkProcessIdentity(pid, cmdline);
+    if (identity === "mismatch") {
+        logger.warn({ ...fields, pid }, "PID 已被无关进程复用（命令行不匹配），跳过树杀以避免误杀");
+        return false;
+    }
+    if (identity === "unverified") {
+        if (options.allowUnverified === false) {
+            logger.warn(
+                { ...fields, pid },
+                "缺少命令行指纹且无同树存活进程可佐证，跳过树杀以避免误杀",
+            );
+            return false;
+        }
+        logger.debug({ ...fields, pid }, "无命令行摘要，未做 PID 复用校验");
+    }
+    return true;
+}
+
+/** 树杀目标账号：boot pid + selfHostPid 分别做存活/身份校验后一并强杀。 */
+function killAccountTree(runtime: AccountRuntime): void {
+    const targets: number[] = [];
+    // boot 是 self-host 的父进程：boot 已验证存活时，旧状态无 self-host 指纹也可
+    // 认为该 pid 仍是本树子进程；boot 已死时必须依赖 self-host 自身指纹，否则
+    // 可能误杀被复用的无关 pid。
+    const bootKillable =
+        isPidAlive(runtime.pid) &&
+        canKillProcess(runtime.pid, runtime.cmdline, { uin: runtime.uin });
+    if (bootKillable) {
+        targets.push(runtime.pid);
+    }
+    const selfHostPid = runtime.selfHostPid;
+    if (
+        selfHostPid !== undefined &&
+        isPidAlive(selfHostPid) &&
+        canKillProcess(
+            selfHostPid,
+            runtime.selfHostCmdline,
+            { uin: runtime.uin, role: "self-host" },
+            { allowUnverified: bootKillable },
+        )
+    ) {
+        targets.push(selfHostPid);
+    }
+    const [primary] = targets;
+    if (primary === undefined) {
+        logger.warn(
+            { uin: runtime.uin, pid: runtime.pid },
+            "无可安全结束的进程（已退出或 PID 已复用），跳过树杀",
+        );
+        return;
+    }
+    killProcessTree(primary, {
+        extraPids: targets.slice(1),
+        onError: (message) => logger.warn({ uin: runtime.uin, message }, "树杀失败"),
+    });
+    logger.info({ uin: runtime.uin, pids: targets }, "已发送停止（树杀）");
 }
 
 /** stop：-q 停单账号；无 -q 停 supervisor + 全部账号兜底。
@@ -108,22 +178,64 @@ function stopAccount(runtime: AccountRuntime): void {
  * （退出码 0）→ 超时残留树杀兜底 → 清理哨兵。单账号哨兵只命中对应 boot/self-host，
  * 不干扰同数据根的其他账号。
  */
-/** stop -q：写单账号哨兵 → 等优雅退出 → 超时树杀兜底 → 清哨兵。 */
+/** stop -q：写单账号独立哨兵 → 等优雅退出 → 超时树杀兜底 → 清本账号哨兵。 */
 async function stopSingleAccount(dataRoot: string, target: AccountRuntime): Promise<void> {
     logger.info({ uin: target.uin, pid: target.pid }, "已发送停止请求（哨兵），等待退出");
-    writeStopSentinel(dataRoot, target.uin);
-    const stragglers = await waitForPidsExit([target.pid]);
-    for (const pid of stragglers) {
-        logger.warn({ uin: target.uin, pid }, "限时内未退出，树杀兜底");
-        killProcessTree(pid);
+    // 独立文件：并发 stop -q 不同账号时互不覆盖，也不会提前删除对方的请求。
+    writeAccountStopSentinel(dataRoot, target.uin);
+    const trackedPids = [
+        target.pid,
+        ...(target.selfHostPid !== undefined ? [target.selfHostPid] : []),
+    ];
+    const stragglers = await waitForPidsExit(trackedPids);
+    if (stragglers.length > 0) {
+        logger.warn({ uin: target.uin, pids: stragglers }, "限时内未退出，树杀兜底");
+        killAccountTree(target);
     }
-    removeStopSentinel(dataRoot);
+    removeAccountStopSentinel(dataRoot, target.uin);
     const supervisor = readSupervisorRuntime(dataRoot);
     if (supervisor !== null) {
         logger.warn(
             { supervisorPid: supervisor.pid },
             "supervisor 仍在运行且 autoRestart 开启时会自动拉起该账号；如需彻底停止请执行 napuketto stop（停 supervisor）",
         );
+    }
+}
+
+/** 全量 stop：停 supervisor（all 哨兵 → 超时树杀，含 PID 复用校验）。 */
+async function stopSupervisor(dataRoot: string): Promise<void> {
+    const supervisor = readSupervisorRuntime(dataRoot);
+    if (supervisor === null) {
+        logger.warn("supervisor 未运行（无状态文件）");
+        return;
+    }
+    const supervisorPid = isPidAlive(supervisor.pid) ? supervisor.pid : 0;
+    logger.info({ pid: supervisor.pid }, "已发送停止请求（哨兵），等待 supervisor 退出");
+    writeStopSentinel(dataRoot, "all");
+    const alive = await waitForPidsExit([supervisorPid]);
+    for (const pid of alive) {
+        if (!canKillProcess(pid, supervisor.cmdline, { role: "supervisor" })) {
+            continue;
+        }
+        logger.warn({ pid }, "supervisor 限时内未退出，树杀兜底");
+        killProcessTree(pid, {
+            onError: (message) => logger.warn({ pid, message }, "supervisor 树杀失败"),
+        });
+    }
+}
+
+/** 账号树杀涉及的全部 pid（boot pid + selfHostPid）。 */
+function runtimePids(runtime: AccountRuntime): number[] {
+    return [runtime.pid, ...(runtime.selfHostPid !== undefined ? [runtime.selfHostPid] : [])];
+}
+
+/** 全量 stop 兜底：残留账号进程逐个树杀（all 哨兵转发失败场合）。 */
+async function stopStragglerAccounts(runtimes: AccountRuntime[]): Promise<void> {
+    const stragglers = await waitForPidsExit(runtimes.flatMap(runtimePids));
+    for (const runtime of runtimes) {
+        if (runtimePids(runtime).some((pid) => stragglers.includes(pid))) {
+            killAccountTree(runtime);
+        }
     }
 }
 
@@ -140,36 +252,32 @@ export async function cmdStop(dataRoot: string, opts: OpsOptions): Promise<void>
         await stopSingleAccount(dataRoot, target);
         return;
     }
-    const supervisor = readSupervisorRuntime(dataRoot);
-    const supervisorPid = supervisor !== null && isPidAlive(supervisor.pid) ? supervisor.pid : 0;
-    if (supervisor !== null) {
-        logger.info({ pid: supervisor.pid }, "已发送停止请求（哨兵），等待 supervisor 退出");
-        writeStopSentinel(dataRoot, "all");
-        const alive = await waitForPidsExit([supervisorPid]);
-        for (const pid of alive) {
-            logger.warn({ pid }, "supervisor 限时内未退出，树杀兜底");
-            killProcessTree(pid);
-        }
-    } else {
-        logger.warn("supervisor 未运行（无状态文件）");
-    }
-    // 兜底：残留账号进程逐个树杀（哨兵转发失败的场合）
-    const stragglers = await waitForPidsExit(runtimes.map((r) => r.pid));
-    for (const runtime of runtimes) {
-        if (stragglers.includes(runtime.pid)) {
-            stopAccount(runtime);
-        }
-    }
+    await stopSupervisor(dataRoot);
+    await stopStragglerAccounts(runtimes);
     removeStopSentinel(dataRoot);
 }
 
-/** restart：stop 同目标 + detached 拉起。 */
+/** restart：stop 同目标 + detached 拉起（停止失败/入口缺失时不得继续拉起）。 */
 export async function cmdRestart(dataRoot: string, opts: OpsOptions): Promise<void> {
     assertOpsQq(opts);
     await cmdStop(dataRoot, opts);
+    // cmdStop 失败（目标无运行时状态等）只置 exitCode，不抛错——不拦住会发生
+    // 「stop 失败但仍拉起」的假重启。
+    if (process.exitCode !== undefined && process.exitCode !== 0) {
+        logger.error(
+            { qq: opts.qq ?? "(supervisor 全量)" },
+            "停止失败（目标未运行等），跳过重新拉起",
+        );
+        return;
+    }
+    const entry = process.argv[1];
+    if (entry === undefined || entry === "") {
+        logger.error("无法确定 cli 入口（process.argv[1] 为空），拒绝拉起空 node 进程");
+        process.exitCode = 1;
+        return;
+    }
     // 等待进程树退出（实例锁：同账号数据目录单实例，立即拉起会抢锁失败）
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    const entry = process.argv[1] ?? "";
     const args =
         opts.qq !== undefined
             ? [entry, "-q", opts.qq, "--data-dir", dataRoot]

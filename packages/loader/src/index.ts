@@ -99,18 +99,25 @@ export {
     registerLockCleanup,
     releaseInstanceLock,
 } from "./lifecycle/instance-lock.js";
-// 跨进程 cmdline 查询（instance-lock pid 复用校验的底层探针，诊断/工具可独立使用）
-export { readCmdlineForPid } from "./lifecycle/pid-cmdline.js";
+// 跨进程 cmdline 查询（instance-lock pid 复用校验 + cli 树杀前身份校验共用单一来源）
+export {
+    CMDLINE_PROBE_SUPPORTED,
+    normalizeCmdline,
+    readCmdlineForPid,
+} from "./lifecycle/pid-cmdline.js";
 // 优雅关停（停止哨兵 + 关停钩子 + 信号接入；supervisor / cli boot / self-host 共用）
 export type { StopSentinelWatchOptions } from "./lifecycle/shutdown.js";
 export {
+    accountStopSentinelPath,
     installSignalShutdown,
     registerShutdownHook,
+    removeAccountStopSentinel,
     removeStopSentinel,
     requestShutdown,
     STOP_SENTINEL_FILENAME,
     stopSentinelPath,
     watchStopSentinel,
+    writeAccountStopSentinel,
     writeStopSentinel,
 } from "./lifecycle/shutdown.js";
 export type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./qq/locate-qq.js";

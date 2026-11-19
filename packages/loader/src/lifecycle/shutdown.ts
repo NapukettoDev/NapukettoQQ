@@ -33,23 +33,54 @@ export function stopSentinelPath(dataRoot: string): string {
 }
 
 /**
+ * 单账号哨兵文件路径（`<数据根>/napuketto.stop.<uin>`）。
+ *
+ * 全局哨兵（`napuketto.stop`）是单文件、内容即目标 uin——多个
+ * `napuketto stop -q` 并发时会互相覆盖内容、并可能在等待结束后互相删除文件
+ * （后完成者把先完成者的请求提前清掉）。单账号目标因此改用独立文件：写入
+ * 与清理都只触碰本账号文件，天然并发安全；全局 `all` 仍走原单文件契约。
+ */
+export function accountStopSentinelPath(dataRoot: string, account: string): string {
+    return join(dataRoot, `${STOP_SENTINEL_FILENAME}.${encodeURIComponent(account)}`);
+}
+
+/**
  * 写停止哨兵（请求优雅关停）。target = "all"/空 = 全部账号；"<uin>" = 单账号。
  * 任何内容（含空）都视为请求；mtime 由写入时刻决定。
+ *
+ * 单账号的并发安全通道是 `writeAccountStopSentinel`（独立文件）；本函数保留
+ * 单文件 + 内容匹配的既有契约（外部脚本 / 兼容旧调用方），观察方两者都认。
  */
 export function writeStopSentinel(dataRoot: string, target: "all" | string): void {
     writeFileSync(stopSentinelPath(dataRoot), target === "all" ? "all\n" : `${target}\n`, "utf8");
 }
 
-/** 删除停止哨兵（napuketto stop 等待结束后清理，防陈旧文件累积）。 */
-export function removeStopSentinel(dataRoot: string): void {
-    const path = stopSentinelPath(dataRoot);
-    if (existsSync(path)) {
-        try {
-            rmSync(path);
-        } catch {
-            // 删除失败不阻塞（mtime 守卫使陈旧哨兵天然失效）
-        }
+/** 写单账号停止哨兵（独立文件；并发 `stop -q` 互不覆盖）。 */
+export function writeAccountStopSentinel(dataRoot: string, account: string): void {
+    // 内容仅供诊断（观察方只看文件存在 + mtime），保持与全局哨兵一致的「uin\n」形态。
+    writeFileSync(accountStopSentinelPath(dataRoot, account), `${account}\n`, "utf8");
+}
+
+/** 删除文件（不存在/删除失败不阻塞：mtime 守卫使陈旧哨兵天然失效）。 */
+function removeIfExists(path: string): void {
+    if (!existsSync(path)) {
+        return;
     }
+    try {
+        rmSync(path);
+    } catch {
+        // 删除失败不阻塞（mtime 守卫使陈旧哨兵天然失效）
+    }
+}
+
+/** 删除全局停止哨兵（napuketto stop 等待结束后清理，防陈旧文件累积）。 */
+export function removeStopSentinel(dataRoot: string): void {
+    removeIfExists(stopSentinelPath(dataRoot));
+}
+
+/** 删除单账号停止哨兵（只删本账号文件，不动全局与其他账号）。 */
+export function removeAccountStopSentinel(dataRoot: string, account: string): void {
+    removeIfExists(accountStopSentinelPath(dataRoot, account));
 }
 
 /** 哨兵内容是否命中本观察者（all/空 = 全部；否则精确匹配账号）。 */
@@ -73,34 +104,46 @@ export interface StopSentinelWatchOptions {
     pollMs?: number;
 }
 
+/** 读取「新鲜」哨兵内容（存在且 mtime 晚于进程启动）；缺失/陈旧/读写竞态 → null。 */
+function readFreshSentinel(path: string, processStartMs: number): string | null {
+    try {
+        if (!existsSync(path)) {
+            return null;
+        }
+        if (statSync(path).mtimeMs <= processStartMs) {
+            return null;
+        }
+        return readFileSync(path, "utf8");
+    } catch {
+        // 读写竞态（正在被写/删）：下一轮再看
+        return null;
+    }
+}
+
 /**
- * 观察停止哨兵：存在、mtime 晚于进程启动且内容命中 → onTrigger（一次性）。
- * 返回取消函数。mtime 守卫：进程启动前遗留的哨兵不触发（守护重启安全）。
+ * 观察停止哨兵：全局文件（内容命中）或本账号独立文件（存在即命中）→ onTrigger
+ * （一次性）。返回取消函数。mtime 守卫：进程启动前遗留的哨兵不触发（守护重启安全）。
  */
 export function watchStopSentinel(opts: StopSentinelWatchOptions): () => void {
-    const path = stopSentinelPath(opts.dataRoot);
+    const globalPath = stopSentinelPath(opts.dataRoot);
+    const accountPath =
+        opts.account !== undefined
+            ? accountStopSentinelPath(opts.dataRoot, opts.account)
+            : undefined;
     const processStartMs = performance.timeOrigin;
     let triggered = false;
     const timer = setInterval(() => {
         if (triggered) {
             return;
         }
-        let mtimeMs = 0;
-        let content = "";
-        try {
-            if (!existsSync(path)) {
-                return;
-            }
-            mtimeMs = statSync(path).mtimeMs;
-            content = readFileSync(path, "utf8");
-        } catch {
-            // 读写竞态（正在被写/删）：下一轮再看
+        const globalContent = readFreshSentinel(globalPath, processStartMs);
+        if (globalContent !== null && sentinelMatches(globalContent, opts.account)) {
+            triggered = true;
+            opts.onTrigger();
             return;
         }
-        if (mtimeMs <= processStartMs) {
-            return;
-        }
-        if (sentinelMatches(content, opts.account)) {
+        // 单账号独立哨兵：文件存在（mtime 新鲜）即请求，内容不参与匹配。
+        if (accountPath !== undefined && readFreshSentinel(accountPath, processStartMs) !== null) {
             triggered = true;
             opts.onTrigger();
         }

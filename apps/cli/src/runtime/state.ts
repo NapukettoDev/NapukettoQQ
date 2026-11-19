@@ -9,10 +9,18 @@
  * taskkill /T /F，杀 boot 进程树连带 self-host 孙进程）+ detached 重启。
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
-import { configError, hasNumberProp, hasStringProp, isRecord } from "@napuketto/kernel";
+import {
+    configError,
+    errorMessage,
+    hasNumberProp,
+    hasStringProp,
+    isRecord,
+} from "@napuketto/kernel";
+import { CMDLINE_PROBE_SUPPORTED, normalizeCmdline, readCmdlineForPid } from "@napuketto/loader";
 
 /** 账号运行时状态（runtime.json）。 */
 export interface AccountRuntime {
@@ -32,6 +40,10 @@ export interface AccountRuntime {
     exitCode?: number | null;
     /** supervisor 守护重启次数。 */
     restartCount?: number;
+    /** 启动命令行参数指纹（脚本 + 参数，树杀前 PID 复用校验；旧状态文件可能缺省）。 */
+    cmdline?: string;
+    /** self-host 子进程命令行参数指纹（树杀前 PID 复用校验；可能缺省）。 */
+    selfHostCmdline?: string;
 }
 
 /** supervisor 运行时状态（supervisor.json）。 */
@@ -40,7 +52,21 @@ export interface SupervisorRuntime {
     startedAt: string;
     /** 编排的账号列表。 */
     accounts: string[];
+    /** 启动命令行参数指纹（脚本 + 参数，stop 前 PID 复用校验；旧状态文件可能缺省）。 */
+    cmdline?: string;
 }
+
+/**
+ * supervisor 注入给受管子进程的托管标记 env。
+ *
+ * 托管模式下 supervisor 与 boot 共享同一份 runtime.json：supervisor 拥有
+ * `kind`/`restartCount`/启动时间与 boot pid，受管 boot 只补充 `selfHost*`。
+ * boot 读到该标记即走合并写入（`patchAccountRuntime`），不再整文件覆盖。
+ */
+export const SUPERVISOR_CHILD_ENV = "NAPUTO_SUPERVISOR_CHILD";
+
+/** POSIX 强杀升级宽限（毫秒）：SIGTERM 后仍未退出则补 SIGKILL。 */
+const FORCE_KILL_GRACE_MS = 1500;
 
 /** runtime.json 文件名。 */
 const RUNTIME_FILE = "runtime.json";
@@ -78,11 +104,86 @@ export function supervisorStatePath(dataRoot: string): string {
     return join(dataRoot, SUPERVISOR_FILE);
 }
 
+/** 删除文件（不存在/删除失败不阻塞）。 */
+function removeIfExists(path: string): void {
+    try {
+        rmSync(path, { force: true });
+    } catch {
+        // 清理失败不掩盖原始写入/替换错误
+    }
+}
+
+/**
+ * 原子写 JSON：同目录唯一临时文件 → rename 覆盖目标。
+ *
+ * 直接 `writeFileSync` 在并发读取（status/stop 与其他进程）时可能读到截断 JSON；
+ * rename 在同一文件系统内是原子的。Windows 下 libuv 的 rename 走
+ * `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`，目标已存在时直接替换，因此**不能**
+ * 先删目标再 rename（会留下「文件短暂不存在」的空窗）。临时文件名带 pid + UUID，
+ * 避免 supervisor / boot 并发写同一目录时互相踩临时文件；写入或替换失败时清理
+ * 临时文件后原样抛出。
+ */
+function writeJsonAtomic(path: string, value: unknown): void {
+    const dir = dirname(path);
+    mkdirSync(dir, { recursive: true });
+    const tmpPath = join(dir, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+    try {
+        writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+        renameSync(tmpPath, path);
+    } catch (err) {
+        removeIfExists(tmpPath);
+        throw err;
+    }
+}
+
 /** 写账号运行时状态（原子覆盖）。 */
 export function writeAccountRuntime(dataRoot: string, state: AccountRuntime): void {
-    const path = runtimeStatePath(dataRoot, state.uin);
-    mkdirSync(join(path, ".."), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    writeJsonAtomic(runtimeStatePath(dataRoot, state.uin), state);
+}
+
+/** runtime.json 合并补丁（仅覆盖显式提供的字段）。 */
+export interface AccountRuntimePatch {
+    pid?: number;
+    selfHostPid?: number;
+    selfHostCmdline?: string;
+    cmdline?: string;
+    startedAt?: string;
+    kind?: AccountRuntime["kind"];
+    status?: AccountRuntime["status"];
+    exitCode?: number | null;
+    restartCount?: number;
+}
+
+/** 过滤 undefined 的补丁字段（exactOptionalPropertyTypes：不显式写 undefined）。 */
+function definedPatch(patch: AccountRuntimePatch): Partial<AccountRuntime> {
+    const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
+    return Object.fromEntries(entries) as Partial<AccountRuntime>;
+}
+
+/**
+ * 合并写入账号运行时状态（托管模式专用：supervisor 与受管 boot 共享 runtime.json）。
+ *
+ * 以磁盘现有合法状态为底应用 patch；现有文件缺失/损坏时用 fallback 完整状态兜底。
+ * `status` 切回 running 时丢弃上一次的 exitCode（新生命周期），避免 status 显示
+ * 「运行中 + 旧退出码」。
+ */
+export function patchAccountRuntime(
+    dataRoot: string,
+    uin: string,
+    patch: AccountRuntimePatch,
+    fallback: AccountRuntime,
+): void {
+    const base = readAccountRuntime(dataRoot, uin) ?? fallback;
+    const next: AccountRuntime = { ...base, ...definedPatch(patch), uin };
+    if (next.status === "running") {
+        delete next.exitCode;
+    } else {
+        const exitCode = patch.exitCode === undefined ? base.exitCode : patch.exitCode;
+        if (exitCode !== undefined) {
+            next.exitCode = exitCode;
+        }
+    }
+    writeJsonAtomic(runtimeStatePath(dataRoot, uin), next);
 }
 
 /** 账号运行形态判定。 */
@@ -95,6 +196,11 @@ function isAccountRuntimeStatus(val: unknown): val is AccountRuntime["status"] {
     return val === "running" || val === "exited";
 }
 
+/** 可选字符串字段判定（缺省合法）。 */
+function isOptionalString(val: unknown): boolean {
+    return val === undefined || typeof val === "string";
+}
+
 /** runtime.json 形状守卫（损坏 / 旧格式 / 手工改错的文件一律判非法）。 */
 function isAccountRuntime(val: unknown): val is AccountRuntime {
     return (
@@ -105,7 +211,9 @@ function isAccountRuntime(val: unknown): val is AccountRuntime {
         val["pid"] > 0 &&
         hasStringProp(val, "startedAt") &&
         isAccountRuntimeKind(val["kind"]) &&
-        isAccountRuntimeStatus(val["status"])
+        isAccountRuntimeStatus(val["status"]) &&
+        isOptionalString(val["cmdline"]) &&
+        isOptionalString(val["selfHostCmdline"])
     );
 }
 
@@ -118,7 +226,8 @@ function isSupervisorRuntime(val: unknown): val is SupervisorRuntime {
         val["pid"] > 0 &&
         hasStringProp(val, "startedAt") &&
         Array.isArray(val["accounts"]) &&
-        val["accounts"].every((item): item is string => typeof item === "string")
+        val["accounts"].every((item): item is string => typeof item === "string") &&
+        isOptionalString(val["cmdline"])
     );
 }
 
@@ -130,8 +239,7 @@ export function readAccountRuntime(dataRoot: string, uin: string): AccountRuntim
 
 /** 写 supervisor 运行时状态（数据根缺省时自动创建——首次在新目录 start 不再 ENOENT）。 */
 export function writeSupervisorRuntime(dataRoot: string, state: SupervisorRuntime): void {
-    mkdirSync(dataRoot, { recursive: true });
-    writeFileSync(supervisorStatePath(dataRoot), `${JSON.stringify(state, null, 2)}\n`, "utf8");
+    writeJsonAtomic(supervisorStatePath(dataRoot), state);
 }
 
 /** 读 supervisor 运行时状态（缺失返回 null）。 */
@@ -183,17 +291,119 @@ export function isPidAlive(pid: number): boolean {
     }
 }
 
-/** 树杀命令构造（win32：taskkill /T /F 连孙进程；posix：kill 信号）。 */
-export function killProcessTree(pid: number): void {
-    if (process.platform === "win32") {
-        spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+/** 强杀选项。 */
+export interface KillProcessTreeOptions {
+    /** 附加目标（如 runtime.json 的 selfHostPid）：与主目标一并处理，覆盖孙进程。 */
+    extraPids?: number[];
+    /** POSIX SIGTERM → SIGKILL 升级宽限（毫秒；<=0 立即升级）。 */
+    graceMs?: number;
+    /** 诊断回调（taskkill 启动失败 / 非 ESRCH 信号错误；已退出属正常不回调）。 */
+    onError?: (message: string) => void;
+}
+
+/** 目标进程不存在（ESRCH）：正常路径，不回调 onError。 */
+function isNoSuchProcess(err: unknown): boolean {
+    return isRecord(err) && err["code"] === "ESRCH";
+}
+
+/** 去重并过滤非法 pid（0/负数/非整数视为无效）。 */
+function uniquePids(pids: number[]): number[] {
+    return [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
+/**
+ * 树杀（超时兜底强杀）：win32 走 `taskkill /T /F`；POSIX 先 SIGTERM，宽限后对
+ * 仍存活目标补 SIGKILL。
+ *
+ * POSIX 覆盖范围：对每个目标同时尝试进程组（`-pid`，仅当目标恰为组长时生效，
+ * 普通进程返回 ESRCH 静默）与单进程，并接受 `extraPids` 传入 selfHostPid——
+ * 只发 SIGTERM 且只打 boot pid 会留下忽略信号的卡死进程与 self-host 孤儿。
+ * Windows 必须监听 taskkill 的 `error` 事件：spawn 失败（PATH 缺 taskkill 等）
+ * 是异步事件，不监听会静默失败。
+ */
+export function killProcessTree(pid: number, options: KillProcessTreeOptions = {}): void {
+    const targets = uniquePids([pid, ...(options.extraPids ?? [])]);
+    if (targets.length === 0) {
         return;
     }
-    try {
-        process.kill(pid, "SIGTERM");
-    } catch {
-        // 已退出：无需处理
+    if (process.platform === "win32") {
+        for (const target of targets) {
+            const killer = spawn("taskkill", ["/PID", String(target), "/T", "/F"], {
+                stdio: "ignore",
+                windowsHide: true,
+            });
+            killer.on("error", (err) => {
+                options.onError?.(`taskkill 失败（pid ${target}）：${errorMessage(err)}`);
+            });
+        }
+        return;
     }
+    const send = (target: number, signal: NodeJS.Signals): void => {
+        try {
+            process.kill(target, signal);
+        } catch (err) {
+            if (!isNoSuchProcess(err)) {
+                options.onError?.(`发送 ${signal} 失败（pid ${target}）：${errorMessage(err)}`);
+            }
+        }
+    };
+    const killTarget = (target: number, signal: NodeJS.Signals): void => {
+        // 先试进程组（-pid 只对组长生效；非组长 ESRCH 静默），再试单进程。
+        send(-target, signal);
+        send(target, signal);
+    };
+    for (const target of targets) {
+        killTarget(target, "SIGTERM");
+    }
+    const escalate = (): void => {
+        for (const target of targets) {
+            // 已退出（或 pid 已被回收）不再补刀，缩小 PID 复用误杀窗口。
+            if (isPidAlive(target)) {
+                killTarget(target, "SIGKILL");
+            }
+        }
+    };
+    const graceMs = options.graceMs ?? FORCE_KILL_GRACE_MS;
+    if (graceMs <= 0) {
+        escalate();
+        return;
+    }
+    const timer = setTimeout(escalate, graceMs);
+    timer.unref?.();
+}
+
+/** PID 身份校验结果：match = 命令行一致；mismatch = PID 已被复用；unverified = 无摘要/平台不支持。 */
+export type ProcessIdentity = "match" | "mismatch" | "unverified";
+
+/**
+ * 本进程命令行指纹（`argv[1..]`，不含可执行文件）。
+ *
+ * 不用 loader `selfCmdline()` 直接比对：它把 execArgv 排在 argv 前、且 argv[0]
+ * 常是裸 `node`，与操作系统记录的完整命令行（可执行文件绝对路径 + execArgv +
+ * 脚本 + 参数）顺序/前缀不一致，容易误判成「PID 已复用」而让 stop 失效。
+ * 指纹只取脚本及其后的参数，校验时按规范化子串匹配。
+ */
+export function selfArgvFingerprint(): string | undefined {
+    const args = process.argv.slice(1);
+    return args.length > 0 ? args.join(" ") : undefined;
+}
+
+/**
+ * 树杀前 PID 身份校验（防 PID 复用误杀，口径同 loader `checkInstanceLock`）：
+ * 记录的「脚本 + 参数」指纹必须出现在目标进程当前命令行中（规范化后子串比对，
+ * 对可执行文件绝对路径 / execArgv / 引号 / 路径分隔符差异免疫）。查不到（进程
+ * 刚退 / 权限不足）→ mismatch；平台不支持探针或旧状态文件无指纹 → unverified
+ * （调用方保守沿用旧行为，不因升级而让 stop 失效）。
+ */
+export function checkProcessIdentity(pid: number, cmdline: string | undefined): ProcessIdentity {
+    if (cmdline === undefined || cmdline === "" || !CMDLINE_PROBE_SUPPORTED) {
+        return "unverified";
+    }
+    const current = readCmdlineForPid(pid);
+    if (current === null) {
+        return "mismatch";
+    }
+    return normalizeCmdline(current).includes(normalizeCmdline(cmdline)) ? "match" : "mismatch";
 }
 
 /** detached 拉起 node 进程（restart 用；立即返回不等待）。 */
@@ -211,6 +421,8 @@ export function spawnDetached(args: string[], cwd?: string): ChildProcess {
 export interface AccountStatusRow {
     uin: string;
     pid: number;
+    /** self-host 子进程 pid（诊断；可能缺省）。 */
+    selfHostPid?: number;
     /** 文件状态 + liveness 修正后的实际状态。 */
     alive: boolean;
     kind: AccountRuntime["kind"];
@@ -227,6 +439,7 @@ export function aggregateStatus(
     return runtimes.map((r) => ({
         uin: r.uin,
         pid: r.pid,
+        ...(r.selfHostPid !== undefined ? { selfHostPid: r.selfHostPid } : {}),
         alive: r.status === "running" ? aliveFn(r.pid) : false,
         kind: r.kind,
         startedAt: r.startedAt,

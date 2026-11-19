@@ -106,8 +106,10 @@ Linux：
   一致 → PID 已被复用，接管；旧锁无 cmdline → 保守判占用。
 - 占用时 self-host 记日志、IPC 发 failed（`INVALID_STATE`）后 exit 1。
 - 退出清理只在持有者是本进程时删锁；崩溃强杀残留由下次启动的探活兜底。
-- 关停：`<数据根>/napuketto.stop` 哨兵（内容 `all` 或 uin，mtime 晚于进程启动才触发）
-  与 SIGINT/SIGTERM/SIGBREAK，逆序跑关停钩子后 exit 0。
+- 关停：`<数据根>/napuketto.stop` 全局哨兵（内容 `all` / uin / 空，mtime 晚于进程启动才
+  触发）与 `<数据根>/napuketto.stop.<uin>` 单账号独立哨兵（存在即触发；并发 `stop -q`
+  互不覆盖，清理只动本账号文件），两者都接入 SIGINT/SIGTERM/SIGBREAK；逆序跑关停钩子
+  后 exit 0。单文件 + uin 内容形态保留兼容，观察方对全局与独立文件同时生效。
 
 ### IPC 模式与 OB11 容器
 
