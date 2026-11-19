@@ -35,11 +35,28 @@ export type ConfigSource = "inline" | "file";
  * 回退文件形态）。
  */
 export function readInlineConfigText(): string | undefined {
-    const raw = process.env[INLINE_CONFIG_ENV] ?? process.env[LEGACY_INLINE_CONFIG_ENV];
-    if (raw === undefined || raw.trim() === "") {
+    return readInlineEnvEntry()?.text;
+}
+
+/**
+ * 实际命中的内联配置 env 键名（新前缀优先、旧前缀回退；未生效 → undefined）。
+ * 来源日志据此输出真实键名，避免旧前缀兼容期日志写死新名误导排查。
+ */
+export function inlineConfigEnvName(): string | undefined {
+    return readInlineEnvEntry()?.key;
+}
+
+/** 内联 env 决议（精确键读取；新前缀存在但为空时不回退旧前缀，与历史口径一致）。 */
+function readInlineEnvEntry(): { key: string; text: string } | undefined {
+    const primary = process.env[INLINE_CONFIG_ENV];
+    if (primary !== undefined) {
+        return primary.trim() === "" ? undefined : { key: INLINE_CONFIG_ENV, text: primary };
+    }
+    const legacy = process.env[LEGACY_INLINE_CONFIG_ENV];
+    if (legacy === undefined || legacy.trim() === "") {
         return undefined;
     }
-    return raw;
+    return { key: LEGACY_INLINE_CONFIG_ENV, text: legacy };
 }
 
 /** 内联是否生效（boot/装配链决定「不碰文件」的判定口径，与 readInlineConfigText 同源）。 */

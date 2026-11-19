@@ -8,14 +8,42 @@
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { isInlineConfigActive, readInlineConfigSection } from "../inline.js";
+import { inlineConfigEnvName, isInlineConfigActive, readInlineConfigSection } from "../inline.js";
 
 beforeEach(() => {
     delete process.env["NAPKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
 });
 
 afterEach(() => {
     delete process.env["NAPKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+});
+
+describe("inlineConfigEnvName（来源日志实际键名）", () => {
+    it("未设置 / 纯空白 → undefined", () => {
+        expect(inlineConfigEnvName()).toBeUndefined();
+        process.env["NAPKETTO_CONFIG_JSON"] = "   ";
+        expect(inlineConfigEnvName()).toBeUndefined();
+    });
+
+    it("仅旧前缀 → 旧键名", () => {
+        process.env["NAPKETTO_CONFIG_JSON"] = '{"accounts":[]}';
+        expect(inlineConfigEnvName()).toBe("NAPKETTO_CONFIG_JSON");
+    });
+
+    it("新旧同时设置 → 新前缀优先", () => {
+        process.env["NAPKETTO_CONFIG_JSON"] = '{"accounts":[]}';
+        process.env["NAPUKETTO_CONFIG_JSON"] = '{"accounts":[]}';
+        expect(inlineConfigEnvName()).toBe("NAPUKETTO_CONFIG_JSON");
+    });
+
+    it("新前缀存在但为空 → 不回退旧前缀（与 readInlineConfigText 口径一致）", () => {
+        process.env["NAPUKETTO_CONFIG_JSON"] = "  ";
+        process.env["NAPKETTO_CONFIG_JSON"] = '{"accounts":[]}';
+        expect(inlineConfigEnvName()).toBeUndefined();
+        expect(isInlineConfigActive()).toBe(false);
+    });
 });
 
 describe("isInlineConfigActive", () => {

@@ -25,6 +25,7 @@ apps/cli/src/
 │   └── store.ts                 # CliConfigStore + 默认值 + 模板落盘 + 来源决议/加载
 └── runtime/                     # 进程运行期
     ├── boot.ts                  # 单账号自建宿主启动（账号目录边界校验）
+    ├── lines.ts                 # 子进程输出逐行切分（单行缓冲上限，boot/supervisor 共用）
     ├── qr.ts                    # 终端二维码渲染（uqr 编码 + 白底黑块 ANSI）
     ├── supervisor.ts            # 多账号子进程编排（显式 -q 去重拒绝）
     └── state.ts                 # runtime.json + pid/树杀/detached + 状态聚合（路径边界）
@@ -111,6 +112,16 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
 - **退出码透传**（issue #144）：单账号 boot 等待 self-host 退出时，非停止状态下的异常
   退出码（含 `78`）必须透传给 boot 进程；收到停止请求恒 `0`。supervisor 依赖 `78` 判定
   「配置未修复、不守护重启」，boot 吞码会让该契约失效、把配置失败变成无限重启。
+- **单账号收尾释放**：`runSingleAccount` 在 `waitSelfHostExit` 的 `finally` 调用
+  `installGracefulStop` 句柄的 `dispose`，统一 `process.off` 三个信号监听、取消
+  `watchStopSentinel` 轮询并清理 10s kill 兜底定时器；否则常驻结束后仍残留 handler 与
+  定时器（同进程复用/测试隔离都会被污染）。
+- **`--qq-path` 透传**：无 `-q` / 多 `-q` / `supervisor` 子命令进入编排时，
+  `SupervisorOptions.qqPath` 必须随子进程参数（`--qq-path`）与 runtime.json cmdline
+  指纹一起透传；多账号共用同一份 QQ 原生文件覆盖，不能静默回退本机安装/下载来源。
+- **子进程输出行上限**：boot / supervisor 统一走 `runtime/lines.ts`，不用无上限的
+  readline 单行缓冲；单行超过 64 KiB 截断并补 `…[truncated]`，避免原生层无换行异常
+  输出把内存打满。
 - **守护重启退避**（issue #144）：子进程运行不足 30s 视为连续秒退，重启延迟按
   `restartDelayMs × 2^n` 增长、60s 封顶；稳定运行超过 30s 清零退避计数。日志打印连续
   失败次数与下次延迟，避免登录后秒退演变成高频循环重登（易触发 QQ 风控）。
@@ -147,7 +158,10 @@ commands/__tests__/start.test.ts
 config/__tests__/schema.test.ts
 config/__tests__/store.test.ts
 config/__tests__/source.test.ts   # inline + store 来源优先级
+config/__tests__/source-log.test.ts # 来源日志实际命中的内联 env 键名
+config/__tests__/template.test.ts   # 配置模板段落归属
 runtime/__tests__/boot.test.ts
+runtime/__tests__/lines.test.ts     # 逐行切分 + 无换行超长行截断
 runtime/__tests__/state.test.ts
 runtime/__tests__/supervisor.test.ts
 runtime/__tests__/qr.test.ts      # 终端二维码渲染（uqr 矩阵 roundtrip）

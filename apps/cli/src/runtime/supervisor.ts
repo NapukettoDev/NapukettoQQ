@@ -10,7 +10,6 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
-import { createInterface } from "node:readline";
 import { configError, EXIT_CONFIG_INVALID, resolveDataRoot } from "@napuketto/kernel";
 import { watchStopSentinel, writeStopSentinel } from "@napuketto/loader";
 import {
@@ -26,6 +25,7 @@ import {
     logger,
     resolveCliLogConfig,
 } from "../logger.js";
+import { forwardLines } from "./lines.js";
 import {
     type AccountRuntime,
     killProcessTree,
@@ -68,6 +68,8 @@ export interface SupervisorOptions {
     qqs?: string[];
     /** stub QQNT.dll 目录（自建宿主 PATH 前置，透传给子进程 --stub-dir）。 */
     stubDir?: string;
+    /** QQ 安装路径覆盖（透传给子进程 --qq-path；多账号共用同一份原生文件）。 */
+    qqPath?: string;
 }
 
 /**
@@ -105,6 +107,8 @@ interface SupervisorCtx {
     restartDelayMs: number;
     autoRestart: boolean;
     stubDir?: string;
+    /** QQ 安装路径覆盖（透传给子进程 --qq-path）。 */
+    qqPath?: string;
     children: Map<string, ChildProcess>;
     /** 每账号守护重启计数（写 runtime.json 用）。 */
     restartCounts: Map<string, number>;
@@ -138,8 +142,7 @@ function forwardPrefixed(
     if (stream === null) {
         return;
     }
-    const rl = createInterface({ input: stream });
-    rl.on("line", (line) => {
+    forwardLines(stream, (line) => {
         process.stdout.write(prefixEnabled ? `[${uin}] ${line}\n` : `${line}\n`);
     });
 }
@@ -149,6 +152,9 @@ function childArgs(ctx: SupervisorCtx, acct: CliAccountConfig): string[] {
     const args = [ctx.entry, "-q", acct.qq, "--data-dir", ctx.dataRoot];
     if (ctx.stubDir !== undefined) {
         args.push("--stub-dir", ctx.stubDir);
+    }
+    if (ctx.qqPath !== undefined) {
+        args.push("--qq-path", ctx.qqPath);
     }
     return args;
 }
@@ -439,6 +445,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         restartDelayMs,
         autoRestart: config.autoRestart,
         ...(opts.stubDir !== undefined ? { stubDir: opts.stubDir } : {}),
+        ...(opts.qqPath !== undefined ? { qqPath: opts.qqPath } : {}),
         children,
         restartCounts,
         crashCounts,
