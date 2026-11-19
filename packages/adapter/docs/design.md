@@ -147,6 +147,10 @@
 - 远程媒体下载统一走 `@napuketto/media` 的 `downloadUrl`（adapter 侧唯一入口是
   `internal/qq/media.ts` 的 `downloadBufferToFile`）：超时、大小上限、流式落盘与
   出站地址策略都在那里，协议侧不再直接 `fetch` 或 `arrayBuffer()`。
+- WS 鉴权（`SatoriEventHub`）：Satori 是连接后带内鉴权，握手期无凭据，因此不复用
+  `WsServer.authorize`。hub 接管 wsServers 的 `send`/`open`/`close`，只向完成
+  `IDENTIFY` 的连接广播 `EVENT`；token 不符或 10s 内未 `IDENTIFY` 以 4004 关闭；
+  token 为空时连接即视为已认证（空 token = 不鉴权）。
 
 ### KuroBot 自建连接层
 

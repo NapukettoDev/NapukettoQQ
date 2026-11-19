@@ -5,8 +5,8 @@
  *  - HTTP RPC：POST /v1/{resource}.{method} 分发（200/404/405/400/501）；
  *    非 /v1/ 与单段路径 404；/v1/meta 不可达（文档已知限制，锁现状 404）
  *  - 鉴权：配 token 后 HTTP 要求 Bearer 头（缺失/错误 → 401）
- *  - WS 事件服务：IDENTIFY → READY（token 校验，失败不响应）；PING → PONG；
- *    EVENT 经 broadcaster.emit 推送
+ *  - WS 事件服务：IDENTIFY → READY（token 校验；不符/超时 → 4004 关闭）；
+ *    PING → PONG；EVENT 经 broadcaster.emit **只推给已认证连接**
  *  - close：关闭传输并从 broadcaster 注销（幂等）
  */
 import { kernelError } from "@napuketto/kernel";
@@ -38,6 +38,7 @@ function buildSet(opts: {
     token?: string;
     instanceToken?: string;
     registry?: ReturnType<typeof createSatoriActionRegistry>;
+    identifyTimeoutMs?: number;
 }): { set: SatoriTransportSet; broadcaster: EventBroadcaster; api: StubSatoriApi } {
     const api = stubSatoriApi();
     const broadcaster = new EventBroadcaster();
@@ -62,6 +63,9 @@ function buildSet(opts: {
         broadcaster,
         registry,
         login: () => toLogin(SELF, 0, true),
+        ...(opts.identifyTimeoutMs !== undefined
+            ? { identifyTimeoutMs: opts.identifyTimeoutMs }
+            : {}),
     });
     return { set, broadcaster, api };
 }
@@ -113,6 +117,21 @@ function openWs(port: number): Promise<WsClient> {
         const ws = new WsClient(`ws://127.0.0.1:${port}/v1/events`);
         ws.once("open", () => resolve(ws));
         ws.once("error", reject);
+    });
+}
+
+/** 等待连接关闭（返回 close code 与 reason）。 */
+function waitClose(ws: WsClient, timeoutMs = 3000): Promise<{ code: number; reason: string }> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("等待 WS 关闭超时")), timeoutMs);
+        ws.once("close", (code, reason) => {
+            clearTimeout(timer);
+            resolve({ code, reason: reason.toString() });
+        });
+        ws.once("error", (err) => {
+            clearTimeout(timer);
+            reject(err);
+        });
     });
 }
 
@@ -310,7 +329,7 @@ describe("WS 事件服务（无 token 组 A）", () => {
 
     it("broadcaster.emit(EVENT 信令) → 客户端收到完整 Event", async () => {
         const ws = await openWs(PORT_WS_A);
-        // 先 IDENTIFY（协议要求，服务端不强制）
+        // token 为空：连接即已认证；IDENTIFY 只为取 READY（协议要求）
         ws.send(JSON.stringify({ op: Opcode.IDENTIFY }));
         await waitMessage(ws);
         const signal = toEventSignal({
@@ -332,6 +351,21 @@ describe("WS 事件服务（无 token 组 A）", () => {
         ws.close();
     });
 
+    it("token 为空：未 IDENTIFY 的连接同样收到事件（空 token = 不鉴权）", async () => {
+        const ws = await openWs(PORT_WS_A);
+        setA.broadcaster.emit(
+            toEventSignal({
+                sn: 3,
+                type: "login-updated",
+                timestamp: 1700000002,
+                login: toLogin(SELF, 3, true),
+            }),
+        );
+        const msg = await waitMessage(ws);
+        expect(msg["op"]).toBe(Opcode.EVENT);
+        ws.close();
+    });
+
     it("HTTP 实例也注册到 broadcaster：send no-op 不影响 emit 广播", async () => {
         // emit 一个事件不应抛错（HTTP send no-op；WS 客户端已关，无接收者）
         expect(() =>
@@ -348,22 +382,71 @@ describe("WS 事件服务（无 token 组 A）", () => {
 });
 
 describe("WS 鉴权（token 组 B）", () => {
-    it("IDENTIFY 无 token：不响应（客户端超时断开语义）", async () => {
+    it("未 IDENTIFY 的连接收不到任何事件（认证前不广播）", async () => {
         const ws = await openWs(PORT_WS_B);
+        setB.broadcaster.emit(
+            toEventSignal({
+                sn: 1,
+                type: "message-created",
+                timestamp: 1700000000,
+                login: toLogin(SELF, 1, true),
+            }),
+        );
+        await expect(expectSilence(ws)).resolves.toBe(true);
+        ws.close();
+    });
+
+    it("IDENTIFY 缺 token：以 4004 关闭（不再挂起等待客户端超时）", async () => {
+        const ws = await openWs(PORT_WS_B);
+        const closed = waitClose(ws);
         ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: {} }));
-        await expect(expectSilence(ws)).resolves.toBe(true);
-        ws.close();
+        await expect(closed).resolves.toEqual({ code: 4004, reason: "unauthorized" });
     });
 
-    it("IDENTIFY token 错误：不响应", async () => {
+    it("IDENTIFY token 错误：以 4004 关闭", async () => {
         const ws = await openWs(PORT_WS_B);
+        const closed = waitClose(ws);
         ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token: "wrong" } }));
-        await expect(expectSilence(ws)).resolves.toBe(true);
-        ws.close();
+        await expect(closed).resolves.toEqual({ code: 4004, reason: "unauthorized" });
     });
 
-    it("IDENTIFY token 正确：READY", async () => {
+    it("IDENTIFY token 正确：READY 且随后能收到事件", async () => {
         const ws = await openWs(PORT_WS_B);
+        ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token: TOKEN } }));
+        const ready = await waitMessage(ws);
+        expect(ready["op"]).toBe(Opcode.READY);
+        setB.broadcaster.emit(
+            toEventSignal({
+                sn: 2,
+                type: "login-updated",
+                timestamp: 1700000001,
+                login: toLogin(SELF, 2, true),
+            }),
+        );
+        const event = await waitMessage(ws);
+        expect(event["op"]).toBe(Opcode.EVENT);
+        ws.close();
+    });
+});
+
+describe("IDENTIFY 超时（组 E：短超时）", () => {
+    beforeAll(async () => {
+        await Promise.all(setE.set.adapters.map((a) => a.open()));
+    });
+
+    afterAll(async () => {
+        await setE.set.close();
+    });
+
+    it("连接后未在超时内 IDENTIFY → 4004 关闭", async () => {
+        const ws = await openWs(36250);
+        const closed = await waitClose(ws);
+        expect(closed.code).toBe(4004);
+        expect(closed.reason).toBe("IDENTIFY timeout");
+    });
+
+    it("超时前完成 IDENTIFY → 连接保留并回 READY", async () => {
+        const ws = await openWs(36250);
         ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token: TOKEN } }));
         const msg = await waitMessage(ws);
         expect(msg["op"]).toBe(Opcode.READY);
@@ -412,6 +495,14 @@ const setD = buildSet({
         );
         return reg;
     })(),
+});
+
+/** 组 E：短 IDENTIFY 超时（未鉴权连接的回收用例，避免测试等满 10s）。 */
+const setE = buildSet({
+    httpPort: 36249,
+    wsPort: 36250,
+    token: TOKEN,
+    identifyTimeoutMs: 1000,
 });
 
 describe("实例级 token 与 disabled 服务器（组 C）", () => {

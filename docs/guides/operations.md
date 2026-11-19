@@ -122,7 +122,8 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 - 每个传输实例独立监听，端口被占用时启动失败。
 - OB11 默认 3000/3001、Satori 默认 5500/5501；多账号部署自行错开。
-- 鉴权失败：OB11 的 WS 以 4401 关闭；Satori HTTP 用 Bearer、WS 在 IDENTIFY 带 token；token 空表示不鉴权。
+- 鉴权失败：OB11 的 WS 以 4401 关闭；Satori HTTP 用 Bearer、WS 在 IDENTIFY 带 token
+  （未认证连接收不到事件，token 不符或 10s 未 IDENTIFY 以 4004 关闭）；token 空表示不鉴权。
 
 ### Linux 原生宿主
 
