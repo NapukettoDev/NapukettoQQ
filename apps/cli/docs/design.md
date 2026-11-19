@@ -13,7 +13,7 @@ apps/cli/src/
 ├── cli/                         # commander 适配层（对外契约）
 │   ├── program.ts               # 全局选项、banner、子命令注册、默认动作分发
 │   ├── version.ts               # cliVersion()：运行时读自身 package.json 的 version
-│   └── error.ts                 # handleActionError：ConfigError -> 78，其余 -> 1
+│   └── error.ts                 # handleActionError：ConfigError -> 78，其余 -> 1；预期错误单行日志
 ├── commands/                    # 用例实现（不 import commander）
 │   ├── start.ts                 # 默认动作：-q 单账号 / 多 -q / 无 -q 读配置（-q 入口校验）
 │   ├── config.ts                # config init/list/apply/validate（输出脱敏）
