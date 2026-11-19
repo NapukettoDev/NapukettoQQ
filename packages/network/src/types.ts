@@ -58,13 +58,14 @@ export type Respond = (res: unknown, status?: number) => void;
 /**
  * 传输适配器：协议无关（对应 NapCat OB11NetworkAdapter 的泛型化）。
  * - `send`：协议无关推送（HTTP 反向无主动推送，实现为 no-op）
- * - `onRequest`：接收第三方请求 → 协议层处理后经 `respond` 回发
+ * - `onRequest`：接收第三方请求 → 协议层处理后经 `respond` 回发；
+ *   第三参为发起请求的连接（仅 WS 类传输提供，HTTP 类实现可忽略）
  */
 export interface TransportAdapter {
     send: <T>(payload: T) => void;
     open: () => void | Promise<void>;
     close: () => void | Promise<void>;
-    onRequest?: (req: unknown, respond: Respond) => void;
+    onRequest?: (req: unknown, respond: Respond, socket: WsSocket) => void;
 }
 
 /**

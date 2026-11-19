@@ -151,6 +151,54 @@ describe("WsServer", () => {
         expect(seen?.headers["upgrade"]).toBe("websocket");
     });
 
+    it("onConnection 在 authorize 通过后触发，入参为握手 RequestContext", async () => {
+        let seen: RequestContext | undefined;
+        const { server, url } = await start();
+        server.onConnection = (_socket, ctx) => {
+            seen = ctx;
+        };
+
+        const ws = await connectOk(`${url}/v1/events?x=1`);
+        cleanups.push(async () => ws.terminate());
+        await realDelay(30);
+
+        expect(seen?.url).toBe("/v1/events?x=1");
+    });
+
+    it("authorize 拒绝时不触发 onConnection", async () => {
+        const seen: RequestContext[] = [];
+        const { server, url } = await start({ authorize: () => false });
+        server.onConnection = (_socket, ctx) => {
+            seen.push(ctx);
+        };
+
+        const ws = new ClientSocket(url);
+        const closed = await waitClose(ws);
+        expect(closed.code).toBe(4401);
+        expect(seen).toHaveLength(0);
+    });
+
+    it("onRequest 第三参收到发起请求的连接（带内鉴权登记用）", async () => {
+        const { server, url } = await start();
+        let connection: unknown;
+        let fromRequest: unknown;
+        server.onConnection = (socket) => {
+            connection = socket;
+        };
+        server.onRequest = (_req, respond, socket) => {
+            fromRequest = socket;
+            respond({ ok: true });
+        };
+
+        const ws = await connectOk(url);
+        cleanups.push(async () => ws.terminate());
+        ws.send(JSON.stringify({}));
+
+        await expect(waitJsonMessage(ws)).resolves.toEqual({ ok: true });
+        expect(fromRequest).toBeDefined();
+        expect(fromRequest).toBe(connection);
+    });
+
     it("path 选项：匹配路径可连入，其他路径握手被拒", async () => {
         const { url } = await start({ path: "/ws" });
 

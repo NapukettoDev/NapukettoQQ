@@ -29,8 +29,10 @@ port = 5501
   非 `/v1/` 或未知动作 404，平台支持但未实现 501，鉴权失败 401。
 - **WS 事件**：路径固定 `/v1/events`；客户端 `IDENTIFY`（`body.token` 可选）→ 服务端
   `READY`（`logins` / `proxy_urls`）→ `PING`/`PONG` → 服务端推送 `EVENT`。
-- 配了 token 时 `IDENTIFY` token 不符则不响应，客户端超时断开。当前不做会话恢复：
-  `IDENTIFY.body.sn` 被忽略，重连只拿当前状态。
+- 鉴权：配了 token 时，只有完成 `IDENTIFY` 且 token 匹配的连接才会收到 `EVENT`；
+  token 不符或连接建立后 10s 内未 `IDENTIFY`，服务端以 close code `4004`
+  （authentication failed）断开。token 为空表示不鉴权，连接建立即视为已认证。
+- 当前不做会话恢复：`IDENTIFY.body.sn` 被忽略，重连只拿当前状态。
 
 ## 能力速查
 

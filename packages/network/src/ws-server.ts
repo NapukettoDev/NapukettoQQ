@@ -2,16 +2,19 @@
  * 反向 WS server（被动，第三方主动连入）
  *
  * 收到消息 → `onRequest` 注入点（协议层分发）→ 响应经 `respond` 回发**同一客户端**。
- * 鉴权（token）通过 `authorize` 钩子；心跳按间隔 ping 全部客户端。
+ * 鉴权（token）通过 `authorize` 钩子；握手期无法携带凭据的协议（Satori 的带内
+ * IDENTIFY）改用 `onConnection` 钩子自行登记连接。心跳按间隔 ping 全部客户端。
  */
 import type { IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
     DEFAULT_MAX_PAYLOAD_BYTES,
     incomingMessageToRequestContext,
+    type RequestContext,
     type Respond,
     type TransportAdapter,
     type WsServerOptions,
+    type WsSocket,
 } from "./types.js";
 
 const WS_CLOSE_CODE = {
@@ -23,8 +26,16 @@ export class WsServer implements TransportAdapter {
     private wss: WebSocketServer | undefined;
     private heartbeatTimer: NodeJS.Timeout | undefined;
 
-    /** 请求分发注入点：协议层实现「请求 → 响应」（status 参数 WS 下忽略）。 */
-    onRequest?: (req: unknown, respond: Respond) => void;
+    /**
+     * 请求分发注入点：协议层实现「请求 → 响应」（status 参数 WS 下忽略）。
+     * 第三参为发起该请求的连接（带内鉴权协议据此登记「已认证」状态）。
+     */
+    onRequest?: (req: unknown, respond: Respond, socket: WsSocket) => void;
+    /**
+     * 连接建立钩子（authorize 通过后触发）：握手期不带凭据的协议（如 Satori 的
+     * IDENTIFY 带内鉴权）在这里登记连接、启动认证超时或初始化会话状态。
+     */
+    onConnection?: (socket: WsSocket, req: RequestContext) => void;
 
     constructor(opts: WsServerOptions) {
         this.opts = opts;
@@ -70,7 +81,7 @@ export class WsServer implements TransportAdapter {
         }
         const wss = new WebSocketServer(serverOptions);
         const onConnection = (socket: WebSocket, req: IncomingMessage): void =>
-            this.onConnection(socket, req);
+            this.handleConnection(socket, req);
         wss.on("connection", onConnection);
 
         // 等 listening 成功后才挂到 this.wss / 启动心跳：error 分支不残留半初始化状态。
@@ -129,11 +140,14 @@ export class WsServer implements TransportAdapter {
         });
     }
 
-    private onConnection(socket: WebSocket, req: IncomingMessage): void {
-        if (this.opts.authorize && !this.opts.authorize(incomingMessageToRequestContext(req))) {
+    private handleConnection(socket: WebSocket, req: IncomingMessage): void {
+        const ctx = incomingMessageToRequestContext(req);
+        if (this.opts.authorize && !this.opts.authorize(ctx)) {
             socket.close(WS_CLOSE_CODE.unauthorized, "unauthorized");
             return;
         }
+        // 握手通过（或未配置鉴权）后再交协议层登记，避免把待拒绝的连接暴露给上层。
+        this.onConnection?.(socket, ctx);
 
         socket.on("message", (raw) => {
             let reqBody: unknown;
@@ -144,11 +158,15 @@ export class WsServer implements TransportAdapter {
                 // 非 JSON 消息：忽略（协议层只处理 JSON 请求）
                 return;
             }
-            this.onRequest?.(reqBody, (res) => {
-                if (socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify(res));
-                }
-            });
+            this.onRequest?.(
+                reqBody,
+                (res) => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify(res));
+                    }
+                },
+                socket,
+            );
         });
     }
 }
