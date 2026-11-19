@@ -109,7 +109,7 @@ pnpm exec napuketto restart             # 重启 supervisor
 ## 社区
 
 > [!CAUTION]
-> **本项目没有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
+> **本项目没有且不会有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
 
 
 ## English
