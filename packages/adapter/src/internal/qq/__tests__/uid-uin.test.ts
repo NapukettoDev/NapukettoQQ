@@ -9,7 +9,7 @@
 import type { GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgStatus, GroupNotifyMsgType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
-import type { AdapterLoggerLike } from "../infra/log.js";
+import type { AdapterLoggerLike } from "../../infra/log.js";
 import {
     collectGroupNotifyUids,
     MAX_PROFILE_LOOKUPS,
@@ -17,7 +17,7 @@ import {
     resolveUin,
     toUin,
     toUinString,
-} from "../qq/uid-uin.js";
+} from "../uid-uin.js";
 
 /** 校准 logger 桩（断言留痕用）。 */
 function makeLogger(): AdapterLoggerLike {

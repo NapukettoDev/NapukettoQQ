@@ -1,5 +1,5 @@
 /**
- * shared/raw-message.test.ts：RawMessage 规范化 + msgTime 归一 + 启动前历史消息
+ * qq/raw-message.test.ts：RawMessage 规范化 + msgTime 归一 + 启动前历史消息
  * 拦截单测（跨协议共用）。
  *
  * 锁定：数组/单对象/null/非对象项的规范化语义；subscribeRawMessages
@@ -10,14 +10,14 @@
 import type { MsgEventChannel } from "@napuketto/kernel";
 import { ChatType, type RawMessage } from "@napuketto/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { stub } from "../../__tests__/stub.js";
 import {
     forEachRawMessage,
     isLiveMessage,
     subscribeRawMessages,
     toUnixSeconds,
-} from "../qq/raw-message.js";
-import { STARTUP_GRACE_SEC } from "../qq/startup-cutoff.js";
-import { stub } from "./stub.js";
+} from "../raw-message.js";
+import { STARTUP_GRACE_SEC } from "../startup-cutoff.js";
 
 /** 构造最小合法 RawMessage。 */
 function makeMsg(msgId: string, msgTime = "0"): RawMessage {

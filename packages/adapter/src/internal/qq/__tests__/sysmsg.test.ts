@@ -27,7 +27,7 @@ import {
     varintAt,
     varintOf,
     varintToNumber,
-} from "../qq/sysmsg.js";
+} from "../sysmsg.js";
 
 /** hex → Uint8Array。 */
 function hexToBytes(hex: string): Uint8Array {
