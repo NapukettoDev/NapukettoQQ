@@ -17,6 +17,7 @@ import { isRecord } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../framework/index.js";
 import type { AdapterLoggerLike } from "../internal/infra/log.js";
+import { openOutboundWithRetry } from "../internal/infra/outbound-open.js";
 import { MS_TO_SEC } from "../internal/qq/uid-uin.js";
 import type { ActionResult } from "./action/index.js";
 import { createOb11ActionRegistry } from "./action/index.js";
@@ -56,12 +57,16 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     private readonly selfUin: string;
     private readonly oneBotApi: OneBotApi;
+    /** 校准日志（传输首连失败 / 重试留痕；缺省静默）。 */
+    private readonly logger: AdapterLoggerLike | undefined;
     /** 动作注册表（公共只读：IPC 桥等装配方枚举动作名直接挂载）。 */
     readonly registry: ReturnType<typeof createOb11ActionRegistry>;
     /** 收链路事件管道（订阅 / 过滤 / 翻译派发，拆出）。 */
     private readonly pipeline: Ob11EventPipeline;
     private transports: Ob11TransportSet | null = null;
     private heartbeatTimer: NodeJS.Timeout | null = null;
+    /** 出向传输后台重连取消函数（stop / reload 时统一清理，issue #144）。 */
+    private outboundCancels: Array<() => void> = [];
     /** IPC 桥模式标记（subscribeOnly 启动；reload 时跳过传输重建）。 */
     private subscribedOnly = false;
 
@@ -81,6 +86,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             },
         });
         this.selfUin = opts.self.uin;
+        this.logger = opts.logger;
         this.oneBotApi = new OneBotApi(opts);
         this.pipeline = new Ob11EventPipeline({
             selfUin: this.selfUin,
@@ -140,7 +146,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
                 },
             });
             await Promise.all(this.transports.servers.map((s) => s.open()));
-            await Promise.all(this.transports.transports.map((t) => t.open()));
+            await this.openOutboundTransports();
         }
         this.pipeline.subscribe();
         this.broadcastEvent({
@@ -151,6 +157,44 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             sub_type: "enable",
         });
         this.startHeartbeat(config.heartbeatInterval);
+    }
+
+    /**
+     * 打开出向传输（issue #144）。反向 server 绑定失败仍按装配失败处理（配置/端口
+     * 问题），但正向 WS 对端未启动/不可达只 warn + 后台按 reconnect 策略重试：
+     * 已登录成功的 QQ 宿主不得因为外部 WS 服务缺席而崩溃退出。
+     */
+    private async openOutboundTransports(): Promise<void> {
+        if (this.transports === null) {
+            return;
+        }
+        const immediate: Promise<void>[] = [];
+        for (const item of this.transports.outbound) {
+            const reconnect = item.wsReconnect;
+            if (reconnect === undefined) {
+                immediate.push(Promise.resolve(item.transport.open()));
+                continue;
+            }
+            this.outboundCancels.push(
+                openOutboundWithRetry(item.transport, {
+                    label: `onebot11 正向 WS ${reconnect.url}`,
+                    delayMs: reconnect.delayMs,
+                    ...(reconnect.maxAttempts !== undefined
+                        ? { maxAttempts: reconnect.maxAttempts }
+                        : {}),
+                    ...(this.logger !== undefined ? { logger: this.logger } : {}),
+                }),
+            );
+        }
+        await Promise.all(immediate);
+    }
+
+    /** 取消出向传输的后台重连（stop / reload 重建时，幂等）。 */
+    private cancelOutboundOpens(): void {
+        for (const cancel of this.outboundCancels) {
+            cancel();
+        }
+        this.outboundCancels = [];
     }
 
     /** 心跳 meta 事件（interval 毫秒，0 关闭；启动前清理残留定时器防重复）。 */
@@ -173,12 +217,13 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         }, intervalMs);
     }
 
-    /** 停止：心跳 + 传输 + 退订。 */
+    /** 停止：心跳 + 传输 + 退订（含取消出向传输的后台重连）。 */
     private async stopAll(): Promise<void> {
         if (this.heartbeatTimer !== null) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
         }
+        this.cancelOutboundOpens();
         this.pipeline.unsubscribeAll();
         if (this.transports !== null) {
             await this.transports.close();

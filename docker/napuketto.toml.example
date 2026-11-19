@@ -43,6 +43,8 @@ port = 3001
 # port = 5501
 
 # ---- 正向 WS（机器人主动连出去，适合连 Koishi：无需映射端口） ----
+# Linux 原生 Docker 需 compose.yaml 的 extra_hosts 才能解析 host.docker.internal；
+# 对端暂时未启动时机器人会 warn 并在后台重连，不会退出。
 # [[accounts.onebot11.wsReverseUrls]]
 # enabled = true
 # url = "ws://host.docker.internal:5140/onebot"

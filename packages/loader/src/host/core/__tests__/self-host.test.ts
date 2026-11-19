@@ -21,7 +21,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -102,6 +102,11 @@ afterAll(() => {
         rmSync(tmpRoot, { recursive: true, force: true });
         tmpRoot = "";
     }
+});
+
+beforeEach(() => {
+    // 致命错误自 issue #144 起同步写 stderr（Docker 可见性）——测试静默，避免污染输出
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {

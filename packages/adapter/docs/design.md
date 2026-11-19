@@ -265,6 +265,11 @@
 - 文件投递语义降级是明示契约，不得改回「假 fileUuid」实现（静默假成功）。
 - 热更新：OB11 IPC 桥模式无传输，只刷新上报开关；其余协议 stop → 按新配置重建；
   `reload()` 只对已启动实例生效（未 start 时 no-op，防「传输已运行但 started=false」的不一致）。
+- 出向传输首连容错（issue #144）：外部 WS 服务暂时未启动/不可达只 warn + 后台按
+  `reconnectDelayMs` 指数退避重试（`internal/infra/outbound-open.ts`），不阻塞协议装配、
+  不拖垮已登录宿主。`network.WsClient.open()` 首连失败 reject 的底层契约保持不变（容错在
+  adapter 层）；连接建立后的断线仍由 `WsClient` 自带 reconnect 处理，两者不重叠。
+  Kurobot 用自建连接层（`kurobot/connection.ts`）且 start 非阻塞，无需该包装。
 - 生命周期守卫：骨架 start/stop 并发去重（stop 等待进行中的 start）；Satori 非登录事件
   `login.sn` 固定 0（登录序号≠事件 sn）；OB11 错误响应（404 / 异常兜底）同样透传 `echo`。
 - 依赖面：不新增运行时依赖；KuroBot 客户端用 Node 内置 `WebSocket`，`ws` 仅 devDependency。

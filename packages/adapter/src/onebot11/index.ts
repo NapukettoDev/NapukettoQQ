@@ -42,7 +42,12 @@ export {
     unescapeCqText,
 } from "./helper/index.js";
 export { MessageUnique } from "./helper/message-unique.js";
-export type { AssembleOb11TransportsOptions, Ob11TransportSet } from "./transport.js";
+export type {
+    AssembleOb11TransportsOptions,
+    Ob11OutboundTransport,
+    Ob11OutboundWsReconnect,
+    Ob11TransportSet,
+} from "./transport.js";
 export { assembleOb11Transports } from "./transport.js";
 export type {
     CurrentTalkative,

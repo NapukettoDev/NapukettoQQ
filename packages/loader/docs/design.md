@@ -175,7 +175,9 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
   等），能力探测失败即判引导失败，不在本层实现业务。
 - 错误传播：`ConfigError` → 78；其余异常在 bootstrap 链收敛为 `false` → self-host
   exit 1，原因写 `<账号目录>/napuketto-boot.log`；IPC 模式另发 failed（`NOT_LOGIN` /
-  `INVALID_STATE` / `INVALID_PARAM` / `UNKNOWN`）。
+  `INVALID_STATE` / `INVALID_PARAM` / `UNKNOWN`）。致命失败（bootstrap / 协议装配 /
+  self-host 退出前）同时经 `logFatal` 写 `stderr`（含 boot 日志路径，issue #144），
+  让 Docker/终端能看到退出原因；**不写 stdout**——IPC 模式 stdout 专用于 JSON 协议行。
 - 公共出口 [`../src/index.ts`](../src/index.ts)：`launchSelfHost`、`resolveQqFiles`、
   `ensureQqFiles`、解包与清单原语、实例锁、关停、IPC schema（zod 单一来源，koishi
   插件 import 同一份）。

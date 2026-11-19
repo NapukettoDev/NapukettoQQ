@@ -18,6 +18,12 @@ services:
         restart: unless-stopped
         # supervisor 收到 SIGTERM 后停止全部账号，8s 兜底强杀；这里给足余量
         stop_grace_period: 30s
+        # 正向 WS 连宿主机（napuketto.toml 里 wsReverseUrls 使用
+        # ws://host.docker.internal:<port>）时需要：Docker Desktop 自带该域名，
+        # Linux 原生 Docker 必须显式映射 host-gateway（Docker 20.10+）。
+        # 未配置正向 WS 时保留无害；去掉它则 Linux 下会 ENOTFOUND。
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
         ports:
             # 默认只绑定回环：公网/局域网访问请改成 HOST_BIND=0.0.0.0 并配好 token
             - "${HOST_BIND:-127.0.0.1}:${ONEBOT_HTTP_PORT:-3000}:3000"

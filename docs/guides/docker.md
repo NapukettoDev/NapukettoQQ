@@ -78,6 +78,9 @@ curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docke
 - compose 默认只绑宿主机 `127.0.0.1`；局域网访问用 `HOST_BIND=0.0.0.0 docker compose up -d`，并设 `token`。
 - 暴露公网请走反向代理并上 HTTPS / `wss://`；OneBot 11 的 HTTP 与 WS 都是明文。
 - 正向 WS（`wsReverseUrls`）不需要映射端口，适合连 `host.docker.internal` 或同网络 Koishi。
+  Docker Desktop 自带 `host.docker.internal`；**Linux 原生 Docker 需 compose 的
+  `extra_hosts: ["host.docker.internal:host-gateway"]`**（官方示例已配置）才能解析。
+  对端暂时未启动不会让机器人退出：adapter 会 warn 并在后台按 `reconnectDelayMs` 重连。
 
 ## 多账号与多容器
 

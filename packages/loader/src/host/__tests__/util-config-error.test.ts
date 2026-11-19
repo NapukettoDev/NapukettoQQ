@@ -6,14 +6,16 @@
  * 都命中；bootstrapExitCode 是 self-host 退出码决策的唯一出口（78 / 1）。
  * 另覆盖 errMsg / forEachRawMessage（引导公共工具）。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+    bootLogPath,
     bootstrapExitCode,
     ConfigError,
     convergeBootstrapFailure,
     errMsg,
     forEachRawMessage,
     isConfigError,
+    logFatal,
 } from "../util.js";
 
 describe("isConfigError（name 契约）", () => {
@@ -48,6 +50,24 @@ describe("bootstrapExitCode", () => {
     });
 });
 
+describe("logFatal（issue #144：致命错误必须上 stderr）", () => {
+    it("写 stderr 且带 boot 日志路径；不写 stdout（IPC JSON 协议行零污染）", () => {
+        const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+        try {
+            logFatal("bootstrap: 协议装配失败: connect ECONNREFUSED 127.0.0.1:5140");
+            const text = stderrSpy.mock.calls.map((call) => String(call[0])).join("");
+            expect(text).toContain("connect ECONNREFUSED 127.0.0.1:5140");
+            // 用户必须能直接定位 boot 日志（Docker 只显示 stderr）
+            expect(text).toContain(bootLogPath());
+            expect(stdoutSpy).not.toHaveBeenCalled();
+        } finally {
+            stderrSpy.mockRestore();
+            stdoutSpy.mockRestore();
+        }
+    });
+});
+
 describe("convergeBootstrapFailure（2026-10-25 吞异常修复）", () => {
     it("ConfigError 原样重抛——78 链路不得被任何 catch 吞掉", () => {
         const err = new ConfigError("协议配置 kurobot 段校验失败");
@@ -63,9 +83,14 @@ describe("convergeBootstrapFailure（2026-10-25 吞异常修复）", () => {
     });
 
     it("普通错误不抛且返回 false（记日志后收敛，引导失败不升级为崩溃）", () => {
-        const boom = new Error("dlopen 失败");
-        expect(() => convergeBootstrapFailure(boom, "lifecycle error")).not.toThrow();
-        expect(convergeBootstrapFailure(boom, "lifecycle error")).toBe(false);
+        const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+        try {
+            const boom = new Error("dlopen 失败");
+            expect(() => convergeBootstrapFailure(boom, "lifecycle error")).not.toThrow();
+            expect(convergeBootstrapFailure(boom, "lifecycle error")).toBe(false);
+        } finally {
+            stderrSpy.mockRestore();
+        }
     });
 });
 

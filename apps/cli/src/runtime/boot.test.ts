@@ -155,7 +155,7 @@ describe("失败前置路径（不拉起子进程）", () => {
 });
 
 describe("运行态落盘与退出等待", () => {
-    it("child error（spawn 失败）→ 记录错误并正常返回（不落 exited）", async () => {
+    it("child error（spawn 失败）→ 记录错误并置 exitCode 1（不落 exited）", async () => {
         const p = runSingleAccount({ qq: "10001", dataDir: tmp });
         await untilLaunched();
         child.emit("error", new Error("ENOENT"));
@@ -164,10 +164,49 @@ describe("运行态落盘与退出等待", () => {
             expect.objectContaining({ err: expect.anything() }),
             "自建宿主进程启动失败",
         );
+        expect(process.exitCode).toBe(1);
         const statuses = mocks.writeAccountRuntime.mock.calls.map(
             (call) => (call[1] as { status: string }).status,
         );
         expect(statuses).toEqual(["running"]);
+    });
+
+    it("非优雅退出 code=1 → 透传 process.exitCode 1（issue #144）", async () => {
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        child.emit("exit", 1, null);
+        await p;
+        expect(process.exitCode).toBe(1);
+        expect(mocks.logger.info).toHaveBeenCalledWith(
+            expect.objectContaining({ code: 1, signal: "none", graceful: false }),
+            "自建宿主进程退出",
+        );
+    });
+
+    it("非优雅退出 code=78 → 透传 process.exitCode 78（supervisor 免重启判定）", async () => {
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        child.emit("exit", 78, null);
+        await p;
+        expect(process.exitCode).toBe(78);
+    });
+
+    it("非优雅退出被 signal 杀死（code=null）→ process.exitCode 1", async () => {
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        child.emit("exit", null, "SIGKILL");
+        await p;
+        expect(process.exitCode).toBe(1);
+    });
+
+    it("优雅停（isStopping）后退出 → process.exitCode 0，即使 self-host code=1", async () => {
+        const p = runSingleAccount({ qq: "10001", dataDir: tmp });
+        await untilLaunched();
+        const handler = signalHandlers.get("SIGINT")?.[0] as (signal: string) => void;
+        handler("SIGINT");
+        child.emit("exit", 1, null);
+        await p;
+        expect(process.exitCode).toBe(0);
     });
 });
 

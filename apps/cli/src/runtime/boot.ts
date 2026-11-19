@@ -313,7 +313,17 @@ function installGracefulStop(
     return () => stopArmed;
 }
 
-/** 常驻：等待自建宿主进程退出（exit / error 两路径均 resolve，去留由 self-host 决定）。 */
+/**
+ * 常驻：等待自建宿主进程退出（exit / error 两路径均 resolve，去留由 self-host 决定）。
+ *
+ * 退出码契约（issue #144）：boot 进程必须把 self-host 的失败退出码透传给父进程
+ * （supervisor / 容器编排），否则 supervisor 的 `EXIT_CONFIG_INVALID(78)` 免重启
+ * 判定永远不命中，所有失败都被当成 code=0 正常退出。规则：
+ *  - 收到停止请求（isStopping）→ 0（请求式正常退出，与崩溃区分）；
+ *  - 非停止状态下异常退出（code 非 0 或被 signal 杀死）→ 透传 code（signal 无 code 时为 1）；
+ *  - 非停止状态 code=0 视为 self-host 自行正常结束，保持 0；
+ *  - spawn error 无退出码可透传 → 1。
+ */
 async function waitSelfHostExit(
     child: ChildProcess,
     dataRoot: string,
@@ -321,13 +331,20 @@ async function waitSelfHostExit(
     isStopping: () => boolean,
 ): Promise<void> {
     await new Promise<void>((resolve) => {
-        child.on("exit", (code) => {
-            logger.info({ code, graceful: isStopping() }, "自建宿主进程退出");
+        child.on("exit", (code, signal) => {
+            const graceful = isStopping();
+            logger.info({ code, signal: signal ?? "none", graceful }, "自建宿主进程退出");
             recordRuntimeState(dataRoot, account, child, "exited", code);
+            if (graceful) {
+                process.exitCode = 0;
+            } else if (code !== 0 || signal !== null) {
+                process.exitCode = code ?? 1;
+            }
             resolve();
         });
         child.on("error", (err) => {
             logger.error({ err }, "自建宿主进程启动失败");
+            process.exitCode = 1;
             resolve();
         });
     });

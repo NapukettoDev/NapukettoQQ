@@ -40,7 +40,7 @@ import {
     shouldSendGenericBootFailed,
 } from "../ipc/index.js";
 import { getOwnProp, hasCallableProp } from "../type-guards.js";
-import { bootstrapExitCode, createState, errMsg, log } from "../util.js";
+import { bootstrapExitCode, createState, errMsg, log, logFatal } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";
 
@@ -99,7 +99,7 @@ const lockDataDir = env.NAPUTO_CFG_DIR;
 if (lockDataDir) {
     if (!acquireInstanceLock(lockDataDir)) {
         const { pid: holderPid } = checkInstanceLock(lockDataDir);
-        log(
+        logFatal(
             `[self-host] ❌ 数据目录已被其他实例占用（pid=${holderPid ?? "?"}），退出；` +
                 "同一账号数据目录仅允许一个实例，请先停止已有实例",
         );
@@ -119,7 +119,7 @@ if (lockDataDir) {
 
 const wrapperPath = env.NAPUTO_WRAPPER_PATH;
 if (!wrapperPath) {
-    log("[self-host] NAPUTO_WRAPPER_PATH 未设置，退出");
+    logFatal("[self-host] NAPUTO_WRAPPER_PATH 未设置，退出");
     if (ipcMode) {
         sendStatus("failed", "NAPUTO_WRAPPER_PATH 未设置", {
             code: "INVALID_STATE",
@@ -145,7 +145,7 @@ try {
     const keys = Object.keys(m.exports ?? {});
     log(`[self-host] ✅ dlopen 成功，exports ${keys.length} 个`);
     if (!keys.includes("NodeIKernelLoginService")) {
-        log("[self-host] ❌ exports 无 NodeIKernelLoginService（stub 环境异常？）");
+        logFatal("[self-host] ❌ exports 无 NodeIKernelLoginService（stub 环境异常？）");
         if (ipcMode) {
             sendStatus("failed", "exports 无 NodeIKernelLoginService", {
                 code: "INVALID_STATE",
@@ -156,7 +156,7 @@ try {
     }
     state.wrapperExports = m.exports;
 } catch (e) {
-    log(`[self-host] ❌ dlopen 失败: ${errMsg(e)}`);
+    logFatal(`[self-host] ❌ dlopen 失败: ${errMsg(e)}`);
     if (ipcMode) {
         sendStatus("failed", "dlopen 失败", { code: "UNKNOWN", message: errMsg(e) });
     }
@@ -194,6 +194,8 @@ log("[self-host] 调 bootstrap(state) ...");
 function exitBootIncomplete(): never {
     // 引导未完成（登录失败/服务装配失败/生命周期异常——bootstrap 内部
     // 不抛错，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log）。
+    // stderr 是 Docker / 终端唯一可见通道（stdout 在 IPC 模式被 JSON 协议占用）。
+    logFatal("[self-host] bootstrap 未完成（登录失败 / 服务装配失败 / 生命周期异常），进程退出");
     // 已发过更具体的 failed（如 NOT_LOGIN）则不覆盖，否则补发通用
     // failed；随后退出，由 koishi driver 既有重启循环接管（cli 模式
     // 同样退出——失败留驻只会以假 ready 干扰父进程判断，2026-09-06）。
@@ -211,7 +213,7 @@ function exitBootIncomplete(): never {
  * 日志文案不做机器耦合，判定只认错误名。 */
 function exitOnBootstrapError(e: unknown): never {
     const code = bootstrapExitCode(e);
-    log(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
+    logFatal(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
     if (ipcMode) {
         sendStatus("failed", "bootstrap 失败", {
             code: code === 78 ? "INVALID_PARAM" : "UNKNOWN",

@@ -31,6 +31,24 @@ import { writeAccountRuntime, writeSupervisorRuntime } from "./state.js";
 const EXIT_POLL_MS = 100;
 /** 子进程优雅退出时限（毫秒）：哨兵/信号后子进程自行停止，超时强杀兜底。 */
 const FORCE_EXIT_MS = 8000;
+/**
+ * 短生命周期崩溃阈值（毫秒，issue #144）：运行不足该时长的退出视为「连续秒退」，
+ * 重启延迟按 `restartDelayMs * 2^n` 指数退避，避免登录后立刻崩溃时高频循环重登
+ * 触发 QQ 风控；稳定运行超过该时长后退避计数清零。
+ */
+const SHORT_LIVED_CRASH_MS = 30_000;
+/** 指数退避延迟上限（毫秒）：连续秒退时单次重启最多等 60s。 */
+const MAX_RESTART_DELAY_MS = 60_000;
+
+/**
+ * 计算下一次守护重启延迟（issue #144）。
+ * @param baseDelayMs 配置的首次重启延迟（restartDelayMs）
+ * @param consecutiveFailures 连续短生命周期失败次数（从 1 起）
+ */
+export function computeRestartDelayMs(baseDelayMs: number, consecutiveFailures: number): number {
+    const exponent = Math.max(consecutiveFailures - 1, 0);
+    return Math.min(baseDelayMs * 2 ** exponent, MAX_RESTART_DELAY_MS);
+}
 
 /** supervisor 选项。 */
 export interface SupervisorOptions {
@@ -68,6 +86,8 @@ interface SupervisorCtx {
     children: Map<string, ChildProcess>;
     /** 每账号守护重启计数（写 runtime.json 用）。 */
     restartCounts: Map<string, number>;
+    /** 每账号连续短生命周期崩溃计数（指数退避用，稳定运行后清零）。 */
+    crashCounts: Map<string, number>;
     /** 子进程追加 env（NO_BANNER + 渲染决策传播）。 */
     childEnv: Record<string, string>;
     /** pretty 模式才加 [uin] 前缀转发（single-line/json 记录自带 account 字段）。 */
@@ -94,6 +114,91 @@ function forwardPrefixed(
     });
 }
 
+/** 账号进程退出落 runtime exited（status/stop 消费）。 */
+function writeAccountExited(
+    ctx: SupervisorCtx,
+    acct: CliAccountConfig,
+    child: ChildProcess,
+    exitCode: number | null,
+    restartCount: number,
+): void {
+    writeAccountRuntime(ctx.dataRoot, {
+        uin: acct.qq,
+        pid: child.pid ?? 0,
+        startedAt: new Date().toISOString(),
+        kind: "supervisor-child",
+        status: "exited",
+        exitCode,
+        restartCount,
+    });
+}
+
+/**
+ * 守护重启编排（issue #144）：短生命周期崩溃按指数退避，稳定运行超过阈值后
+ * 计数清零（恢复配置的基础延迟）。日志始终带连续失败次数与下次重启延迟。
+ */
+function scheduleRestart(
+    ctx: SupervisorCtx,
+    acct: CliAccountConfig,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+    startedAtMs: number,
+    restartCount: number,
+): void {
+    const uptimeMs = Date.now() - startedAtMs;
+    const shortLived = uptimeMs < SHORT_LIVED_CRASH_MS;
+    const consecutiveFailures = shortLived ? (ctx.crashCounts.get(acct.qq) ?? 0) + 1 : 0;
+    ctx.crashCounts.set(acct.qq, consecutiveFailures);
+    const delayMs =
+        consecutiveFailures > 0
+            ? computeRestartDelayMs(ctx.restartDelayMs, consecutiveFailures)
+            : ctx.restartDelayMs;
+    const fields = {
+        qq: acct.qq,
+        code,
+        signal: signal ?? "none",
+        uptimeMs,
+        consecutiveFailures,
+        nextDelayMs: delayMs,
+    };
+    if (shortLived) {
+        logger.warn(fields, "账号启动后短时间内退出，指数退避后重启");
+    } else {
+        logger.info(fields, "账号退出，准备重启");
+    }
+    ctx.restartCounts.set(acct.qq, restartCount + 1);
+    setTimeout(() => {
+        startAccount(ctx, acct);
+    }, delayMs);
+}
+
+/** 账号子进程退出编排：配置失败免重启（78）/ 守护重启 / 落 runtime exited。 */
+function handleAccountExit(
+    ctx: SupervisorCtx,
+    acct: CliAccountConfig,
+    child: ChildProcess,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+    startedAtMs: number,
+    restartCount: number,
+): void {
+    ctx.children.delete(acct.qq);
+    logger.info({ qq: acct.qq, code, signal: signal ?? "none" }, "账号退出");
+    if (code === EXIT_CONFIG_INVALID) {
+        // 配置校验失败（2026-10-25 退出码契约）：配置不修，重启无意义——
+        // 不进守护重启，落 runtime exited 供 status 消费。
+        logger.error({ qq: acct.qq, code }, "账号因配置校验失败退出（78），不自动重启");
+        writeAccountExited(ctx, acct, child, code, restartCount);
+        return;
+    }
+    if (!ctx.isStopping() && ctx.autoRestart) {
+        // 关闭信号到达前无限重试，由 SIGINT/SIGTERM 终止
+        scheduleRestart(ctx, acct, code, signal, startedAtMs, restartCount);
+        return;
+    }
+    writeAccountExited(ctx, acct, child, code, restartCount);
+}
+
 /** 启动一个账号子进程（exit 后按 autoRestart 守护重启）。 */
 function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
     if (ctx.isStopping()) {
@@ -118,6 +223,8 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
             ...ctx.childEnv,
         },
     });
+    // 生命周期起点：exit 时据此判定「秒退」（短生命周期崩溃）还是稳定运行。
+    const startedAtMs = Date.now();
     forwardPrefixed(child.stdout, acct.qq, ctx.prefixEnabled);
     forwardPrefixed(child.stderr, acct.qq, ctx.prefixEnabled);
     ctx.children.set(acct.qq, child);
@@ -130,40 +237,7 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
         restartCount,
     });
     child.on("exit", (code, signal) => {
-        ctx.children.delete(acct.qq);
-        logger.info({ qq: acct.qq, code, signal: signal ?? "none" }, "账号退出");
-        if (code === EXIT_CONFIG_INVALID) {
-            // 配置校验失败（2026-10-25 退出码契约）：配置不修，重启无意义——
-            // 不进守护重启，落 runtime exited 供 status 消费。
-            logger.error({ qq: acct.qq, code }, "账号因配置校验失败退出（78），不自动重启");
-            writeAccountRuntime(ctx.dataRoot, {
-                uin: acct.qq,
-                pid: child.pid ?? 0,
-                startedAt: new Date().toISOString(),
-                kind: "supervisor-child",
-                status: "exited",
-                exitCode: code,
-                restartCount,
-            });
-            return;
-        }
-        if (!ctx.isStopping() && ctx.autoRestart) {
-            // 守护：延迟重启（关闭信号到达前无限重试，由 SIGINT/SIGTERM 终止）
-            ctx.restartCounts.set(acct.qq, restartCount + 1);
-            setTimeout(() => {
-                startAccount(ctx, acct);
-            }, ctx.restartDelayMs);
-        } else {
-            writeAccountRuntime(ctx.dataRoot, {
-                uin: acct.qq,
-                pid: child.pid ?? 0,
-                startedAt: new Date().toISOString(),
-                kind: "supervisor-child",
-                status: "exited",
-                exitCode: code,
-                restartCount,
-            });
-        }
+        handleAccountExit(ctx, acct, child, code, signal, startedAtMs, restartCount);
     });
     child.on("error", (err) => {
         const { message } = err;
@@ -217,6 +291,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
     const [, entry = ""] = process.argv;
     const children = new Map<string, ChildProcess>();
     const restartCounts = new Map<string, number>();
+    const crashCounts = new Map<string, number>();
     let stopping = false;
     // 渲染决策：按本进程最终控制台形态解析（[log] 配置 + TTY），传播给子进程
     const logCfg = resolveCliLogConfig(opts.dataDir);
@@ -228,6 +303,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         ...(opts.stubDir !== undefined ? { stubDir: opts.stubDir } : {}),
         children,
         restartCounts,
+        crashCounts,
         // 入站图片自动下载补丁 killswitch（issue #105）：config.nativeMediaPatch=false
         // 时注入（子进程 -q 直跑继承，launchSelfHost 不再覆盖——同名 env 优先级见 launcher）。
         childEnv: {

@@ -22,12 +22,34 @@ import {
 import { BEARER_PREFIX, createTokenAuthorize } from "../framework/index.js";
 import type { OB11Config } from "./helper/index.js";
 
+/** 正向 WS client 首连失败的后台重连参数（HTTP 上报无连接，不参与）。 */
+export interface Ob11OutboundWsReconnect {
+    /** 对端地址（日志标识 + 同配置内唯一）。 */
+    url: string;
+    /** 首次重连延迟（毫秒；后续按 2 倍指数退避）。 */
+    delayMs: number;
+    /** 最大重连次数（不含首连）；缺省无限。 */
+    maxAttempts?: number | undefined;
+}
+
+/** 出向传输（事件上报 / 正向 WS），`open` 由适配器统一发起。 */
+export interface Ob11OutboundTransport {
+    transport: TransportAdapter;
+    /** 正向 WS 的重连参数（首连失败后台重试）；HTTP 上报为 undefined。 */
+    wsReconnect?: Ob11OutboundWsReconnect | undefined;
+}
+
 /** 传输装配结果。 */
 export interface Ob11TransportSet {
     /** 反向 server（HTTP/WS，第三方调用入口）。 */
     servers: TransportAdapter[];
     /** 事件上报传输（正向 client，已注册到 broadcaster）。 */
     transports: TransportAdapter[];
+    /**
+     * 出向传输的启动清单（issue #144）：与 `transports` 同源，额外携带正向 WS
+     * 首连失败所需的后台重连参数——适配器据此容错，不因对端未启动而中断装配。
+     */
+    outbound: Ob11OutboundTransport[];
     /** 停止：关闭全部传输（幂等）。 */
     close: () => Promise<void>;
 }
@@ -62,11 +84,12 @@ export function assembleOb11Transports(opts: AssembleOb11TransportsOptions): Ob1
     const { config, broadcaster, handleRequest, selfUin } = opts;
     const servers: TransportAdapter[] = [];
     const transports: TransportAdapter[] = [];
+    const outbound: Ob11OutboundTransport[] = [];
 
     assembleHttpServers(config, handleRequest, servers);
     assembleWsServers(config, handleRequest, servers);
-    assembleHttpPosts(config, selfUin, transports);
-    assembleWsReverses(config, selfUin, handleRequest, transports);
+    assembleHttpPosts(config, selfUin, transports, outbound);
+    assembleWsReverses(config, selfUin, handleRequest, transports, outbound);
 
     // 注册事件上报传输（正向 client：HTTP 上报 / WS 正向）
     for (const t of transports) {
@@ -83,6 +106,7 @@ export function assembleOb11Transports(opts: AssembleOb11TransportsOptions): Ob1
     return {
         servers,
         transports,
+        outbound,
         close: async () => {
             await Promise.all([...servers, ...transports].map((t) => t.close()));
             for (const t of [...servers, ...transports]) {
@@ -150,6 +174,7 @@ function assembleHttpPosts(
     config: OB11Config,
     selfUin: string,
     transports: TransportAdapter[],
+    outbound: Ob11OutboundTransport[],
 ): void {
     for (const item of config.httpPostUrls) {
         if (item.enabled && item.url !== undefined) {
@@ -165,7 +190,10 @@ function assembleHttpPosts(
             if (item.timeoutMs !== undefined) {
                 options.timeoutMs = item.timeoutMs;
             }
-            transports.push(new HttpClient(options));
+            const client = new HttpClient(options);
+            transports.push(client);
+            // HTTP 上报无连接管理（open 为 no-op），不带 WS 重连参数
+            outbound.push({ transport: client });
         }
     }
 }
@@ -176,6 +204,7 @@ function assembleWsReverses(
     selfUin: string,
     handleRequest: (req: unknown, respond: (res: unknown) => void) => void,
     transports: TransportAdapter[],
+    outbound: Ob11OutboundTransport[],
 ): void {
     for (const item of config.wsReverseUrls) {
         if (item.enabled && item.url !== undefined) {
@@ -203,6 +232,17 @@ function assembleWsReverses(
             const client = new WsClient(options);
             client.onRequest = handleRequest;
             transports.push(client);
+            // 首连容错参数（issue #144）：对端未启动时 adapter 后台重试，不中断装配
+            outbound.push({
+                transport: client,
+                wsReconnect: {
+                    url: item.url,
+                    delayMs: item.reconnectDelayMs,
+                    ...(item.maxReconnectAttempts !== undefined
+                        ? { maxAttempts: item.maxReconnectAttempts }
+                        : {}),
+                },
+            });
         }
     }
 }

@@ -10,7 +10,7 @@
  */
 import { env, isEnvEnabled } from "../env.js";
 import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
-import { errMsg, isConfigError, log } from "../util.js";
+import { errMsg, isConfigError, log, logFatal } from "../util.js";
 import { assembleOb11AndSatori } from "./assemble-protocols.js";
 import { createKernelServices, type KernelServices } from "./kernel-services.js";
 
@@ -41,12 +41,14 @@ export async function startProtocols(
     try {
         services.stopAdapters = await assembleOb11AndSatori(kernel, services, loginResult);
     } catch (e) {
-        log(`bootstrap: 协议装配失败: ${errMsg(e)}`);
         // 配置校验失败重抛（ConfigError 契约，2026-10-25）：沿 bootstrap 链传给
-        // self-host 以 78 退出（宿主免重启）；其余装配失败仍收敛为 null 判引导失败。
+        // self-host 以 78 退出（宿主免重启），由 exitOnBootstrapError 统一输出原因；
+        // 其余装配失败仍收敛为 null 判引导失败——此处先落 file + stderr 留痕，
+        // 否则 Docker 只看到 code=1 却没有任何错误（issue #144）。
         if (isConfigError(e)) {
             throw e;
         }
+        logFatal(`bootstrap: 协议装配失败: ${errMsg(e)}`);
         return null;
     }
     return services;
