@@ -16,10 +16,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("../logger.js", () => ({ logger: mocks.logger }));
+vi.mock("../../logger.js", () => ({ logger: mocks.logger }));
 
-import { parseInlineConfig, readInlineConfigText } from "./inline.js";
-import { loadCliConfigWithSource } from "./store.js";
+import { parseInlineConfig, readInlineConfigText } from "../inline.js";
+import { loadCliConfigWithSource } from "../store.js";
 
 /** 合法内联文档（单账号，qq 由调用方指定）。 */
 function inlineDoc(qq: string): Record<string, unknown> {

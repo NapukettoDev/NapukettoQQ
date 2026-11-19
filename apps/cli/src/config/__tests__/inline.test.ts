@@ -8,7 +8,7 @@
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { isInlineConfigActive, readInlineConfigSection } from "./inline.js";
+import { isInlineConfigActive, readInlineConfigSection } from "../inline.js";
 
 beforeEach(() => {
     delete process.env["NAPKETTO_CONFIG_JSON"];

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AccountRuntime } from "../runtime/state.js";
+import type { AccountRuntime } from "../../runtime/state.js";
 
 const mocks = vi.hoisted(() => ({
     writeStopSentinel: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock("@napuketto/loader", async (importOriginal) => {
         removeStopSentinel: mocks.removeStopSentinel,
     };
 });
-vi.mock("../runtime/state.js", async (importOriginal) => {
+vi.mock("../../runtime/state.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
@@ -46,12 +46,12 @@ vi.mock("../runtime/state.js", async (importOriginal) => {
         spawnDetached: mocks.spawnDetached,
     };
 });
-vi.mock("../logger.js", async (importOriginal) => {
+vi.mock("../../logger.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, logger: mocks.logger };
 });
 
-import { cmdRestart, cmdStatus, cmdStop } from "./ops.js";
+import { cmdRestart, cmdStatus, cmdStop } from "../ops.js";
 
 let tmp = "";
 

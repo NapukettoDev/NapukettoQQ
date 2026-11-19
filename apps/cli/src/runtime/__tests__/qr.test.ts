@@ -8,7 +8,7 @@
  */
 import { encode } from "uqr";
 import { describe, expect, it } from "vitest";
-import { renderQrAnsi } from "./qr.js";
+import { renderQrAnsi } from "../qr.js";
 
 const STYLE = "\x1b[47m\x1b[30m";
 const RESET = "\x1b[0m";

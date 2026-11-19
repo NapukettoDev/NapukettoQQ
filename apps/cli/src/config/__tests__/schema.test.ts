@@ -9,7 +9,7 @@
 
 import { ConfigError } from "@napuketto/kernel";
 import { describe, expect, it } from "vitest";
-import { parseCliConfig } from "./schema.js";
+import { parseCliConfig } from "../schema.js";
 
 /** 构造最小合法主配置（含单个账号，qq 由调用方指定）。 */
 function configWithQq(qq: string): Record<string, unknown> {

@@ -15,14 +15,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("../logger.js", () => ({ logger: mocks.logger }));
+vi.mock("../../logger.js", () => ({ logger: mocks.logger }));
 
 import {
     CliConfigStore,
     defaultCliConfig,
     loadCliConfigWithSource,
     resolveCliConfigSource,
-} from "./store.js";
+} from "../store.js";
 
 let tmp = "";
 

@@ -21,7 +21,7 @@ import {
     supervisorStatePath,
     writeAccountRuntime,
     writeSupervisorRuntime,
-} from "./state.js";
+} from "../state.js";
 
 let tmpRoot = "";
 

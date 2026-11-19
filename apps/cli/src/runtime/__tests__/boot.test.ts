@@ -38,17 +38,17 @@ vi.mock("@napuketto/loader", () => ({
     watchStopSentinel: mocks.watchStopSentinel,
     writeStopSentinel: mocks.writeStopSentinel,
 }));
-vi.mock("../config/inline.js", () => ({ isInlineConfigActive: mocks.isInlineConfigActive }));
-vi.mock("../logger.js", () => ({
+vi.mock("../../config/inline.js", () => ({ isInlineConfigActive: mocks.isInlineConfigActive }));
+vi.mock("../../logger.js", () => ({
     logger: mocks.logger,
     resolveCliLogConfig: mocks.resolveCliLogConfig,
     effectiveConsoleEnv: mocks.effectiveConsoleEnv,
 }));
-vi.mock("./qr.js", () => ({ renderQrAnsi: mocks.renderQrAnsi }));
-vi.mock("./state.js", () => ({ writeAccountRuntime: mocks.writeAccountRuntime }));
+vi.mock("../qr.js", () => ({ renderQrAnsi: mocks.renderQrAnsi }));
+vi.mock("../state.js", () => ({ writeAccountRuntime: mocks.writeAccountRuntime }));
 
-import { type FakeChild, flushAsync, makeFakeChild } from "../__tests__/test-support.js";
-import { runSingleAccount } from "./boot.js";
+import { runSingleAccount } from "../boot.js";
+import { type FakeChild, flushAsync, makeFakeChild } from "./test-support.js";
 
 let tmp = "";
 let child: FakeChild;

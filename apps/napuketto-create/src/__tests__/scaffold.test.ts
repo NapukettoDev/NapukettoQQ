@@ -20,7 +20,7 @@ import {
     resolveTargetDir,
     scaffoldProject,
     validateProjectName,
-} from "./scaffold.js";
+} from "../scaffold.js";
 
 let tmp = "";
 let originalCwd = "";

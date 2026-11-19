@@ -14,12 +14,12 @@ import process from "node:process";
 import { ConfigError } from "@napuketto/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../logger.js", () => ({
+vi.mock("../../logger.js", () => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { logger } from "../logger.js";
-import { cmdConfigApply, cmdConfigInit, cmdConfigList, cmdConfigValidate } from "./config.js";
+import { logger } from "../../logger.js";
+import { cmdConfigApply, cmdConfigInit, cmdConfigList, cmdConfigValidate } from "../config.js";
 
 let tmp = "";
 const inline = JSON.stringify({ autoRestart: true, accounts: [{ qq: "10086" }] });
