@@ -39,7 +39,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/audio.ts` | `encodePcmToSilk`、`decodeSilkToPcm`、`decodeSilkToWav`、`getSilkInfo`、`SILK_SAMPLE_RATE` | SILK 编解码。QQ 语音 silk v3 固定 24000Hz 单声道：单声道 16-bit PCM WAV / 原始 `pcm_s16le` 直接交 `silk-wasm`；立体声、非 16-bit 或压缩编码（mp3/ogg/amr/flac…）先经 `ffmpeg` 归一化为 24000Hz 单声道 `pcm_s16le` 再编码 |
 | `src/video.ts` | `transcodeVideo`、`getVideoInfo`、`extractVideoFrame` | 视频转码/缩放/帧率、解析 `ffprobe` JSON 取宽高与时长、抽首帧作缩略图（QQ 视频消息发送必需） |
 | `src/image.ts` | `getImageSize`、`detectFileType` | `image-size` 读缓冲区算宽高；`file-type` 按魔数识别类型（返回 `undefined` → `MediaError`） |
-| `src/downloader.ts` | `downloadUrl`、`inferExtension` | 最小下载原语：`fetch` + 大小上限（缺省 30MB）+ 超时（缺省 15s），写目标路径；从 URL pathname 推断扩展名。目录创建与清理由调用方负责 |
+| `src/downloader.ts` | `downloadUrl`、`inferExtension`（内部 `assertDownloadUrlSafe`） | 下载原语：`fetch` + 大小上限（缺省 30MB）+ 超时（缺省 15s），**流式落盘**（临时文件 + rename，失败清理）；仅允许 http/https，手动跟随 30x（≤5 跳）且每跳复检，字面 IP 拒绝链路本地（含云元数据）/未指定/多播/保留段（环回与 RFC1918 放行，见该文件头）；从 URL pathname 推断扩展名。目录由本原语创建，清理由调用方负责 |
 | `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`DownloadUrlOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
 | `src/__tests__/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |

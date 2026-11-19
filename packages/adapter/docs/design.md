@@ -144,6 +144,9 @@
 - 媒体：img / audio / video / file → canonical；audio 走 `ensureSilk`（非 silk 转码）；
   video 非 mp4 走 `transcodeVideo`，ffmpeg 缺失或失败 fail-soft 原样透传；file 的
   `title` 映射为 canonical `name`。
+- 远程媒体下载统一走 `@napuketto/media` 的 `downloadUrl`（adapter 侧唯一入口是
+  `internal/qq/media.ts` 的 `downloadBufferToFile`）：超时、大小上限、流式落盘与
+  出站地址策略都在那里，协议侧不再直接 `fetch` 或 `arrayBuffer()`。
 
 ### KuroBot 自建连接层
 

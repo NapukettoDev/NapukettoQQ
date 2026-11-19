@@ -6,10 +6,10 @@
  * inferExtension：Content-Type 优先（含参数与大小写）、URL 扩展名兜底、
  * 非法输入落 .bin。
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadUrl, inferExtension } from "../downloader.js";
 import { cleanupTempDir, type HttpStub, listenHttp, makeTempDir } from "./test-support.js";
 
@@ -152,6 +152,94 @@ describe("downloadUrl", () => {
 
         const written = await downloadUrl(stub.url, join(dir, "x.bin"), { maxBytes: 32 });
         expect(written).toBe(32);
+    });
+
+    it("非 http(s) 协议：拒绝且不发起请求（file:// 不落到 fetch）", async () => {
+        const fetchStub = vi.fn();
+        vi.stubGlobal("fetch", fetchStub);
+        try {
+            await expect(downloadUrl("file:///etc/passwd", join(dir, "x.bin"))).rejects.toThrow(
+                "不支持的下载协议",
+            );
+            expect(fetchStub).not.toHaveBeenCalled();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("链路本地地址（云元数据 169.254.169.254）：拒绝且不发起请求", async () => {
+        const fetchStub = vi.fn();
+        vi.stubGlobal("fetch", fetchStub);
+        try {
+            await expect(
+                downloadUrl("http://169.254.169.254/latest/meta-data/", join(dir, "x.bin")),
+            ).rejects.toThrow("禁止访问的下载地址");
+            expect(fetchStub).not.toHaveBeenCalled();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("IPv6 未指定 / 链路本地地址：拒绝", async () => {
+        await expect(downloadUrl("http://[::]/x", join(dir, "a.bin"))).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+        await expect(downloadUrl("http://[fe80::1]/x", join(dir, "b.bin"))).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+    });
+
+    it("整数 IP 形式（2852039166）经 URL 归一化后仍按字面地址拦截", async () => {
+        // WHATWG URL 会把 2852039166 归一化为 169.254.169.254：校验必须发生在归一化之后
+        await expect(downloadUrl("http://2852039166/latest", join(dir, "x.bin"))).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+    });
+
+    it("重定向到被禁地址：逐跳复检后拒绝（首跳合法也不例外）", async () => {
+        const stub = await serve((_req, res) => {
+            res.statusCode = 302;
+            res.setHeader("location", "http://169.254.169.254/latest/meta-data/");
+            res.end();
+        });
+
+        await expect(downloadUrl(`${stub.url}/go`, join(dir, "x.bin"))).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+    });
+
+    it("重定向次数超过上限：拒绝", async () => {
+        const stub = await serve((_req, res) => {
+            res.statusCode = 302;
+            res.setHeader("location", "/loop");
+            res.end();
+        });
+
+        await expect(downloadUrl(`${stub.url}/loop`, join(dir, "x.bin"))).rejects.toThrow(
+            "重定向次数超过上限",
+        );
+    });
+
+    it("headers 透传：附加请求头到达服务端", async () => {
+        let seen: string | undefined;
+        const stub = await serve((req, res) => {
+            seen = req.headers["x-token"] as string | undefined;
+            res.end("ok");
+        });
+
+        await downloadUrl(stub.url, join(dir, "x.bin"), { headers: { "x-token": "t1" } });
+
+        expect(seen).toBe("t1");
+    });
+
+    it("失败不留半成品（临时文件已清理）", async () => {
+        const stub = await serve((_req, res) => {
+            res.statusCode = 500;
+            res.end("boom");
+        });
+
+        await expect(downloadUrl(stub.url, join(dir, "x.bin"))).rejects.toThrow("HTTP 500");
+        expect(readdirSync(dir)).toEqual([]);
     });
 });
 
