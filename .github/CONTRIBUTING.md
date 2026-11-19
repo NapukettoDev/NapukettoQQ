@@ -12,7 +12,7 @@
 ## 提交前
 
 ```bash
-pnpm check    # biome + tsc + check:docs
+pnpm check    # biome + tsc
 pnpm test     # vitest 全量
 ```
 
@@ -23,6 +23,10 @@ pnpm test     # vitest 全量
 一切改动走 PR（分支 → PR → CI `gate` / `windows` / `audit` 全绿 → squash 合并），
 禁止直推 `main`；发布链的版本提交是唯一例外。提交信息用
 `type(scope): 描述`（`feat` / `fix` / `docs` / `test` / `refactor` / `chore`）。
+
+PR 模板按领域拆（修复 / 特性 / 文档 / 依赖 / 重构与性能 / 发布），不会被自动带入；
+用 `gh pr create --template <文件名>` 或 compare URL 的 `?template=` 指定，清单见
+[开发指南](../docs/guides/development.md#pr-模板)。
 
 ## 许可证
 

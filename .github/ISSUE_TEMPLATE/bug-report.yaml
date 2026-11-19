@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026-present Napuketto contributors.
+
+name: Bug 报告
+description: 报告 NapukettoQQ 自身的问题（宿主引导、内核、协议适配、CLI）
+title: "Bug: "
+labels:
+    - bug
+body:
+    - type: markdown
+      attributes:
+          value: |
+              先划清边界：**QQ 客户端本体**（`wrapper.node`、QQ NT 客户端、腾讯服务端）的问题不属本项目范围；
+              若只是 QQNT 侧异常，请向腾讯反馈。本项目的问题在宿主引导、内核、协议适配与 CLI 这一层。
+
+    - type: input
+      id: scope
+      attributes:
+          label: 受影响的包或模块
+          description: |
+              填写 `@napuketto/*` 包名或仓库内路径，可以填多个。
+              例如：`@napuketto/adapter` 的 OneBot 11、`packages/kernel`、`apps/cli`。
+          placeholder: "@napuketto/... 或 packages/... 或 apps/..."
+      validations:
+          required: true
+
+    - type: dropdown
+      id: platform
+      attributes:
+          label: 运行平台
+          description: 选择问题实际发生的那一侧。
+          options:
+              - Windows 10 / 11（标准 Node + stub QQNT.dll）
+              - Linux x64（LD_PRELOAD stub 宿主）
+              - Docker 官方镜像（ghcr.io/napukettodev/napukettoqq）
+              - 其他或不确定
+      validations:
+          required: true
+
+    - type: input
+      id: version
+      attributes:
+          label: NapukettoQQ 版本
+          description: |
+              `@napuketto/*` 包版本（如 `@napuketto/cli` 0.4.x）、镜像 tag，或 `git rev-parse --short HEAD`。
+              版本不明时贴 `pnpm list --depth 0` 的相关行。
+          placeholder: "例如 @napuketto/cli@0.4.2"
+      validations:
+          required: true
+
+    - type: textarea
+      id: description
+      attributes:
+          label: 问题描述
+          description: 简明描述现象：预期发生什么、实际发生了什么。有报错原文请贴原文。
+      validations:
+          required: true
+
+    - type: textarea
+      id: reproduction
+      attributes:
+          label: 复现步骤
+          description: 越具体越好；能让维护者在本机复现是修得快的前提。
+          placeholder: |
+              1. napuketto.toml 配了 …（脱敏后贴关键段）
+              2. pnpm exec napuketto start
+              3. 从 OneBot 11 客户端发 …
+              4. 观察到 …
+      validations:
+          required: true
+
+    - type: textarea
+      id: expected
+      attributes:
+          label: 期望行为
+          description: 你认为正确的结果是什么；有参考实现（其他框架 / 协议文档）可点名。
+      validations:
+          required: true
+
+    - type: textarea
+      id: logs
+      attributes:
+          label: 相关日志与截图
+          description: |
+              日志在 `<数据根>/<uin>/logs/`：`napuketto.log`（业务）、`loader.log`（引导）、
+              `napuketto-boot.log`（进程）。只留关键片段并用代码块包裹，不要贴整个文件。
+              **必须隐去 uin、密码、token、cookie、passkey。**
+
+    - type: textarea
+      id: environment
+      attributes:
+          label: 运行环境
+          description: 请把下面各项填掉（不确定的写「不确定」）。
+          value: |
+              - 操作系统:
+              - Node.js 版本（`node -v`，CI 口径为 24）:
+              - QQ NT 版本 / `wrapper.node` 来源:
+              - 启用的协议段（OneBot 11 / Satori / KuroBot / Milky）:
+              - 数据根与启动方式（前台 / supervisor / Docker）:
+      validations:
+          required: true
+
+    - type: dropdown
+      id: upstream
+      attributes:
+          label: QQ 客户端本体是否同样异常
+          description: |
+              用于分诊：原生 QQ 也出问题 → 更像 `wrapper.node` 或腾讯服务端侧；
+              只有本项目的宿主进程出问题 → 在本项目范围内。判定依据写在问题描述里。
+          options:
+              - 不确定
+              - 是，原生 QQ 客户端同样异常
+              - 否，仅 NapukettoQQ 下出现
+      validations:
+          required: true
+
+    - type: checkboxes
+      id: confirm
+      attributes:
+          label: 提交前确认
+          options:
+              - label: 我已检索过既有 issue（含已关闭），没有重复报告
+                required: true
+              - label: 我已隐去 uin、密码、token、cookie 等敏感信息
+                required: true
+              - label: 我确认这不是安全漏洞（漏洞走 SECURITY.md 的私密渠道）
+                required: true

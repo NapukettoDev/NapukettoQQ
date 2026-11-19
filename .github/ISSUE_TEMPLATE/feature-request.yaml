@@ -1,0 +1,56 @@
+name: 功能请求
+description: 提议新能力或改进（协议、内核、CLI、配置、文档）
+title: "Feature: "
+labels:
+    - feature
+body:
+    - type: markdown
+      attributes:
+          value: |
+              范围先说清（见根 [AGENTS.md](https://github.com/NapukettoDev/NapukettoQQ/blob/main/AGENTS.md) 的「范围禁区」）：
+              **framework 模式、WebUI、插件系统、Proxy 事件老方案**不在路线内，相关请求会被关闭并说明原因。
+              新协议属于路线内：在 `packages/adapter` 内新增目录、复用 core 框架，不改 `network`、不改 `kernel`。
+
+    - type: dropdown
+      id: kind
+      attributes:
+          label: 请求类型
+          description: 选最接近的一类；跨类请在正文里分别说明。
+          options:
+              - 新增协议（Milky / OneBot 11 / Satori / KuroBot 之外，或既有协议的补齐）
+              - 内核与宿主能力（kernel / loader / network / media）
+              - CLI、配置与运维体验
+              - 文档与工具链（docs / tooling / CI）
+              - 其他
+      validations:
+          required: true
+
+    - type: textarea
+      id: problem
+      attributes:
+          label: 要解决的问题
+          description: 先讲问题再讲方案。说明现在卡在哪、绕过去的代价是什么。
+      validations:
+          required: true
+
+    - type: textarea
+      id: proposal
+      attributes:
+          label: 期望的解决方案
+          description: |
+              希望新增什么、如何交互、配置写在哪（`napuketto.toml` 的哪个段）。
+              涉及协议时给出对应规范 / 文档链接与目标版本。
+      validations:
+          required: true
+
+    - type: textarea
+      id: alternatives
+      attributes:
+          label: 考虑过的替代方案
+          description: 其他实现方式、现成轮子或手工变通，以及为什么不够用。
+
+    - type: textarea
+      id: extra
+      attributes:
+          label: 补充信息
+          description: 其他上下文、截图、参考实现链接。注意不要贴 token、uin、密码等敏感信息。

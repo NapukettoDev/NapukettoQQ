@@ -1,0 +1,20 @@
+
+# issue 模板选择器配置（表单本体见同目录 bug-report.yaml / feature-request.yaml）。
+#
+# 本项目没有官方社区与交流群聊（见根 README「社区」节），因此这里不提供讨论区、
+# 论坛或群聊入口：配置与排障问题先指向文档，漏洞一律走私报告渠道，不进公开 issue。
+#
+# blank_issues_enabled: false —— 关掉「空白 issue」入口，逼出结构化信息；两个表单
+# 覆盖不到的诉求由下方 contact_links 承接，不在 issue 里开自由格式的坑。
+
+blank_issues_enabled: false
+contact_links:
+    - name: 安装与配置（napuketto.toml 怎么填）
+      url: https://github.com/NapukettoDev/NapukettoQQ/blob/main/docs/guides/configuration.md
+      about: 账号、内嵌协议段、数据目录与优先级，用户变量 NAPKETTO_*
+    - name: 启动失败 / 掉线 / 端口冲突
+      url: https://github.com/NapukettoDev/NapukettoQQ/blob/main/docs/guides/operations.md
+      about: 运维与排障手册：退出码、日志位置、常见故障逐条对照
+    - name: 报告安全漏洞（私密渠道）
+      url: https://github.com/NapukettoDev/NapukettoQQ/security/advisories/new
+      about: 漏洞不要开公开 issue；渠道与响应时限见 .github/SECURITY.md

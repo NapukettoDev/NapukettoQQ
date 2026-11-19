@@ -73,6 +73,25 @@ CodeQL）；唯一允许直推的是发布链的版本提交（`prepare` 用 Git
 `merge_group` 触发不可省：merge queue 只认在队列临时 ref 上跑出来的检查。改 job name
 必须同步改 ruleset，否则 PR 永远等不到同名检查。
 
+### PR 模板
+
+PR 模板在 `.github/PULL_REQUEST_TEMPLATE/`，按领域拆。它们**不会自动带入** PR 正文，需要显式指定：
+网页端 compare URL 加 `?template=<文件名>`，CLI 用 `gh pr create --template <文件名>`（传文件名，
+不是模板标题）。没有默认模板——不指定时正文为空，跨领域或一次性改动自己按「改了什么 / 验证证据 /
+影响面与风险 / 关联」写清楚。
+
+| 模板 | 文件 | 什么时候用 |
+|---|---|---|
+| 修复 | `bug_fix.md` | 缺陷修复：现象与复现 → 根因 → 修法 → 回归用例 |
+| 特性 | `feature.md` | 新能力或功能增强：接口变化 → 依赖方向 → changeset |
+| 文档 | `docs.md` | 文档与手册改动：改动清单 → 依据 → 引用核对 |
+| 依赖 | `dependencies.md` | 依赖升版 / 新增 / 移除、catalog 调整 |
+| 重构与性能 | `refactor_perf.md` | 行为零变化的结构调整，或行为等价的性能优化 |
+| 发布 | `release.md` | 发布链、changesets 配置与包发布面字段 |
+
+模板只负责问全该领域必须交代的信息，通用要求（验证证据、changeset、空章节写「无」）各模板里独立写全。
+增删或改名模板时同步本表。
+
 ## Changesets
 
 每个**用户可见**改动（feat / fix / refactor 涉发布内容）随改动提交
