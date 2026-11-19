@@ -1,5 +1,5 @@
 /**
- * shared/log.test.ts：raw 日志双截断口径 + 事件失败留痕单测（四协议共用）。
+ * infra/log.test.ts：raw 日志双截断口径 + 事件失败留痕单测（四协议共用）。
  *
  * 锁定：truncRaw 的 64 缺省上限与 `…(+N)` 长度标注、sliceRaw 的 2000 固定切片
  * （无标注）与自定义上限、logEventFailure 的缺省静默 / warn 调用形状 /
@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { type AdapterLoggerLike, logEventFailure, sliceRaw, truncRaw } from "../infra/log.js";
+import { type AdapterLoggerLike, logEventFailure, sliceRaw, truncRaw } from "../log.js";
 
 /** 构造实现 AdapterLoggerLike 的 spy logger（强类型，不做暴力强转）。 */
 function makeLogger() {
