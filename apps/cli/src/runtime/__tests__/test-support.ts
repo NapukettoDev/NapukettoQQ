@@ -1,7 +1,11 @@
 /**
  * cli 子域公共测试夹具（test-support）：
- * 微任务冲刷与伪子进程——boot / program 等测试文件的复用夹具。
+ * 微任务冲刷与伪子进程——boot.test.ts 的复用夹具。
  * 只放跨测试文件复用的最小夹具；单文件私有 setup 留在各自测试文件里。
+ *
+ * 位置跟随使用方：目前只有同目录的 boot.test.ts 用它，故与其同放
+ * `__tests__/`，与其余包「夹具贴近使用方测试」的布局一致。将来若被
+ * 跨目录复用，再上移一级。覆盖率由 vitest 配置的 `__tests__/` 目录排除覆盖。
  */
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";

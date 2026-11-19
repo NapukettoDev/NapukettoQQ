@@ -31,7 +31,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, spawn: mocks.spawn };
 });
-vi.mock("../config/store.js", async (importOriginal) => {
+vi.mock("../../config/store.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, loadCliConfigWithSource: mocks.loadCliConfigWithSource };
 });
@@ -43,7 +43,7 @@ vi.mock("@napuketto/loader", async (importOriginal) => {
         watchStopSentinel: mocks.watchStopSentinel,
     };
 });
-vi.mock("./state.js", async (importOriginal) => {
+vi.mock("../state.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
@@ -52,12 +52,12 @@ vi.mock("./state.js", async (importOriginal) => {
     };
 });
 // logger 换桩（避免真实 stdout 噪音 + 断言 warn/error），渲染决策函数保留真实实现
-vi.mock("../logger.js", async (importOriginal) => {
+vi.mock("../../logger.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, logger: mocks.logger };
 });
 
-import { computeRestartDelayMs, runSupervisor } from "./supervisor.js";
+import { computeRestartDelayMs, runSupervisor } from "../supervisor.js";
 
 interface FakeChild extends EventEmitter {
     stdout: PassThrough;

@@ -13,11 +13,13 @@ const mocks = vi.hoisted(() => ({
     runSupervisor: vi.fn(),
 }));
 
-vi.mock("../config/store.js", () => ({ loadCliConfigWithSource: mocks.loadCliConfigWithSource }));
-vi.mock("../runtime/boot.js", () => ({ runSingleAccount: mocks.runSingleAccount }));
-vi.mock("../runtime/supervisor.js", () => ({ runSupervisor: mocks.runSupervisor }));
+vi.mock("../../config/store.js", () => ({
+    loadCliConfigWithSource: mocks.loadCliConfigWithSource,
+}));
+vi.mock("../../runtime/boot.js", () => ({ runSingleAccount: mocks.runSingleAccount }));
+vi.mock("../../runtime/supervisor.js", () => ({ runSupervisor: mocks.runSupervisor }));
 
-import { dispatchMainAction, runSupervisorCommand } from "./start.js";
+import { dispatchMainAction, runSupervisorCommand } from "../start.js";
 
 beforeEach(() => {
     for (const fn of Object.values(mocks)) {

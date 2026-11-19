@@ -55,7 +55,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     return { ...actual, spawn: mocks.spawn };
 });
 
-vi.mock("./scaffold.js", async (importOriginal) => {
+vi.mock("../scaffold.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
@@ -65,7 +65,7 @@ vi.mock("./scaffold.js", async (importOriginal) => {
     };
 });
 
-import { DEFAULT_PROJECT_NAME } from "./scaffold.js";
+import { DEFAULT_PROJECT_NAME } from "../scaffold.js";
 
 const CANCEL = Symbol("clack:cancel");
 
@@ -88,7 +88,7 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 /** 设置 argv 后动态加载入口模块（main() 随 import 执行）。 */
 async function runCreate(argv: string[]): Promise<void> {
     process.argv = ["node", "create-napukettoqq", ...argv];
-    await import("./index.js");
+    await import("../index.js");
 }
 
 /** 等待流程收尾（outro / console.log / 错误输出至少出现一个）。 */
