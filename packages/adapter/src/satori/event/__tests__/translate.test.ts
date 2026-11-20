@@ -283,6 +283,14 @@ describe("toSatoriGrayTipEvent：群成员变动", () => {
         expect(content).toBeNull();
     });
 
+    it("type 显式 null（Linux 原生形态）的 groupElement → null", async () => {
+        const content = await toSatoriGrayTipEvent(
+            makeMemberChangeMsg({ groupElement: { type: null } }),
+            UIN_MAP,
+        );
+        expect(content).toBeNull();
+    });
+
     it("私聊会话的 GROUP grayTip → 忽略（成员变动仅群聊）", async () => {
         const content = await toSatoriGrayTipEvent(
             makeMemberChangeMsg(

@@ -59,7 +59,8 @@ export function toOb11MessageEvent(
             // 发送者角色由调用方经 ctx 注入（GroupCache 查询在协议边界，翻译纯函数）
             role: ctx.senderRole ?? "member",
         };
-        if (msg.sendMemberName !== undefined) {
+        // Linux 原生对象未命中的字段显式 null（不只是 undefined）
+        if (msg.sendMemberName != null) {
             sender.card = msg.sendMemberName;
         }
         const event: OB11GroupMessageEvent = {

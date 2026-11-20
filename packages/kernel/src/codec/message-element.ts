@@ -41,7 +41,9 @@ const AtType = { ALL: 1, ONE: 2, ME: 4 } as const;
  * 直接 `.get(0)` 抛 TypeError，整条视频消息事件分派失败。
  */
 function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefined {
-    if (thumb === undefined || thumb === "") {
+    // Linux 3.2.x 原生对象把未命中的变体字段显式置 null（不是省略成 undefined），
+    // 必须用 `== null` 同时挡住两种情况，否则会穿透到索引访问。
+    if (thumb == null || thumb === "") {
         return undefined;
     }
     if (typeof thumb === "string") {
@@ -49,15 +51,16 @@ function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefine
     }
     if (thumb instanceof Map) {
         const value = thumb.get(VIDEO_THUMB_KEY);
-        return value === "" ? undefined : value;
+        return value == null || value === "" ? undefined : value;
     }
     const value = thumb[String(VIDEO_THUMB_KEY)];
-    return value === "" ? undefined : value;
+    // 平面对象/Map 的内部值在原生宿主上同样可能是显式 null
+    return value == null || value === "" ? undefined : value;
 }
 
 /** TEXT 元素 → canonical（at 或纯文本）。 */
-function textToCanonical(textEl: TextElement | undefined): CanonicalElement {
-    if (textEl === undefined) {
+function textToCanonical(textEl: TextElement | null | undefined): CanonicalElement {
+    if (textEl == null) {
         return { type: "text", text: "" };
     }
     const { atType, atUid, content } = textEl;
@@ -77,13 +80,19 @@ function textToCanonical(textEl: TextElement | undefined): CanonicalElement {
     return { type: "text", text: content };
 }
 
-/** 空串视为缺失（Linux 原生对象常给 "" 而不是省略字段）。 */
-function emptyToUndefined(value: string | undefined): string | undefined {
-    return value === undefined || value === "" ? undefined : value;
+/**
+ * 空值视为缺失（跨平台原生对象形态差异）：
+ *  - Windows 省略未命中的字段 → undefined；
+ *  - Linux 3.2.x 显式置 null；
+ *  - Linux 原生对象也常给 "" 而不是省略字段。
+ * 三者统一归为 undefined，避免 null 被当成有效值继续下传。
+ */
+function emptyToUndefined(value: string | null | undefined): string | undefined {
+    return value == null || value === "" ? undefined : value;
 }
 
 /** 取第一个非空字符串（跨平台字段名不一致时的兜底链）。 */
-function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
+function firstNonEmpty(...values: (string | null | undefined)[]): string | undefined {
     for (const value of values) {
         const hit = emptyToUndefined(value);
         if (hit !== undefined) {
@@ -108,8 +117,10 @@ function isLocalPathCandidate(value: string): boolean {
  * 「自动下载完成后才会出现」的文件——补丁生效前该文件不存在。导出给
  * pic-path-grace（桥层等待落盘）与 picToCanonical 共用同一候选序。
  */
-export function picLocalCandidates(pic: PicElement | undefined): string[] {
-    if (pic === undefined) {
+export function picLocalCandidates(pic: PicElement | null | undefined): string[] {
+    // Linux 原生对象的 `picElement` 在非 PIC 元素上是显式 null（Windows 为省略），
+    // 这里必须同时挡住 null/undefined（2026-11 线上 issue：null 读取 picPath 崩溃）。
+    if (pic == null) {
         return [];
     }
     const seen = new Set<string>();
@@ -125,8 +136,8 @@ export function picLocalCandidates(pic: PicElement | undefined): string[] {
 }
 
 /** PIC 元素 → canonical image。 */
-function picToCanonical(pic: PicElement | undefined): CanonicalElement {
-    if (pic === undefined) {
+function picToCanonical(pic: PicElement | null | undefined): CanonicalElement {
+    if (pic == null) {
         return { type: "image", path: "" };
     }
     // 字段随平台不同（2026-11-10 Linux 原生 wrapper 实测）：
@@ -149,67 +160,69 @@ function picToCanonical(pic: PicElement | undefined): CanonicalElement {
 }
 
 /** FACE 元素 → canonical face。 */
-function faceToCanonical(face: FaceElement | undefined): CanonicalElement {
-    if (face === undefined) {
+function faceToCanonical(face: FaceElement | null | undefined): CanonicalElement {
+    if (face == null) {
         return { type: "face", id: "0" };
     }
     return { type: "face", id: String(face.faceIndex) };
 }
 
 /** PTT 元素 → canonical voice。 */
-function pttToCanonical(ptt: PttElement | undefined): CanonicalElement {
-    if (ptt === undefined) {
+function pttToCanonical(ptt: PttElement | null | undefined): CanonicalElement {
+    if (ptt == null) {
         return { type: "voice", path: "" };
     }
     return { type: "voice", path: ptt.filePath ?? "" };
 }
 
 /** VIDEO 元素 → canonical video。 */
-function videoToCanonical(video: VideoElement | undefined): CanonicalElement {
-    if (video === undefined) {
+function videoToCanonical(video: VideoElement | null | undefined): CanonicalElement {
+    if (video == null) {
         return { type: "video", path: "" };
     }
     const path = video.filePath ?? video.videoUrl ?? "";
     const base: Extract<CanonicalElement, { type: "video" }> = { type: "video", path };
-    if (video.videoUrl !== undefined) {
+    if (video.videoUrl != null) {
         base.url = video.videoUrl;
     }
-    // thumbPath 接收形态不唯一（Map / 序列化平面对象 / 字符串），统一走防御读取
+    // thumbPath 接收形态不唯一（Map / 序列化平面对象 / 字符串 / Linux 显式 null），
+    // 统一走防御读取
     const thumb = readVideoThumbPath(video.thumbPath);
     if (thumb !== undefined) {
         base.thumbPath = thumb;
     }
-    if (video.thumbWidth !== undefined && video.thumbWidth > 0) {
+    if (video.thumbWidth != null && video.thumbWidth > 0) {
         base.width = video.thumbWidth;
     }
-    if (video.thumbHeight !== undefined && video.thumbHeight > 0) {
+    if (video.thumbHeight != null && video.thumbHeight > 0) {
         base.height = video.thumbHeight;
     }
-    if (video.fileTime !== undefined && video.fileTime > 0) {
+    if (video.fileTime != null && video.fileTime > 0) {
         base.durationSec = video.fileTime;
     }
     return base;
 }
 
 /** FILE 元素 → canonical file。 */
-function fileToCanonical(file: FileElement | undefined): CanonicalElement {
-    if (file === undefined) {
+function fileToCanonical(file: FileElement | null | undefined): CanonicalElement {
+    if (file == null) {
         return { type: "file", path: "" };
     }
     const path = file.filePath ?? "";
     const name = file.fileName;
-    if (name === undefined) {
+    // Linux 原生对象未命中的字段显式 null（不仅是 undefined）
+    if (name == null) {
         return { type: "file", path };
     }
     return { type: "file", path, name };
 }
 
 /** REPLY 元素 → canonical reply。 */
-function replyToCanonical(reply: ReplyElement | undefined): CanonicalElement {
-    if (reply === undefined) {
+function replyToCanonical(reply: ReplyElement | null | undefined): CanonicalElement {
+    if (reply == null) {
         return { type: "reply", messageId: "" };
     }
-    return { type: "reply", messageId: reply.replayMsgId };
+    return { type: "reply", messageId: reply.replayMsgId ?? "" };
 }
 
 /**
@@ -219,9 +232,13 @@ function replyToCanonical(reply: ReplyElement | undefined): CanonicalElement {
  * 保持原始载荷（go-cqhttp/NapCat 生态一致），title/url 由下游自行 parse。
  * bytesData 缺失/为空时维持 unknown 兜底：空 json 段无信息量，保留 raw 供探测。
  */
-function arkToCanonical(ark: { bytesData: string } | undefined, el: RawElement): CanonicalElement {
+function arkToCanonical(
+    ark: { bytesData: string } | null | undefined,
+    el: RawElement,
+): CanonicalElement {
     const bytes = ark?.bytesData;
-    if (bytes === undefined || bytes === "") {
+    // Linux 原生对象未命中的变体字段显式 null（arkElement 本身与 bytesData 均按空值判）
+    if (bytes == null || bytes === "") {
         return { type: "unknown", raw: el };
     }
     return { type: "json", raw: bytes };

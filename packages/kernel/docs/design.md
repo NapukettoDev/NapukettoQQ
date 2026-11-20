@@ -90,6 +90,14 @@ profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
 JSON 观察（ADR-006），探测代码在 `src/wrapper/probe/`。未实证字段标「待探测校准」，不得按
 推测补字段；新增原生能力先补探测产物，再改类型与实现。
 
+### 原生元素空值契约（跨平台）
+
+Linux 3.2.x 原生对象把**未命中的变体字段显式置 `null`**（Windows 省略为 `undefined`）。
+因此 `RawElement` / `GrayTipElement` 及其子元素的可选字段类型统一声明为 `T | null`，
+读取方一律用 `== null` / `!= null`（禁止只判 `=== undefined`）；新增字段读取时由 `tsc`
+强制收窄。`MsgBridge.emitPicAware` 对落盘宽限判定做异常隔离：单条畸形元素不得阻断整批
+`channel.emit`，逐元素空值兜底由 canonical 层（宽容不抛）负责。
+
 ### 登录与快速登录超时兜底
 
 - `quickLogin` 对 `getLoginList` 与每次 `attemptQuickLogin` 用 `raceWithTimeout` 包裹，
@@ -137,7 +145,7 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
    `Msg/onMsgInfoListUpdate` 前，对本批消息全部 pic 本地路径候选做有界并行等待（任一
    存在即放行；缺省上限 2s / 250ms 轮询）。快速路径（无 pic / 路径已在）保持同步发射，
    事件时序不变；跨回调到达序无契约（原生回调本就无顺序保证）。
-2. **canonical 存在性裁决**（`types/message-element.ts` `picToCanonical`）：候选链上取
+2. **canonical 存在性裁决**（`codec/message-element.ts` `picToCanonical`）：候选链上取
    第一个真实存在的本地路径（picPath → sourcePath；http(s) URL 不校验直接可用）；全部
    缺失时回退 picUrl（URL 供下游下载），仍无则置空。**严禁把不存在的本地路径暴露给
    协议层**——下游直接 stat 的消费者（AstrBot 一类）会 FileNotFoundError。

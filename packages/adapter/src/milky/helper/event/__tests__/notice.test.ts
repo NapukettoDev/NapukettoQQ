@@ -231,6 +231,17 @@ describe("toMilkyNoticeEvent", () => {
         });
     });
 
+    it("Linux 原生形态：groupElement.type 显式 null → null（不抛错）", () => {
+        const event = toMilkyNoticeEvent(
+            groupMsg({
+                subElementType: GrayTipSubType.GROUP,
+                groupElement: { type: null, memberUid: "uid-20002" },
+            }),
+            ctx(),
+        );
+        expect(event).toBeNull();
+    });
+
     it("未知子类型：返回 null 并打 raw 校准日志", () => {
         const logger = ctx();
         const event = toMilkyNoticeEvent(

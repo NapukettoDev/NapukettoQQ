@@ -146,17 +146,18 @@ function extractPicElement(
         return undefined;
     }
     const out: MediaInfoResult = {};
-    if (pic.fileSize !== undefined) {
+    // Linux 原生对象把未命中的字段显式置 null（不只是 undefined）
+    if (pic.fileSize != null) {
         out.file_size = pic.fileSize;
     }
-    if (pic.fileName !== undefined) {
+    if (pic.fileName != null) {
         out.file_name = pic.fileName;
     }
-    if (pic.picUrl !== undefined) {
+    if (pic.picUrl != null) {
         out.url = pic.picUrl;
     }
     const rel = pic.sourcePath ?? pic.picPath;
-    if (rel !== undefined) {
+    if (rel != null) {
         const local = resolveLocalMediaFile(rel, deps);
         if (local !== null) {
             out.file = local;
@@ -175,16 +176,13 @@ async function downloadPttFallback(
     try {
         const downloaded = await deps.msgApi.downloadPtt(msgId, peer);
         const rel = downloaded.filePath;
-        if (rel !== undefined && rel !== "") {
+        // Linux 原生对象未命中的字段显式 null（!= null 判据）
+        if (rel != null && rel !== "") {
             const localAfter = resolveLocalMediaFile(rel, deps);
             if (localAfter !== null) {
                 return {
-                    ...(downloaded.fileSize !== undefined
-                        ? { file_size: downloaded.fileSize }
-                        : {}),
-                    ...(downloaded.fileName !== undefined
-                        ? { file_name: downloaded.fileName }
-                        : {}),
+                    ...(downloaded.fileSize != null ? { file_size: downloaded.fileSize } : {}),
+                    ...(downloaded.fileName != null ? { file_name: downloaded.fileName } : {}),
                     file: localAfter,
                 };
             }
@@ -233,20 +231,22 @@ export function createMediaActions(api: OneBotApi): Ob11Action[] {
                 // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
                 const el = first.elements.find((e) => e.pttElement != null);
                 const ptt = el?.pttElement;
-                if (ptt == null || ptt.filePath === undefined) {
+                const filePath = ptt?.filePath;
+                // filePath 同样可能是显式 null（不只是 undefined）
+                if (ptt == null || filePath == null) {
                     throw kernelError(`消息 ${id} 不包含语音`, "NOT_FOUND");
                 }
                 const meta = (): MediaInfoResult => ({
-                    ...(ptt.fileSize !== undefined ? { file_size: ptt.fileSize } : {}),
-                    ...(ptt.fileName !== undefined ? { file_name: ptt.fileName } : {}),
+                    ...(ptt.fileSize != null ? { file_size: ptt.fileSize } : {}),
+                    ...(ptt.fileName != null ? { file_name: ptt.fileName } : {}),
                 });
-                const local = resolveLocalMediaFile(ptt.filePath, api);
+                const local = resolveLocalMediaFile(filePath, api);
                 if (local !== null) {
                     return { ...meta(), file: local };
                 }
                 // 本地未命中 → 原生下载 + 元素回查；失败回退原始路径
                 const downloaded = await downloadPttFallback(msgId, peer, id, api);
-                return downloaded ?? { ...meta(), file: ptt.filePath };
+                return downloaded ?? { ...meta(), file: filePath };
             },
         }),
         defineOb11Action({

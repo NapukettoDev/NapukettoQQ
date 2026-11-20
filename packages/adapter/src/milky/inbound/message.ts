@@ -85,8 +85,11 @@ export class MilkyInboundMessage {
         }
         await this.deps.enrich.fillGroupEntities(msg, ctx);
         const forward = this.findForward(msg);
-        if (forward !== undefined) {
-            ctx.forwardSegments = [incomingForwardSegment(forward.resId, forward.fileName)];
+        // Linux 原生对象未命中的变体字段显式 null（!= null 判据）
+        if (forward != null) {
+            ctx.forwardSegments = [
+                incomingForwardSegment(forward.resId ?? "", forward.fileName ?? ""),
+            ];
         }
         return toMessageReceiveEvent(msg, ctx);
     }
@@ -94,7 +97,7 @@ export class MilkyInboundMessage {
     /** 转发 resId → 定位登记（get_forwarded_messages 反查用）。 */
     private recordForward(msg: RawMessage): void {
         const forward = this.findForward(msg);
-        if (forward !== undefined && forward.resId !== "") {
+        if (forward != null && forward.resId != null && forward.resId !== "") {
             this.deps.seqIndex.recordForward(forward.resId, {
                 chatType: msg.chatType,
                 peerUid: msg.peerUid,

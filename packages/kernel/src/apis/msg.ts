@@ -90,11 +90,15 @@ const PTT_POLL_INTERVAL_MS = 300;
 const PTT_POLL_TIMES = 34;
 
 /** 语音下载完成判定：有路径且（传输完成或末次轮询）才返回元素，否则 null。 */
-function pttDownloadResult(latest: PttElement | undefined, isLastPoll: boolean): PttElement | null {
-    if (latest === undefined) {
+function pttDownloadResult(
+    latest: PttElement | null | undefined,
+    isLastPoll: boolean,
+): PttElement | null {
+    // Linux 原生对象未命中的变体字段显式 null（不是省略成 undefined）
+    if (latest == null) {
         return null;
     }
-    const hasPath = latest.filePath !== undefined && latest.filePath !== "";
+    const hasPath = latest.filePath != null && latest.filePath !== "";
     const done = latest.transferStatus === 2 || latest.transferStatus === 4;
     return hasPath && (done || isLastPoll) ? latest : null;
 }
@@ -580,7 +584,8 @@ export class MsgApi {
         // 转写异步完成：再拉一次拿 text
         const after = await this.fetchMsgsByMsgId(target, [msgId]);
         const text = findPttElement(after)?.pttElement?.text;
-        if (text === undefined || text === "") {
+        // Linux 原生对象未命中的字段显式 null（不只是 undefined）
+        if (text == null || text === "") {
             throw kernelError("获取语音转文字结果失败", "UNKNOWN");
         }
         return text;
@@ -633,7 +638,8 @@ export class MsgApi {
         const msgs = await this.fetchMsgsByMsgId(target, [msgId]);
         const el = findPttElement(msgs);
         const ptt = el?.pttElement;
-        if (el === null || ptt === undefined) {
+        // Linux 原生对象未命中的变体字段显式 null（不只是 undefined）
+        if (el === null || ptt == null) {
             return null;
         }
         return { elemId: el.elementId ?? "", ptt };
@@ -713,7 +719,8 @@ export class MsgApi {
         });
         unwrapResult("buildMultiForwardMsg", built);
         const elements = built.rspInfo?.elements;
-        if (elements === undefined || elements.length === 0) {
+        // Linux 原生宿主可能给显式 null 而不是省略（统一空值判据）
+        if (elements == null || elements.length === 0) {
             throw kernelError("合并转发组装失败：无元素", "UNKNOWN");
         }
         const msgId = this.service.generateMsgUniqueId(target.chatType, String(Date.now()));
@@ -726,7 +733,8 @@ export class MsgApi {
     async fetchForwardMessage(peer: Peer, msgId: string): Promise<RawMessage[]> {
         const msgs = await this.fetchMsgsByMsgId(peer, [msgId]);
         const forward = findForwardElement(msgs);
-        if (forward === null || forward.resId === "") {
+        // resId 在 Linux 原生对象上可能是显式 null（空值判据）
+        if (forward === null || forward.resId == null || forward.resId === "") {
             throw kernelError("消息不包含合并转发内容", "NOT_FOUND");
         }
         const raw = await this.service.getMultiMsg(peer, msgId, forward.resId);
@@ -759,16 +767,25 @@ export class MsgApi {
     }
 }
 
-/** 在消息列表中找含 pttElement 的元素（找不到返回 null）。 */
+/**
+ * 在消息列表中找含 pttElement 的元素（找不到返回 null）。
+ *
+ * ⚠️ `!= null` 而非 `!== undefined`（Linux 原生宿主）：Windows 省略未命中的
+ * 变体字段，Linux 3.2.x 把所有变体字段显式置 null。用 `!== undefined` 会让
+ * 首个元素（哪怕是文本消息）被误判成语音元素，进而把 null 传给原生下载接口。
+ */
 function findPttElement(msgs: RawMessage[]): RawElement | null {
     const [first] = msgs;
     if (first === undefined) {
         return null;
     }
-    return first.elements.find((el) => el.pttElement !== undefined) ?? null;
+    return first.elements.find((el) => el.pttElement != null) ?? null;
 }
 
-/** 在消息列表中找含 multiForwardMsgElement 的元素（找不到返回 null）。 */
+/**
+ * 在消息列表中找含 multiForwardMsgElement 的元素（找不到返回 null）。
+ * 同 findPttElement：`!= null` 兼容 Linux 的显式 null 变体字段。
+ */
 function findForwardElement(
     msgs: RawMessage[],
 ): { resId: string; fileName: string; xmlContent: string } | null {
@@ -777,7 +794,7 @@ function findForwardElement(
         return null;
     }
     return (
-        first.elements.find((el) => el.multiForwardMsgElement !== undefined)
-            ?.multiForwardMsgElement ?? null
+        first.elements.find((el) => el.multiForwardMsgElement != null)?.multiForwardMsgElement ??
+        null
     );
 }

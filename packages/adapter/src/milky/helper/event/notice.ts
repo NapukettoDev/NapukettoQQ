@@ -105,11 +105,12 @@ const GROUP_CHANGE_MAPPERS: Partial<
 
 function groupElementToEvent(
     msg: RawMessage,
-    grp: TipGroupElement | undefined,
+    grp: TipGroupElement | null | undefined,
     ctx: NoticeTranslateContext,
 ): MilkyEvent | null {
-    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
-    if (grp == null || grp.type === undefined) {
+    // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
+    // 判别字段 type 同样可能是显式 null，不能只判 undefined）
+    if (grp == null || grp.type == null) {
         return null;
     }
     const mapper = GROUP_CHANGE_MAPPERS[grp.type];

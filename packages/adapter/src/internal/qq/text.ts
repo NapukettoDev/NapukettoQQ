@@ -6,10 +6,13 @@
  * 避免 `??` 把空串当成有效值。
  */
 
-/** 取首个非空（非 `undefined` 且非 `""`）的字符串；全部缺省返回 `undefined`。 */
-export function firstNonEmptyString(...values: (string | undefined)[]): string | undefined {
+/**
+ * 取首个非空（非 `null` / `undefined` 且非 `""`）的字符串；全部缺省返回 `undefined`。
+ * Linux 原生对象未命中的字段是显式 `null`（不只 `undefined`）。
+ */
+export function firstNonEmptyString(...values: (string | null | undefined)[]): string | undefined {
     for (const value of values) {
-        if (value !== undefined && value !== "") {
+        if (value != null && value !== "") {
             return value;
         }
     }

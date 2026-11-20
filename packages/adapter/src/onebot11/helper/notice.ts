@@ -191,9 +191,10 @@ function toGroupChange(
     g: GrayTipElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupEvent | null {
-    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
+    // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
+    // 判别字段 type 同样可能是显式 null，不能只判 undefined）
     const grp = g?.groupElement;
-    if (grp == null || grp.type === undefined) {
+    if (grp == null || grp.type == null) {
         return null;
     }
     const builder = GROUP_CHANGE_BUILDERS[grp.type];
@@ -315,7 +316,8 @@ export function toFriendAdd(entry: BuddyListEntry, selfUin: string): OB11FriendA
 export function toGroupUpload(msg: RawMessage, selfUin: string): OB11GroupUploadNoticeEvent | null {
     const el = msg.elements.find((e) => e.fileElement != null);
     const file = el?.fileElement;
-    if (file === undefined) {
+    // Linux 原生对象未命中的变体字段显式 null（== null 判据）
+    if (file == null) {
         return null;
     }
     return {
