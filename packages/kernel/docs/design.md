@@ -83,6 +83,22 @@ profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
   `getUserDetailInfo(uid).detail.uin` 反查。查不到 `detail.uin` 返回 `null` 而不抛错——
   这是"可能没有值"的读操作，调用方 fail-soft（adapter 退化为 0 并打校准日志）。
 
+### 结构化日志凭据保护
+
+- `createLogger` 在 pino 完成序列化后、控制台格式化与文件分流前统一处理 JSON 记录。
+  采用字段名集合与对象/数组遍历，不枚举有限层数的通配路径；覆盖配置账号数组、base、
+  child / setBindings、错误自有字段及 serializer / `toJSON` 产物，不修改调用方对象。
+- 字段名大小写不敏感：`token`、`access_token`、`authorization`、`cookie` / `cookies`、
+  `set-cookie`、`password`、`secret`、`ticket`，以及 QQ 票据 `clientKey`、`skey`、
+  `p_skey`、`csrf_token`、`bkn`，命中后整个值替换为 `[Redacted]`。
+  `LoggerOptions.redact` 继续作为 pino 附加路径规则，不能关闭内置字段保护。
+- `err` 使用 pino `errWithCause`，保留类型、message、stack、code 和结构化 cause，
+  脱敏仅替换敏感字段，账号标识、端口、状态和重试等诊断字段保留。
+- 边界是可序列化的结构化数据：不解析自由文本、字符串化 JSON、URL 查询串或消息正文
+  中的凭据；调用方必须把凭据放入命名字段，不能插值到 message / stack / raw 字符串。
+  JSON 处理失败抛不含原文的类型化错误，禁止将原始记录作为兜底输出。遍历无固定层数
+  通配规则，仍受 pino / JSON 序列化和运行时资源限制。
+
 ### 类型层来自运行时探测
 
 `types/services/`（service 方法面）、`types/listeners/`（回调面）、`types/entities.ts`
