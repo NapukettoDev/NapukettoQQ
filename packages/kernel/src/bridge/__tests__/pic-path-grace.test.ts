@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { ChatType, type RawElement, type RawMessage } from "@napuketto/kernel";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ElementType } from "../../types/services/msg-service.js";
-import { awaitPicLocalPaths } from "../pic-path-grace.js";
+import { awaitPicLocalPaths, hasPendingPicPaths } from "../pic-path-grace.js";
 
 function makeMsg(elements: RawElement[]): RawMessage {
     return {
@@ -108,5 +108,66 @@ describe("awaitPicLocalPaths", () => {
         const elapsed = Date.now() - start;
         expect(elapsed).toBeGreaterThanOrEqual(80);
         expect(elapsed).toBeLessThan(3000);
+    });
+});
+
+describe("Linux 原生对象形态（变体字段显式 null）", () => {
+    /** Linux 形态：非 PIC 元素显式携带 picElement: null（同时带其余变体 null）。 */
+    function linuxTextMsg(): RawMessage {
+        return makeMsg([
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "hi" },
+                picElement: null,
+                pttElement: null,
+                grayTipElement: null,
+                multiForwardMsgElement: null,
+            } as unknown as RawElement,
+        ]);
+    }
+
+    it("纯文本元素 picElement 为 null → hasPendingPicPaths=false 且不抛 TypeError", () => {
+        expect(() => hasPendingPicPaths([linuxTextMsg()])).not.toThrow();
+        expect(hasPendingPicPaths([linuxTextMsg()])).toBe(false);
+    });
+
+    it("纯文本元素 picElement 为 null → 宽限等待立即返回（快速路径）", async () => {
+        const start = Date.now();
+        await expect(
+            awaitPicLocalPaths([linuxTextMsg()], { timeoutMs: 5000, intervalMs: 10 }),
+        ).resolves.toBeUndefined();
+        expect(Date.now() - start).toBeLessThan(200);
+    });
+
+    it("PIC 元素 picElement 非 null 但路径字段全 null → 不误判为待落盘", () => {
+        const msg = makeMsg([
+            {
+                elementType: ElementType.PIC,
+                picElement: { picPath: null, sourcePath: null },
+                textElement: null,
+                pttElement: null,
+            } as unknown as RawElement,
+        ]);
+        expect(hasPendingPicPaths([msg])).toBe(false);
+    });
+
+    it("混合消息：文本(null 变体) + PIC(路径缺失) → 仍识别 PIC 候选并等待", async () => {
+        const path = pendingPath("mixed.png");
+        setTimeout(() => writeFileSync(path, "x"), 80);
+        const msg = makeMsg([
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "hi" },
+                picElement: null,
+            } as unknown as RawElement,
+            {
+                elementType: ElementType.PIC,
+                picElement: { picPath: path },
+                textElement: null,
+            } as unknown as RawElement,
+        ]);
+        expect(hasPendingPicPaths([msg])).toBe(true);
+        await awaitPicLocalPaths([msg], { timeoutMs: 5000, intervalMs: 20 });
+        expect(existsSync(path)).toBe(true);
     });
 });

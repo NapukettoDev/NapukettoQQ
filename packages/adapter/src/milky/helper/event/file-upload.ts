@@ -22,7 +22,8 @@ export function toFriendFileUploadData(
         return null;
     }
     const file = msg.elements.find((el) => el.fileElement != null)?.fileElement;
-    if (file === undefined || typeof file.fileUuid !== "string" || file.fileUuid === "") {
+    // Linux 原生对象未命中的变体字段显式 null（== null 判据）
+    if (file == null || typeof file.fileUuid !== "string" || file.fileUuid === "") {
         return null;
     }
     // is_self 双判据：sendType（录制实证 0=收到 2=自己发出）+ 发送者兜底

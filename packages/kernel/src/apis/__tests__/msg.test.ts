@@ -254,6 +254,130 @@ describe("fetchForwardMessage", () => {
     });
 });
 
+describe("Linux 原生 null 变体字段（2026-11 线上 issue 回归）", () => {
+    it("fetchPttText：首个元素 pttElement 显式 null → 跳过并命中真正的 PTT 元素", async () => {
+        const textWithNullPtt = {
+            elementType: 1,
+            textElement: { content: "x" },
+            pttElement: null,
+        };
+        const pttElement = { elementId: "e2", pttElement: { filePath: "/a.silk", text: "" } };
+        const afterElement = {
+            elementId: "e2",
+            pttElement: { filePath: "/a.silk", text: "转写结果" },
+        };
+        const { api, service } = makeApi({
+            getMsgsByMsgId: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    result: 0,
+                    msgList: [{ msgId: "m1", elements: [textWithNullPtt, pttElement] }],
+                })
+                .mockResolvedValueOnce({
+                    result: 0,
+                    msgList: [{ msgId: "m1", elements: [textWithNullPtt, afterElement] }],
+                }),
+        });
+        await expect(api.fetchPttText("m1", target)).resolves.toBe("转写结果");
+        // 传给原生的必须是真正的 PTT 元素（旧实现会把首个 null 变体元素误当 PTT）
+        expect(service.translatePtt2Text).toHaveBeenCalledWith(
+            "m1",
+            target,
+            expect.objectContaining({ elementId: "e2" }),
+        );
+    });
+
+    it("fetchPttText：转写结果 text 为显式 null → 抛 UNKNOWN（不返回 null）", async () => {
+        const textWithNullPtt = {
+            elementType: 1,
+            textElement: { content: "x" },
+            pttElement: null,
+        };
+        const nullTextPtt = {
+            elementId: "e2",
+            pttElement: { filePath: "/a.silk", text: null },
+        };
+        const { api } = makeApi({
+            getMsgsByMsgId: vi.fn(async () => ({
+                result: 0,
+                msgList: [{ msgId: "m1", elements: [textWithNullPtt, nullTextPtt] }],
+            })),
+        });
+        await expect(api.fetchPttText("m1", target)).rejects.toThrow(/获取语音转文字结果失败/);
+    });
+
+    it("downloadPtt：首个元素 pttElement 显式 null → 跳过并传正确 elemId", async () => {
+        const textWithNullPtt = {
+            elementType: 1,
+            textElement: { content: "x" },
+            pttElement: null,
+        };
+        const pendingPtt = {
+            elementId: "e2",
+            pttElement: { fileName: "a.amr", transferStatus: 0 },
+        };
+        const donePtt = {
+            elementId: "e2",
+            pttElement: { fileName: "a.amr", filePath: "/a.amr", transferStatus: 2 },
+        };
+        const downloadRichMedia = vi.fn(async () => undefined);
+        const { api } = makeApi({
+            downloadRichMedia,
+            getMsgsByMsgId: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    result: 0,
+                    msgList: [{ msgId: "m1", elements: [textWithNullPtt, pendingPtt] }],
+                })
+                .mockResolvedValue({
+                    result: 0,
+                    msgList: [{ msgId: "m1", elements: [textWithNullPtt, donePtt] }],
+                }),
+        });
+        await expect(api.downloadPtt("m1", target)).resolves.toMatchObject({
+            filePath: "/a.amr",
+            transferStatus: 2,
+        });
+        expect(downloadRichMedia).toHaveBeenCalledWith(expect.objectContaining({ elemId: "e2" }));
+    });
+
+    it("fetchForwardMessage：首个元素 multiForwardMsgElement 显式 null → 跳过并命中真正的转发", async () => {
+        const textWithNullForward = {
+            elementType: 1,
+            textElement: { content: "x" },
+            multiForwardMsgElement: null,
+        };
+        const forwardElement = {
+            elementType: 16,
+            multiForwardMsgElement: { resId: "r1", fileName: "f", xmlContent: "<x/>" },
+        };
+        const { api, service } = makeApi({
+            getMultiMsg: vi.fn(async () => ({
+                result: 0,
+                msgList: [{ msgId: "inner" }],
+            })),
+        });
+        (service.getMsgsByMsgId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            result: 0,
+            msgList: [{ msgId: "m1", elements: [textWithNullForward, forwardElement] }],
+        });
+        await expect(api.fetchForwardMessage(target, "m1")).resolves.toEqual([{ msgId: "inner" }]);
+        expect(service.getMultiMsg).toHaveBeenCalledWith(target, "m1", "r1");
+    });
+
+    it("sendForwardMessage：rspInfo.elements 显式 null → 明确报错（不裸读 length）", async () => {
+        const { api } = makeApi({
+            buildMultiForwardMsg: vi.fn(async () => ({
+                result: 0,
+                rspInfo: { elements: null },
+            })),
+        });
+        await expect(api.sendForwardMessage(target, target, ["s1"])).rejects.toThrow(
+            /合并转发组装失败/,
+        );
+    });
+});
+
 describe("downloadPtt（语音主动下载，2026-09-08 B1）", () => {
     const pttMsg = {
         msgId: "m1",

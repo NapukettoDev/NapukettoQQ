@@ -17,7 +17,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { picLocalCandidates, type RawMessage } from "../types/index.js";
+import { ElementType, picLocalCandidates, type RawMessage } from "../types/index.js";
 
 /** 默认宽限上限（毫秒）：覆盖典型原图下载时长，坏路径最多拖慢发射 2s。 */
 const DEFAULT_TIMEOUT_MS = 2000;
@@ -30,6 +30,12 @@ function collectCandidates(msgs: RawMessage[]): string[] {
     const out: string[] = [];
     for (const msg of msgs) {
         for (const element of msg.elements ?? []) {
+            // 只处理 PIC 元素：Linux 3.2.x 原生对象会在**所有**非 PIC 元素上
+            // 显式携带 `picElement: null`（Windows 为省略）。既按 elementType
+            // 过滤，也按空值判定兜底，避免 null 进入 picLocalCandidates。
+            if (element.elementType !== ElementType.PIC || element.picElement == null) {
+                continue;
+            }
             for (const candidate of picLocalCandidates(element.picElement)) {
                 if (!seen.has(candidate)) {
                     seen.add(candidate);

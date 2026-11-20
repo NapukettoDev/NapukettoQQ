@@ -15,10 +15,10 @@ export function hasGrayTip(msg: RawMessage): boolean {
     return msg.elements.some((el) => el.grayTipElement != null);
 }
 
-/** 非空 uid 才加入集合。 */
-function collectUids(uids: Set<string>, ...candidates: Array<string | undefined>): void {
+/** 非空 uid 才加入集合（Linux 原生对象未命中的字段是显式 null，不只 undefined）。 */
+function collectUids(uids: Set<string>, ...candidates: Array<string | null | undefined>): void {
     for (const uid of candidates) {
-        if (uid !== undefined && uid !== "") {
+        if (uid != null && uid !== "") {
             uids.add(uid);
         }
     }
@@ -73,6 +73,10 @@ export function firstUntranslatedGrayTip(msg: RawMessage): GrayTipElement | unde
 export function findRevokeElement(
     msg: RawMessage,
 ): NonNullable<GrayTipElement["revokeElement"]> | undefined {
-    return msg.elements.find((el) => el.grayTipElement?.revokeElement != null)?.grayTipElement
-        ?.revokeElement;
+    // `?? undefined`：Linux 原生对象显式 null 在类型上不满足 NonNullable 返回；
+    // 统一归一成 undefined（调用方只做「是否命中」判定）。
+    return (
+        msg.elements.find((el) => el.grayTipElement?.revokeElement != null)?.grayTipElement
+            ?.revokeElement ?? undefined
+    );
 }

@@ -149,8 +149,9 @@ function toMemberChangeEvent(
 ): SatoriEventContent | null {
     for (const el of raw.elements) {
         const grp = el.grayTipElement?.groupElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
-        if (grp == null || grp.type === undefined) {
+        // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
+        // 判别字段 type 同样可能是显式 null，不能只判 undefined）
+        if (grp == null || grp.type == null) {
             continue;
         }
         const type = memberChangeType(grp.type);
@@ -201,12 +202,13 @@ function toGroupGuild(id: string, name: string | undefined): Guild {
 /** 构造群成员（user + 可选备注 nick）。 */
 function toMember(
     uid: string,
-    nick: string | undefined,
-    remark: string | undefined,
+    nick: string | null | undefined,
+    remark: string | null | undefined,
     uidToUinMap: Map<string, string>,
 ): GuildMember {
     const member: GuildMember = { user: toUser(toUinString(uid, uidToUinMap), nick) };
-    if (remark !== undefined && remark !== "" && remark !== nick) {
+    // Linux 原生对象未命中的字段显式 null（不只是 undefined）
+    if (remark != null && remark !== "" && remark !== nick) {
         member.nick = remark;
     }
     return member;

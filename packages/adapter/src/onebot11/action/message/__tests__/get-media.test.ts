@@ -448,4 +448,18 @@ describe("GetRecordAction", () => {
         expect(result.status).toBe("failed");
         expect(result.message).toContain("不包含语音");
     });
+
+    it("Linux 原生空值形状：pttElement.filePath 显式 null → NOT_FOUND 不抛错", async () => {
+        // 回归：旧判据只挡 undefined，null filePath 会一路传到 resolveLocalMediaFile
+        const msg = stub<RawMessage>({
+            ...(picMsg({}) as object),
+            elements: [{ elementType: 4, pttElement: { filePath: null } }] as never,
+        });
+        const result = await mediaActionOf(
+            makeDeps(msg, { mediaBaseDir: tempDir("voice-filepath-null") }),
+            "get_record",
+        ).handle({ message_id: 1 });
+        expect(result.status).toBe("failed");
+        expect(result.message).toContain("不包含语音");
+    });
 });

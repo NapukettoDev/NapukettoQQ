@@ -109,6 +109,18 @@ describe("toOb11MessageInfo sender.role", () => {
         expect(info.sender.card).toBe("群名片");
     });
 
+    it("Linux 形态：sendMemberName 显式 null → sender.card 不写（事件与信息同口径）", () => {
+        const msg = makeMsg({ sendMemberName: null });
+        const event = toOb11MessageEvent(msg, "10000", new MessageUnique());
+        expect(
+            event.post_type === "message" && event.message_type === "group"
+                ? event.sender.card
+                : undefined,
+        ).toBeUndefined();
+        const info = toOb11MessageInfo(msg, new MessageUnique());
+        expect("card" in info.sender).toBe(false);
+    });
+
     it("Linux 形态：sendNickName 空串 → nickname 回退 sendMemberName（不是空串）", () => {
         const msg = makeMsg({ sendNickName: "", sendMemberName: "鸦鸦" });
         const event = toOb11MessageEvent(msg, "10000", new MessageUnique());

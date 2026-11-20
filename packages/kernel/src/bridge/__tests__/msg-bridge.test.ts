@@ -98,6 +98,52 @@ describe("MsgBridge", () => {
         bridge.register();
         expect(service["addKernelMsgListener"]).toHaveBeenCalledTimes(2);
     });
+
+    it("Linux 原生纯文本（picElement: null）→ 同步发射，不因 null 丢整批事件", () => {
+        const { bridge, channel, listener } = makeBridge();
+        const onRecvMsg = vi.fn();
+        channel.on("Msg/onRecvMsg", onRecvMsg);
+        bridge.register();
+        const msgs = [
+            {
+                msgId: "201",
+                chatType: 1,
+                elements: [
+                    {
+                        elementType: 1,
+                        textElement: { content: "hi" },
+                        picElement: null,
+                        pttElement: null,
+                        grayTipElement: null,
+                        multiForwardMsgElement: null,
+                    },
+                ],
+            },
+        ] as unknown as RawMessage[];
+        expect(() => listener()?.onRecvMsg(msgs)).not.toThrow();
+        expect(onRecvMsg).toHaveBeenCalledWith(msgs);
+    });
+
+    it("图片候选判定抛异常 → 安全隔离后仍同步发射（异常元素不饿死整批）", () => {
+        const { bridge, channel, listener } = makeBridge();
+        const onRecvMsg = vi.fn();
+        channel.on("Msg/onRecvMsg", onRecvMsg);
+        bridge.register();
+        const poisonPic = {
+            elementType: 2,
+            picElement: {
+                get picPath(): string {
+                    throw new TypeError("Cannot read properties of null");
+                },
+            },
+        };
+        const msgs = [
+            { msgId: "202", chatType: 1, elements: [poisonPic] },
+        ] as unknown as RawMessage[];
+        // 旧实现：hasPendingPicPaths 同步抛错 → channel.emit 永不执行（静默丢事件）
+        expect(() => listener()?.onRecvMsg(msgs)).not.toThrow();
+        expect(onRecvMsg).toHaveBeenCalledWith(msgs);
+    });
 });
 
 /** 透传样本：同一份数组既作原生回调实参，也作通道侧期望参数。 */
