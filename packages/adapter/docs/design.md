@@ -61,6 +61,11 @@
   可选 `?access_token=` 查询参数（OB11 / Milky，固定以 `http://localhost` 为 base
   解析相对路径）；`createTokenAuthorize` 在 token 为空时返回 `undefined`（不装钩子）。
   三协议 transport 只声明方言开关，不各自重复解析。
+  凭据值统一经 `tokenEquals`：按 UTF-16LE 编码（保持 JS 字符串包括孤立代理项的精确
+  相等语义），SHA-256 固定长度摘要后用 Node `timingSafeEqual` 比较；不同长度不抛错，
+  不做 Unicode 规范化。摘要计算仍与输入长度相关，不承诺整个请求恒定耗时。
+  Bearer / 裸头复用同一头名解析结果（小写优先、`Authorization` 兜底）；Bearer 前缀
+  大小写、空 token 免鉴权、查询参数和错误 Bearer 回退规则保持不变。
 - fail-soft 降级分支必须留痕：kernel API 调用失败（uid↔uin、群缓存读、媒体下载）→
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
@@ -151,6 +156,8 @@
   `WsServer.authorize`。hub 接管 wsServers 的 `send`/`open`/`close`，只向完成
   `IDENTIFY` 的连接广播 `EVENT`；token 不符或 10s 内未 `IDENTIFY` 以 4004 关闭；
   token 为空时连接即视为已认证（空 token = 不鉴权）。
+  `IDENTIFY.body.token` 必须为字符串，并复用 `tokenEquals`；缺失、非字符串或不匹配
+  仍以 4004 关闭。KuroBot 仅向服务端发送 token，本地不新增 token 校验路径。
 
 ### KuroBot 自建连接层
 

@@ -382,6 +382,16 @@ describe("WS 事件服务（无 token 组 A）", () => {
 });
 
 describe("WS 鉴权（token 组 B）", () => {
+    it.each([null, 42, true, {}, [TOKEN]])(
+        "IDENTIFY 非字符串 token %j：以 4004 关闭",
+        async (token) => {
+            const ws = await openWs(PORT_WS_B);
+            const closed = waitClose(ws);
+            ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token } }));
+            await expect(closed).resolves.toEqual({ code: 4004, reason: "unauthorized" });
+        },
+    );
+
     it("未 IDENTIFY 的连接收不到任何事件（认证前不广播）", async () => {
         const ws = await openWs(PORT_WS_B);
         setB.broadcaster.emit(
@@ -427,6 +437,49 @@ describe("WS 鉴权（token 组 B）", () => {
         expect(event["op"]).toBe(Opcode.EVENT);
         ws.close();
     });
+});
+
+describe("Satori IDENTIFY Unicode token 精确匹配", () => {
+    // JSON / WS 可以无损传递孤立代理项；不能用会将其替换的 UTF-8 比较。
+    const token = "虚构令牌🔑\ud800";
+    const group = buildSet({ httpPort: 36255, wsPort: 36256, token });
+    beforeAll(async () => {
+        await Promise.all(group.set.adapters.map((adapter) => adapter.open()));
+    });
+    afterAll(async () => {
+        await group.set.close();
+    });
+
+    it("相同码元通过，收到 READY 与认证后事件", async () => {
+        const ws = await openWs(36256);
+        try {
+            const ready = waitMessage(ws);
+            ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token } }));
+            expect((await ready)["op"]).toBe(Opcode.READY);
+            const event = waitMessage(ws);
+            group.broadcaster.emit(
+                toEventSignal({
+                    sn: 7,
+                    type: "login-updated",
+                    timestamp: 1700000000,
+                    login: toLogin(SELF, 7, true),
+                }),
+            );
+            expect((await event)["op"]).toBe(Opcode.EVENT);
+        } finally {
+            ws.close();
+        }
+    });
+
+    it.each(["x", `${token}x`, "虚构令牌🔑\ud801", "虚构令牌🔑\ufffd"])(
+        "不同长度或码元 %j 拒绝且关闭码不变",
+        async (candidate) => {
+            const ws = await openWs(36256);
+            const closed = waitClose(ws);
+            ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token: candidate } }));
+            await expect(closed).resolves.toEqual({ code: 4004, reason: "unauthorized" });
+        },
+    );
 });
 
 describe("IDENTIFY 超时（组 E：短超时）", () => {

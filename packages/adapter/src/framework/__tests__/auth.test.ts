@@ -9,9 +9,16 @@
  *  - allowQueryToken 以 dummy base 解析相对路径 ?access_token=；非法 URL
  *    fail-closed 并触发 onQueryParseError 留痕。
  */
+import { timingSafeEqual } from "node:crypto";
 import type { RequestContext } from "@napuketto/network";
-import { describe, expect, it } from "vitest";
-import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../auth.js";
+import { describe, expect, it, vi } from "vitest";
+import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential, tokenEquals } from "../auth.js";
+
+// 调用真实 crypto 实现，验证比较原语的安全前置条件；不使用不稳定的耗时断言。
+vi.mock("node:crypto", async (importOriginal) => {
+    const crypto = await importOriginal<typeof import("node:crypto")>();
+    return { ...crypto, timingSafeEqual: vi.fn(crypto.timingSafeEqual) };
+});
 
 const TOKEN = "secret-token";
 
@@ -60,6 +67,23 @@ describe("matchTokenCredential：Bearer 头", () => {
 });
 
 describe("matchTokenCredential：allowRawHeader（OB11 裸头）", () => {
+    it("Authorization 与 authorization 裸头一致，小写头存在时仍优先", () => {
+        expect(
+            matchTokenCredential(makeCtx("/", { ["Authorization"]: TOKEN }), TOKEN, {
+                allowRawHeader: true,
+            }),
+        ).toBe(true);
+        expect(
+            matchTokenCredential(
+                makeCtx("/", {
+                    authorization: "wrong",
+                    ["Authorization"]: TOKEN,
+                }),
+                TOKEN,
+                { allowRawHeader: true },
+            ),
+        ).toBe(false);
+    });
     it("开启后裸 authorization 头等于 token 即通过", () => {
         const ctx = makeCtx("/", { authorization: TOKEN });
         expect(matchTokenCredential(ctx, TOKEN, { allowRawHeader: true })).toBe(true);
@@ -81,6 +105,83 @@ describe("matchTokenCredential：allowRawHeader（OB11 裸头）", () => {
     it("错误 Bearer 且未开 allowRawHeader → 立即拒绝，不再看查询参数（Milky 语义）", () => {
         const ctx = makeCtx(`/ws?access_token=${TOKEN}`, { authorization: `Bearer wrong` });
         expect(matchTokenCredential(ctx, TOKEN, { allowQueryToken: true })).toBe(false);
+    });
+});
+
+describe("鉴权比较边界", () => {
+    it("所有凭据入口向恒定时间原语传入相同固定长度的摘要，包括不同长度输入", () => {
+        const compare = vi.mocked(timingSafeEqual);
+        compare.mockClear();
+        expect(matchTokenCredential(bearerCtx(TOKEN), TOKEN)).toBe(true);
+        expect(matchTokenCredential(bearerCtx("x"), TOKEN)).toBe(false);
+        expect(
+            matchTokenCredential(makeCtx("/", { ["Authorization"]: TOKEN }), TOKEN, {
+                allowRawHeader: true,
+            }),
+        ).toBe(true);
+        expect(
+            matchTokenCredential(makeCtx(`/?access_token=${TOKEN}`), TOKEN, {
+                allowQueryToken: true,
+            }),
+        ).toBe(true);
+        expect(tokenEquals("虚构令牌🔑", "虚构令牌🔑")).toBe(true);
+        expect(compare).toHaveBeenCalledTimes(5);
+        for (const [actual, expected] of compare.mock.calls) {
+            expect(actual.byteLength).toBe(32);
+            expect(expected.byteLength).toBe(32);
+        }
+    });
+
+    it.each([undefined, null, 42, true, {}, [], { token: TOKEN }])(
+        "非字符串凭据 %j 拒绝且不抛错",
+        (actual) => expect(tokenEquals(actual, TOKEN)).toBe(false),
+    );
+
+    it.each(["虚构令牌🔑", "é", "e\u0301", "\ud800", "\ud801", "", "a".repeat(4096)])(
+        "精确比较 Unicode 与不同长度，不做规范化：%j",
+        (token) => {
+            const opts = { allowRawHeader: true, allowQueryToken: true };
+            expect(matchTokenCredential(bearerCtx(token), token)).toBe(true);
+            expect(matchTokenCredential(bearerCtx(`${token}x`), token)).toBe(false);
+            expect(
+                matchTokenCredential(makeCtx("/", { ["Authorization"]: token }), token, opts),
+            ).toBe(true);
+            // URLSearchParams 按 UTF-8 编码，孤立代理项不能无损往返。
+            if (token.isWellFormed()) {
+                const query = new URLSearchParams({ access_token: token });
+                expect(matchTokenCredential(makeCtx(`/?${query}`), token, opts)).toBe(true);
+            }
+            expect(matchTokenCredential(makeCtx("/"), token, opts)).toBe(false);
+        },
+    );
+
+    it("不同孤立代理项和 U+FFFD 不可因 UTF-8 替换而被视为同一个凭据", () => {
+        expect(matchTokenCredential(bearerCtx("\ud801"), "\ud800")).toBe(false);
+        expect(matchTokenCredential(bearerCtx("\ufffd"), "\ud800")).toBe(false);
+        expect(matchTokenCredential(bearerCtx("e\u0301"), "é")).toBe(false);
+    });
+
+    it("保留大小写、空头、前缀与回退语义", () => {
+        const query = `/?access_token=${TOKEN}`;
+        expect(
+            matchTokenCredential(makeCtx(query, { authorization: `bearer ${TOKEN}` }), TOKEN),
+        ).toBe(false);
+        expect(
+            matchTokenCredential(makeCtx(query, { authorization: "" }), TOKEN, {
+                allowQueryToken: true,
+            }),
+        ).toBe(true);
+        expect(
+            matchTokenCredential(makeCtx(query, { authorization: "wrong" }), TOKEN, {
+                allowQueryToken: true,
+            }),
+        ).toBe(true);
+        // OB11 允许 token 本身包含 Bearer 前缀，Bearer 解析不匹配后仍尝试整个裸头。
+        expect(
+            matchTokenCredential(bearerCtx(TOKEN), `Bearer ${TOKEN}`, {
+                allowRawHeader: true,
+            }),
+        ).toBe(true);
     });
 });
 

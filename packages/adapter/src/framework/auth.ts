@@ -10,6 +10,7 @@
  * 相对路径（反向 WS 握手行 / 升级行）没有 origin，`new URL()` 必抛，固定以 dummy
  * base `http://localhost` 解析；解析失败 fail-closed，并按需回调留痕（Milky debug）。
  */
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { AuthorizeHook, RequestContext } from "@napuketto/network";
 
 /** Authorization 头 Bearer 前缀。 */
@@ -17,6 +18,20 @@ export const BEARER_PREFIX = "Bearer ";
 
 /** 查询参数 URL 解析用的 dummy base（相对路径必须有 base 才能解析）。 */
 const QUERY_BASE = "http://localhost";
+
+/**
+ * 固定长度摘要交给恒定时间比较原语，不因输入长度不同抛错。
+ * UTF-16LE 保留 JS 字符串的码元（UTF-8 会把不同孤立代理项都替换为 U+FFFD）。
+ * 哈希计算仍与输入长度相关，不能据此宣称整个鉴权流程恒定耗时。
+ */
+export function tokenEquals(actual: unknown, expected: string | undefined): boolean {
+    if (typeof actual !== "string" || typeof expected !== "string") {
+        return false;
+    }
+    const digest = (value: string): Buffer =>
+        createHash("sha256").update(value, "utf16le").digest();
+    return timingSafeEqual(digest(actual), digest(expected));
+}
 
 /** Token 鉴权方言开关（缺省全部关闭 = 仅校验 Bearer 头）。 */
 export interface TokenAuthOptions {
@@ -42,7 +57,7 @@ export function matchTokenCredential(
 ): boolean {
     const auth = ctx.headers["authorization"] ?? ctx.headers["Authorization"];
     if (auth?.startsWith(BEARER_PREFIX)) {
-        if (auth.slice(BEARER_PREFIX.length) === token) {
+        if (tokenEquals(auth.slice(BEARER_PREFIX.length), token)) {
             return true;
         }
         // 前缀存在但值不匹配：Milky / Satori 立即拒绝，不降级到查询参数。
@@ -50,13 +65,13 @@ export function matchTokenCredential(
             return false;
         }
     }
-    if (opts?.allowRawHeader === true && ctx.headers["authorization"] === token) {
+    if (opts?.allowRawHeader === true && tokenEquals(auth, token)) {
         return true;
     }
     if (opts?.allowQueryToken === true) {
         try {
             const parsed = new URL(ctx.url, QUERY_BASE);
-            return parsed.searchParams.get("access_token") === token;
+            return tokenEquals(parsed.searchParams.get("access_token"), token);
         } catch (err) {
             opts.onQueryParseError?.(ctx.url, err);
             return false;
