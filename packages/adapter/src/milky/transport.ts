@@ -20,7 +20,7 @@ import type {
     TransportAdapter,
     WsSocket,
 } from "@napuketto/network";
-import { createSseResponse, HttpClient, HttpServer, isWsOpen } from "@napuketto/network";
+import { createSseResponse, HttpClient, HttpServer, sendWsText } from "@napuketto/network";
 import type { ActionRegistry } from "../framework/index.js";
 import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../framework/index.js";
 import type { MilkyAction } from "./action/index.js";
@@ -104,11 +104,7 @@ class MilkyEventHub implements TransportAdapter {
         for (const client of this.sseClients) {
             client.send(json, "milky_event");
         }
-        for (const socket of this.sockets) {
-            if (isWsOpen(socket)) {
-                socket.send(json);
-            }
-        }
+        sendWsText(this.sockets, json);
     }
 
     open(): void {

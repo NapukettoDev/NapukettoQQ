@@ -437,6 +437,43 @@ describe("WS 鉴权（token 组 B）", () => {
         expect(event["op"]).toBe(Opcode.EVENT);
         ws.close();
     });
+
+    it("只在认证集合中检查缓冲，慢连接断开且健康连接收到事件", async () => {
+        const slow = await openWs(PORT_WS_B);
+        const healthy = await openWs(PORT_WS_B);
+        const pending = await openWs(PORT_WS_B);
+        try {
+            for (const ws of [slow, healthy]) {
+                const ready = waitMessage(ws);
+                ws.send(JSON.stringify({ op: Opcode.IDENTIFY, body: { token: TOKEN } }));
+                await expect(ready).resolves.toMatchObject({ op: Opcode.READY });
+            }
+            const event = toEventSignal({
+                sn: 3,
+                type: "login-updated",
+                timestamp: 1700000002,
+                login: toLogin(SELF, 3, true),
+            });
+            const buffered = vi
+                .spyOn(WsClient.prototype, "bufferedAmount", "get")
+                .mockReturnValueOnce(Number.MAX_SAFE_INTEGER);
+            try {
+                setB.broadcaster.emit(event);
+                expect(buffered).toHaveBeenCalledTimes(2);
+            } finally {
+                buffered.mockRestore();
+            }
+            await Promise.all([
+                expect(waitClose(slow)).resolves.toMatchObject({ code: 1006 }),
+                expect(waitMessage(healthy)).resolves.toEqual(event),
+                expect(expectSilence(pending, 30)).resolves.toBe(true),
+            ]);
+        } finally {
+            slow.terminate();
+            healthy.terminate();
+            pending.terminate();
+        }
+    });
 });
 
 describe("Satori IDENTIFY Unicode token 精确匹配", () => {

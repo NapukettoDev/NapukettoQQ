@@ -7,15 +7,17 @@
  * maxPayload 上限（1009）、心跳 ping、close 清理与重新 open。
  */
 
+import { once } from "node:events";
 import { connect as netConnect } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket as ClientSocket } from "ws";
-import type { RequestContext, WsServerOptions } from "../types.js";
+import type { RequestContext, WsServerOptions, WsSocket } from "../types.js";
 import { WsServer } from "../ws-server.js";
 import {
     connectOk,
     getFreePort,
     realDelay,
+    take,
     waitClose,
     waitJsonMessage,
     waitOpen,
@@ -109,6 +111,30 @@ describe("WsServer", () => {
         server.send({ hello: 1 });
         await expect(waitJsonMessage(ws1)).resolves.toEqual({ hello: 1 });
         await expect(waitJsonMessage(ws2)).resolves.toEqual({ hello: 1 });
+    });
+
+    it("待发缓冲加上 UTF-8 新帧超过上限时只断开慢连接", async () => {
+        const { server, url } = await start({ maxBufferedBytes: 64 });
+        const sockets: WsSocket[] = [];
+        server.onConnection = (socket) => sockets.push(socket);
+        const slow = await connectOk(url);
+        const healthy = await connectOk(url);
+        cleanups.push(async () => {
+            slow.terminate();
+            healthy.terminate();
+        });
+
+        const slowServer = take(sockets[0], "缺少慢连接");
+        // 46 + 14 + 5 个 UTF-8 字节超限，若误用字符串长度则不会超限。
+        vi.spyOn(slowServer, "bufferedAmount", "get").mockReturnValue(46);
+        const send = vi.spyOn(slowServer, "send");
+        const slowClosed = waitClose(slow);
+        const healthyMessage = waitJsonMessage(healthy);
+        server.send("汉");
+
+        expect(send).not.toHaveBeenCalled();
+        await expect(slowClosed).resolves.toMatchObject({ code: 1006 });
+        await expect(healthyMessage).resolves.toBe("汉");
     });
 
     it("非 JSON 消息被忽略（不进 onRequest），后续 JSON 消息仍正常分发", async () => {
@@ -280,24 +306,61 @@ describe("WsServer", () => {
             });
         });
         afterEach(() => {
+            vi.restoreAllMocks();
             vi.useRealTimers();
         });
 
-        it("heartbeat 按间隔向所有 OPEN 客户端 ping", async () => {
-            const { server, url } = await start({ heartbeat: { intervalMs: 40 } });
-            const ws = await connectOk(url);
-            let pings = 0;
-            ws.on("ping", () => {
-                pings += 1;
+        it("匹配的 pong 维持健康连接，关闭时清理正在等待的探测", async () => {
+            const schedule = vi.spyOn(globalThis, "setTimeout");
+            const cancel = vi.spyOn(globalThis, "clearTimeout");
+            const { server, url } = await start({
+                heartbeat: { intervalMs: 40, pongTimeoutMs: 100 },
             });
+            const connected = new Promise<WsSocket>((resolve) => {
+                server.onConnection = resolve;
+            });
+            const ws = await connectOk(url);
+            cleanups.push(async () => ws.terminate());
+            const socket = await connected;
 
-            // 虚拟时钟推 100ms → 触发 40/80ms 两轮；真实等待让帧落地
-            await vi.advanceTimersByTimeAsync(100);
-            await realDelay(30);
-            expect(pings).toBeGreaterThanOrEqual(2);
+            for (let round = 0; round < 4; round += 1) {
+                const pong = once(socket, "pong");
+                await vi.advanceTimersByTimeAsync(40);
+                await pong;
+                expect(ws.readyState).toBe(ClientSocket.OPEN);
+            }
 
-            await server.close();
-            ws.terminate();
+            const heartbeatTimer = schedule.mock.results.at(-1)?.value;
+            expect(schedule).toHaveBeenLastCalledWith(expect.any(Function), 40);
+            const closing = server.close();
+            expect(cancel).toHaveBeenCalledWith(heartbeatTimer);
+            expect(socket.listenerCount("pong")).toBe(0);
+            await closing;
+        });
+
+        it.each([false, true])("收不到匹配 pong 时回收连接（错误 pong: %s）", async (wrongPong) => {
+            const { server, url } = await start({
+                heartbeat: { intervalMs: 30, pongTimeoutMs: 100 },
+            });
+            const connected = new Promise<WsSocket>((resolve) => {
+                server.onConnection = resolve;
+            });
+            const ws = new ClientSocket(url, { autoPong: false });
+            cleanups.push(async () => ws.terminate());
+            await waitOpen(ws);
+            const socket = await connected;
+            const ping = once(ws, "ping");
+            const closed = waitClose(ws);
+            await vi.advanceTimersByTimeAsync(30);
+            await ping;
+            if (wrongPong) ws.pong("unrelated");
+
+            await vi.advanceTimersByTimeAsync(99);
+            expect(ws.readyState).toBe(ClientSocket.OPEN);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(socket.readyState).not.toBe(ClientSocket.OPEN);
+            await expect(closed).resolves.toMatchObject({ code: 1006 });
+            expect(vi.getTimerCount()).toBe(0);
         });
 
         it("心跳仅对 OPEN 客户端发送（未 open 时无帧）", async () => {
