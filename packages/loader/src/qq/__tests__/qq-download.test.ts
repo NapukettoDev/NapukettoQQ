@@ -288,6 +288,19 @@ describe("downloadFile 失败路径", () => {
         expect(readFileSync(dest, "utf8")).toBe("final-body");
     });
 
+    it("非 HTTPS 重定向 → DownloadError，且不请求重定向目标", async () => {
+        const url = "https://example.com/a.exe";
+        respond(() => ({
+            res: okResponse("data", { status: 302, location: "http://example.com/a.exe" }),
+        }));
+        await expect(downloadFile({ dest, url })).rejects.toMatchObject({
+            name: "DownloadError",
+            message: expect.stringContaining("HTTPS"),
+        });
+        expect(h.requestedUrls).toEqual([url]);
+        expect(existsSync(dest)).toBe(false);
+    });
+
     it("重定向超过 5 跳 → DownloadError 重定向次数过多", async () => {
         let n = 0;
         respond((url) => {

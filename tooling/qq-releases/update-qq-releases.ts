@@ -63,6 +63,7 @@ import {
     normalizeDownloadUrl,
     releasePlatform,
 } from "../../packages/loader/src/qq/qq-release-manifest.ts";
+import { findBundledSevenZip } from "../../packages/loader/src/qq/seven-zip-assets.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
@@ -279,12 +280,8 @@ function findSevenZip(): string {
     if (envPath !== undefined && envPath !== "" && existsSync(envPath)) {
         return envPath;
     }
-    const exeName = process.platform === "win32" ? "7z.exe" : "7zz";
-    const bundled = join(SEVEN_ZIP_DIR, exeName);
-    if (existsSync(bundled)) {
-        return bundled;
-    }
-    return "7z";
+    const platform = process.platform === "win32" ? "win32" : "linux";
+    return findBundledSevenZip(SEVEN_ZIP_DIR, platform) ?? "7z";
 }
 
 /** 用 7z 列出安装包归档内容，返回 stdout（失败抛错）。 */

@@ -1,0 +1,27 @@
+{
+    "linux-x64": {
+        "version": "25.01",
+        "archive": {
+            "name": "7z2501-linux-x64.tar.xz",
+            "url": "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz",
+            "sha256": "4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4"
+        },
+        "files": {
+            "7zz": "a1860fdf0d6ec395e0e277e5222e9aa488747db4aa5c87d1ec879a0916ba0b2f",
+            "License-linux.txt": "99df5a516035baca9f2e8095977599d4a4340f58ba900f870238943996014f53"
+        }
+    },
+    "windows-x64": {
+        "version": "26.02",
+        "archive": {
+            "name": "7z2602-x64.exe",
+            "url": "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-x64.exe",
+            "sha256": "6745fa76dc2ea031596d8678f6f6b99c3c1b435b4164a63485adbbc7b8d82ef0"
+        },
+        "files": {
+            "7z.dll": "69fd4df057985c40e510e2fac182881c7f85e90aa13ec703f763a8fdb2ce61f8",
+            "7z.exe": "83967f1b02b43c4efeda302795722c809e0e81b8307de73558d10484d5676a7d",
+            "License.txt": "519ac0a4bded9c18ea02e0afb71f663d8c47373bd9facd3ac96a79f51d77765d"
+        }
+    }
+}

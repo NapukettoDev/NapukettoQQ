@@ -17,7 +17,7 @@ import {
     readSync,
     statSync,
 } from "node:fs";
-import { chmod, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { isRecord } from "../host/type-guards.js";
@@ -41,17 +41,17 @@ import {
     resolveDownloadUrl,
 } from "./qq-releases.js";
 import type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./qq-types.js";
+import {
+    assertSevenZipHash,
+    findBundledSevenZip,
+    linuxSevenZip,
+    matchesSevenZipHash,
+} from "./seven-zip-assets.js";
 
 export type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./qq-types.js";
 
 /** 数据根下 QQ 文件缓存目录名（<数据根>/qq-files/<版本>/，P1 下载解包产物）。 */
 export const QQ_FILES_DIR_NAME = "qq-files";
-
-/**
- * 7-Zip 官方 Linux 版版本号（tar.xz 文件名组成部分；兜底下载用，内置资产优先）。
- * ⚠️ 此值为最后兜底下载用，7-Zip 官网只留最新版，旧版号会 404；内置资产失败才触发。
- */
-const SEVEN_ZIP_LINUX_VERSION = "2501";
 
 /** 注册表 UninstallString 查询（QQ 官方安装路径）。 */
 const REG_QUERY_RE = /"([^"]+)"/;
@@ -336,27 +336,16 @@ function tryResolveCached(dataRoot: string): QqInstallInfo | null {
     return null;
 }
 
-/**
- * 7-Zip 官方 Linux 版下载地址（纯函数，可单测）。
- * 环境变量 NAPUTO_7Z_URL 可覆盖（同 QQ 下载 NAPUTO_QQ_URL 模式）。
- */
+/** 7-Zip 官方归档或其 HTTPS 镜像。二者使用同一份归档摘要。 */
 export function linuxSevenZipUrl(): string {
-    return (
-        process.env["NAPUTO_7Z_URL"] ??
-        `https://www.7-zip.org/a/7z${SEVEN_ZIP_LINUX_VERSION}-linux-x64.tar.xz`
-    );
+    const url = URL.parse(process.env["NAPUTO_7Z_URL"] ?? linuxSevenZip.archive.url);
+    if (url?.protocol !== "https:") {
+        throw new Error("NAPUTO_7Z_URL 必须是有效的 HTTPS 地址");
+    }
+    return url.href;
 }
 
-/**
- * 确保 Linux 7zz 就绪（治本：内置资产优先，下载兜底）。
- *
- * 优先级：内置资产 assets/7zip/7zz（2026-08-14 治本——与 Windows 7z.exe 同模式，
- * 7zz 静态二进制已打进发布包，LGPL 合规可分发，零运行时下载）> 数据根缓存
- * runtime/7zip/7zz（历史下载产物复用）> 官网下载（兜底，NAPUTO_7Z_URL 可覆盖）。
- *
- * 背景：7-Zip 官网只保留最新版 tar.xz，硬编码旧版本号（如 2409）会被删档 404，
- * 运行时下载既脆弱又依赖外网。内置资产彻底消灭该依赖。
- */
+/** Linux x64 优先使用内置 7zz，其次复用已验证缓存，再下载固定版本。 */
 export async function ensureLinuxSevenZip(
     options: { dataRoot?: string; arch?: string } = {},
 ): Promise<{ exe: string; source: string }> {
@@ -375,8 +364,8 @@ export async function ensureLinuxSevenZip(
     }
 
     // 1. 内置资产（治本）：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
-    const bundled = join(packageRoot(), "assets", "7zip", "7zz");
-    if (existsSync(bundled)) {
+    const bundled = findBundledSevenZip(join(packageRoot(), "assets", "7zip"), "linux");
+    if (bundled !== null) {
         // npm 安装可能丢失执行位，保险设置（失败不阻塞：execFile 报 EACCES 时由调用方提示）
         await chmod(bundled, 0o755).catch(() => {
             // 忽略：无执行位场景后续解包会明确报错，此处不静默吞掉主流程
@@ -384,36 +373,41 @@ export async function ensureLinuxSevenZip(
         return { exe: bundled, source: "内置资产 assets/7zip" };
     }
 
-    // 2. 数据根缓存（历史下载产物复用）
+    // 旧版缓存可复用，但必须与官方文件一致。
     const dataRoot = resolveDataRoot(options.dataRoot);
     const cacheDir = join(dataRoot, "runtime", "7zip");
     const exe = join(cacheDir, "7zz");
-    if (existsSync(exe)) {
+    if (existsSync(exe) && matchesSevenZipHash(exe, linuxSevenZip.files["7zz"])) {
         return { exe, source: "数据根缓存 runtime/7zip" };
     }
 
-    // 3. 官网下载兜底（NAPUTO_7Z_URL 覆盖；仅当发布包缺失旧形态时触发）
-    const archive = join(cacheDir, `7z${SEVEN_ZIP_LINUX_VERSION}-linux-x64.tar.xz`);
+    await downloadLinuxSevenZip(cacheDir, exe);
+    return { exe, source: "自动下载（7-Zip 官方 linux 版）" };
+}
+
+async function downloadLinuxSevenZip(cacheDir: string, exe: string): Promise<void> {
+    const url = linuxSevenZipUrl();
     mkdirSync(cacheDir, { recursive: true });
-    await downloadFile({ dest: archive, url: linuxSevenZipUrl() });
+    const stagingDir = await mkdtemp(join(cacheDir, ".download-"));
     try {
-        // tar -xJf 解压（Linux 自带 tar；7-Zip 官方 tar.xz 根目录含 7zz）
+        const archive = join(stagingDir, linuxSevenZip.archive.name);
+        await downloadFile({ dest: archive, url, expectedSha256: linuxSevenZip.archive.sha256 });
         try {
-            execFileSync("tar", ["-xJf", archive, "-C", cacheDir], { stdio: "pipe" });
+            execFileSync("tar", ["-xJf", archive, "-C", stagingDir, "7zz"], { stdio: "pipe" });
         } catch (err) {
             const message = errorMessage(err);
             throw new Error(
                 `7z linux 解压失败: ${message}（需 tar + xz-utils；或设 NAPUTO_7Z_PATH 指定系统 7z）`,
+                { cause: err },
             );
         }
+        const stagedExe = join(stagingDir, "7zz");
+        assertSevenZipHash(stagedExe, linuxSevenZip.files["7zz"]);
+        await chmod(stagedExe, 0o755);
+        await rename(stagedExe, exe);
     } finally {
-        await rm(archive, { force: true });
+        await rm(stagingDir, { recursive: true, force: true });
     }
-    if (!existsSync(exe)) {
-        throw new Error(`7z linux 解压后未找到 7zz: ${exe}`);
-    }
-    await chmod(exe, 0o755); // 官方 tar.xz 内已有执行位，保险设置
-    return { exe, source: "自动下载（7-Zip 官方 linux 版）" };
 }
 
 /**
@@ -472,11 +466,9 @@ export async function ensureQqFiles(
     options.onStage?.(`QQ 安装包下载完成，sha256 校验通过（${release.sha256.slice(0, 12)}…）`);
 
     // 3. 解包 + 提取（失败清理缓存残留；临时文件无论如何清理）
-    //    Linux 分支：确保 7zz（自动下载 7-Zip 官方 linux 版，2026-08-14 生产修复——
-    //    此前依赖系统 p7zip-full，未安装则 7z 解包失败、QQ 文件无法就绪）
-    const sevenZipPath = await resolveSevenZipPath(options.sevenZipPath, dataRoot);
     const extractedDir = join(tmpDir, `qq-extracted-${version}-${process.pid}`);
     try {
+        const sevenZipPath = await resolveSevenZipPath(options.sevenZipPath, dataRoot);
         // 解包前再次确认安装包真实存在（downloadFile 已 stat 兜底；防御并发清理竞态）
         if (!existsSync(installerPath)) {
             throw new Error(

@@ -50,6 +50,17 @@ export class DownloadError extends Error {
     }
 }
 
+function redirectUrl(currentUrl: string, location: string, redirects: number): string {
+    if (redirects >= 5) {
+        throw new DownloadError(`重定向次数过多: ${currentUrl}`);
+    }
+    const target = URL.parse(location, currentUrl);
+    if (target?.protocol !== "https:") {
+        throw new DownloadError("重定向目标必须是有效的 HTTPS 地址");
+    }
+    return target.href;
+}
+
 /** 发起一次 https GET，返回响应（跟随重定向，最多 5 跳）。 */
 function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
     return new Promise((resolve, reject) => {
@@ -61,11 +72,14 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
                 const status = res.statusCode ?? 0;
                 if (status >= 300 && status < 400 && res.headers["location"] !== undefined) {
                     res.resume(); // 释放连接
-                    if (redirects >= 5) {
-                        reject(new DownloadError(`重定向次数过多: ${currentUrl}`));
-                        return;
+                    try {
+                        request(
+                            redirectUrl(currentUrl, res.headers["location"], redirects),
+                            redirects + 1,
+                        );
+                    } catch (error) {
+                        reject(error);
                     }
-                    request(new URL(res.headers["location"], currentUrl).toString(), redirects + 1);
                     return;
                 }
                 if (status !== 200) {

@@ -166,7 +166,7 @@ jobs:
             # action.yml 给 app-id 标了弃用提示。无条件执行：checkout 在 bump
             # 判定之前，无法按 changed 剪枝。
             - id: app-token
-              uses: actions/create-github-app-token@v3
+              uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
               with:
                   client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
                   private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -179,7 +179,7 @@ jobs:
             # 只存在于私有 submodule 中，CI 上不检出则该条目匹配不到文件、npm 打包
             # 静默丢件（0.0.36–0.0.38 事故：stub DLL 缺失，零配置自建宿主必挂），
             # 下方「校验 loader 打包产物」守卫兜底。
-            - uses: actions/checkout@v7
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   fetch-depth: 0
                   persist-credentials: false
@@ -187,12 +187,12 @@ jobs:
                   submodules: recursive
 
             - name: Setup pnpm
-              uses: pnpm/action-setup@v6
+              uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
               with:
                   version: 12.4.1
 
             - name: Setup Node
-              uses: actions/setup-node@v7
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
                   node-version: 24
                   cache: pnpm
@@ -372,7 +372,7 @@ jobs:
             # environment 审批上，多久有人点没人能保证。30 天 = 仓库默认，
             # 足以覆盖任何正常的审批延迟；过短会导致审批通过时产物已被清理。
             - if: steps.bump.outputs.changed == 'true'
-              uses: actions/upload-artifact@v7
+              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: release-workspace
                   path: ${{ runner.temp }}/release-workspace.tgz
@@ -394,7 +394,7 @@ jobs:
             id-token: write # OIDC：换包级短时 token + 自动 provenance
         steps:
             - name: Setup Node
-              uses: actions/setup-node@v7
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
                   node-version: 24
 
@@ -411,7 +411,7 @@ jobs:
             - name: 确认 npm 版本
               run: npm --version
 
-            - uses: actions/download-artifact@v8
+            - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
               with:
                   name: release-workspace
                   path: ${{ runner.temp }}
