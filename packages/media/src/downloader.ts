@@ -55,8 +55,8 @@ const ALLOWED_PROTOCOLS: ReadonlySet<string> = new Set(["http:", "https:"]);
 /** 扩展名字符合法性（URL pathname 提取校验）。 */
 const EXT_RE = /^\.[a-z0-9]+$/i;
 
-/** IPv4 映射 IPv6 地址（::ffff:a.b.c.d）。 */
-const IPV4_MAPPED_RE = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/;
+/** WHATWG URL 归一化后的 IPv4-mapped IPv6（::ffff:h:h，低 32 位为 IPv4）。 */
+const IPV4_MAPPED_RE = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/;
 
 /**
  * 拒绝的 IPv4 段（[网络地址, 前缀长度]）。
@@ -68,7 +68,8 @@ const BLOCKED_IPV4: ReadonlyArray<readonly [number, number]> = [
     [0xa9fe0000, 16], // 169.254.0.0/16 链路本地（含云元数据 169.254.169.254）
     [0xc0000000, 24], // 192.0.0.0/24 IETF 协议分配
     [0xc0000200, 24], // 192.0.2.0/24 文档示例
-    [0xc6336400, 15], // 198.18.0.0/15 基准测试
+    [0xc6120000, 15], // 198.18.0.0/15 基准测试
+    [0xc6336400, 24], // 198.51.100.0/24 文档示例
     [0xcb007100, 24], // 203.0.113.0/24 文档示例
     [0xe0000000, 4], // 224.0.0.0/4 多播
     [0xf0000000, 4], // 240.0.0.0/4 保留
@@ -82,15 +83,14 @@ function ipv4ToInt(ip: string): number {
 }
 
 /** 字面 IPv4 是否落在拒绝段。 */
-function isBlockedIpv4(ip: string): boolean {
-    const value = ipv4ToInt(ip);
+function isBlockedIpv4(value: number): boolean {
     return BLOCKED_IPV4.some(([network, prefix]) => {
         const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
         return (value & mask) >>> 0 === (network & mask) >>> 0;
     });
 }
 
-/** 字面 IPv6 是否落在拒绝段（环回 ::1 放行）。 */
+/** URL 已归一化的字面 IPv6 是否落在拒绝段（环回 ::1 放行）。 */
 function isBlockedIpv6(ip: string): boolean {
     const lower = ip.toLowerCase();
     if (lower === "::") {
@@ -99,10 +99,12 @@ function isBlockedIpv6(ip: string): boolean {
     if (lower === "::1") {
         return false; // 环回放行
     }
-    // IPv4 映射地址（::ffff:127.0.0.1 等）按 IPv4 判定
+    // 点分尾部、展开形式与大小写均已由 URL 归一化，提取低 32 位复用 IPv4 策略。
     const mapped = IPV4_MAPPED_RE.exec(lower);
-    if (mapped?.[1] !== undefined) {
-        return isBlockedIpv4(mapped[1]);
+    if (mapped?.[1] !== undefined && mapped[2] !== undefined) {
+        const value =
+            ((Number.parseInt(mapped[1], 16) << 16) | Number.parseInt(mapped[2], 16)) >>> 0;
+        return isBlockedIpv4(value);
     }
     const firstGroup = lower.split(":")[0] ?? "";
     if (firstGroup === "") {
@@ -134,7 +136,7 @@ export function assertDownloadUrlSafe(raw: string): URL {
     }
     const host = parsed.hostname.replace(/^\[|\]$/g, "");
     const kind = isIP(host);
-    if (kind === 4 && isBlockedIpv4(host)) {
+    if (kind === 4 && isBlockedIpv4(ipv4ToInt(host))) {
         throw new MediaError(`禁止访问的下载地址：${host}`);
     }
     if (kind === 6 && isBlockedIpv6(host)) {

@@ -243,6 +243,143 @@ describe("downloadUrl", () => {
     });
 });
 
+describe("downloadUrl 字面地址策略（fetch mock，不访问外网）", () => {
+    let dir: string;
+    const fetchStub = vi.fn<typeof fetch>();
+    beforeEach(() => {
+        dir = makeTempDir("nk-media-ip-");
+        fetchStub.mockReset();
+        fetchStub.mockImplementation(async () => new Response("ok"));
+        vi.stubGlobal("fetch", fetchStub);
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        cleanupTempDir(dir);
+    });
+
+    // 显式列出 IPv4 与十六进制尾部，避免测试复刻生产代码的转换或掩码逻辑。
+    const blocked = [
+        ["0.0.0.0", "0:0"],
+        ["0.255.255.255", "ff:ffff"],
+        ["100.64.0.0", "6440:0"],
+        ["100.127.255.255", "647f:ffff"],
+        ["169.254.0.0", "a9fe:0"],
+        ["169.254.169.254", "a9fe:a9fe"],
+        ["169.254.255.255", "a9fe:ffff"],
+        ["192.0.0.255", "c000:ff"],
+        ["192.0.2.0", "c000:200"],
+        ["198.18.0.0", "c612:0"],
+        ["198.19.255.255", "c613:ffff"],
+        ["198.51.100.0", "c633:6400"],
+        ["198.51.100.255", "c633:64ff"],
+        ["203.0.113.255", "cb00:71ff"],
+        ["224.0.0.0", "e000:0"],
+        ["239.255.255.255", "efff:ffff"],
+        ["240.0.0.0", "f000:0"],
+        ["255.255.255.255", "ffff:ffff"],
+    ];
+    const allowed = [
+        ["127.0.0.1", "7f00:1"],
+        ["10.0.0.1", "a00:1"],
+        ["172.16.0.1", "ac10:1"],
+        ["192.168.0.1", "c0a8:1"],
+        ["8.8.8.8", "808:808"],
+        ["100.63.255.255", "643f:ffff"],
+        ["100.128.0.0", "6480:0"],
+        ["169.253.255.255", "a9fd:ffff"],
+        ["169.255.0.0", "a9ff:0"],
+        ["192.0.1.255", "c000:1ff"],
+        ["192.0.3.0", "c000:300"],
+        ["198.17.255.255", "c611:ffff"],
+        ["198.20.0.0", "c614:0"],
+        ["198.50.0.1", "c632:1"],
+        ["198.51.99.255", "c633:63ff"],
+        ["198.51.101.0", "c633:6500"],
+        ["203.0.112.255", "cb00:70ff"],
+        ["203.0.114.0", "cb00:7200"],
+        ["223.255.255.255", "dfff:ffff"],
+    ];
+
+    it.each([
+        ...blocked.flatMap(([ipv4, hex]) => [ipv4, `[::ffff:${ipv4}]`, `[::ffff:${hex}]`]),
+        // URL 的替代编码与归一化形态。
+        "2852039166",
+        "0xa9fea9fe",
+        "0251.0376.0251.0376",
+        "169.16689662",
+        "%31%36%39.254.169.254",
+        "[0:0:0:0:0:FFFF:A9FE:A9FE]",
+        "[0:0:0:0:0:ffff:169.254.169.254]",
+        "[::FFFF:A9FE:A9FE]",
+        "[0:0:0:0:0:0:0:0]",
+        "[fe80:0:0:1::1]",
+        "[febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff]",
+        "[FF02:0:0:0:0:0:0:1]",
+    ])("拒绝 %s，且不发起请求或留下文件", async (host) => {
+        await expect(downloadUrl(`http://${host}/media`, join(dir, "x.bin"))).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+        expect(fetchStub).not.toHaveBeenCalled();
+        expect(readdirSync(dir)).toEqual([]);
+    });
+
+    it.each([
+        ...allowed.flatMap(([ipv4, hex]) => [ipv4, `[::ffff:${ipv4}]`, `[::ffff:${hex}]`]),
+        "2130706433",
+        "0177.0.0.1",
+        "0x7f000001",
+        "127.1",
+        "[0:0:0:0:0:ffff:127.0.0.1]",
+        "[0:0:0:0:0:FFFF:0808:0808]",
+        "[0:0:0:0:0:0:0:1]",
+        "[fc00::1]",
+        "[fe7f:ffff::1]",
+        "[fec0::1]",
+        "[2606:4700:4700::1111]",
+    ])("放行 %s，保持正常下载", async (host) => {
+        const url = `https://${host}/media`;
+        const dest = join(dir, "x.bin");
+        await expect(downloadUrl(url, dest)).resolves.toBe(2);
+        expect(fetchStub).toHaveBeenCalledExactlyOnceWith(new URL(url).href, {
+            redirect: "manual",
+            signal: expect.any(AbortSignal),
+        });
+        expect(readFileSync(dest, "utf8")).toBe("ok");
+        expect(readdirSync(dir)).toEqual(["x.bin"]);
+    });
+
+    it.each([
+        "http://[::ffff:169.254.169.254]/latest/meta-data/",
+        "http://[::ffff:a9fe:a9fe]/latest/meta-data/",
+        "//[0:0:0:0:0:FFFF:A9FE:A9FE]/latest/meta-data/",
+        "http://[::ffff:198.18.0.1]/media",
+    ])("重定向到 %s 在下一跳请求前拒绝，保留旧文件且无临时文件", async (location) => {
+        const cancel = vi.fn();
+        fetchStub.mockResolvedValueOnce(
+            new Response(new ReadableStream({ cancel }), { status: 302, headers: { location } }),
+        );
+        const dest = join(dir, "x.bin");
+        writeFileSync(dest, "old");
+        await expect(downloadUrl("https://media.example/start", dest)).rejects.toThrow(
+            "禁止访问的下载地址",
+        );
+        expect(fetchStub).toHaveBeenCalledTimes(1);
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(readFileSync(dest, "utf8")).toBe("old");
+        expect(readdirSync(dir)).toEqual(["x.bin"]);
+    });
+
+    it("重定向到允许的映射地址仍可流式下载", async () => {
+        const location = "http://[0:0:0:0:0:FFFF:192.168.1.1]/media";
+        fetchStub.mockResolvedValueOnce(new Response(null, { status: 307, headers: { location } }));
+        const dest = join(dir, "x.bin");
+        await expect(downloadUrl("https://media.example/start", dest)).resolves.toBe(2);
+        expect(fetchStub).toHaveBeenCalledTimes(2);
+        expect(fetchStub.mock.calls[1]?.[0]).toBe(new URL(location).href);
+        expect(readFileSync(dest, "utf8")).toBe("ok");
+    });
+});
+
 describe("inferExtension", () => {
     it.each([
         ["image/png", "http://x/a", ".png"],
