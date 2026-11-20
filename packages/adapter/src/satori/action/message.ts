@@ -2,6 +2,8 @@
  * Satori 消息动作：message.create / get / list / delete
  * （message.update：QQ 不支持编辑 → 501，见 registry）
  */
+import { rm, rmdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { kernelError } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
@@ -38,8 +40,23 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
                 const { channel_id: channelId, content } = payload;
                 const peer = await deps.resolvePeer(channelId);
                 deps.setChannelType(channelId, peer.chatType === 2);
-                const elements = await parseContentToCanonical(content, deps.toCanonicalDeps());
-                const { msgId } = await deps.msgApi.sendMessage(peer, elements);
+                const ownedOutputs = new Set<string>();
+                let msgId: string;
+                try {
+                    const elements = await parseContentToCanonical(content, {
+                        ...deps.toCanonicalDeps(),
+                        onVideoTranscoded: (path) => ownedOutputs.add(path),
+                    });
+                    ({ msgId } = await deps.msgApi.sendMessage(peer, elements));
+                } finally {
+                    await Promise.all(
+                        [...ownedOutputs].map(async (path) => {
+                            await rm(path, { force: true });
+                            // Only remove the now-empty directory owned by transcodeVideo.
+                            await rmdir(dirname(path));
+                        }),
+                    );
+                }
                 const message: Message = {
                     id: msgId,
                     channel: toChannelById(channelId, peer.chatType === 2),

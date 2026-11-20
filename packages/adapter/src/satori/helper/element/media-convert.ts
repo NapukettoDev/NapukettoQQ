@@ -20,6 +20,8 @@ export interface SatoriToCanonicalDeps {
     uinToUid: (uins: string[]) => Promise<Map<string, string>>;
     /** 资源（img/audio/video/file）下载缓存目录。 */
     cacheDir: string;
+    /** 转码成功即转移输出文件及其父临时目录的所有权；发送消费结束后清理。 */
+    onVideoTranscoded?: (path: string) => void;
 }
 
 /** 解析元素媒体 src（空 → null 忽略），返回本地路径。 */
@@ -69,12 +71,15 @@ async function videoToCanonical(
     if (path.toLowerCase().endsWith(".mp4")) {
         return [{ type: "video", path }];
     }
+    let output: string;
     try {
-        return [{ type: "video", path: await transcodeVideo(path) }];
+        output = await transcodeVideo(path);
     } catch {
         // fail-soft：ffmpeg 缺失/转码失败原样透传
         return [{ type: "video", path }];
     }
+    deps.onVideoTranscoded?.(output);
+    return [{ type: "video", path: output }];
 }
 
 /** Satori file → canonical file（title → name）。 */

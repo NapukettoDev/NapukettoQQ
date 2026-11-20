@@ -6,10 +6,17 @@
  * - `getVideoInfo`：解析 ffprobe 输出取宽高与时长
  * - `extractVideoFrame`：抽首帧作缩略图（QQ 视频消息发送需要）
  */
-import { existsSync } from "node:fs";
+import { mkdtemp, realpath, rename, rm } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { execa } from "execa";
+import {
+    assertMediaOutput,
+    LOCAL_MEDIA_INPUT_OPTIONS,
+    localMediaPath,
+    mediaProcessOptions,
+} from "./process.js";
 import type { TranscodeOptions, VideoInfo } from "./types.js";
-import { MediaError, replaceExt } from "./types.js";
+import { MediaError } from "./types.js";
 
 const MS_PER_SECOND = 1000;
 
@@ -72,9 +79,10 @@ function parseFfprobe(raw: unknown): FfprobeParse | null {
     };
 }
 
-/** 转码：按选项输出到替换扩展名后的路径（.mp4）。ffmpeg 缺失/失败抛 MediaError。 */
+/** 转码到独占目录。成功后调用方拥有输出文件及其父临时目录，消费结束后负责删除。 */
 export async function transcodeVideo(input: string, opts: TranscodeOptions = {}): Promise<string> {
-    const args = ["-y", "-i", input];
+    const source = await localMediaPath(input);
+    const args = ["-nostdin", "-v", "error", "-y", ...LOCAL_MEDIA_INPUT_OPTIONS, "-i", source];
     if (opts.width !== undefined && opts.height !== undefined) {
         args.push("-vf", `scale=${opts.width}:${opts.height}`);
     } else if (opts.width !== undefined) {
@@ -85,35 +93,52 @@ export async function transcodeVideo(input: string, opts: TranscodeOptions = {})
     if (opts.fps !== undefined) {
         args.push("-r", String(opts.fps));
     }
-    const output = replaceExt(input, ".mp4");
+    const dir = await mkdtemp(join(dirname(source), ".napuketto-video-"));
+    const output = join(dir, "output.mp4");
     args.push("-c:v", "libx264", "-preset", "fast", output);
 
-    let exitCode: number | undefined;
     try {
-        const result = await execa("ffmpeg", args, { reject: false });
-        exitCode = result.exitCode;
+        const result = await execa("ffmpeg", args, mediaProcessOptions(300_000));
+        if (result.exitCode !== 0 || result.failed) {
+            throw new MediaError(`ffmpeg 转码失败: ${input}（exit ${result.exitCode ?? "?"}）`, {
+                cause: result,
+            });
+        }
+        await assertMediaOutput(output);
+        return output;
     } catch (err) {
+        await rm(dir, { recursive: true, force: true });
+        if (err instanceof MediaError) {
+            throw err;
+        }
         throw new MediaError(`ffmpeg 不可用或转码失败: ${input}`, { cause: err });
     }
-    // exitCode 校验（2026-09-08 T6 加固）：reject:false 不抛非零退出，此前
-    // 失败也返回 output 路径（文件不存在）——调用方拿到幽灵路径
-    if (exitCode !== 0 || !existsSync(output)) {
-        throw new MediaError(`ffmpeg 转码失败: ${input}（exit ${exitCode ?? "?"}）`);
-    }
-    return output;
 }
 
 /** 读取视频宽高与时长（ffprobe JSON 输出解析）。 */
 export async function getVideoInfo(input: string): Promise<VideoInfo> {
+    const source = await localMediaPath(input);
     let parsed: FfprobeParse;
     try {
         const result = await execa(
             "ffprobe",
-            ["-v", "error", "-print_format", "json", "-show_format", "-show_streams", input],
-            { reject: false },
+            [
+                "-v",
+                "error",
+                ...LOCAL_MEDIA_INPUT_OPTIONS,
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+                "-i",
+                source,
+            ],
+            mediaProcessOptions(15_000),
         );
-        if (result.exitCode !== 0) {
-            throw new MediaError(`ffprobe 读取失败: ${input}（exit ${result.exitCode}）`);
+        if (result.exitCode !== 0 || result.failed) {
+            throw new MediaError(`ffprobe 读取失败: ${input}（exit ${result.exitCode}）`, {
+                cause: result,
+            });
         }
         const parsedJson: unknown = JSON.parse(result.stdout);
         const info = parseFfprobe(parsedJson);
@@ -146,29 +171,51 @@ export async function getVideoInfo(input: string): Promise<VideoInfo> {
  * 缺失 / 输出未生成均抛 MediaError，由调用方决定降级策略。
  */
 export async function extractVideoFrame(input: string, outputPath: string): Promise<string> {
+    const source = await localMediaPath(input);
+    const requestedTarget = resolve(outputPath);
+    const target = join(await realpath(dirname(requestedTarget)), basename(requestedTarget));
+    if (
+        source === target ||
+        (process.platform === "win32" && source.toLowerCase() === target.toLowerCase())
+    ) {
+        throw new MediaError("抽帧输出不能覆盖输入文件");
+    }
+    const dir = await mkdtemp(join(dirname(target), ".napuketto-frame-"));
+    const output = join(dir, "frame.png");
     const args = [
+        "-nostdin",
+        "-v",
+        "error",
         "-y",
         "-ss",
         "0",
+        ...LOCAL_MEDIA_INPUT_OPTIONS,
         "-i",
-        input,
+        source,
         "-frames:v",
         "1",
         "-q:v",
         "3",
         "-f",
         "image2",
-        outputPath,
+        output,
     ];
-    let exitCode: number | undefined;
     try {
-        const result = await execa("ffmpeg", args, { reject: false });
-        exitCode = result.exitCode;
+        const result = await execa("ffmpeg", args, mediaProcessOptions(30_000));
+        if (result.exitCode !== 0 || result.failed) {
+            throw new MediaError(`ffmpeg 抽帧失败: ${input}（exit ${result.exitCode ?? "?"}）`, {
+                cause: result,
+            });
+        }
+        await assertMediaOutput(output);
+        await rename(output, target);
+        return outputPath;
     } catch (err) {
+        if (err instanceof MediaError) {
+            throw err;
+        }
         throw new MediaError(`ffmpeg 不可用或抽帧失败: ${input}`, { cause: err });
+    } finally {
+        await rm(dir, { recursive: true, force: true });
     }
-    if (exitCode !== 0 || !existsSync(outputPath)) {
-        throw new MediaError(`ffmpeg 抽帧失败: ${input}（exit ${exitCode ?? "?"}）`);
-    }
-    return outputPath;
 }
