@@ -182,6 +182,8 @@
   持有的长连接；HTTP server 负责停止接入及兜底回收并发建立的连接。close 并发去重且幂等。
 - 单端口 HTTP：`POST /api/:api` 动作，`GET /event` SSE 或同端口 WS 升级；WebHook 走
   `HttpClient` 主动推送。事件统一经 `MilkyEventHub` 广播（`event: milky_event`）。
+- 仅验证出站 WebHook 的测试以 `port: 0` 启动 HTTP server，由系统分配端口；无需回连的
+  用例不占固定监听端口，避免 CI 并行网络活动引发 `EADDRINUSE`。
 - 鉴权：token 非空时校验 Bearer 头或 `?access_token=`；HTTP 语义 401 鉴权、404 未知
   API（空 body）、415 Content-Type、200 规范信封。
 - 收链路三源：消息通道（seq 登记 → grayTip notice / 群文件上传 / message_receive）、
