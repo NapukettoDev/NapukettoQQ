@@ -248,3 +248,29 @@ seq 索引：接收链路双向登记 seq ↔ msgId（FIFO 4096）；反查未�
 文件投递实测：`sendMsg` 带 fileElement 被服务端拒（`170019002`，逐维扫参无效），
 `fileUuid` 拿不到；闪传通道（上传文件集 + 发卡片）是唯一可用投递方式，卡片指向
 `qfile.qq.com`，`file_id` = 文件集 id，与群文件列表无关。
+
+## H-04：媒体缓存生命周期回归证据
+
+- 起始工作区干净，从 `origin/main` 的 `893bbdd` 建独立分支；复核近期 #153 / #157 / #160，
+  下载器和转码产物修复没有覆盖本问题。交卷前复核 main 的 `3d8158d` 只增加版本发布记录，
+  相关生产源码没有新的修复，未发现重复的 H-04 PR。
+- 将 Milky `media-uri`、Satori `asset` 和内部 `qq/media` 三个生产 helper 临时恢复为 main
+  实现，新增行为回归得到 5 个失败：PNG 后缀缺点号、Milky 成功/失败发送后遗留文件、
+  Satori 相同 basename 覆盖、语音转换覆盖同名用户 SILK；恢复修复后通过。
+- `internal/infra/__tests__/media-cache.test.ts` 使用真实文件系统、可控时钟及目录 junction：
+  覆盖引用缓存到期、完成时间持久化及重启、受保护引用占满容量时拒绝新增、过期空间复用、
+  下载和发送跨 TTL、并发引用计数、活进程磁盘租约、部分下载/转换与后续失败清理、重启
+  遗留 `.part` 和受控视频输出、UUID 碰撞、未知文件/标记保留、目录链接和非法扩展名边界、
+  启停并发及关闭释放定时器。
+- 协议回归覆盖 Milky base64 PNG / `.bin` 降级、成功及失败发送后的清理；Satori 同名 URL
+  隔离、下载/发送失败清理、URL 文件标题与显式 title；OB11 头像在消费期间可读而发送后
+  删除，`download_file` / `get_image` 返回路径在动作后保留。真实 SILK 编码验证用户同名
+  文件不被覆盖；大于 32MiB 的本地输入在复制之前拒绝。三协议关闭入口观察真实 Node
+  interval，确认 `unref` 及 `clearInterval`（含 OB11 IPC 退订）。
+- 本机 Windows：adapter 单包 build、`pnpm fix`、最终 `pnpm check` 和
+  `pnpm test:quiet` 通过：234 files / 3494 passed / 13 skipped。初次全量测试暴露的旧
+  Satori API 桩缺少缓存实例、Milky 下载桩不写文件已同步更新；生产校验未为桩放宽。
+- 边界：未运行 QQ 原生发送端到端、多进程竞争压力或同权限恶意进程替换目录的竞态测试。
+  512MiB 是每个受控根的媒体文件容量，写入/转换瞬时占用及元数据开销不属于磁盘硬配额。
+  旧平铺文件与未知/损坏所有权内容保守保留；显式 `clean_cache` 的既有 kernel 管理回调、
+  用户删文件和系统临时目录清理可使缓存路径提前失效。自动回收只管理可证明所有权的文件。

@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
@@ -50,6 +50,77 @@ function actionOf<R>(api: StubSatoriApi, name: string) {
 }
 
 describe("message.create", () => {
+    it.each(["", ' title="custom.pdf"'])(
+        "H-04: remote file keeps its logical title %s",
+        async (title) => {
+            const dir = mkdtempSync(join(tmpdir(), "nk-satori-cache-title-"));
+            const api = stubSatoriApi();
+            api.toCanonicalDeps.mockReturnValue({ cacheDir: dir, uinToUid: api.uinToUid });
+            downloadMock.mockImplementation(async (_url: string, dest: string) => {
+                writeFileSync(dest, "document");
+                return 8;
+            });
+            vi.mocked(api.msgApi.sendMessage).mockImplementationOnce(async (_peer, elements) => {
+                expect(elements[0]).toMatchObject({
+                    type: "file",
+                    name: title ? "custom.pdf" : "report.pdf",
+                });
+                return { msgId: "sent-msg-1" };
+            });
+            try {
+                await actionOf<Message[]>(api, "message.create").run({
+                    channel_id: "10001",
+                    content: `<file src="https://example.com/report.pdf"${title}/>`,
+                });
+                expect(api.msgApi.sendMessage).toHaveBeenCalledOnce();
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+                downloadMock.mockReset();
+            }
+        },
+    );
+
+    it.each(["success", "send-failure", "download-failure"])(
+        "H-04: %s leases and cleans remote assets",
+        async (scenario) => {
+            const dir = mkdtempSync(join(tmpdir(), "nk-satori-cache-send-"));
+            const outputs: string[] = [];
+            const api = stubSatoriApi();
+            api.toCanonicalDeps.mockReturnValue({ cacheDir: dir, uinToUid: api.uinToUid });
+            downloadMock.mockImplementation(async (url: string, dest: string) => {
+                writeFileSync(dest, url);
+                outputs.push(dest);
+                if (scenario === "download-failure" && outputs.length === 2)
+                    throw new Error("download failed");
+                return url.length;
+            });
+            vi.mocked(api.msgApi.sendMessage).mockImplementationOnce(async (_peer, elements) => {
+                expect(elements).toHaveLength(2);
+                expect(outputs[0]).not.toBe(outputs[1]);
+                expect(outputs.every((path) => existsSync(path))).toBe(true);
+                expect(readFileSync(outputs[0] ?? "", "utf8")).toBe("https://a.example/a.png");
+                if (scenario === "send-failure") throw new Error("send failed");
+                return { msgId: "sent-msg-1" };
+            });
+            try {
+                const request = actionOf<Message[]>(api, "message.create").run({
+                    channel_id: "10001",
+                    content:
+                        '<img src="https://a.example/a.png"/><img src="https://b.example/a.png"/>',
+                });
+                if (scenario === "success") await expect(request).resolves.toHaveLength(1);
+                else await expect(request).rejects.toThrow();
+                expect(outputs).toHaveLength(2);
+                expect(outputs.every((path) => !existsSync(dirname(path)))).toBe(true);
+                if (scenario === "download-failure")
+                    expect(api.msgApi.sendMessage).not.toHaveBeenCalled();
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+                downloadMock.mockReset();
+            }
+        },
+    );
+
     it.each(["success", "send-failure", "conversion-failure"])(
         "H-02: %s 在发送消费结束后清理转码产物，保留源文件",
         async (scenario) => {

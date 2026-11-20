@@ -11,7 +11,7 @@
 import type { CanonicalElement } from "@napuketto/kernel";
 import { transcodeVideo } from "@napuketto/media";
 import { ensureSilk } from "../../../internal/qq/media.js";
-import { resolveAsset } from "./asset.js";
+import { assetFileName, resolveAsset } from "./asset.js";
 import type { SatoriElement } from "./element.js";
 
 /** 发方向依赖（at uin 转换 + 资源下载目录）。 */
@@ -91,7 +91,7 @@ async function fileToCanonical(
     if (path === null) {
         return [];
     }
-    const title = el.attrs?.["title"];
+    const title = el.attrs?.["title"] || assetFileName(el.attrs?.["src"] ?? "");
     const base: CanonicalElement = { type: "file", path };
     if (title !== undefined && title !== "") {
         return [{ ...base, name: title }];

@@ -10,6 +10,7 @@
 import type { KernelErrorCode } from "@napuketto/kernel";
 import type { ZodError, ZodType } from "zod";
 import { runAction } from "../../framework/index.js";
+import { withMediaScope } from "../../internal/infra/media-cache.js";
 
 /**
  * Milky 动作结果（retcode 为规范负数族；transport 原样组装信封）。
@@ -74,7 +75,7 @@ export function defineMilkyAction<TPayload, TReturn>(spec: {
             const outcome = await runAction(
                 {
                     schema: spec.schema,
-                    handle: spec.handle,
+                    handle: (input) => withMediaScope(() => spec.handle(input)),
                     errorCodeMap: milkyErrorCodeMap,
                     invalidRetcode: -400,
                     invalidMessage: (error) => `参数解析失败: ${zodSummary(error)}`,

@@ -34,6 +34,7 @@ import {
 import { EventBroadcaster } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { ConfigBase } from "../../framework/index.js";
+import { expectCacheTimerReleased } from "../../internal/__tests__/media-cache-timer.js";
 import { stub } from "../../internal/__tests__/stub.js";
 import {
     type AdapterLoggerLike,
@@ -109,6 +110,14 @@ function captureChannel(): {
 }
 
 describe("NapukettoOneBot11Adapter（IPC 桥面）", () => {
+    it("H-04: unsubscribeOnly releases the unref media cache timer", async () => {
+        const adapter = makeAdapter(fakeChannel().channel);
+        await expectCacheTimerReleased(
+            () => adapter.subscribeOnly(),
+            () => adapter.unsubscribeOnly(),
+        );
+    });
+
     it("subscribeOnly 订阅 Msg/onRecvMsg（幂等），unsubscribeOnly 退订", async () => {
         const { channel, off } = fakeChannel();
         const adapter = makeAdapter(channel);

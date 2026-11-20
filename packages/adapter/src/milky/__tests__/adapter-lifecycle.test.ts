@@ -6,6 +6,7 @@
  * token 鉴权装配、广播路径（捕获 adapter 收到事件）。
  */
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { expectCacheTimerReleased } from "../../internal/__tests__/media-cache-timer.js";
 import { type AdapterEnv, adapterEnv, cleanupEnvDirs, flushAsync, rawMsg } from "./test-support.js";
 
 /** 已启动的环境（afterEach 统一 stop）。 */
@@ -52,6 +53,15 @@ describe("enabled=false 空转", () => {
 });
 
 describe("enabled=true 启动", () => {
+    it("H-04: stop releases the unref media cache timer", async () => {
+        const env = await adapterEnv({ config: { port: 0 } });
+        started.push(env);
+        await expectCacheTimerReleased(
+            () => env.adapter.start(),
+            () => env.adapter.stop(),
+        );
+    });
+
     it("start 即监听：HTTP /api 动作可达（无需显式 open）", async () => {
         const env = await adapterEnv({ config: { port: 36384 } });
         started.push(env);

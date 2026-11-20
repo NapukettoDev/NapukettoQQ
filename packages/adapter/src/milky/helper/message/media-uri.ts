@@ -8,12 +8,13 @@
  * 未配置 mediaDir 时远程 URI 报错（不发静默空消息）。
  */
 
-import { randomUUID } from "node:crypto";
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { rename, writeFile } from "node:fs/promises";
 import { kernelError } from "@napuketto/kernel";
 import { detectFileType, downloadUrl, inferExtension } from "@napuketto/media";
+import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { fileUriToPath } from "../../../internal/qq/media.js";
+
+const DETECTED_EXTENSION_RE = /^[a-zA-Z0-9]+$/;
 
 /** 解析远程媒体 URI 为本地绝对路径（base64:// / http(s)://；file:// 走同步面）。 */
 export async function resolveMediaUri(uri: string, mediaDir: string | undefined): Promise<string> {
@@ -26,9 +27,9 @@ export async function resolveMediaUri(uri: string, mediaDir: string | undefined)
     if (uri.startsWith("base64://")) {
         return await writeBase64(uri.slice("base64://".length), mediaDir);
     }
-    const dest = join(mediaDir, `${randomUUID()}${inferExtension(null, uri)}`);
-    await downloadUrl(uri, dest);
-    return dest;
+    return await cacheMediaFile(mediaDir, inferExtension(null, uri), async (dest) => {
+        await downloadUrl(uri, dest);
+    });
 }
 
 /**
@@ -38,12 +39,12 @@ export async function resolveMediaUri(uri: string, mediaDir: string | undefined)
  */
 export async function resolveUriToPath(uri: string, mediaDir: string | undefined): Promise<string> {
     if (uri.startsWith("file://")) {
-        return fileUriToPath(uri);
+        return await protectMediaPath(fileUriToPath(uri));
     }
     if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("base64://")) {
         return await resolveMediaUri(uri, mediaDir);
     }
-    return uri;
+    return await protectMediaPath(uri);
 }
 
 /** base64 载荷 → 落盘（先写 .bin，探测到扩展名再改名）。 */
@@ -57,16 +58,18 @@ async function writeBase64(payload: string, mediaDir: string): Promise<string> {
     if (bytes.length === 0) {
         throw kernelError("base64:// 载荷为空", "INVALID_PARAM");
     }
-    await mkdir(mediaDir, { recursive: true });
-    const raw = join(mediaDir, `${randomUUID()}.bin`);
-    await writeFile(raw, bytes);
-    try {
-        const { ext } = await detectFileType(raw);
-        const final = join(mediaDir, `${randomUUID()}${ext}`);
-        await rename(raw, final);
+    return await cacheMediaFile(mediaDir, ".bin", async (raw) => {
+        await writeFile(raw, bytes, { flag: "wx" });
+        let ext: string;
+        try {
+            ({ ext } = await detectFileType(raw));
+        } catch {
+            // 类型探测失败：保留 .bin（QQ 端按内容嗅探）
+            return raw;
+        }
+        if (!DETECTED_EXTENSION_RE.test(ext)) return raw;
+        const final = `${raw.slice(0, -4)}.${ext}`;
+        if (final !== raw) await rename(raw, final);
         return final;
-    } catch {
-        // 类型探测失败：保留 .bin（QQ 端按内容嗅探）
-        return raw;
-    }
+    });
 }

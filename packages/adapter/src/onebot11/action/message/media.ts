@@ -14,13 +14,12 @@
  *   → translatePtt2Text → 再拉取读 pttElement.text）
  */
 
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { errorMessage, kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { downloadUrl, inferExtension } from "@napuketto/media";
 import { z } from "zod";
+import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
@@ -85,12 +84,15 @@ async function downloadImageToCache(
     if (cacheDir === undefined || cacheDir === "") {
         return null;
     }
-    const mediaDir = join(cacheDir, "media");
-    await mkdir(mediaDir, { recursive: true });
-    const dest = join(mediaDir, `${randomUUID()}${inferExtension(null, url)}`);
     try {
-        await downloadUrl(url, dest);
-        return dest;
+        return await cacheMediaFile(
+            cacheDir,
+            inferExtension(null, url),
+            async (dest) => {
+                await downloadUrl(url, dest);
+            },
+            "reference",
+        );
     } catch (err) {
         // 下载失败退原始 url（QQ 端自行拉取；warn 留痕）
         deps.logger?.warn(

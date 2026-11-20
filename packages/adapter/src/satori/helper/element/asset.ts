@@ -5,7 +5,8 @@
  * - ensureSilk 已上移到 adapter core（core/media.ts，onebot11/satori 共用）
  * - 下载落盘统一走 shared/media.ts 的 downloadBufferToFile（异步 I/O 单一入口）
  */
-import { join } from "node:path";
+import { inferExtension } from "@napuketto/media";
+import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { downloadBufferToFile } from "../../../internal/qq/media.js";
 
 /** internal:{platform}/{user.id}/{path} → 本地路径（取 _tmp 之后的路径，回落 cacheDir）。 */
@@ -24,12 +25,14 @@ function resolveInternalPath(src: string): string {
 
 /** http(s) URL 前缀。 */
 const HTTP_URL_RE = /^https?:\/\//i;
-/** 文件名不安全字符（URL 尾部段转文件名时替换）。 */
 const UNSAFE_NAME_RE = /[^a-zA-Z0-9._-]/g;
 
-/** 会逃出缓存目录或不可用的纯点文件名。 */
-const SUSPICIOUS_NAMES: ReadonlySet<string> = new Set(["", ".", ".."]);
-
+/** Logical file title stays independent of the opaque, collision-free cache path. */
+export function assetFileName(src: string): string | undefined {
+    if (!HTTP_URL_RE.test(src)) return undefined;
+    const name = (src.split("/").pop() ?? "").replace(UNSAFE_NAME_RE, "_");
+    return name === "" || name === "." || name === ".." ? undefined : name;
+}
 /**
  * 解析资源 src：
  * - internal:{platform}/{user.id}/{path} → 本地路径（第一版仅支持 _tmp 保留路径）
@@ -38,19 +41,17 @@ const SUSPICIOUS_NAMES: ReadonlySet<string> = new Set(["", ".", ".."]);
  */
 export async function resolveAsset(src: string, cacheDir: string): Promise<string> {
     if (src.startsWith("internal:")) {
-        return resolveInternalPath(src);
+        return await protectMediaPath(resolveInternalPath(src));
     }
     if (HTTP_URL_RE.test(src)) {
         return downloadAsset(src, cacheDir);
     }
-    return src;
+    return await protectMediaPath(src);
 }
 
 /** 下载 URL 资源到缓存目录（返回本地路径）。 */
 async function downloadAsset(url: string, cacheDir: string): Promise<string> {
-    const rawName = url.split("/").pop() ?? "";
-    const safeName = rawName.replace(UNSAFE_NAME_RE, "_");
-    // "." / ".." 经 join 会指向缓存目录之外（写到上级目录或失败），统一下沉为时间戳名
-    const fileName = SUSPICIOUS_NAMES.has(safeName) ? `asset-${Date.now()}` : safeName;
-    return await downloadBufferToFile(url, join(cacheDir, fileName), undefined, "下载资源失败");
+    return await cacheMediaFile(cacheDir, inferExtension(null, url), async (path) => {
+        await downloadBufferToFile(url, path, undefined, "下载资源失败");
+    });
 }

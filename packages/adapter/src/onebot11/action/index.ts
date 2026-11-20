@@ -70,7 +70,12 @@ export function createOb11ActionRegistry(deps: Ob11ActionDeps): ActionRegistry<O
     const registry = new ActionRegistry<Ob11Action>();
     for (const factory of ACTION_FACTORIES) {
         for (const action of factory(deps.api)) {
-            registry.register(action);
+            registry.register({
+                ...action,
+                handle: (payload) => deps.api.mediaCache.run(() => action.handle(payload)),
+                websocketHandle: (payload, echo) =>
+                    deps.api.mediaCache.run(() => action.websocketHandle(payload, echo)),
+            });
         }
     }
     return registry;

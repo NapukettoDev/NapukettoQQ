@@ -11,9 +11,10 @@
  */
 
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
 import { kernelError, TicketApi } from "@napuketto/kernel";
+import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
+import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { downloadBufferToFile } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
@@ -60,9 +61,9 @@ async function downloadAvatarToCache(url: string, cacheDir: string | undefined):
     if (cacheDir === undefined || cacheDir === "") {
         throw kernelError("set_qq_avatar 处理 URL 需要缓存目录（装配方未注入）", "INVALID_STATE");
     }
-    const safeName = basename(new URL(url).pathname) || "avatar.bin";
-    const filePath = join(cacheDir, `avatar-${Date.now()}-${safeName}`);
-    return await downloadBufferToFile(url, filePath, undefined, "头像下载失败");
+    return await cacheMediaFile(cacheDir, inferExtension(null, url), async (path) => {
+        await downloadBufferToFile(url, path, undefined, "头像下载失败");
+    });
 }
 
 /**
@@ -147,7 +148,7 @@ export function createSystemAccountActions(api: OneBotApi): Ob11Action[] {
                 if (!existsSync(filePath)) {
                     throw kernelError(`头像文件不存在: ${filePath}`, "NOT_FOUND");
                 }
-                await api.profileApi.setHeader(filePath);
+                await api.profileApi.setHeader(await protectMediaPath(filePath));
                 return null;
             },
         }),

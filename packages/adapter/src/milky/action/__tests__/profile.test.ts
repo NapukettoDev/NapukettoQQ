@@ -7,7 +7,7 @@
  * 透传、get_cookies k=v 拼接、get_csrf_token bkn 派生、set_avatar 远程 URI
  * 下载链（@napuketto/media downloadUrl mock，不触网）。
  */
-import { rm } from "node:fs/promises";
+import { realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TicketApi } from "@napuketto/kernel";
@@ -16,7 +16,10 @@ import { type ApiOverrides, actionOf, buildMilkyApi, registryOf } from "./test-s
 
 vi.mock("@napuketto/media", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    downloadUrl: vi.fn(async (_url: string, _dest: string) => 4),
+    downloadUrl: vi.fn(async (_url: string, dest: string) => {
+        await writeFile(dest, "test");
+        return 4;
+    }),
 }));
 
 /** 资料类依赖桩（stranger / cookies 可覆写）。 */
@@ -236,7 +239,7 @@ describe("set_avatar（远程 URI 下载链）", () => {
 /** 唯一临时目录（跨平台安全：os.tmpdir + mkdtemp）。 */
 async function mkdtempUnique(): Promise<string> {
     const { mkdtemp } = await import("node:fs/promises");
-    const dir = await mkdtemp(join(tmpdir(), "nk-test-milky-avatar-"));
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "nk-test-milky-avatar-")));
     mediaDirs.push(dir);
     return dir;
 }

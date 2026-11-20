@@ -5,7 +5,14 @@
  * 102）、URL 头像下载落盘（cacheDir 缺省 → 106、HTTP 非 200 报错、成功写入）、
  * download_file 的缓存目录/文件名/内容与未配置分支。
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdtempSync,
+    readFileSync,
+    realpathSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -23,7 +30,7 @@ afterAll(() => {
 /** 就绪临时目录（首次调用创建）。 */
 function ensureTmp(): string {
     if (tmpRoot === "") {
-        tmpRoot = mkdtempSync(join(tmpdir(), "nk-test-ob11-profile-"));
+        tmpRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "nk-test-ob11-profile-")));
     }
     return tmpRoot;
 }
@@ -103,15 +110,19 @@ describe("set_qq_avatar", () => {
         const fetchStub = vi.fn(async () => makeResponse(true, "png-bytes"));
         vi.stubGlobal("fetch", fetchStub);
         try {
-            const profileApi = { setHeader: vi.fn(async (_path: string) => undefined) };
+            const profileApi = {
+                setHeader: vi.fn(async (path: string) => {
+                    expect(readFileSync(path, "utf8")).toBe("png-bytes");
+                }),
+            };
             const result = await ob11ActionOf(
                 createSystemAccountActions({ profileApi, cacheDir: dir } as never),
                 "set_qq_avatar",
             ).handle({ file: "https://example.com/a.png" });
             expect(result.retcode).toBe(0);
             const written = profileApi.setHeader.mock.calls[0]?.[0] as string;
-            expect(written.startsWith(join(dir, "avatar-"))).toBe(true);
-            expect(readFileSync(written, "utf8")).toBe("png-bytes");
+            expect(written.startsWith(join(dir, ".napuketto-media-v1"))).toBe(true);
+            expect(existsSync(written)).toBe(false);
         } finally {
             vi.unstubAllGlobals();
         }
@@ -129,7 +140,7 @@ describe("set_qq_avatar", () => {
             ).handle({ file: "https://example.com/" });
             expect(result.retcode).toBe(0);
             expect(basename(profileApi.setHeader.mock.calls[0]?.[0] as string)).toContain(
-                "avatar.bin",
+                "media.bin",
             );
         } finally {
             vi.unstubAllGlobals();
@@ -185,7 +196,7 @@ describe("download_file", () => {
             });
             expect(result.status).toBe("ok");
             const file = result.data?.file ?? "";
-            expect(file.startsWith(join(dir, "download-"))).toBe(true);
+            expect(file.startsWith(join(dir, ".napuketto-media-v1"))).toBe(true);
             expect(readFileSync(file, "utf8")).toBe("file-bytes");
         } finally {
             vi.unstubAllGlobals();
@@ -204,7 +215,7 @@ describe("download_file", () => {
                 url: "https://example.com/",
             });
             expect(result.status).toBe("ok");
-            expect(basename(result.data?.file ?? "")).toContain("download.bin");
+            expect(basename(result.data?.file ?? "")).toBe("media.bin");
         } finally {
             vi.unstubAllGlobals();
         }

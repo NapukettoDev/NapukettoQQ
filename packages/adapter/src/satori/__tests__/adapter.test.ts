@@ -13,6 +13,7 @@ import { ChatType } from "@napuketto/kernel";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
 import { ConfigBase } from "../../framework/index.js";
+import { expectCacheTimerReleased } from "../../internal/__tests__/media-cache-timer.js";
 import { stub } from "../../internal/__tests__/stub.js";
 import { type StubSatoriApi, stubSatoriApi } from "../action/__tests__/test-support.js";
 import { NapukettoSatoriAdapter } from "../adapter.js";
@@ -122,6 +123,14 @@ function eventBodies(events: unknown[]): Event[] {
 }
 
 describe("start / stop 生命周期", () => {
+    it("H-04: stop releases the unref media cache timer", async () => {
+        const { adapter } = makeAdapter(stubSatoriApi());
+        await expectCacheTimerReleased(
+            () => adapter.start(),
+            () => adapter.stop(),
+        );
+    });
+
     it("start：订阅消息通道 + 广播 login-updated（在线，sn=1）", async () => {
         const spyResult = spyBroadcaster();
         const { adapter } = makeAdapter(stubSatoriApi(), spyResult);

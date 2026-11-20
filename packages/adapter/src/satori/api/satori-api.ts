@@ -18,6 +18,8 @@ import type {
     ProfileApi,
 } from "@napuketto/kernel";
 import { ChatType, type Peer } from "@napuketto/kernel";
+import type { AdapterLoggerLike } from "../../internal/infra/log.js";
+import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { SatoriToCanonicalDeps } from "../helper/element/media-convert.js";
 
 /** SatoriApi 构造参数。 */
@@ -33,10 +35,13 @@ export interface SatoriApiOptions {
     cacheDir?: string | undefined;
     /** 群/成员缓存（guild.member.get / user.get 读缓存用）。 */
     groupCache?: GroupCache | undefined;
+    /** 媒体缓存清理失败的可观测出口。 */
+    logger?: AdapterLoggerLike | undefined;
 }
 
 /** Satori 动作统一依赖聚合。 */
 export class SatoriApi {
+    readonly mediaCache: MediaCache;
     readonly msgApi: MsgApi;
     readonly groupApi: GroupApi;
     readonly groupNotifyApi: GroupNotifyApi;
@@ -62,6 +67,7 @@ export class SatoriApi {
         this.self = opts.self;
         this.selfUin = opts.self.uin;
         this.cacheDir = opts.cacheDir ?? join(tmpdir(), "napuketto-satori-cache");
+        this.mediaCache = new MediaCache({ root: this.cacheDir, logger: opts.logger });
         this.groupCache = opts.groupCache;
     }
 

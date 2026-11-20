@@ -17,6 +17,7 @@ import type {
 } from "@napuketto/kernel";
 import { vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
+import { MediaCache } from "../../../internal/infra/media-cache.js";
 import type { SatoriActionHandler } from "../base-action.js";
 
 /**
@@ -48,6 +49,7 @@ function uinToUidMap(uins: string[]): Map<string, string> {
 /** 全方法 vi.fn 的 SatoriApi 形状桩（形状对齐 SatoriApiOptions + 便捷方法）。 */
 export function stubSatoriApi() {
     return {
+        mediaCache: new MediaCache(),
         msgApi: stub<MsgApi>({
             sendMessage: vi.fn(async (_target: Peer, _elements: CanonicalElement[]) => ({
                 msgId: "sent-msg-1",

@@ -6,24 +6,28 @@
  *  - http(s):// → fetch 下载落盘 cacheDir（文件名消毒、非 2xx 抛 SEND_FAILED）
  *  - 其他 → 本地路径原样返回（无 IO）
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+    existsSync,
+    mkdtempSync,
+    readFileSync,
+    realpathSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { basename, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveAsset } from "../asset.js";
 
 let cacheDir = "";
 
-afterAll(() => {
-    rmSync(cacheDir, { recursive: true, force: true });
-});
-
 beforeEach(() => {
-    cacheDir = mkdtempSync(join(tmpdir(), "nk-test-asset-"));
+    cacheDir = realpathSync.native(mkdtempSync(join(tmpdir(), "nk-test-asset-")));
 });
 
 afterEach(() => {
     vi.unstubAllGlobals();
+    rmSync(cacheDir, { recursive: true, force: true });
 });
 
 describe("resolveAsset：internal: 路径", () => {
@@ -66,11 +70,10 @@ describe("resolveAsset：http(s) 下载", () => {
             "http://example.com/pics/a%20b.png",
             expect.objectContaining({ redirect: "manual" }),
         );
-        // 文件名消毒：'%' 替换为 _（数字 2/0 是安全字符保留）
-        const expected = join(cacheDir, "a_20b.png");
-        expect(out).toBe(expected);
-        expect(existsSync(expected)).toBe(true);
-        expect(readFileSync(expected)).toEqual(body);
+        expect(out.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
+        expect(basename(out)).toBe("media.png");
+        expect(existsSync(out)).toBe(true);
+        expect(readFileSync(out)).toEqual(body);
     });
 
     it("https URL：同样下载（URL 全部不安全字符消毒）", async () => {
@@ -79,7 +82,7 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
         const out = await resolveAsset("https://example.com/f/中文?.png", cacheDir);
-        expect(out).toBe(join(cacheDir, "___.png"));
+        expect(basename(out)).toBe("media.bin");
     });
 
     it("非 2xx 响应：抛 SEND_FAILED KernelError", async () => {
@@ -98,8 +101,7 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
         const out = await resolveAsset("https://example.com/", cacheDir);
-        // split("/") 尾段为空串 → 消毒后空 → 回退 asset-*
-        expect(out.startsWith(join(cacheDir, "asset-"))).toBe(true);
+        expect(basename(out)).toBe("media.bin");
     });
 
     it("URL 尾段为 .. / .：回退 asset-<时间戳>，不写出缓存目录", async () => {
@@ -109,7 +111,24 @@ describe("resolveAsset：http(s) 下载", () => {
         );
         const dots = await resolveAsset("https://example.com/..", cacheDir);
         const dot = await resolveAsset("https://example.com/.", cacheDir);
-        expect(dots.startsWith(join(cacheDir, "asset-"))).toBe(true);
-        expect(dot.startsWith(join(cacheDir, "asset-"))).toBe(true);
+        expect(dots.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
+        expect(dot.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
+    });
+
+    it("same URL basename downloads never overwrite each other or a caller file", async () => {
+        const caller = join(cacheDir, "a.png");
+        writeFileSync(caller, "caller");
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (url: string) => new Response(url)),
+        );
+        const [a, b] = await Promise.all([
+            resolveAsset("https://a.example/a.png", cacheDir),
+            resolveAsset("https://b.example/a.png", cacheDir),
+        ]);
+        expect(a).not.toBe(b);
+        expect(readFileSync(a, "utf8")).toBe("https://a.example/a.png");
+        expect(readFileSync(b, "utf8")).toBe("https://b.example/a.png");
+        expect(readFileSync(caller, "utf8")).toBe("caller");
     });
 });
