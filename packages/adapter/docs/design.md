@@ -190,6 +190,7 @@
   `WsServer.authorize`。hub 接管 wsServers 的 `send`/`open`/`close`，只向完成
   `IDENTIFY` 的连接广播 `EVENT`；token 不符或 10s 内未 `IDENTIFY` 以 4004 关闭；
   token 为空时连接即视为已认证（空 token = 不鉴权）。
+  已认证集合使用 network 的 `sendWsText` 发送，超限仅终止该连接，事件不重放。
   `IDENTIFY.body.token` 必须为字符串，并复用 `tokenEquals`；缺失、非字符串或不匹配
   仍以 4004 关闭。KuroBot 仅向服务端发送 token，本地不新增 token 校验路径。
 
@@ -216,6 +217,8 @@
   持有的长连接；HTTP server 负责停止接入及兜底回收并发建立的连接。close 并发去重且幂等。
 - 单端口 HTTP：`POST /api/:api` 动作，`GET /event` SSE 或同端口 WS 升级；WebHook 走
   `HttpClient` 主动推送。事件统一经 `MilkyEventHub` 广播（`event: milky_event`）。
+  WS 事件使用 network 的 `sendWsText`，超限连接终止并从集合移除，事件不重放；
+  SSE 与 WebHook 继续独立发送。
 - 仅验证出站 WebHook 的测试以 `port: 0` 启动 HTTP server，由系统分配端口；无需回连的
   用例不占固定监听端口，避免 CI 并行网络活动引发 `EADDRINUSE`。
 - 鉴权：token 非空时校验 Bearer 头或 `?access_token=`；HTTP 语义 401 鉴权、404 未知
@@ -320,7 +323,8 @@
 - 出向传输首连容错（issue #144）：外部 WS 服务暂时未启动/不可达只 warn + 后台按
   `reconnectDelayMs` 指数退避重试（`internal/infra/outbound-open.ts`），不阻塞协议装配、
   不拖垮已登录宿主。`network.WsClient.open()` 首连失败 reject 的底层契约保持不变（容错在
-  adapter 层）；连接建立后的断线仍由 `WsClient` 自带 reconnect 处理，两者不重叠。
+  adapter 层）；连接建立后的断线由 `WsClient` 自带 reconnect 处理，首次等待
+  `reconnectDelayMs`，后续连续失败使用有上限的指数退避和抖动。
   Kurobot 用自建连接层（`kurobot/connection.ts`）且 start 非阻塞，无需该包装。
 - 生命周期守卫：骨架 start/stop 并发去重（stop 等待进行中的 start）；Satori 非登录事件
   `login.sn` 固定 0（登录序号≠事件 sn）；OB11 错误响应（404 / 异常兜底）同样透传 `echo`。

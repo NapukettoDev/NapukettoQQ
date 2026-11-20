@@ -8,10 +8,12 @@
  * delayMs 定时重连、恢复收发、未启用不重连、close 取消挂起）。
  * 重连次数一律以服务端真实观测到的连接数（stub.sockets）为准。
  */
+import { once } from "node:events";
+import type { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type WebSocket as ClientSocket, WebSocketServer } from "ws";
+import { type WebSocket as ClientSocket, type ServerOptions, WebSocketServer } from "ws";
 import { WsClient } from "../ws-client.js";
-import { realDelay, take, waitJsonMessage } from "./test-support.js";
+import { realDelay, take, waitClose, waitJsonMessage } from "./test-support.js";
 
 /** 服务端桩：记录每条连接（可逐条操控），close 时强制断开全部并幂等。 */
 interface WssStub {
@@ -22,8 +24,10 @@ interface WssStub {
 }
 
 /** 起一个 ws 服务端桩（端口 0 自动分配）。 */
-async function listenWss(): Promise<WssStub> {
-    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+async function listenWss(
+    options: Pick<ServerOptions, "autoPong" | "verifyClient">,
+): Promise<WssStub> {
+    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0, ...options });
     const sockets: ClientSocket[] = [];
     wss.on("connection", (socket) => {
         sockets.push(socket);
@@ -76,8 +80,10 @@ describe("WsClient", () => {
     });
 
     /** 起服务端桩并登记清理。 */
-    async function serve(): Promise<WssStub> {
-        const stub = await listenWss();
+    async function serve(
+        options: Pick<ServerOptions, "autoPong" | "verifyClient"> = {},
+    ): Promise<WssStub> {
+        const stub = await listenWss(options);
         stubs.push(stub);
         return stub;
     }
@@ -148,6 +154,21 @@ describe("WsClient", () => {
         expect(stub.sockets).toHaveLength(1);
     });
 
+    it("单条出站消息超过预算时终止连接，不发送该消息", async () => {
+        const stub = await serve();
+        const client = makeClient({ url: stub.url, maxBufferedBytes: 32 });
+        await client.open();
+        const socket = firstSocket(stub);
+        const received = vi.fn();
+        socket.on("message", received);
+        const closed = waitClose(socket);
+
+        client.send({ data: "a".repeat(32) });
+
+        await expect(closed).resolves.toMatchObject({ code: 1006 });
+        expect(received).not.toHaveBeenCalled();
+    });
+
     it("服务端消息经 onRequest 分发，respond 回发服务端；非 JSON 忽略", async () => {
         const stub = await serve();
         const client = makeClient({ url: stub.url });
@@ -187,20 +208,41 @@ describe("WsClient", () => {
             vi.useRealTimers();
         });
 
-        it("heartbeat 按间隔向服务端 ping", async () => {
+        it("有 pong 时继续探测并在关闭时清理心跳", async () => {
             const stub = await serve();
-            let pings = 0;
-            stub.wss.on("connection", (socket) => {
-                socket.on("ping", () => {
-                    pings += 1;
-                });
-            });
             const client = makeClient({ url: stub.url, heartbeat: { intervalMs: 50 } });
             await client.open();
+            const socket = firstSocket(stub);
 
-            await vi.advanceTimersByTimeAsync(160);
-            await realDelay(30);
-            expect(pings).toBeGreaterThanOrEqual(3);
+            for (let round = 0; round < 3; round += 1) {
+                const ping = once(socket, "ping");
+                await vi.advanceTimersByTimeAsync(50);
+                await ping;
+                await realDelay(10); // 等客户端收到 auto-pong 后再推进虚拟时钟。
+            }
+
+            const closed = waitClose(socket);
+            await client.close();
+            await closed;
+        });
+
+        it("收到 ping 但不回 pong 的服务端达到时限后被断开", async () => {
+            const stub = await serve({ autoPong: false });
+            const client = makeClient({
+                url: stub.url,
+                heartbeat: { intervalMs: 50 },
+            });
+            await client.open();
+            const socket = firstSocket(stub);
+            const ping = once(socket, "ping");
+            const closed = waitClose(socket);
+            await vi.advanceTimersByTimeAsync(50);
+            await ping;
+            await vi.advanceTimersByTimeAsync(999);
+            expect(socket.readyState).toBe(socket.OPEN);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(closed).resolves.toMatchObject({ code: 1006 });
+            expect(vi.getTimerCount()).toBe(0);
         });
     });
 
@@ -211,41 +253,145 @@ describe("WsClient", () => {
             });
         });
         afterEach(() => {
+            vi.restoreAllMocks();
             vi.useRealTimers();
         });
 
-        it("open 失败不调度重连（即使 reconnect.enabled，stale close 防护）", async () => {
-            // 拒绝握手的真实服务端：每次连接尝试计数，open 失败后不应再被重连触达
-            let handshakeAttempts = 0;
-            const wss = new WebSocketServer({
-                host: "127.0.0.1",
-                port: 0,
-                verifyClient: (_info, done) => {
-                    handshakeAttempts += 1;
-                    done(false, 401, "denied");
+        async function waitForReconnect(): Promise<void> {
+            for (let retries = 0; vi.getTimerCount() === 0 && retries < 100; retries += 1) {
+                await realDelay(5); // 等真实连接的 close 回调排定重连。
+            }
+            expect(vi.getTimerCount()).toBe(1);
+        }
+
+        async function advanceToReconnect(expectedDelay: number): Promise<void> {
+            await waitForReconnect();
+            await vi.advanceTimersByTimeAsync(expectedDelay - 1);
+            expect(vi.getTimerCount()).toBe(1);
+            await vi.advanceTimersByTimeAsync(1);
+        }
+
+        it("连续失败按基准、指数、抖动和上限退避，达到 maxAttempts 停止", async () => {
+            vi.spyOn(Math, "random").mockReturnValue(0.5);
+            const timeout = vi.spyOn(globalThis, "setTimeout");
+            let handshakes = 0;
+            const stub = await serve({ verifyClient: () => ++handshakes === 1 });
+            const client = makeClient({
+                url: stub.url,
+                reconnect: { enabled: true, delayMs: 50, maxDelayMs: 140, maxAttempts: 4 },
+            });
+            await client.open();
+            firstSocket(stub).terminate();
+
+            for (const delay of [50, 90, 126, 126]) {
+                await advanceToReconnect(delay);
+                expect(timeout).toHaveBeenLastCalledWith(expect.any(Function), delay);
+            }
+            await vi.waitFor(() => expect(handshakes).toBe(5));
+            await realDelay(10); // 最后一次拒绝触发 close 后仍不应产生定时器。
+            expect(vi.getTimerCount()).toBe(0);
+            await vi.advanceTimersByTimeAsync(300);
+            expect(handshakes).toBe(5);
+        });
+
+        it("连续失败后的成功连接重置等待时间与剩余次数", async () => {
+            const timeout = vi.spyOn(globalThis, "setTimeout");
+            let handshakes = 0;
+            const stub = await serve({ verifyClient: () => ++handshakes !== 2 });
+            const client = makeClient({
+                url: stub.url,
+                reconnect: { enabled: true, delayMs: 50, jitterRatio: 0, maxAttempts: 2 },
+            });
+            client.onRequest = (_req, respond) => respond({ ready: true });
+            await client.open();
+            firstSocket(stub).terminate();
+
+            await advanceToReconnect(50);
+            const reconnected = once(stub.wss, "connection");
+            await advanceToReconnect(100);
+            expect(timeout).toHaveBeenLastCalledWith(expect.any(Function), 100);
+            await reconnected;
+            const second = take(stub.sockets[1], "缺少成功重连的 socket");
+            const response = waitJsonMessage(second);
+            second.send("{}");
+            await expect(response).resolves.toEqual({ ready: true });
+
+            second.terminate();
+            const next = once(stub.wss, "connection");
+            await advanceToReconnect(50);
+            expect(timeout).toHaveBeenLastCalledWith(expect.any(Function), 50);
+            await next;
+            expect(handshakes).toBe(4);
+        });
+
+        it("显式 close 中止进行中的重连握手，也不安排下一次", async () => {
+            let handshakes = 0;
+            let pendingSocket: Socket | undefined;
+            const stub = await serve({
+                verifyClient: (info, done) => {
+                    handshakes += 1;
+                    if (handshakes === 1) done(true);
+                    else {
+                        pendingSocket = info.req.socket;
+                        pendingSocket.resume();
+                    }
                 },
             });
-            await new Promise<void>((resolve, reject) => {
-                wss.once("listening", () => resolve());
-                wss.once("error", (err) => reject(err));
+            const client = makeClient({
+                url: stub.url,
+                reconnect: { enabled: true, delayMs: 50 },
             });
-            try {
-                const addr = wss.address();
-                if (addr === null || typeof addr === "string") {
-                    throw new Error("未取得临时端口");
-                }
-                const client = makeClient({
-                    url: `ws://127.0.0.1:${addr.port}`,
-                    reconnect: { enabled: true, delayMs: 10 },
-                });
-                await expect(client.open()).rejects.toThrow();
-                await realDelay(20);
-                await vi.advanceTimersByTimeAsync(50);
+            await client.open();
+            firstSocket(stub).terminate();
+            await advanceToReconnect(50);
+            await vi.waitFor(() => expect(pendingSocket).toBeDefined());
 
-                expect(handshakeAttempts).toBe(1);
+            const socket = take(pendingSocket, "缺少正在握手的 socket");
+            try {
+                const aborted = once(socket, "end");
+                await client.close();
+                await aborted;
+                await vi.advanceTimersByTimeAsync(500);
+                expect(stub.sockets).toHaveLength(1);
+                expect(handshakes).toBe(2);
+                expect(vi.getTimerCount()).toBe(0);
             } finally {
-                await new Promise<void>((resolve) => wss.close(() => resolve()));
+                socket.destroy();
             }
+        });
+
+        it("open 失败不调度重连（即使 reconnect.enabled，stale close 防护）", async () => {
+            let handshakeAttempts = 0;
+            const stub = await serve({
+                verifyClient: () => {
+                    handshakeAttempts += 1;
+                    return false;
+                },
+            });
+            const client = makeClient({
+                url: stub.url,
+                reconnect: { enabled: true, delayMs: 10 },
+            });
+            await expect(client.open()).rejects.toThrow();
+            await realDelay(20);
+            await vi.advanceTimersByTimeAsync(50);
+            expect(handshakeAttempts).toBe(1);
+        });
+
+        it("显式 open 取消挂起的自动重连，避免额外连接", async () => {
+            const stub = await serve();
+            const client = makeClient({
+                url: stub.url,
+                reconnect: { enabled: true, delayMs: 50 },
+            });
+            await client.open();
+            firstSocket(stub).terminate();
+            await waitForReconnect();
+
+            await client.open();
+            expect(vi.getTimerCount()).toBe(0);
+            await vi.advanceTimersByTimeAsync(50);
+            expect(stub.sockets).toHaveLength(2);
         });
 
         it("断线后按 delayMs 重连成功，可继续收发", async () => {
@@ -293,10 +439,10 @@ describe("WsClient", () => {
             });
             await client.open();
 
-            // 服务端仍监听，只断开当前连接 → 客户端按 delayMs 排定重连
-            firstSocket(stub).close();
-            await realDelay(10);
+            firstSocket(stub).terminate();
+            await waitForReconnect();
             await client.close();
+            expect(vi.getTimerCount()).toBe(0);
             await vi.advanceTimersByTimeAsync(120);
             await realDelay(20);
 

@@ -2,7 +2,7 @@
 
 > 本包是**协议无关的底层传输原语层**（ADR-002）：HTTP client/server、WebSocket
 > client/server、SSE 与泛型广播。只解决「怎么传」，不解决「传什么」——路由、鉴权、
-> 序列化、心跳与重连由协议层注入；同一套原语供 OneBot 11 / Satori / Milky 复用。
+> 载荷与传输选项由调用方提供，连接判活、发送上限与断线退避由传输层执行。
 
 ## 包职责与架构边界（ADR-002）
 
@@ -38,8 +38,8 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
   `packages/adapter`（协议层容器）与 `apps/cli`（宿主装配）以 `workspace:*`
   消费；kernel 不依赖 network。
 - **WS 连接类型归本包所有**（依赖收敛）：`types.ts` 导出 `WsSocket`
-  （ws 的连接类型）与 `isWsOpen()`（`readyState === OPEN` 的唯一判定入口）。协议层
-  （adapter 的 Milky `/event` 枢纽）只经这两个符号接触连接，因此**不需要**在自己的
+  （ws 的连接类型）、`isWsOpen()` 和 `sendWsText()`。上层经这些符号管理连接、
+  发送已序列化的文本，因此**不需要**在自己的
   `dependencies` 里声明 `ws`——ws 的版本与实例由 network 单点持有。
 - **入帧 UTF-8 强校验**：`WsServer` 与 `HttpServer` 的同端口升级都显式设置
   `skipUTF8Validation: false`（ws 默认值，写死防止后人为「微秒级性能」关掉）。文本帧
@@ -58,11 +58,12 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 
 | 文件 | 导出 | 职责 |
 | :--- | :--- | :--- |
-| `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`WsSocket`、`isWsOpen`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略）；`WsSocket` + `isWsOpen` 是协议层接触 WS 连接的唯一入口（协议层不直接依赖 ws） |
+| `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`WsSocket`、`isWsOpen`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略） |
 | `src/http-server.ts` | `HttpServer` | 基于 `hono` + `@hono/node-server` 的反向 server。处理链：`authorize` → `onRawRequest`（命中即短路返回 `Response`）→ JSON 解析 → `onPathRequest`（优先）/ `onRequest` → `respond`；`onUpgrade` 在 `open()` 时挂到原生 `upgrade` 事件，实现 SSE 与 WS 同端口共存 |
 | `src/http-client.ts` | `HttpClient` | 正向 HTTP 上报：`send` 即触发一次 POST（fire-and-forget），失败（网络 / 非 2xx / 超时）经 `onError` 交回协议层；`open` / `close` 为无连接管理语义 |
-| `src/ws-server.ts` | `WsServer` | 反向 WS server：消息经 `onRequest` 分发、`respond` 回同一客户端（第三参为该请求的连接，供带内鉴权登记）；握手鉴权走 `authorize`，`onConnection` 在握手通过后把连接与 `RequestContext` 交协议层（Satori IDENTIFY 这类连接后才认证的协议用）；鉴权失败以 close code `4401` 关闭；`heartbeat` 按间隔 ping 全部连接 |
+| `src/ws-server.ts` | `WsServer` | 反向 WS server：消息经 `onRequest` 分发，`respond` 回同一客户端。握手鉴权走 `authorize`，通过后 `onConnection` 把连接与 `RequestContext` 交给调用方，可用于带内鉴权；鉴权失败以 close code `4401` 关闭 |
 | `src/ws-client.ts` | `WsClient` | 正向 WS client：`open()` 成功 resolve / 失败 reject（不自动重试），断线后按 `reconnect` 策略重连（`maxAttempts` 计数），支持 `heartbeat` 与 `rejectUnauthorized: false`（自签证书） |
+| `src/ws-flow.ts` | `sendWsText` | 对调用方选定的连接发送相同文本，逐连接执行发送上限；内部也提供 ping/pong 判活 |
 | `src/sse.ts` | `createSseResponse`、`SseClient`、`SseHandler` | 纯 HTTP 语义的 SSE 帧原语（`event:` 行 + `data:` 行 + 空行）；把「接入 → 推送 → 断开清理」抽象为 `SseClient`，退订函数在流取消或服务端 `close` 时回调。**不持有端口**，传输装配由 `HttpServer.onRawRequest` 承接 |
 | `src/broadcaster.ts` | `EventBroadcaster` | 泛型广播总线：`register` / `unregister` / `emit`，对 `Set` 内全部 `TransportAdapter` 广播同一事件；重复注册幂等 |
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
@@ -79,6 +80,23 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 - respond 首次有效响应生效；超时、断开、关停或首次响应之后的迟到/重复调用均忽略，
   不再序列化载荷。同步 handler 异常或响应序列化异常回 HTTP 500；已响应时保持首个结果。
   超时/关停不取消协议层已开始的业务操作。
+
+## WebSocket 连接可靠性
+
+- `WsServer` 和 `WsClient` 可配置 `heartbeat`。连接建立或收到匹配 pong 后等待
+  `intervalMs` 再发 ping，每条连接只等一个 pong，接受内容与当前 ping 相同的回应。
+  `pongTimeoutMs` 缺省取 `max(intervalMs, 1000)` 毫秒。超时立即断开；连接关闭或主动
+  停止时清理定时器。省略 `heartbeat` 时不发起探测。
+- `sendWsText()` 只尝试向 OPEN 连接写入文本。逐连接按 `bufferedAmount`、新帧
+  UTF-8 字节数及 14 字节的帧头余量检查，缺省上限为 32 MiB，正整数 `maxBufferedBytes`
+  可覆盖。超限立即终止该连接，不写入新帧，也不等待关闭握手排队；对端通常观察到
+  1006，缓冲中尚未发出的事件可能丢失，且传输层不重放。单帧超过预算也适用。
+  健康连接仍按发送顺序接收。该上限约束应用文本帧写入时的发送缓冲。
+- 客户端首次自动重连仍等 `delayMs`。后续连续失败的目标等待时间每次翻倍，
+  上限 `maxDelayMs` 缺省 30 秒，并至少容纳一次 `delayMs`；从第二次尝试起，
+  在目标值的 `1 - jitterRatio` 到 `1` 倍之间均匀取样，缺省抖动比例为 0.2，0 可关闭。
+  `maxAttempts` 仍限制连续自动重连次数，成功后重置。显式 `close()` 取消待重连与
+  正在连接的 socket；调用方可再次显式 `open()`，并重新开始计数。
 
 ## 构建与导出形态
 

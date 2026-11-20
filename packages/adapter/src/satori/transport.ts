@@ -18,7 +18,7 @@ import type {
     TransportAdapter,
     WsSocket,
 } from "@napuketto/network";
-import { HttpServer, isWsOpen, WsServer } from "@napuketto/network";
+import { HttpServer, isWsOpen, sendWsText, WsServer } from "@napuketto/network";
 import { tokenEquals } from "../framework/auth.js";
 import { createTokenAuthorize } from "../framework/index.js";
 import { SatoriActionError, type SatoriActionRegistry } from "./action/index.js";
@@ -117,12 +117,7 @@ class SatoriEventHub implements TransportAdapter {
         if (this.authenticated.size === 0) {
             return;
         }
-        const data = JSON.stringify(payload);
-        for (const socket of this.authenticated) {
-            if (isWsOpen(socket)) {
-                socket.send(data);
-            }
-        }
+        sendWsText(this.authenticated, JSON.stringify(payload));
     }
 
     /** 生命周期随 WsServer。 */

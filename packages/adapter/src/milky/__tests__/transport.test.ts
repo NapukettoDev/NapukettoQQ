@@ -13,6 +13,7 @@
  * 关闭回归：由 set.close() 关闭仍活跃的 SSE/WS，验证流正常结束与 1001 关闭帧。
  */
 
+import { once } from "node:events";
 import {
     type FriendApi,
     type GroupApi,
@@ -242,6 +243,35 @@ describe("Milky 事件推送（/event）", () => {
         });
         const parsed = JSON.parse(received) as { event_type: string };
         expect(parsed.event_type).toBe("message_recall");
+    });
+
+    it("WS：慢消费者被断开，其他订阅仍收到同一事件", async () => {
+        await set.adapters[0]?.open();
+        const url = `ws://127.0.0.1:${PORT}/event?access_token=${TOKEN}`;
+        const slow = new WsClient(url);
+        await once(slow, "open");
+        const healthy = new WsClient(url);
+        try {
+            await once(healthy, "open");
+            const closed = once(slow, "close");
+            const received = once(healthy, "message");
+            const event = { event_type: "message_recall", time: 1760000002 };
+            const buffered = vi
+                .spyOn(WsClient.prototype, "bufferedAmount", "get")
+                .mockReturnValueOnce(Number.MAX_SAFE_INTEGER);
+            try {
+                broadcaster.emit(event);
+                expect(buffered).toHaveBeenCalledTimes(2);
+            } finally {
+                buffered.mockRestore();
+            }
+            const [[code], [message]] = await Promise.all([closed, received]);
+            expect(code).toBe(1006);
+            expect(String(message)).toBe(JSON.stringify(event));
+        } finally {
+            slow.terminate();
+            healthy.terminate();
+        }
     });
 });
 

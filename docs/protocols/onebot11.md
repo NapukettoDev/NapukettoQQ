@@ -37,7 +37,11 @@ port = 3001
 - 鉴权：协议级 `token`，实例级可覆盖；接受 `Authorization: Bearer <token>`、裸
   `Authorization: <token>` 或 `?access_token=`。WS 鉴权失败以 4401 关闭。
 - 正向 WS 握手带 `X-Self-ID`、`x-client-role: Universal`、`User-Agent: OneBot/11`。
-- 心跳两层：`heartbeatInterval` 是 meta 事件间隔；WS 实例的 `heartbeatInterval` 是 ping。
+- 账号级 `heartbeatInterval` 控制 meta 事件。WS 实例用自己的 `heartbeatInterval` 发
+  探测 ping，等待匹配 pong 最长 `max(heartbeatInterval, 1000)` 毫秒，超时即断开。
+- 反向 WS 已连接后断线，首次自动重连仍等 `reconnectDelayMs`，后续连续失败指数退避并
+  加抖动，默认上限 30 秒且至少为 `reconnectDelayMs`。`maxReconnectAttempts` 仍限制重试
+  次数，连通后重置。初次连不上时由适配器按原间隔后台重试。
 
 ## 请求与错误
 

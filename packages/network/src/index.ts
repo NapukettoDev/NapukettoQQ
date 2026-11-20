@@ -20,10 +20,12 @@ export type {
     ServerOptions,
     TransportAdapter,
     WsClientOptions,
+    WsHeartbeatOptions,
     WsServerOptions,
     WsSocket,
     WsUpgradeHook,
 } from "./types.js";
 export { DEFAULT_MAX_BODY_BYTES, DEFAULT_MAX_PAYLOAD_BYTES, isWsOpen } from "./types.js";
 export { WsClient } from "./ws-client.js";
+export { sendWsText } from "./ws-flow.js";
 export { WsServer } from "./ws-server.js";

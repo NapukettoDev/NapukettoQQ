@@ -3,7 +3,7 @@
  *
  * 协议无关的传输原语：HTTP server/client、WS server/client、泛型广播总线、
  * SSE 事件流原语。不 import 任何协议包；事件类型完全泛型化。
- * 路由分发外置为 `onRequest` 注入点，由协议层（onebot 等）提供。
+ * 路由分发外置为 `onRequest` 注入点，由调用方提供。
  */
 import type { IncomingMessage } from "node:http";
 import type { WebSocket } from "ws";
@@ -51,12 +51,11 @@ export function isWsOpen(socket: WsSocket): boolean {
 /**
  * 响应回调：协议层处理后回发。
  * `status` 为可选 HTTP 状态码（HTTP server 用；WS 传输忽略）。
- * OB11 不传 status（恒 200）；Satori RPC 用 status 表达 404/501 等。
  */
 export type Respond = (res: unknown, status?: number) => void;
 
 /**
- * 传输适配器：协议无关（对应 NapCat OB11NetworkAdapter 的泛型化）。
+ * 传输适配器：协议无关。
  * - `send`：协议无关推送（HTTP 反向无主动推送，实现为 no-op）
  * - `onRequest`：接收第三方请求 → 协议层处理后经 `respond` 回发；
  *   第三参为发起请求的连接（仅 WS 类传输提供，HTTP 类实现可忽略）
@@ -69,8 +68,7 @@ export interface TransportAdapter {
 }
 
 /**
- * HTTP 路由上下文（协议无关，Satori RPC 等按路径分发的协议用）。
- * `path` 为请求路径（如 /v1/message.create），`method` 为 HTTP 方法；
+ * HTTP 路由上下文，`path` 为请求路径，`method` 为 HTTP 方法；
  * `headers` 供协议层做 Content-Type 等检查（onPathRequest 场景）。
  */
 export interface HttpRouteContext {
@@ -87,7 +85,7 @@ export interface HttpRouteContext {
 export type RawRequestHook = (ctx: HttpRouteContext, req: RequestContext) => Response | undefined;
 
 /**
- * 同端口 WS 升级注入点（协议无关，Milky /event 等用）。
+ * 同端口 WS 升级注入点。
  * accept 把升级后的 WS 连接交协议层收发；reject 以 HTTP 状态码拒绝（socket 直毁）。
  * 升级请求不走 authorize 钩子（升级握手无标准响应通道），鉴权由协议层在
  * 钩子内按 ctx 自行判定（token 头或 access_token 查询参数）。
@@ -109,20 +107,14 @@ export interface ServerOptions {
 }
 
 /**
- * HTTP 请求体缺省上限（字节，16 MiB）。
- *
- * 取值依据：OneBot 11 允许把图片/语音以 base64 塞进 send_msg，2 MB 图片编码后
- * 约 2.7 MB，给到 16 MiB 不会误伤正常媒体；同时挡住「一个 GB 级 JSON 打爆堆」。
- * 需要更大时用 HttpServerOptions.bodyLimitBytes 覆盖（协议层配置透传）。
+ * HTTP 请求体缺省上限（字节，16 MiB），可容纳常见内联媒体，同时限制解析开销。
  */
 export const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
 
 /**
  * 单条 WS 消息缺省上限（字节，32 MiB）。
  *
- * ws 默认 100 MiB 且不区分方向；反向 WS 的 API 调用（send_msg 带 base64 媒体）
- * 可能很大，但事件/API 调用本身不该到百 MB 级，故收紧到 32 MiB（仍可容纳约
- * 24 MB 原始媒体）。
+ * 从 ws 的缺省 100 MiB 收紧，仍可容纳约 24 MB 的 base64 编码前媒体。
  */
 export const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
@@ -147,12 +139,21 @@ export interface HttpClientOptions {
     onError?: ((err: unknown) => void) | undefined;
 }
 
+export interface WsHeartbeatOptions {
+    /** 连接建立或收到匹配 pong 后，到下一次 ping 的间隔。 */
+    intervalMs: number;
+    /** 等待匹配 pong 的时限；缺省取 max(intervalMs, 1000) 毫秒。 */
+    pongTimeoutMs?: number | undefined;
+}
+
 /** 反向 WS server 选项。 */
 export interface WsServerOptions extends ServerOptions {
-    /** 心跳：按间隔向所有客户端 ping。缺省不心跳。 */
-    heartbeat?: { intervalMs: number } | undefined;
+    /** ping/pong 判活，缺省不探测。 */
+    heartbeat?: WsHeartbeatOptions | undefined;
     /** 单条消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
     maxPayloadBytes?: number | undefined;
+    /** 每条连接的发送缓冲上限（字节，含待发送帧）；缺省 32 MiB。 */
+    maxBufferedBytes?: number | undefined;
 }
 
 /** 正向 WS 客户端（主动连接 / 反向连接）选项。 */
@@ -160,18 +161,24 @@ export interface WsClientOptions {
     /** 服务端地址（完整 URL，含 ws:// 或 wss://）。 */
     url: string;
     headers?: Record<string, string> | undefined;
-    /** 心跳：按间隔 ping，缺省不心跳。 */
-    heartbeat?: { intervalMs: number } | undefined;
+    /** ping/pong 判活，缺省不探测。 */
+    heartbeat?: WsHeartbeatOptions | undefined;
+    /** 发送缓冲上限（字节，含待发送帧）；缺省 32 MiB。 */
+    maxBufferedBytes?: number | undefined;
     /** 断线重连策略，缺省不重连。 */
     reconnect?:
         | {
               enabled: boolean;
-              /** 重连延迟（毫秒）。 */
+              /** 首次重连的等待时间，也是后续指数退避的基准（毫秒）。 */
               delayMs: number;
+              /** 最大延迟（毫秒）；缺省 30 秒，至少容纳 delayMs。 */
+              maxDelayMs?: number | undefined;
+              /** 第二次起的向下抖动比例（0–1）；缺省 0.2，0 禁用。 */
+              jitterRatio?: number | undefined;
               /** 最大重连次数；缺省无限。 */
               maxAttempts?: number | undefined;
           }
         | undefined;
-    /** wss:// 是否校验证书链（缺省 undefined = Node 默认严格校验；自签证书场景设 false，对齐 NapCat enableSelfSigned）。 */
+    /** wss:// 是否校验证书链（缺省使用 Node 严格校验；自签证书场景可设 false）。 */
     rejectUnauthorized?: boolean | undefined;
 }
