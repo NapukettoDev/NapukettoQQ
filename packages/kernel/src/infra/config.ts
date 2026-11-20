@@ -8,8 +8,9 @@
  * 协议包的 zod schema 天然满足；kernel 主配置用手写校验器包装。
  * 协议配置 schema 在各自协议包，见各包 docs/design.md。
  */
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { chmod, readFile, rename, writeFile } from "node:fs/promises";
+import { open, readFile, rename, rm } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import process from "node:process";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
@@ -66,7 +67,8 @@ export interface ConfigOptions<T> {
  * 配置基类。每次 `load()` / `save()` 都经过 schema 校验，
  * 校验失败抛 `KernelError('INVALID_PARAM')`，不静默吞掉。
  * - `load()`：seed 存在 → 直接用 seed；否则读文件（缺失落默认值）。
- * - `save()`：按格式序列化（TOML/JSON）原子写。
+ * - `save()`：调用时取得校验后的快照，原子替换成功后更新内存。
+ * - 同实例 load/save 按调用顺序串行；跨实例/进程仅隔离临时文件，不合并更新。
  */
 export class ConfigBase<T> {
     readonly path: string;
@@ -76,6 +78,7 @@ export class ConfigBase<T> {
     private readonly format: ConfigFormat;
     private readonly seed: T | undefined;
     private value: T;
+    private pending: Promise<void> = Promise.resolve();
 
     constructor(opts: ConfigOptions<T>) {
         this.path = opts.path;
@@ -98,6 +101,10 @@ export class ConfigBase<T> {
      * - 文件存在 → 读取 + 校验，更新内存，返回。
      */
     async load(): Promise<T> {
+        return this.enqueue(() => this.loadValue());
+    }
+
+    private async loadValue(): Promise<T> {
         if (this.seed !== undefined) {
             this.value = this.seed;
             return this.value;
@@ -107,7 +114,8 @@ export class ConfigBase<T> {
             raw = await readFile(this.path, "utf8");
         } catch (err) {
             if (isMissingFileError(err)) {
-                await this.save(this.defaults);
+                const parsed = this.parse(this.serialize(this.defaults));
+                await this.commit(parsed, `${this.serialize(parsed)}\n`);
                 return this.value;
             }
             throw configError(`读取配置文件失败: ${this.path}`, { cause: err });
@@ -125,21 +133,44 @@ export class ConfigBase<T> {
         return this.parse(raw);
     }
 
-    /** 校验并落盘（原子写：临时文件 + rename），随后更新内存。 */
+    /** 调用时校验并取得快照，按同实例调用顺序落盘，成功后更新内存。 */
     async save(next: T): Promise<void> {
         const parsed = this.parse(this.serialize(next));
+        const text = `${this.serialize(parsed)}\n`;
+        await this.enqueue(() => this.commit(parsed, text));
+    }
+
+    private enqueue<R>(operation: () => Promise<R>): Promise<R> {
+        const result = this.pending.then(operation);
+        // 仅队列尾部吸收拒绝以继续后续操作；原始 result 把错误交还调用方。
+        this.pending = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
+    }
+
+    private async commit(parsed: T, text: string): Promise<void> {
         mkdirSync(dirname(this.path), { recursive: true });
-        const tmpPath = `${this.path}.tmp`;
-        await writeFile(tmpPath, `${this.serialize(parsed)}\n`, {
-            encoding: "utf8",
-            ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
-        });
-        if (process.platform !== "win32") {
-            // 陈旧临时文件可能带着更宽的权限：显式收紧后再 rename 覆盖目标。
-            await chmod(tmpPath, CONFIG_FILE_MODE);
+        const tmpPath = `${this.path}.${randomUUID()}.tmp`;
+        // 独占创建成功后才拥有该临时文件，创建失败时不得清理他人的文件。
+        const file = await open(tmpPath, "wx", CONFIG_FILE_MODE);
+        try {
+            try {
+                if (process.platform !== "win32") {
+                    // 创建 mode 受 umask 限制，写入凭据前显式确定为 0o600。
+                    await file.chmod(CONFIG_FILE_MODE);
+                }
+                await file.writeFile(text, "utf8");
+            } finally {
+                await file.close();
+            }
+            await rename(tmpPath, this.path);
+            this.value = parsed;
+        } finally {
+            // rename 成功则源文件已不存在；失败则移除本次提交的中间态。
+            await rm(tmpPath, { force: true });
         }
-        await rename(tmpPath, this.path);
-        this.value = parsed;
     }
 
     /** 对象 → 文本（TOML/JSON）。 */
