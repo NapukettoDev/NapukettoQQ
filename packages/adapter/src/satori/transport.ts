@@ -19,6 +19,7 @@ import type {
     WsSocket,
 } from "@napuketto/network";
 import { HttpServer, isWsOpen, WsServer } from "@napuketto/network";
+import { tokenEquals } from "../framework/auth.js";
 import { createTokenAuthorize } from "../framework/index.js";
 import { SatoriActionError, type SatoriActionRegistry } from "./action/index.js";
 import { HTTP_STATUS, type SatoriConfig } from "./helper/index.js";
@@ -194,7 +195,7 @@ class SatoriEventHub implements TransportAdapter {
         if (op === Opcode.IDENTIFY) {
             if (this.requiresAuth()) {
                 const body = isRecord(signal["body"]) ? signal["body"] : {};
-                if (body["token"] !== this.token) {
+                if (!tokenEquals(body["token"], this.token)) {
                     this.reject(socket, "unauthorized");
                     return;
                 }

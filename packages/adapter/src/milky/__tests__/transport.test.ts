@@ -503,7 +503,8 @@ describe("WebHook 推送", () => {
     it("不可达 webhook → onError → logger.warn（不影响其他 adapter）", async () => {
         const logger: MilkyLoggerLike = { debug: vi.fn(), warn: vi.fn(), info: vi.fn() };
         const set = assemble({
-            port: 36408,
+            // 本用例只向 webhook 发请求，无需回连 HTTP server，由系统分配空闲端口。
+            port: 0,
             webhooks: ["http://127.0.0.1:9/hook"],
             logger,
             token: "t",

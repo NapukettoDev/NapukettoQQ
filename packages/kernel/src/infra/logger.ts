@@ -18,11 +18,9 @@ import pino from "pino";
 import { kernelError } from "./errors.js";
 import type { LogFormat, LogLevel, TimestampMode } from "./log-config.js";
 import { createConsoleFormatStream } from "./log-format.js";
+import { redactLogLine } from "./log-redaction.js";
 
 export type { LogLevel } from "./log-config.js";
-
-/** 默认 redact 路径：顶层 token/票据 + 任意深度的密码/密钥。 */
-const DEFAULT_REDACT_PATHS = ["token", "ticket", "cookie", "password", "secret"] as const;
 
 /** 级别数值序（求多目的地最低级别用）。 */
 const LEVEL_ORDER: readonly pino.LevelWithSilent[] = [
@@ -84,7 +82,7 @@ export interface LoggerOptions {
     /** 附加基础字段（如 `{ name: 'kernel' }`），自动保留 pid；name 用 pino 保留字段
      * （logger name），pretty 渲染为 `(name/pid)` 元数据头。 */
     base?: Optional<Record<string, unknown>>;
-    /** 追加的敏感字段路径（默认内置 token/票据等，见 DEFAULT_REDACT_PATHS）。 */
+    /** 附加 pino 敏感字段路径；内置字段名保护由输出层统一执行，不能禁用。 */
     redact?: string[];
 }
 
@@ -161,7 +159,9 @@ export function createLogger(opts: LoggerOptions = {}): pino.Logger {
     // 文件日志因此始终是可精确追溯的数值时间，控制台按 timestamp 模式渲染。
     const pinoOptions: pino.LoggerOptions = {
         level: gateLevel(targets),
-        redact: [...DEFAULT_REDACT_PATHS, ...(opts.redact ?? [])],
+        redact: opts.redact ?? [],
+        serializers: { err: pino.stdSerializers.errWithCause },
+        hooks: { streamWrite: redactLogLine },
         timestamp: (): string => `,"time":${wallMs()}`,
         ...(opts.base === undefined ? {} : { base: { pid: process.pid, ...opts.base } }),
     };
