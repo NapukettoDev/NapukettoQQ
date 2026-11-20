@@ -7,17 +7,21 @@
  * 都依赖 @napuketto/media，只发生在 adapter 层；kernel 不 import media（红线），
  * 只接收「文件齐全」的 canonical 元素。
  */
-import { mkdtemp, open, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
 import { downloadUrl, encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
+import { cacheMediaFile, MEDIA_TEMP_ROOT, protectMediaPath } from "../infra/media-cache.js";
 
 /** file:// 前缀（fileURLToPath 解析失败时的裸剥离兜底）。 */
 export const FILE_URI_PREFIX_RE = /^file:\/\//;
+const MEDIA_EXTENSION_RE = /^\.[a-zA-Z0-9]+$/;
+// Match media's audio input bound before creating the owned conversion copy.
+const MAX_AUDIO_COPY_BYTES = 32 * 1024 * 1024;
 
 /**
  * file:// URI → 平台路径（Windows 盘符 / 百分号编码兼容）。
@@ -84,11 +88,24 @@ async function readFileHead(path: string): Promise<string> {
  */
 export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Promise<string> {
     try {
+        await protectMediaPath(path);
+        const info = await stat(path);
+        if (!info.isFile() || info.size > MAX_AUDIO_COPY_BYTES) {
+            throw kernelError("语音复制输入必须是 32MiB 以内的普通文件", "INVALID_PARAM");
+        }
         const header = await readFileHead(path);
         if (header.startsWith("#!SILK")) {
             return path;
         }
-        return await encodePcmToSilk(path);
+        const ext = extname(path);
+        return await cacheMediaFile(
+            MEDIA_TEMP_ROOT,
+            MEDIA_EXTENSION_RE.test(ext) ? ext : ".bin",
+            async (copy) => {
+                await copyFile(path, copy);
+                return await encodePcmToSilk(copy);
+            },
+        );
     } catch (err) {
         logger?.warn({ path, error: errorMessage(err) }, "语音 silk 转码失败，原样透传");
         return path;

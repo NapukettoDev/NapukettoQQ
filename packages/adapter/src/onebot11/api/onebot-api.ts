@@ -26,6 +26,7 @@ import type {
 } from "@napuketto/kernel";
 import { errorMessage, GroupApi, NTGroupMemberRole } from "@napuketto/kernel";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
+import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
 
@@ -89,6 +90,7 @@ export interface OneBotApiOptions {
  * 各动作经 `Pick<OneBotApi, ...>` 取所需成员；注册处只构造一次本对象。
  */
 export class OneBotApi {
+    readonly mediaCache: MediaCache;
     /** kernel 消息 API（send_msg 等消息类动作用）。 */
     readonly msgApi: MsgApi;
     /** kernel 群 API。 */
@@ -133,6 +135,7 @@ export class OneBotApi {
     readonly logger?: AdapterLoggerLike | undefined;
 
     constructor(opts: OneBotApiOptions) {
+        this.mediaCache = new MediaCache({ root: opts.system?.cacheDir, logger: opts.logger });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.groupNotifyApi = opts.groupNotifyApi;

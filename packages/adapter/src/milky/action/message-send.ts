@@ -8,6 +8,7 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
+import { protectMediaPath } from "../../internal/infra/media-cache.js";
 import type { MilkyApi } from "../api.js";
 import { resolveMediaUri } from "../helper/message/media-uri.js";
 import {
@@ -225,6 +226,7 @@ async function resolveElement(
     ) {
         return { ...el, path: await resolveMediaUri(el.path, api.mediaDir) };
     }
+    if ("path" in el) await protectMediaPath(el.path);
     return el;
 }
 

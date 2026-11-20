@@ -13,7 +13,7 @@
 | `src/framework/` | **公开**：`exports["./core"]` | 适配器骨架：`BaseProtocolAdapter` / `ActionRegistry` / `runAction` / `auth` / `transport-schema` | 只依赖 kernel / network；禁止依赖 `internal/` 与任何协议目录 |
 | `src/<protocol>/` | 公开：各自子路径 | 协议信封、事件翻译、动作声明、传输装配 | 可依赖 `framework/` + `internal/`；协议之间互不依赖 |
 | `src/internal/qq/` | 包内私有 | NTQQ 数据语义与边界桥接：sysmsg 解码、uid↔uin 口径、grayTip、essence 字段提取、raw-message 归一、发送侧媒体准备 | 可依赖 `internal/infra/` 与 `@napuketto/media`；无 barrel |
-| `src/internal/infra/` | 包内私有 | 协议无关的运行期横切件：日志截断与校准 logger 面 | 叶子层，不依赖 `qq/` 与 `framework/` |
+| `src/internal/infra/` | 包内私有 | 协议无关的运行期横切件：日志截断、校准 logger 面与媒体缓存租约/回收 | 叶子层，不依赖 `qq/` 与 `framework/` |
 
 - **可见性轴优先于「协议 / 非协议」轴**：公开契约（`framework/`）与包内实现（`internal/`）
   物理分开，`internal/` 下不放任何 `index.ts`——防止顺手的 `re-export` 把私有实现变成
@@ -137,6 +137,35 @@
   `EssenceListSync`，ADR-028）；sysmsg 732:1 只作
   加速触发器踢入同一串行链（diff 幂等 + 串行去重）。sender 缺失跳过事件；operator 仅
   add 回填；message_id 经近段 60 条反查 + MessageUnique 幂等分配。
+
+### 媒体缓存所有权与回收
+
+- 三协议复用 `internal/infra/media-cache.ts`，不改 kernel/network/media 的公开契约。
+  Milky http/base64、Satori http 资源、OB11 远程头像属于发送临时文件；动作级租约从下载前
+  覆盖转换、发送与失败分支，动作结束清理。OB11 `download_file` / 主动下载的 `get_image`
+  返回可供后续 API 使用的路径：成功返回后至少保留 24h，期间容量压力也不能驱逐；后续
+  动作引用时再持有租约。用户路径、`internal:` 路径和 QQ 原生下载/数据目录均不转移所有权。
+  保留期约束自动回收；显式 `clean_cache` 的既有 kernel 管理回调或操作者删除文件仍可
+  使路径失效。Satori 文件的逻辑标题与缓存路径分离，保留 URL 文件名及显式 title 的优先级。
+- 每个 API 实例持有清理器，启动和每分钟扫描，timer unref，stop/IPC 退订时释放 timer；
+  动作仍在运行时保留租约并在结束时清理。临时文件成功/失败即时回收；进程崩溃遗留临时
+  文件 1h 后回收；引用缓存按持久化的完成时间计算 24h TTL，重启不重置期限。
+- 缓存写入配置目录下专属 `.napuketto-media-v1/entry-<pid>-<uuid>/`，独占创建避免同名
+  URL、时间戳或 UUID 冲突覆盖。每个受控根目录总容量缺省 512MiB，完成写入时统计真实
+  文件大小，先回收可删除项；仍超额则拒绝新增文件并清理，不提前驱逐受保护引用。
+  正在写入/转换的瞬时占用可能超额，不承诺磁盘硬配额或跨目录总额。
+- 回收只接受匹配格式且带有效所有权元数据的条目；校验真实路径边界，不跟随符号链接，
+  未知文件/目录使条目保守保留。仅逐文件 unlink 与空目录 rmdir，不递归 rm 配置目录。
+  同进程共享路径锁/租约，复用路径附带磁盘租约；其他仍存活进程的条目或租约保守保护并计入容量。配置目录应由宿主
+  独占管理，不提供对抗同权限进程实时替换目录的文件系统沙箱。
+- 旧版平铺文件没有可靠所有权标记，自动迁移/删除会误删用户文件，因此保留；它们不计入
+  新格式缓存配额。Satori 视频独占转码目录继续遵守下述消费后清理契约；语音转换在动作内
+  复制到受控独占目录，复制前检查普通文件及 media 同口径的 32MiB 输入上限，生成 SILK
+  不覆盖用户同名文件。受控条目下的 `.napuketto-video-*`
+  仅识别一层 `output.mp4`，用于崩溃后回收，未知内容及目录链接不遍历。独立调用底层 helper 时返回文件归
+  调用方消费，按缓存 TTL 回收；调用方须自行管理非受控 media API 的产物。
+- Milky base64 魔数识别结果的扩展名补 `.`；识别失败保留 `.bin`，落盘/改名失败正常报错
+  并回收部分产物，不伪装成类型识别失败。
 
 ### Satori 事件与媒体转换
 

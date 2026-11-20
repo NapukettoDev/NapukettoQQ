@@ -43,7 +43,10 @@ export function createMilkyActionRegistry(opts: {
     const registry = new ActionRegistry<MilkyAction<unknown, unknown>>();
     for (const factory of ACTION_FACTORIES) {
         for (const action of factory(opts.api)) {
-            registry.register(action);
+            registry.register({
+                ...action,
+                handle: (payload) => opts.api.mediaCache.run(() => action.handle(payload)),
+            });
         }
     }
     return registry;

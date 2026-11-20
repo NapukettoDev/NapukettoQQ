@@ -8,6 +8,7 @@
 
 import type { ZodType } from "zod";
 import { runAction } from "../../framework/index.js";
+import { withMediaScope } from "../../internal/infra/media-cache.js";
 import { satoriHttpStatusMap } from "../helper/index.js";
 
 /** 动作错误（带 HTTP 状态码；由 transport 层透传）。 */
@@ -54,7 +55,7 @@ export function defineSatoriAction<TPayload, TReturn>(spec: {
             const outcome = await runAction(
                 {
                     schema: spec.schema,
-                    handle: spec.handle,
+                    handle: (input) => withMediaScope(() => spec.handle(input)),
                     errorCodeMap: satoriHttpStatusMap,
                     invalidRetcode: INVALID_PARAM_STATUS,
                     passthrough: (err) => err instanceof SatoriActionError,

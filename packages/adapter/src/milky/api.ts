@@ -23,6 +23,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
+import { MediaCache } from "../internal/infra/media-cache.js";
 import { toUnixSeconds } from "../internal/qq/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
@@ -69,6 +70,7 @@ export interface MilkyInboundBase {
 }
 
 export class MilkyApi {
+    readonly mediaCache: MediaCache;
     readonly msgApi: MsgApi;
     readonly groupApi: GroupApi;
     readonly friendApi: FriendApi;
@@ -92,6 +94,7 @@ export class MilkyApi {
     readonly seqIndex: MessageSeqIndex;
 
     constructor(opts: MilkyApiOptions, seqIndex: MessageSeqIndex) {
+        this.mediaCache = new MediaCache({ root: opts.mediaDir, logger: opts.logger });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.friendApi = opts.friendApi;

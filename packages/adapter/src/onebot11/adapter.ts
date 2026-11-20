@@ -148,6 +148,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             await Promise.all(this.transports.servers.map((s) => s.open()));
             await this.openOutboundTransports();
         }
+        await this.oneBotApi.mediaCache.start();
         this.pipeline.subscribe();
         this.broadcastEvent({
             time: Math.floor(Date.now() / MS_TO_SEC),
@@ -219,6 +220,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 停止：心跳 + 传输 + 退订（含取消出向传输的后台重连）。 */
     private async stopAll(): Promise<void> {
+        this.oneBotApi.mediaCache.stop();
         if (this.heartbeatTimer !== null) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
@@ -238,6 +240,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
      */
     async subscribeOnly(): Promise<void> {
         const config = await this.config.load();
+        await this.oneBotApi.mediaCache.start();
         this.pipeline.applyConfig(config);
         this.subscribedOnly = true;
         this.pipeline.subscribe();
@@ -245,6 +248,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
 
     /** 仅退订（与 subscribeOnly 配对的进程级清理；传输关闭仍走 stop()）。 */
     unsubscribeOnly(): void {
+        this.oneBotApi.mediaCache.stop();
         this.subscribedOnly = false;
         this.pipeline.unsubscribeAll();
     }

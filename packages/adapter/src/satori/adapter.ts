@@ -89,6 +89,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
             });
             await Promise.all(this.transports.adapters.map((t) => t.open()));
         }
+        await this.api.mediaCache.start();
         this.subscribe();
         // 广播 login-updated（启动 → 在线）
         this.broadcastLoginUpdated(true);
@@ -123,6 +124,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
 
     /** 停止：退订 + 关闭传输 + 广播 login-updated（离线）。 */
     private async stopAll(): Promise<void> {
+        this.api.mediaCache.stop();
         this.unsubscribeAll();
         if (this.transports !== null) {
             await this.transports.close();

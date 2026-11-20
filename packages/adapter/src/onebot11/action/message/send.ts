@@ -13,6 +13,7 @@ import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
 import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
+import { protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { ensureSilk, prepareVideoElements } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
@@ -61,6 +62,7 @@ async function sendOb11Message(
     } else {
         canonical = cqMessageToCanonical(payload.message);
     }
+    await protectElements(canonical);
     // 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
     // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）
     const atUins: string[] = [];
@@ -104,6 +106,13 @@ async function sendOb11Message(
         return { message_id: deps.messageUnique.alloc(msgId, peer) };
     } finally {
         await prepared.cleanup();
+    }
+}
+
+async function protectElements(elements: readonly CanonicalElement[]): Promise<void> {
+    for (const el of elements) {
+        if ("path" in el) await protectMediaPath(el.path);
+        if (el.type === "video" && el.thumbPath) await protectMediaPath(el.thumbPath);
     }
 }
 

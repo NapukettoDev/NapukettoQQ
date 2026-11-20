@@ -57,7 +57,10 @@ export function createSatoriActionRegistry(deps: SatoriActionDeps): SatoriAction
         ...createLoginActions(api),
         ...createReactionActions(api),
     ]) {
-        registry.register(action);
+        registry.register({
+            ...action,
+            run: (payload) => api.mediaCache.run(() => action.run(payload)),
+        });
     }
     // 501 占位动作：schema 接受任意对象，执行即抛 501
     for (const name of NOT_IMPLEMENTED) {

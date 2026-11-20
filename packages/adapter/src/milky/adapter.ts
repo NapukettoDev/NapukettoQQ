@@ -136,6 +136,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             // milky HTTP 从未监听（集成测试一直显式 open 掩盖了该缺口）。
             await Promise.all(set.adapters.map((a) => a.open()));
         }
+        await this.api.mediaCache.start();
         this.pipeline.subscribe();
         this.calibLogger?.info(
             { host: config.host, port: config.port, modes: config.eventModes },
@@ -151,6 +152,7 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
 
     /** 停止：退订 + 关传输。 */
     private async stopAll(): Promise<void> {
+        this.api.mediaCache.stop();
         this.pipeline.unsubscribeAll();
         if (this.stopTransports !== null) {
             await this.stopTransports();

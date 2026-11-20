@@ -19,9 +19,10 @@
  * 依赖，当前未接（明确报错，不静默失败）。
  */
 
-import { join, basename as pathBasename } from "node:path";
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
+import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
+import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { downloadBufferToFile, fileUriToPath } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
@@ -89,14 +90,19 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
                         "INVALID_STATE",
                     );
                 }
-                const safeName = pathBasename(new URL(payload.url).pathname) || "download.bin";
-                const filePath = join(cacheDir, `download-${Date.now()}-${safeName}`);
                 const init: RequestInit = {};
                 if (payload.headers !== undefined) {
                     init.headers = payload.headers;
                 }
                 // 异步落盘（父目录由 shared/media 递归创建，不再同步阻塞）
-                await downloadBufferToFile(payload.url, filePath, init);
+                const filePath = await cacheMediaFile(
+                    cacheDir,
+                    inferExtension(null, payload.url),
+                    async (path) => {
+                        await downloadBufferToFile(payload.url, path, init);
+                    },
+                    "reference",
+                );
                 return { file: filePath };
             },
         }),
@@ -104,7 +110,7 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
             name: "upload_group_file",
             schema: uploadGroupFileSchema,
             handle: async (payload): Promise<UploadFileResult> => {
-                const path = resolveLocalFile(payload.file);
+                const path = await protectMediaPath(resolveLocalFile(payload.file));
                 const peer: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
                 const uploaded = await api.flashTransferApi.sendFile(peer, [path], {
                     name: payload.name ?? basename(path),
@@ -116,7 +122,7 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
             name: "upload_private_file",
             schema: uploadPrivateFileSchema,
             handle: async (payload): Promise<UploadFileResult> => {
-                const path = resolveLocalFile(payload.file);
+                const path = await protectMediaPath(resolveLocalFile(payload.file));
                 const peer = await resolveTargetPeer(
                     { user_id: payload.user_id },
                     api,

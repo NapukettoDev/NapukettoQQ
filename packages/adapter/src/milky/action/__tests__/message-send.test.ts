@@ -8,7 +8,9 @@
  * 嵌套 forward / 混发均 -400）、撤回失败 best-effort、file:// 媒体段展开、
  * 段数上限、附加字段容忍。
  */
-import { join } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
     type CanonicalElement,
@@ -399,6 +401,47 @@ describe("sendMilkyMessage forward 组装链", () => {
 });
 
 describe("send_private_message / send_group_message（动作层）", () => {
+    it.each([false, true])(
+        "H-04: base64 stays leased through send; failure=%s cleans files",
+        async (fail) => {
+            const dir = mkdtempSync(join(tmpdir(), "nk-milky-cache-send-"));
+            let output = "";
+            const sendMessage = vi.fn(async (_peer: Peer, elements: CanonicalElement[]) => {
+                const image = elements[0];
+                if (image?.type !== "image") throw new Error("missing image");
+                output = image.path;
+                expect(readFileSync(output, "utf8")).toBe("media bytes");
+                if (fail) throw new Error("send failed");
+                return { msgId: "sent-1" };
+            });
+            try {
+                const registry = messageApi({
+                    mediaDir: dir,
+                    msgApi: {
+                        sendMessage,
+                        fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("1")]),
+                    },
+                });
+                const result = await actionOf(registry, "send_group_message").handle({
+                    group_id: 10001,
+                    message: [
+                        {
+                            type: "image",
+                            data: {
+                                uri: `base64://${Buffer.from("media bytes").toString("base64")}`,
+                            },
+                        },
+                    ],
+                });
+                expect(result.status).toBe(fail ? "failed" : "ok");
+                expect(sendMessage).toHaveBeenCalledTimes(1);
+                expect(existsSync(dirname(output))).toBe(false);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        },
+    );
+
     it("file:// 媒体段：同步展开为平台路径（不触下载）", async () => {
         const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
             msgId: "sent-1",

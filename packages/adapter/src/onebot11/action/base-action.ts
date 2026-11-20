@@ -10,6 +10,7 @@ import { ChatType, kernelError, type Peer, type RawMessage } from "@napuketto/ke
 import type { ZodType } from "zod";
 import type { ErrorCodeMap } from "../../framework/index.js";
 import { runAction } from "../../framework/index.js";
+import { withMediaScope } from "../../internal/infra/media-cache.js";
 import type { MessageUnique } from "../helper/message-unique.js";
 import { resolveMsgIdAndPeer } from "../helper/message-unique.js";
 
@@ -77,7 +78,7 @@ export function defineOb11Action<TPayload, TReturn>(spec: {
         const outcome = await runAction(
             {
                 schema: spec.schema,
-                handle: spec.handle,
+                handle: (input) => withMediaScope(() => spec.handle(input)),
                 errorCodeMap: ob11ErrorCodeMap,
                 invalidRetcode,
             },

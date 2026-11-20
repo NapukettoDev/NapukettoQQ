@@ -6,15 +6,18 @@
  * 锁定：file:// 展开与畸形兜底、裸路径原样、http(s)/base64 需 mediaDir、
  * base64 空/空载荷报错、探测失败保留 .bin。
  */
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@napuketto/media", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    downloadUrl: vi.fn(async (_url: string, _dest: string) => 4),
+    downloadUrl: vi.fn(async (_url: string, dest: string) => {
+        await writeFile(dest, "test");
+        return 4;
+    }),
 }));
 
 import { downloadUrl } from "@napuketto/media";
@@ -32,7 +35,7 @@ let mediaDir = "";
 const createdDirs: string[] = [];
 
 beforeEach(async () => {
-    mediaDir = await mkdtemp(join(tmpdir(), "nk-test-milky-media-"));
+    mediaDir = await realpath(await mkdtemp(join(tmpdir(), "nk-test-milky-media-")));
     createdDirs.push(mediaDir);
     mockedDownload.mockClear();
 });
@@ -87,29 +90,25 @@ describe("resolveMediaUri（远程媒体落盘）", () => {
     it("http(s):// → downloadUrl 落盘 mediaDir（扩展名按 URL 推断）", async () => {
         const dest = await resolveMediaUri("http://127.0.0.1:9/a.png", mediaDir);
         expect(mockedDownload).toHaveBeenCalledWith("http://127.0.0.1:9/a.png", dest);
-        expect(dest.startsWith(mediaDir)).toBe(true);
+        expect(dest).toContain(mediaDir);
         expect(dest.endsWith(".png")).toBe(true);
     });
 
     it("http(s):// URL 无扩展名 → inferExtension 兜底 .bin", async () => {
         const dest = await resolveMediaUri("http://127.0.0.1:9/noext", mediaDir);
-        expect(dest.startsWith(mediaDir)).toBe(true);
+        expect(dest).toContain(mediaDir);
         expect(dest.endsWith(".bin")).toBe(true);
     });
 
     it("base64:// PNG 载荷 → 落盘 + 探测后改名（png 后缀；.bin 已移除）", async () => {
         const uri = `base64://${Buffer.from(PNG_BYTES).toString("base64")}`;
         const dest = await resolveMediaUri(uri, mediaDir);
-        expect(dest.startsWith(mediaDir)).toBe(true);
-        // detectFileType.ext 无点前缀（'png'），writeBase64 直接拼接 → 'uuidpng'
-        // 形态（疑似生产缺陷：应有 '.' 分隔；以实际行为锁定，QQ 端按内容嗅探）
-        expect(dest.endsWith("png")).toBe(true);
-        expect(dest.endsWith(".png")).toBe(false);
+        expect(dest).toContain(mediaDir);
+        expect(dest.endsWith(".png")).toBe(true);
         await expect(access(dest)).resolves.toBeUndefined();
         // 探测成功路径：中间 .bin 已被 rename 走
-        const { readdir } = await import("node:fs/promises");
-        const listing = await readdir(mediaDir);
-        expect(listing).toEqual([dest.slice(mediaDir.length + 1)]);
+        const listing = await readdir(dirname(dest));
+        expect(listing).toEqual([".owner.json", "media.png"]);
     });
 
     it("base64:// 无法探测的内容 → 保留 .bin（QQ 端按内容嗅探）", async () => {
