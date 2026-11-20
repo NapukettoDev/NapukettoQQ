@@ -149,6 +149,11 @@
 - 媒体：img / audio / video / file → canonical；audio 走 `ensureSilk`（非 silk 转码）；
   video 非 mp4 走 `transcodeVideo`，ffmpeg 缺失或失败 fail-soft 原样透传；file 的
   `title` 映射为 canonical `name`。
+- Satori 视频转码消费 media 返回的独占 `.mp4` 路径（不推导或覆盖源文件）。`message.create`
+  使用请求级 `onVideoTranscoded` 登记产物；转换或发送结束后在 finally 删除文件及父临时
+  目录（含失败路径），转换阶段不得提前删除。独立调用转换器时由调用方接管返回路径的
+  清理。失败仍透传源路径，media 负责清理失败的部分产物；后续发送
+  准备的 ffprobe/抽帧也受相同本地输入与超时限制，拒绝播放列表等不支持输入。
 - 远程媒体下载统一走 `@napuketto/media` 的 `downloadUrl`（adapter 侧唯一入口是
   `internal/qq/media.ts` 的 `downloadBufferToFile`）：超时、大小上限、流式落盘与
   出站地址策略都在那里，协议侧不再直接 `fetch` 或 `arrayBuffer()`。

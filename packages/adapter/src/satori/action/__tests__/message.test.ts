@@ -8,6 +8,9 @@
  *  - message.list → around 抛错；asc/desc 排序；next 分页令牌（raw ≥ count）
  *  - message.delete → recallMessage
  */
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
@@ -18,6 +21,16 @@ import type { MessageActionDeps } from "../message.js";
 import { createMessageActions } from "../message.js";
 
 import { type StubSatoriApi, satoriActionOf, stubSatoriApi } from "./test-support.js";
+
+const { transcodeMock, downloadMock } = vi.hoisted(() => ({
+    transcodeMock: vi.fn(),
+    downloadMock: vi.fn(),
+}));
+vi.mock("@napuketto/media", async (original) => ({
+    ...(await original<typeof import("@napuketto/media")>()),
+    transcodeVideo: transcodeMock,
+    downloadUrl: downloadMock,
+}));
 
 /** 从桩 api 构造 MessageActionDeps。 */
 function makeDeps(api: StubSatoriApi): MessageActionDeps {
@@ -37,6 +50,44 @@ function actionOf<R>(api: StubSatoriApi, name: string) {
 }
 
 describe("message.create", () => {
+    it.each(["success", "send-failure", "conversion-failure"])(
+        "H-02: %s 在发送消费结束后清理转码产物，保留源文件",
+        async (scenario) => {
+            const dir = mkdtempSync(join(tmpdir(), "nk-satori-owned-"));
+            const source = join(dir, "source.webm");
+            const ownedDir = mkdtempSync(join(dir, ".napuketto-video-"));
+            const output = join(ownedDir, "output.mp4");
+            writeFileSync(source, "original");
+            writeFileSync(output, "converted");
+            transcodeMock.mockResolvedValueOnce(output);
+            const api = stubSatoriApi();
+            vi.mocked(api.msgApi.sendMessage).mockImplementationOnce(async (_peer, elements) => {
+                expect(elements).toEqual([{ type: "video", path: output }]);
+                expect(readFileSync(output, "utf8")).toBe("converted");
+                if (scenario === "send-failure") throw new Error("send failed");
+                return { msgId: "sent-msg-1" };
+            });
+            const content = `<video src="${source}"/>${scenario === "conversion-failure" ? '<img src="http://example.test/fail.png"/>' : ""}`;
+            downloadMock.mockRejectedValueOnce(new Error("download failed"));
+            try {
+                const request = actionOf<Message[]>(api, "message.create").run({
+                    channel_id: "10001",
+                    content,
+                });
+                if (scenario === "success") await expect(request).resolves.toHaveLength(1);
+                else await expect(request).rejects.toThrow();
+                expect(existsSync(ownedDir)).toBe(false);
+                expect(readFileSync(source, "utf8")).toBe("original");
+                if (scenario === "conversion-failure")
+                    expect(api.msgApi.sendMessage).not.toHaveBeenCalled();
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+                transcodeMock.mockReset();
+                downloadMock.mockReset();
+            }
+        },
+    );
+
     it("群聊频道：resolvePeer → setChannelType(true) → sendMessage → 返回单元素数组", async () => {
         const api = stubSatoriApi();
         api.resolvePeer.mockResolvedValueOnce({
