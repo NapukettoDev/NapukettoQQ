@@ -181,14 +181,21 @@ export function assembleMilkyTransports(opts: {
     for (const adapter of adapters) {
         broadcaster.register(adapter);
     }
+    let closing: Promise<void> | undefined;
     return {
         adapters,
-        close: async () => {
-            await server.close();
-            await hub.close();
-            for (const adapter of adapters) {
-                broadcaster.unregister(adapter);
-            }
+        close: () => {
+            closing ??= (async () => {
+                for (const adapter of adapters) {
+                    broadcaster.unregister(adapter);
+                }
+                try {
+                    await hub.close();
+                } finally {
+                    await server.close();
+                }
+            })();
+            return closing;
         },
     };
 }

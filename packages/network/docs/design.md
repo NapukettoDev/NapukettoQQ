@@ -67,6 +67,19 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 | `src/broadcaster.ts` | `EventBroadcaster` | 泛型广播总线：`register` / `unregister` / `emit`，对 `Set` 内全部 `TransportAdapter` 广播同一事件；重复注册幂等 |
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
 
+## HTTP 请求与服务生命周期
+
+- `open()` 仅在监听成功后完成；监听错误（如端口占用）reject，回收尚未监听的
+  HTTP/WS 资源后允许重试。并发 open/close 去重，close 等待正在进行的启动。
+- `close()` 先停止接受连接，等待 respond 的普通请求以 HTTP 503 结束；同端口 WS
+  发送 1001 关闭帧。最多等待 250ms 后强断剩余连接（含流式响应、未完成请求体、
+  未完成升级、未配合 WS），释放监听器和 WebSocketServer；重复关闭安全，可再次启动。
+- `timeoutMs > 0` 从普通 JSON 请求进入分发开始计时，超时回 HTTP 504；缺省或
+  非正数不启用。`onRawRequest` 已返回的 Response（含合法 SSE）不适用此超时。
+- respond 首次有效响应生效；超时、断开、关停或首次响应之后的迟到/重复调用均忽略，
+  不再序列化载荷。同步 handler 异常或响应序列化异常回 HTTP 500；已响应时保持首个结果。
+  超时/关停不取消协议层已开始的业务操作。
+
 ## 构建与导出形态
 
 - **零配置 tsdown**：包内没有 `tsdown.config.ts`，直接 `tsdown` 默认行为——入口
@@ -93,3 +106,4 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 | :--- | :--- |
 | `src/__tests__/sse.test.ts` | SSE 帧格式（`event:` / `data:` / 空行）、事件名缺省、断开退订、`close` 后 `send` 静默——纯逻辑，无端口 |
 | `src/__tests__/http-server-stream.test.ts` | 真实端口（`127.0.0.1`）集成：`onRawRequest` 短路返回 SSE 流、`onUpgrade` 同端口完成 WS 握手、常规 JSON 路由不受影响、鉴权仍先于 `onRawRequest` |
+| `src/__tests__/http-server-lifecycle.test.ts` | 真实端口：活跃 SSE/WS/普通请求关闭、无响应关闭握手、半截请求体与未承接升级回收、断开后的迟到响应 |

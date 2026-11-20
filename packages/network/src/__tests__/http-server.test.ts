@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { HttpServer } from "../http-server.js";
-import type { HttpServerOptions, RequestContext } from "../types.js";
+import type { HttpServerOptions, RequestContext, Respond } from "../types.js";
 import { getFreePort, waitOpen } from "./test-support.js";
 
 describe("HttpServer", () => {
@@ -22,9 +22,6 @@ describe("HttpServer", () => {
         // 先取走再逐个关闭：单个 close 异常不污染下一用例的清理列表。
         const pending = servers.splice(0).reverse();
         for (const server of pending) {
-            // 强断全部连接（含 keep-alive / 在途请求），避免 close 因活动 socket 挂起。
-            const raw = server as unknown as { closeAllConnections?: () => void };
-            raw.closeAllConnections?.();
             await server.close();
         }
     });
@@ -233,6 +230,104 @@ describe("HttpServer", () => {
         await server.open();
         await server.close();
         await server.close();
+    });
+
+    it("等待 respond 超时回 504，迟到/重复 respond 不再序列化", async () => {
+        let reply: Respond | undefined;
+        const { base } = await start(
+            (server) => {
+                server.onRequest = (_req, respond) => {
+                    reply = respond;
+                };
+            },
+            { timeoutMs: 30 },
+        );
+        const res = await fetch(`${base}/api`, {
+            method: "POST",
+            body: "{}",
+            signal: AbortSignal.timeout(1000),
+        });
+        expect(res.status).toBe(504);
+        expect(await res.json()).toEqual({ error: "request timeout" });
+        const toJSON = vi.fn(() => {
+            throw new Error("must not serialize");
+        });
+        expect(() => reply?.({ toJSON })).not.toThrow();
+        expect(() => reply?.({ toJSON })).not.toThrow();
+        expect(toJSON).not.toHaveBeenCalled();
+    });
+
+    it("首次 respond 生效，重复 respond 与其后同步异常不改响应", async () => {
+        const toJSON = vi.fn(() => {
+            throw new Error("must not serialize");
+        });
+        const { base } = await start(
+            (server) => {
+                server.onPathRequest = (_ctx, _req, respond) => {
+                    respond({ first: true }, 201);
+                    respond({ toJSON });
+                    throw new Error("after response");
+                };
+            },
+            { timeoutMs: 30 },
+        );
+        const res = await fetch(`${base}/api`, { method: "POST", body: "{}" });
+        expect(res.status).toBe(201);
+        expect(await res.json()).toEqual({ first: true });
+        expect(toJSON).not.toHaveBeenCalled();
+    });
+
+    it.each(["handler", "serialization"])("同步 %s 异常回 500，之后请求仍正常", async (kind) => {
+        const { server, base } = await start((server) => {
+            server.onRequest = (_req, respond) => {
+                if (kind === "handler") throw new Error("handler failed");
+                respond({
+                    toJSON: () => {
+                        throw new Error("serialization failed");
+                    },
+                });
+            };
+        });
+        const res = await fetch(`${base}/api`, { method: "POST", body: "{}" });
+        expect(res.status).toBe(500);
+        expect(await res.json()).toEqual({ error: "internal server error" });
+        server.onRequest = (_req, respond) => respond({ ok: true });
+        const retry = await fetch(`${base}/api`, { method: "POST", body: "{}" });
+        expect(await retry.json()).toEqual({ ok: true });
+    });
+
+    it("端口冲突 reject，并发 open 共用启动；失败 close 后可重试及重启", async () => {
+        const { server: owner, base } = await start();
+        const port = Number(new URL(base).port);
+        const retry = new HttpServer({ host: "127.0.0.1", port });
+        retry.onUpgrade = (_req, accept) => accept(() => undefined);
+        servers.push(retry);
+        await expect(Promise.all([retry.open(), retry.open()])).rejects.toMatchObject({
+            code: "EADDRINUSE",
+        });
+        // 无需先 close 也能重试；监听仍被占用时再次明确 reject。
+        const failedOpen = retry.open();
+        const closing = retry.close();
+        await expect(failedOpen).rejects.toMatchObject({ code: "EADDRINUSE" });
+        await Promise.all([closing, retry.close()]);
+        await owner.close();
+        await Promise.all([retry.open(), retry.open()]);
+        const client = new WebSocket(`${base.replace("http", "ws")}/event`);
+        await waitOpen(client);
+        const closed = new Promise<void>((resolve) => client.once("close", () => resolve()));
+        await Promise.all([retry.close(), retry.close(), closed]);
+        await retry.open();
+        await retry.close();
+    });
+
+    it("open 尚未完成时 close 等待启动并释放端口", async () => {
+        const port = await getFreePort();
+        const server = new HttpServer({ host: "127.0.0.1", port });
+        servers.push(server);
+        await Promise.all([server.open(), server.close(), server.close()]);
+        const replacement = new HttpServer({ host: "127.0.0.1", port });
+        servers.push(replacement);
+        await replacement.open();
     });
 
     it("onUpgrade reject(status) → WS 握手以该状态码被拒", async () => {

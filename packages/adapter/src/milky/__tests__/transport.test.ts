@@ -10,9 +10,7 @@
  * 另覆盖分发/事件分支（自 transport-branches 并入）：handle 抛错 -500、
  * ok data=null → {}、failed 信封、eventModes 禁用、WS 关闭帧、webhook onError。
  *
- * 已知生产缺陷（记录不改码）：set.close() 在 WS 存活时死锁——close 先
- * `await server.close()`（Node 回调等待全部连接断开）后 `hub.close()`（才关
- * WS），互相等待；相关用例不经 set.close 关活连接，直接驱动 hub.close。
+ * 关闭回归：由 set.close() 关闭仍活跃的 SSE/WS，验证流正常结束与 1001 关闭帧。
  */
 
 import {
@@ -411,25 +409,42 @@ describe("/event 模式开关与鉴权分支", () => {
         }
     });
 
-    it("hub.close：已连 WS 客户端收到 1001 事件关闭帧（不经 set.close——见文件头已知缺陷）", async () => {
-        const set = assemble({ port: 36407, eventModes: ["ws"] });
+    it("set.close：活跃 SSE 正常结束、WS 收到 1001，并发与重复关闭安全", async () => {
+        const set = assemble({ port: 36407, eventModes: ["sse", "ws"] });
         await set.adapters[0]?.open();
-        // hub.open 为 no-op（生命周期随 HttpServer），可直接调用不抛
-        expect(() => set.adapters[1]?.open()).not.toThrow();
-        const closed = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
-            const ws = new WsClient("ws://127.0.0.1:36407/event");
-            ws.on("open", () => {
-                void Promise.resolve(set.adapters[1]?.close()).then(() => undefined);
+        const controller = new AbortController();
+        const ws = new WsClient("ws://127.0.0.1:36407/event");
+        try {
+            await new Promise<void>((resolve, reject) => {
+                ws.once("open", () => resolve());
+                ws.once("error", reject);
             });
-            ws.on("close", (code, reason) => resolve({ code, reason: reason.toString() }));
-            ws.on("error", reject);
-            setTimeout(() => reject(new Error("关闭帧超时")), 3000);
-        });
-        expect(closed.code).toBe(1001);
-        expect(closed.reason).toContain("server shutdown");
-        // 客户端已关（hub.close 清空集合），此时 set.close 正常完成且幂等
-        await expect(set.close()).resolves.toBeUndefined();
-        await expect(set.close()).resolves.toBeUndefined();
+            const res = await fetch("http://127.0.0.1:36407/event", { signal: controller.signal });
+            const reader = res.body?.getReader();
+            expect(reader).toBeDefined();
+            const eof = reader?.read().catch(() => undefined);
+            const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+                ws.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
+            });
+            const closing = set.close();
+            let finished = false;
+            // 观察完成状态；原 closing 在下方 await，保留其失败诊断。
+            const completion = closing
+                .finally(() => {
+                    finished = true;
+                })
+                .catch(() => undefined);
+            await vi.waitFor(() => expect(finished).toBe(true), { timeout: 1000 });
+            await Promise.all([completion, closing, set.close(), set.close()]);
+            expect(await eof).toEqual({ done: true, value: undefined });
+            expect(await closed).toEqual({ code: 1001, reason: "server shutdown" });
+        } finally {
+            controller.abort();
+            ws.terminate();
+            // 断言失败时也回收连接，保证旧实现的失败不会卡住后续用例。
+            await set.adapters[1]?.close();
+            await set.close();
+        }
     });
 
     it("WS 升级到非 /event 路径 → hub 不承接（连接不建立）", async () => {
