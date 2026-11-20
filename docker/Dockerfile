@@ -44,8 +44,27 @@ RUN apt-get update \
 
 # 独立 prefix 安装：/opt/napuketto/{bin,lib} 可整目录拷走，运行阶段不带 npm/corepack。
 # npm cache 留在 builder 的 /root/.npm，不进入运行镜像。
-RUN npm install -g --no-fund --no-audit --prefix /opt/napuketto "@napuketto/cli@${NAPUKETTO_VERSION}" \
-    && npm cache clean --force
+#
+# 重试 10 次、间隔 30 秒（约 5 分钟）：刚发布的版本在 registry 边缘节点还有数分钟
+# 不可见——packument 带 max-age=300、tarball 的复制更慢。一次 404 判死整个十分钟
+# 构建不划算（2026-11-19 run 44630653726）；有限次重试只吸收传播竞态，版本真不存在
+# 时照样失败。
+RUN set -eu; \
+    attempt=1; \
+    while true; do \
+        if npm install -g --no-fund --no-audit --prefix /opt/napuketto "@napuketto/cli@${NAPUKETTO_VERSION}"; then \
+            npm cache clean --force; \
+            break; \
+        fi; \
+        if [ "${attempt}" -ge 10 ]; then \
+            echo "npm install 已失败 ${attempt} 次，放弃（registry 传播异常或该版本不存在）"; \
+            exit 1; \
+        fi; \
+        echo "npm install 第 ${attempt} 次失败（registry 可能仍在传播），30 秒后重试"; \
+        attempt=$((attempt + 1)); \
+        rm -rf /opt/napuketto; \
+        sleep 30; \
+    done
 
 # 126MB → 109MB；保留 .dynsym（动态符号表），只删静态符号
 RUN strip --strip-unneeded /usr/local/bin/node

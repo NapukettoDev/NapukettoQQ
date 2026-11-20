@@ -122,6 +122,9 @@ docker build --build-arg NAPUKETTO_VERSION=<版本> --build-arg WITH_FFMPEG=fals
   `build:`，自建后改 `image:` 即可。
 - `NAPUKETTO_VERSION` 缺省 `latest`；`WITH_FFMPEG` 缺省 `true`：ffmpeg/ffprobe 用
   `mwader/static-ffmpeg` 的静态二进制，不引入 Debian ffmpeg 的动态库闭包。
+- 版本刚发布时构建可能报 `E404` / `ETARGET`：registry 的 packument 有 5 分钟缓存
+  （`cache-control: max-age=300`），新版本 tarball 在边缘节点还要再同步几分钟。Dockerfile
+  对该步重试 10 次（间隔 30 秒，约 5 分钟），CI 则先真实安装预检再构建；手工构建仍失败就等几分钟重试。
 
 ## 验证与常见排障
 

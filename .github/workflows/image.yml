@@ -4,11 +4,20 @@
 # 用 tag 而不是 workflow_run：release.yml 的 publish 需要 environment 审批，workflow_run
 # 要等审批完成才拿到 completed 事件；tag 在 prepare 阶段就推送，镜像构建与 npm 发布并行。
 #
-# 并行的代价（2026-11-14 两次 ETARGET，run 43574438141 / 43577318303）：构建可能先于
-# npm publish 执行——publish 卡在 environment 审批，registry 还没有该版本，npm install
-# 层直接 ETARGET。故构建前先轮询 registry 等 `@napuketto/cli@<版本>` 就绪（上限 40
-# 分钟，覆盖正常审批延迟；cli 在发布批里拓扑序靠后，它在 = 其 @napuketto 依赖都在）。
-# publish 失败或审批迟迟不来 → 超时失败，审批发布完成后手动 workflow_dispatch 补建。
+# 并行的代价：构建总是抢在 npm publish 前面——tag 在 prepare 阶段就推，publish 还要
+# 等 environment 审批。故构建前必须先等 registry 就绪，等待方式见下方「预检」步骤：
+# 用与 Dockerfile 相同的命令**真实安装一遍**并重试，而不是探测版本端点。
+#
+# 为什么不是探测端点（2026-11-14 起反复复发的同一类事故的根因）：
+# 「cli 的版本端点 200」不等于「镜像装得出来」。npm 需要的是**整个依赖闭包**在该时刻
+# 可解析、且每个 tarball 可下载，而 registry 有两段独立的传播时延，都会打穿端点探测：
+#   · packument 带 `cache-control: public, max-age=300`：刚发布的依赖版本最多 5 分钟内
+#     看不见 → `ETARGET notarget No matching version found for @napuketto/adapter@^0.17.1`
+#     （run 44074278605 / 44314473375）。旧护栏还主动加 `?cb=` cachebust，等于让自己
+#     永远看不到 npm 会撞上的那份陈旧副本：护栏通过、构建必炸。
+#   · tarball 在边缘节点的可见性另有数分钟滞后：packument 已列出该版本，tarball 仍
+#     404（run 44630653726 的 media-0.2.0.tgz、44307534863 的 cli-0.6.18.tgz）。
+# publish 失败或审批迟迟不来 → 预检最终超时失败，补发后手动 workflow_dispatch 补建。
 #
 # 只构建 linux/amd64：arm64 的 stub / 清单条目尚未交付（见
 # docs/architecture/linux-native-host.md 附录 E.2），不发布未验证的平台。
@@ -44,8 +53,10 @@ jobs:
     image:
         name: build & push (linux/amd64)
         runs-on: ubuntu-24.04
-        # 45 分钟等包 + 两个变体构建（冷缓存约 10 分钟）
-        timeout-minutes: 60
+        # 等待上限 5 小时（publish 的 environment 审批没人能保证时长，此前两次
+        # 40 分钟上限直接把运行判死：run 44551910700 / 44528438376）+ 两个变体构建
+        # （冷缓存约 10 分钟）。超时上限受 GitHub 单 job 6 小时硬顶约束，故留 55 分钟余量。
+        timeout-minutes: 360
         steps:
             - name: Checkout
               uses: actions/checkout@v7
@@ -61,25 +72,46 @@ jobs:
                   echo "version=${version}" >> "${GITHUB_OUTPUT}"
                   echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/napukettoqq" >> "${GITHUB_OUTPUT}"
 
-            # tag 在 prepare 阶段推送，npm publish 还要等 environment 审批——不 等
-            # 就构建，npm install 层必然 ETARGET（2026-11-14 两次事故）。带 cachebust
-            # 查询参数绕开 CDN 对 404 的短缓存；cli 版本级端点 200 = 已发布。
-            - name: 等待 npm 包就绪（publish 等 environment 审批中）
-              timeout-minutes: 45
+            # 与 Dockerfile 里的 node:24 对齐：预检要复现构建期 npm 的解析行为
+            # （不同 npm 大版本的 semver 处理有差异，如 11 拒绝隐式 latest 降级）。
+            - name: Setup Node（预检用，与镜像内 node:24 对齐）
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+
+            # 判据是「装得上」而不是「查得到」：用与 Dockerfile 完全相同的命令装进临时
+            # prefix，失败就重试（理由见文件头「为什么不是探测端点」）。成功一次即说明
+            # registry 的解析与 tarball 下载都已就绪，紧接着的构建不会再撞竞态。
+            #
+            # 不设尝试次数上限、只看 deadline：publish 等审批时每 30 秒重试一次即可。
+            # 每次失败都清空 prefix，避免半装状态让下一次尝试「看起来成功」。
+            - name: 预检 registry（真实安装，直到成功）
+              timeout-minutes: 340
               env:
                   NAPUKETTO_VERSION: ${{ steps.ver.outputs.version }}
+                  PREFLIGHT_PREFIX: ${{ runner.temp }}/preflight
               run: |
-                  url="https://registry.npmjs.org/@napuketto%2Fcli/${NAPUKETTO_VERSION}"
-                  deadline=$(( $(date +%s) + 40 * 60 ))
-                  while ! curl -fsS --max-time 20 "${url}?cb=$(date +%s)" > /dev/null 2>&1; do
+                  set -uo pipefail
+                  log="${RUNNER_TEMP}/preflight.log"
+                  deadline=$(( $(date +%s) + 300 * 60 ))
+                  attempt=0
+                  while true; do
+                      attempt=$((attempt + 1))
+                      rm -rf "${PREFLIGHT_PREFIX}"
+                      if npm install -g --no-fund --no-audit --prefix "${PREFLIGHT_PREFIX}" \
+                          "@napuketto/cli@${NAPUKETTO_VERSION}" > "${log}" 2>&1; then
+                          rm -rf "${PREFLIGHT_PREFIX}"
+                          echo "第 ${attempt} 次尝试：@napuketto/cli@${NAPUKETTO_VERSION} 及其依赖闭包安装成功，registry 已就绪，开始构建"
+                          break
+                      fi
+                      echo "第 ${attempt} 次尝试失败，npm 摘要："
+                      grep -E '^npm (error|ERR)' "${log}" | head -n 4 || true
                       if [ "$(date +%s)" -ge "${deadline}" ]; then
-                          echo "::error::等了 40 分钟 npm 仍没有 @napuketto/cli@${NAPUKETTO_VERSION}——publish 多半卡在 environment 审批或已失败；审批通过发布成功后手动 workflow_dispatch 本 workflow 补建镜像"
+                          echo "::error::5 小时内仍装不上 @napuketto/cli@${NAPUKETTO_VERSION}——publish 多半卡在 environment 审批或已失败，也可能 registry 传播异常；发布成功后手动 workflow_dispatch 本 workflow 补建镜像"
                           exit 1
                       fi
-                      echo "npm 尚无 @napuketto/cli@${NAPUKETTO_VERSION}（publish 等审批/发布中），30 秒后重试"
                       sleep 30
                   done
-                  echo "@napuketto/cli@${NAPUKETTO_VERSION} 已在 npm 上，开始构建"
 
             - name: Set up Buildx
               uses: docker/setup-buildx-action@v4
