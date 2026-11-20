@@ -128,7 +128,7 @@ export const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
 /** 反向 HTTP server 选项。 */
 export interface HttpServerOptions extends ServerOptions {
-    /** 处理超时（毫秒）；缺省不超时。 */
+    /** 等待普通 JSON 请求 respond 的超时（毫秒），超时回 504；非正数/缺省不启用，不适用于原始流式响应。 */
     timeoutMs?: number | undefined;
     /** 请求体上限（字节）；缺省 DEFAULT_MAX_BODY_BYTES。 */
     bodyLimitBytes?: number | undefined;

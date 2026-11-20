@@ -171,6 +171,8 @@
 
 ### Milky 单端口传输
 
+- 关闭时先注销广播、结束 hub 的 SSE/WS，再关闭 HTTP server，避免等待仍由 hub
+  持有的长连接；HTTP server 负责停止接入及兜底回收并发建立的连接。close 并发去重且幂等。
 - 单端口 HTTP：`POST /api/:api` 动作，`GET /event` SSE 或同端口 WS 升级；WebHook 走
   `HttpClient` 主动推送。事件统一经 `MilkyEventHub` 广播（`event: milky_event`）。
 - 鉴权：token 非空时校验 Bearer 头或 `?access_token=`；HTTP 语义 401 鉴权、404 未知

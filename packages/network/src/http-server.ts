@@ -5,10 +5,10 @@
  * 鉴权（token）通过 `authorize` 钩子，规则由协议层决定。
  */
 
-import type { IncomingMessage } from "node:http";
+import { createServer, type Server } from "node:http";
+import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
-import type { ServerType } from "@hono/node-server";
-import { serve } from "@hono/node-server";
+import { getRequestListener } from "@hono/node-server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -29,23 +29,13 @@ const HTTP_STATUS = {
     badRequest: 400,
     unauthorized: 401,
     payloadTooLarge: 413,
+    internalError: 500,
+    unavailable: 503,
+    timeout: 504,
 } as const;
 
-/** 原生 server 的 upgrade 监听最小面（@hono/node-server ServerType 收窄用）。 */
-interface UpgradeableServer {
-    on(
-        event: "upgrade",
-        listener: (req: IncomingMessage, socket: Duplex, head: Buffer) => void,
-    ): unknown;
-}
-
-/** 运行时判定原生 server 是否支持 upgrade 事件挂载。 */
-function isUpgradeableServer(val: unknown): val is UpgradeableServer {
-    if ((typeof val !== "object" && typeof val !== "function") || val === null) {
-        return false;
-    }
-    return typeof Reflect.get(val, "on") === "function";
-}
+/** 关闭握手宽限期；之后强断所有剩余 TCP 连接，包括升级后的 WS。 */
+const CLOSE_GRACE_MS = 250;
 
 function toRequestContext(c: Context): RequestContext {
     const raw = c.req.header();
@@ -56,12 +46,15 @@ function toRequestContext(c: Context): RequestContext {
     return { url: c.req.url, headers };
 }
 
-/** 原生 upgrade 请求 → RequestContext（headers 展平，url 含查询串）。 */
-
 export class HttpServer implements TransportAdapter {
     private readonly app: Hono;
     private readonly opts: HttpServerOptions;
-    private server: ServerType | undefined;
+    private server: Server | undefined;
+    private wss: WebSocketServer | undefined;
+    private opening: Promise<void> | undefined;
+    private closing: Promise<void> | undefined;
+    private readonly sockets = new Set<Socket>();
+    private readonly pending = new Set<() => void>();
 
     /** 请求分发注入点：协议层实现「请求 → 响应」（整机入口，OB11 用）。 */
     onRequest?: (req: unknown, respond: Respond) => void;
@@ -104,6 +97,9 @@ export class HttpServer implements TransportAdapter {
      * respond 可选 status（Satori 404/501 等）；缺省 200。
      */
     private async handle(c: Context): Promise<Response> {
+        if (this.closing) {
+            return c.json({ error: "server shutdown" }, HTTP_STATUS.unavailable);
+        }
         const { authorize } = this.opts;
         const reqCtx = toRequestContext(c);
         if (authorize) {
@@ -128,31 +124,80 @@ export class HttpServer implements TransportAdapter {
             return c.json({ error: "invalid json body" }, HTTP_STATUS.badRequest);
         }
 
+        return this.dispatch(c, reqCtx, req);
+    }
+
+    private dispatch(c: Context, reqCtx: RequestContext, req: unknown): Promise<Response> {
         return new Promise<Response>((resolve) => {
-            const respond: Respond = (res, status) => {
-                const statusCode = status ?? 200;
-                // res === undefined：无 body 响应（协议层定义 401/404 等空 body 语义用）
-                if (res === undefined) {
-                    resolve(new Response(null, { status: statusCode }));
-                    return;
-                }
-                resolve(
-                    new Response(JSON.stringify(res), {
-                        status: statusCode,
-                        headers: { "Content-Type": "application/json" },
-                    }),
-                );
+            let settled = false;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const signal = c.req.raw.signal;
+            const finish = (response: Response): void => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                signal.removeEventListener("abort", onAbort);
+                this.pending.delete(onClose);
+                resolve(response);
             };
-            if (this.onPathRequest !== undefined) {
-                this.onPathRequest(
-                    { path: c.req.path, method: c.req.method, headers: reqCtx.headers },
-                    req,
-                    respond,
-                );
-            } else {
-                this.onRequest?.(req, respond);
+            // 客户端已断开，仅结算等待与清理；该状态不会再发送到客户端。
+            const onAbort = (): void => finish(new Response(null, { status: 499 }));
+            const onClose = (): void =>
+                finish(c.json({ error: "server shutdown" }, HTTP_STATUS.unavailable));
+            const respond: Respond = (res, status = 200) => {
+                if (settled) return;
+                try {
+                    finish(
+                        new Response(res === undefined ? null : JSON.stringify(res), {
+                            status,
+                            ...(res === undefined
+                                ? {}
+                                : { headers: { "Content-Type": "application/json" } }),
+                        }),
+                    );
+                } catch {
+                    finish(c.json({ error: "internal server error" }, HTTP_STATUS.internalError));
+                }
+            };
+            this.pending.add(onClose);
+            signal.addEventListener("abort", onAbort, { once: true });
+            if (signal.aborted) {
+                onAbort();
+                return;
+            }
+            if (this.closing) {
+                onClose();
+                return;
+            }
+            if (this.opts.timeoutMs !== undefined && this.opts.timeoutMs > 0) {
+                timer = setTimeout(() => {
+                    finish(c.json({ error: "request timeout" }, HTTP_STATUS.timeout));
+                }, this.opts.timeoutMs);
+                timer.unref();
+            }
+            try {
+                this.invokeHandler(c, reqCtx, req, respond);
+            } catch {
+                respond({ error: "internal server error" }, HTTP_STATUS.internalError);
             }
         });
+    }
+
+    private invokeHandler(
+        c: Context,
+        reqCtx: RequestContext,
+        req: unknown,
+        respond: Respond,
+    ): void {
+        if (this.onPathRequest !== undefined) {
+            this.onPathRequest(
+                { path: c.req.path, method: c.req.method, headers: reqCtx.headers },
+                req,
+                respond,
+            );
+        } else {
+            this.onRequest?.(req, respond);
+        }
     }
 
     /** HTTP 反向为被动接收，无主动推送。 */
@@ -160,33 +205,53 @@ export class HttpServer implements TransportAdapter {
         // no-op
     }
 
-    async open(): Promise<void> {
-        if (this.server) {
-            return;
-        }
-        await new Promise<void>((resolve, _reject) => {
-            const srv = serve(
-                {
-                    fetch: this.app.fetch,
-                    hostname: this.opts.host,
-                    port: this.opts.port,
-                },
-                () => {
-                    this.server = srv;
-                    resolve();
-                },
-            );
-            if (this.onUpgrade !== undefined) {
-                this.attachUpgrade(srv);
-            }
+    open(): Promise<void> {
+        if (this.closing) return this.closing.then(() => this.open());
+        if (this.opening) return this.opening;
+        if (this.server) return Promise.resolve();
+        this.opening = this.start().finally(() => {
+            this.opening = undefined;
         });
+        return this.opening;
+    }
+
+    private async start(): Promise<void> {
+        const server = createServer(getRequestListener(this.app.fetch));
+        this.server = server;
+        server.on("connection", (socket) => {
+            this.sockets.add(socket);
+            socket.once("close", () => this.sockets.delete(socket));
+            if (this.closing) socket.destroy();
+        });
+        try {
+            if (this.onUpgrade !== undefined) {
+                this.attachUpgrade(server);
+            }
+            await new Promise<void>((resolve, reject) => {
+                const onError = (error: Error): void => {
+                    server.removeListener("listening", onListening);
+                    reject(error);
+                };
+                const onListening = (): void => {
+                    server.removeListener("error", onError);
+                    resolve();
+                };
+                server.once("error", onError);
+                server.once("listening", onListening);
+                server.listen(this.opts.port, this.opts.host);
+            });
+        } catch (error) {
+            await this.dispose(server);
+            this.server = undefined;
+            throw error;
+        }
     }
 
     /**
      * 同端口 WS 升级：挂原生 server 的 upgrade 事件，经 noServer WSS 完成握手。
      * @hono/node-server 默认不监听 upgrade，先挂先得（与 hono 无冲突）。
      */
-    private attachUpgrade(server: ServerType): void {
+    private attachUpgrade(server: Server): void {
         const wss = new WebSocketServer({
             noServer: true,
             // 单条消息上限：升级通道与独立 WsServer 同一口径（见 types.ts）。
@@ -195,11 +260,8 @@ export class HttpServer implements TransportAdapter {
             maxPayload: this.opts.wsMaxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
             skipUTF8Validation: false,
         });
-        if (!isUpgradeableServer(server)) {
-            throw new Error("Server instance does not support upgrade/close");
-        }
-        const upgradeable = server;
-        upgradeable.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+        this.wss = wss;
+        server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
             this.onUpgrade?.(
                 incomingMessageToRequestContext(req),
                 (accept) => {
@@ -214,16 +276,56 @@ export class HttpServer implements TransportAdapter {
         });
     }
 
-    async close(): Promise<void> {
-        const { server } = this;
-        if (!server) {
-            return;
-        }
-        await new Promise<void>((resolve) => {
-            server.close(() => {
-                this.server = undefined;
-                resolve();
-            });
+    close(): Promise<void> {
+        if (this.closing) return this.closing;
+        this.closing = this.stop().finally(() => {
+            this.closing = undefined;
         });
+        return this.closing;
+    }
+
+    private async stop(): Promise<void> {
+        // 启动错误仍由 open() 的调用方接收；start() 自行清理失败实例。
+        if (this.opening) {
+            await this.opening.then(
+                () => undefined,
+                () => undefined,
+            );
+        }
+        const server = this.server;
+        if (!server) return;
+        await this.dispose(server);
+        this.server = undefined;
+    }
+
+    private async dispose(server: Server): Promise<void> {
+        server.removeAllListeners("upgrade");
+        const httpClosed = new Promise<void>((resolve) => server.close(() => resolve()));
+        // Node 的 server.close 不等待已升级的 TCP 连接，单独等待它们释放。
+        const socketsClosed = [...this.sockets].map(
+            (socket) => new Promise<void>((resolve) => socket.once("close", () => resolve())),
+        );
+        for (const finish of this.pending) finish();
+        const wss = this.wss;
+        const wsClosed = new Promise<void>((resolve) => {
+            if (!wss) {
+                resolve();
+                return;
+            }
+            wss.close(() => resolve());
+            for (const client of wss.clients) client.close(1001, "server shutdown");
+        });
+        const timer = setTimeout(() => {
+            if (wss) for (const client of wss.clients) client.terminate();
+            for (const socket of this.sockets) socket.destroy();
+        }, CLOSE_GRACE_MS);
+        timer.unref();
+        try {
+            await Promise.all([httpClosed, wsClosed, ...socketsClosed]);
+        } finally {
+            clearTimeout(timer);
+            this.wss = undefined;
+            server.removeAllListeners();
+        }
     }
 }
