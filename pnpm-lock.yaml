@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     '@hono/node-server':
-      specifier: ^2.1.8
-      version: 2.1.8
+      specifier: ^2.1.9
+      version: 2.1.9
     '@types/ws':
       specifier: ^8.18.2
       version: 8.18.2
@@ -174,8 +174,8 @@ catalogs:
       specifier: ^5.1.0
       version: 5.1.0
     hono:
-      specifier: ^4.13.18
-      version: 4.13.18
+      specifier: ^4.13.19
+      version: 4.13.19
     tsdown:
       specifier: ^0.23.7
       version: 0.23.7
@@ -334,10 +334,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: 'catalog:'
-        version: 2.1.8(hono@4.13.18)
+        version: 2.1.9(hono@4.13.19)
       hono:
         specifier: 'catalog:'
-        version: 4.13.18
+        version: 4.13.19
       ws:
         specifier: 'catalog:'
         version: 8.23.0
@@ -566,8 +566,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@2.1.8':
-    resolution: {integrity: sha512-jdf7FHh6A1lzjpHHQUgxsg2GeER2vMetnAOfeActzcoli6jamlK+NAwL6Dsr5Fl3BS3tYUQzCdtZjU8Qxv7bEA==}
+  '@hono/node-server@2.1.9':
+    resolution: {integrity: sha512-Sk4NQd3GFY0WZWCzndwFMPwJhtD0y9qjsQ+pjID0/03nK9pxyBCUoUHCho8QYBLBVhi0ssL8UkNPHqbgSOFPIQ==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -1140,8 +1140,8 @@ packages:
     resolution: {integrity: sha512-X6fBC0pmImC70gvX2zm56go9hx0MyoGVdG0tUCkg/D+Xnh5TJsOZ7iDbOdI3PvmtrDxnu1YdDufpK2QJX1Meqw==}
     engines: {node: '>=20.20.0'}
 
-  hono@4.13.18:
-    resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
+  hono@4.13.19:
+    resolution: {integrity: sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA==}
     engines: {node: '>=16.9.0'}
 
   hookable@6.1.2:
@@ -1864,9 +1864,9 @@ snapshots:
   '@fallow-cli/win32-x64-msvc@3.43.2':
     optional: true
 
-  '@hono/node-server@2.1.8(hono@4.13.18)':
+  '@hono/node-server@2.1.9(hono@4.13.19)':
     dependencies:
-      hono: 4.13.18
+      hono: 4.13.19
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -2256,7 +2256,7 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  hono@4.13.18: {}
+  hono@4.13.19: {}
 
   hookable@6.1.2: {}
 
