@@ -178,6 +178,8 @@ describe("其余 IPC 消息 wire 格式（登录/二维码/事件/日志/动作�
         const lines = captureStdout();
         try {
             sender.enableIpc();
+            sender.sendStatus("ready");
+            lines.length = 0;
             sender.sendQr("cG5n", "https://qr.example/x");
             sender.sendEvent("Msg", "onRecvMsg", [{ msgId: "m1" }]);
             sender.sendLog("warn", "告警文本");
@@ -206,6 +208,35 @@ describe("其余 IPC 消息 wire 格式（登录/二维码/事件/日志/动作�
             expect(parsed[5]).toMatchObject({ type: "ping" });
         } finally {
             vi.restoreAllMocks();
+        }
+    });
+
+    it("ready 写入失败时压住事件，成功重播后按 ready → event 写出", async () => {
+        const sender = await freshSender();
+        const lines: string[] = [];
+        const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+            lines.push(String(chunk));
+            return false; // stdout 有背压，但写入已排队
+        });
+        try {
+            sender.enableIpc();
+            sender.sendStatus("sessioning");
+            write.mockImplementationOnce(() => {
+                throw new Error("stdout write failed");
+            });
+            sender.sendStatus("ready");
+            sender.sendEvent("Msg", "onRecvMsg", ["too early"]);
+            expect(lines).toHaveLength(1);
+
+            sender.replayStatus();
+            sender.sendEvent("ob11", "message", ["after ready"]);
+            expect(lines.map((line) => JSON.parse(line))).toMatchObject([
+                { type: "status", payload: { phase: "sessioning" } },
+                { type: "status", payload: { phase: "ready" } },
+                { type: "event", payload: { service: "ob11", args: ["after ready"] } },
+            ]);
+        } finally {
+            write.mockRestore();
         }
     });
 

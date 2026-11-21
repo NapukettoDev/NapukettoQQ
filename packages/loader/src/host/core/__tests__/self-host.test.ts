@@ -317,7 +317,7 @@ describe("self-host bootstrap 收敛", () => {
         await freshSelfHost();
         // 等异步引导 IIFE 收敛（防 ready 晚到 bleed 进下一用例）
         await new Promise((r) => setTimeout(r, 10));
-        expect(h.statuses.at(-1)).toMatchObject({ phase: "ready" });
+        expect(h.statuses.filter(({ phase }) => phase === "ready")).toEqual([{ phase: "ready" }]);
         expect(exitSpy).not.toHaveBeenCalled();
     });
 

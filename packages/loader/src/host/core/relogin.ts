@@ -121,7 +121,10 @@ async function softReloginAndReport(
     selfInfo: { uin: string; uid: string; nick: string },
     deps: LoginControlDeps,
 ): Promise<void> {
-    const ok = await deps.reassemble(loginResult);
+    const ok = await deps.reassemble(loginResult).catch((err: unknown) => {
+        log(`relogin: 软重登重装配异常: ${errMsg(err)}`);
+        return false;
+    });
     if (!ok) {
         (deps.onReassembleFailed ?? defaultReassembleFailed)();
         return;

@@ -130,6 +130,9 @@ Linux：
   event、result、log、ping/pong、action、control（stop/restart/login/status）。
 - 登录前就启动 stdin 服务端（只含 `login.refreshQr`）；登录后 `attachIpcServices` 把
   kernel 点分动作并入同一张表，Msg/Group/Buddy/RecentContact/Login 五条通道转 event。
+- 初次引导与软重登都先完成动作挂载，再写出 `status(ready)`，随后才允许写出
+  `event`（含 OB11）。装配期间到达 IPC 出口的事件直接丢弃。软重登在清理旧装配前
+  发 `status(sessioning)`，暂停事件转发。如果写入 ready 同步失败，成功重播后才放行。
 - 心跳 15s；`control status` 重播最近一条 status（父进程丢消息后重同步）。
 - 编码统一 `encodeIpcMessage`：先 `toJsonSafe`（Map→对象、Set→数组、环引用丢分支）再
   stringify，否则 Map/Set 跨进程即丢。
@@ -137,7 +140,8 @@ Linux：
   `attachOb11IpcBridge` 动态 import adapter 子路径；`ProtocolConfig` 用 `parse({})` 作
   seed（不读写配置文件），`subscribeOnly()` 只订阅不启传输，动作名平铺进共享表（OB11
   snake_case 与 kernel 点分命名不冲突），事件经 `sendEvent("ob11", post_type, [event])`
-  透出；失败 fail-soft 降级为纯 kernel 动作面。
+  透出。装配会等待 `subscribeOnly()` 完成（含媒体缓存首次清理），引导日志记录等待
+  起点。装配失败时撤销 OB11 订阅和已挂载动作，降级为纯 kernel 动作面。
 
 ### 软重登相位机
 

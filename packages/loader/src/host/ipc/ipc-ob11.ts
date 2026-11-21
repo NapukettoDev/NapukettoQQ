@@ -10,7 +10,7 @@
  * 全部动作名平铺合并进共享 IPC 动作表（OB11 snake_case 与 kernel 点分
  * 命名空间不冲突），OB11 事件经 broadcaster 桥适配器 → sendEvent("ob11")。
  *
- * fail-soft：import/构造失败只 log 降级为纯 kernel 动作面，不阻断登录链路。
+ * fail-soft：装配失败回滚到纯 kernel 动作面，不阻断登录链路。
  */
 import { join } from "node:path";
 import process from "node:process";
@@ -117,15 +117,14 @@ export async function attachOb11IpcBridge(
     };
     const adapterEntry = e.adapterEntry;
     const networkEntry = e.networkEntry;
-    if (adapterEntry === undefined || adapterEntry === "") {
-        return noop;
-    }
-    if (networkEntry === undefined || networkEntry === "") {
+    if (!adapterEntry || !networkEntry) {
         return noop;
     }
     const importModule = deps.importModule ?? importFileUrl;
     const emit = deps.emitEvent ?? sendEvent;
+    let stop = noop;
     try {
+        log("ipc-ob11: 加载 OB11 动作桥模块");
         const { network, adapter, adapterCore } = await loadOb11BridgeModules(importModule, {
             ...e,
             adapterEntry,
@@ -189,22 +188,6 @@ export async function attachOb11IpcBridge(
             },
             groupCache: services.groupCache,
         });
-        // 仅接收链路：维护 messageUnique + 灰色通知翻译；无 HTTP/WS、无心跳、无 lifecycle
-        await ob11.subscribeOnly();
-
-        // 全部动作名平铺合并（信封语义在 BaseAction.handle 内完成，永不抛）
-        let mounted = 0;
-        for (const name of ob11.registry.names) {
-            const act = ob11.registry.get(name);
-            if (act === undefined) {
-                continue;
-            }
-            actions.set(name, (params) => act.handle(params));
-            mounted++;
-        }
-        // registry.names 是挂载面的超集（act 缺失仅跳过挂载，delete 多删无害——
-        // snake_case 与 kernel 点分命名不冲突）
-
         // OB11 事件 → IPC event 通道（service="ob11"，name=post_type，args=[完整事件]）
         const bridgeAdapter = {
             send: (event: unknown) => {
@@ -212,19 +195,37 @@ export async function attachOb11IpcBridge(
                 emit("ob11", typeof postType === "string" ? postType : "unknown", [event]);
             },
         };
-        broadcaster.register(bridgeAdapter);
-        log(`ipc-ob11: OB11 动作桥已挂载（${mounted} 动作，事件经 ob11 通道透出）`);
-        return () => {
+        const mounted: string[] = [];
+        stop = () => {
             broadcaster.unregister(bridgeAdapter);
-            ob11.unsubscribeOnly();
-            // 移除挂载的动作表条目（软重登重装配清理，2026-09-08）：
-            // 重挂载前必先停旧（bootstrap-core softRelogin 顺序）
-            for (const name of ob11.registry.names) {
-                actions.delete(name);
+            try {
+                ob11.unsubscribeOnly();
+            } finally {
+                for (const name of mounted) {
+                    actions.delete(name);
+                }
             }
         };
+        // 仅接收链路，含媒体缓存首次清理；IPC 出口等 ready 写出后才转发。
+        log("ipc-ob11: 等待 OB11 接收链路初始化");
+        await ob11.subscribeOnly();
+        for (const name of ob11.registry.names) {
+            const act = ob11.registry.get(name);
+            if (act === undefined) {
+                continue;
+            }
+            actions.set(name, (params) => act.handle(params));
+            mounted.push(name);
+        }
+        broadcaster.register(bridgeAdapter);
+        log(`ipc-ob11: OB11 动作桥已挂载（${mounted.length} 动作，事件经 ob11 通道透出）`);
+        return stop;
     } catch (err) {
-        // fail-soft：降级为纯 kernel 动作面（登录链路不阻断）
+        try {
+            stop();
+        } catch (cleanupError) {
+            log(`ipc-ob11: OB11 动作桥回滚失败: ${errMsg(cleanupError)}`);
+        }
         log(`ipc-ob11: OB11 动作桥装配失败（降级纯 kernel 动作面）: ${errMsg(err)}`);
         return noop;
     }

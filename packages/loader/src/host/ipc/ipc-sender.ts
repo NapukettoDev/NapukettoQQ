@@ -22,21 +22,24 @@ let enabled = false;
  * 防御场景：ready 等关键 status 消息被 stdout 并发写撕裂丢失（原生 printf
  * 直写 fd 等 JS 层拦不住的污染），父进程可主动查询重同步。 */
 let lastStatus: IpcStatusPayload | null = null;
+let eventForwardingEnabled = false;
 
 /** 启用 IPC 发送（幂等）。 */
 export function enableIpc(): void {
     enabled = true;
 }
 
-/** 发送一条 IPC 消息（JSON 行）。失败静默（不阻塞引导）。 */
-function sendIpc(message: IpcMessage): void {
+/** 将一条 JSON 行交给 stdout，含写入缓冲区。失败不阻塞引导。 */
+function sendIpc(message: IpcMessage): boolean {
     if (!enabled) {
-        return;
+        return false;
     }
     try {
         process.stdout.write(encodeIpcMessage(message));
+        return true;
     } catch {
         // ignore：stdout 不可写不阻塞引导（崩溃堆栈仍走 stderr）
+        return false;
     }
 }
 
@@ -51,14 +54,18 @@ export function sendStatus(
         ...(message !== undefined ? { message } : {}),
         ...(error !== undefined ? { error } : {}),
     };
+    eventForwardingEnabled = false;
     lastStatus = payload;
-    sendIpc({ v: IPC_VERSION, type: "status", payload });
+    replayStatus();
 }
 
 /** 重播最近一条 status（control status 查询响应；从未发送过则忽略）。 */
 export function replayStatus(): void {
-    if (lastStatus !== null) {
-        sendIpc({ v: IPC_VERSION, type: "status", payload: lastStatus });
+    const payload = lastStatus;
+    if (payload !== null && sendIpc({ v: IPC_VERSION, type: "status", payload })) {
+        if (payload.phase === "ready") {
+            eventForwardingEnabled = true;
+        }
     }
 }
 
@@ -99,8 +106,11 @@ export function sendQr(pngBase64: string, qrcodeUrl: string): void {
     sendIpc({ v: IPC_VERSION, type: "qr", payload: { pngBase64, qrcodeUrl } });
 }
 
-/** kernel 事件转发（service/name/args 原样透传，koishi 插件翻译层消费）。 */
+/** kernel / OB11 事件统一在 ready 写出后转发。装配期间的事件不积压。 */
 export function sendEvent(service: string, name: string, args: unknown[]): void {
+    if (!eventForwardingEnabled) {
+        return;
+    }
     sendIpc({ v: IPC_VERSION, type: "event", payload: { service, name, args } });
 }
 

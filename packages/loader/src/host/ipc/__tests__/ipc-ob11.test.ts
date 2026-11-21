@@ -29,7 +29,8 @@ class FakeOb11Adapter {
     static readonly constructOptions: Record<string, unknown>[] = [];
     /** registry.get 返回 undefined 的动作名（挂载跳过分支用；null = 全部存在）。 */
     static undefinedActionName: string | null = null;
-    readonly subscribeOnly = vi.fn(async () => undefined);
+    static readonly subscribe = vi.fn(async () => undefined);
+    readonly subscribeOnly = vi.fn(async () => await FakeOb11Adapter.subscribe());
     readonly unsubscribeOnly = vi.fn();
     readonly broadcaster: FakeBroadcaster;
     readonly registry;
@@ -222,7 +223,19 @@ describe("attachOb11IpcBridge", () => {
         expect(stop()).toBeUndefined();
     });
 
-    it("registry act 缺失 → 跳过挂载（names 是挂载面超集，stop 多删无害）", async () => {
+    it("subscribeOnly 失败时退订部分装配并保留纯 kernel 动作面", async () => {
+        FakeOb11Adapter.subscribe.mockRejectedValueOnce(new Error("接收链路初始化失败"));
+        const { actions, events, stop } = await attach();
+        const instance = FakeOb11Adapter.lastInstance;
+        expect(instance?.unsubscribeOnly).toHaveBeenCalledOnce();
+        expect(actions.size).toBe(0);
+        instance?.broadcaster.emit({ post_type: "message" });
+        expect(events).toHaveLength(0);
+        stop();
+        expect(instance?.unsubscribeOnly).toHaveBeenCalledOnce();
+    });
+
+    it("registry act 缺失 → 跳过挂载，stop 只移除已挂载的动作", async () => {
         FakeOb11Adapter.undefinedActionName = "send_like";
         try {
             const { actions, stop } = await attach();
