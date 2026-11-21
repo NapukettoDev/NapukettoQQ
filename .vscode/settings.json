@@ -1,11 +1,35 @@
 {
-    "js/ts.experimental.useTsgo": true,
+    // 编辑器与格式化（全局默认）
     "editor.defaultFormatter": "biomejs.biome",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
         "source.fixAll.biome": "explicit",
         "source.organizeImports.biome": "explicit"
     },
+    // 语言特定覆盖
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "[toml]": {
+        "editor.defaultFormatter": "tamasfe.even-better-toml"
+    },
+    // TS
+    "js/ts.experimental.useTsgo": true,
+    // C++
+    "cmake.sourceDirectory": "${workspaceFolder}/packages/loader/native",
+    "cmake.buildDirectory": "${sourceDir}/build",
+    "cmake.generator": "Ninja",
+    "cmake.configureSettings": {
+        // 生成编译数据库供 clangd 使用
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+    },
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/packages/loader/native/build"
+    ],
+    // 界面与图标
     "material-icon-theme.folders.associations": {
         // apps
         "napuketto-create": "generator",
@@ -18,5 +42,5 @@
         // tooling
         "git-hooks": "hook",
         "qq-releases": "tasks"
-    },
+    }
 }

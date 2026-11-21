@@ -6,7 +6,8 @@
         "editorconfig.editorconfig",
         "biomejs.biome",
         // 3. Languages & Formats
-        "tamasfe.even-better-toml",
         "typescriptteam.native-preview",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "tamasfe.even-better-toml"
     ]
 }
