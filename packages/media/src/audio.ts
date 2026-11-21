@@ -69,7 +69,7 @@ function assertDecodedAudio(data: Uint8Array, durationMs: number, sampleRate: nu
 /** 解码 SILK 音频为 PCM（pcm_s16le）。 */
 export async function decodeSilkToPcm(
     input: string,
-    sampleRate = SILK_SAMPLE_RATE,
+    sampleRate: number = SILK_SAMPLE_RATE,
 ): Promise<DecodedAudio> {
     assertSampleRate(sampleRate, true);
     const buffer = await readAudioInput(input);
@@ -259,7 +259,7 @@ async function normalizeToPcm(input: string): Promise<Uint8Array> {
 /** 获取 SILK 音频信息（时长 / 采样率）。 */
 export async function getSilkInfo(
     input: string,
-    sampleRate = SILK_SAMPLE_RATE,
+    sampleRate: number = SILK_SAMPLE_RATE,
 ): Promise<AudioInfo> {
     const buffer = await readFile(input);
     if (!isSilk(buffer)) {

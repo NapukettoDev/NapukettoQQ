@@ -15,6 +15,11 @@
 - QQ 资源（`wrapper.node`）由 loader 在启动时定位：本机 QQ NT 安装 / 数据根缓存 / 自动下载；
   脚手架不下载、不打包 QQ 二进制（腾讯版权）。
 
+### 类型检查与构建
+
+包级 `tsconfig.json` 继承根编译选项，独立检查 `src`。`tsc -p apps/napuketto-create`
+沿用 `noEmit`，发布的 bin 入口由 tsdown 生成。
+
 ### 模板随包发布与生成
 
 - 模板是包内独立文件 `templates/`：`package.json` 的 `files` 含 `templates`，随 npm 包发布；

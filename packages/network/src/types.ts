@@ -109,14 +109,14 @@ export interface ServerOptions {
 /**
  * HTTP 请求体缺省上限（字节，16 MiB），可容纳常见内联媒体，同时限制解析开销。
  */
-export const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MAX_BODY_BYTES: number = 16 * 1024 * 1024;
 
 /**
  * 单条 WS 消息缺省上限（字节，32 MiB）。
  *
  * 从 ws 的缺省 100 MiB 收紧，仍可容纳约 24 MB 的 base64 编码前媒体。
  */
-export const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_MAX_PAYLOAD_BYTES: number = 32 * 1024 * 1024;
 
 /** 反向 HTTP server 选项。 */
 export interface HttpServerOptions extends ServerOptions {

@@ -39,5 +39,12 @@
         "noEmit": true,
         "allowImportingTsExtensions": true,
         "erasableSyntaxOnly": true
-    }
+    },
+    "exclude": [
+        "**/node_modules",
+        "**/bower_components",
+        "**/jspm_packages",
+        "**/dist",
+        "**/coverage"
+    ]
 }
