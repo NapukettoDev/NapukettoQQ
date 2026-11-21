@@ -1,44 +1,41 @@
 {
     "$schema": "https://json.schemastore.org/tsconfig",
     "compilerOptions": {
+        /* 运行环境 */
         "target": "ES2025",
-        "module": "NodeNext",
-        "moduleResolution": "NodeNext",
-        "moduleDetection": "force",
         "lib": [
             "ES2025"
         ],
         "types": [
             "node"
         ],
-        "strict": true,
-        "noImplicitAny": true,
-        "strictNullChecks": true,
-        "strictFunctionTypes": true,
-        "strictBindCallApply": true,
-        "strictPropertyInitialization": true,
-        "noImplicitThis": true,
-        "alwaysStrict": true,
-        "noUncheckedIndexedAccess": true,
-        "noPropertyAccessFromIndexSignature": true,
-        "exactOptionalPropertyTypes": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noImplicitReturns": true,
-        "noFallthroughCasesInSwitch": true,
-        "noImplicitOverride": true,
-        "allowUnreachableCode": false,
-        "allowUnusedLabels": false,
+        /* 模块系统 */
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "moduleDetection": "force",
+        "allowImportingTsExtensions": true,
+        /* 语法与转译安全 */
         "verbatimModuleSyntax": true,
         "isolatedModules": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        "declaration": true,
-        "declarationMap": true,
+        "erasableSyntaxOnly": true,
+        /* 类型严格度 */
+        "strict": true,
+        "exactOptionalPropertyTypes": true,
+        "noUncheckedIndexedAccess": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "noImplicitOverride": true,
+        /* 控制流与死代码 */
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        /* 输出与工程 */
         "noEmit": true,
-        "allowImportingTsExtensions": true,
-        "erasableSyntaxOnly": true
+        "declaration": true,
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true
     },
     "exclude": [
         "**/node_modules",
