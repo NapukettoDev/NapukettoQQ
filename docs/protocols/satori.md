@@ -58,6 +58,7 @@ port = 5501
   `friend.approve` 的 `message_id` 是申请方 uin。
 - `user.channel.create` 不真正创建频道：QQ 私聊频道就是与对端 uin 的既有会话。
 - `message.list` 用消息 ID 作游标，`around` 不支持；`message.create` 回显原始 content。
+- 表态动作的 `message_id` 使用原生 `msgId`，`emoji_id` 填 QQ 系统表情索引的十进制字符串（如 `"105"`）。
 
 ## 事件
 

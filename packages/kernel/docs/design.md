@@ -213,6 +213,14 @@ bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evid
 的 `msgId`（`confirmSend` 交回命中的 `RawMessage`），缺失才回退生成值——Windows 两者一致，
 Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否则 `get_msg` / `recallMsg` 查不到。
 
+### 按原生消息 ID 表态
+
+`MsgApi.setMsgEmojiLikeById(peer, { msgId, emojiId, like })` 供 Loader IPC 和 Satori 共用。
+`msgId` 是非空原生字符串，`emojiId` 是十进制 QQ 系统表情索引，表情类型固定为 `"1"`。
+每次用 `fetchMsgsByMsgId` 查询并同时匹配消息 ID、会话类型和会话 UID，再用查到的正数
+`msgSeq` 字符串调用 `setMsgEmojiLike`。错误码为 `INVALID_PARAM`（参数格式）、`NOT_FOUND`
+（会话内无匹配消息）、`INVALID_STATE`（无可用序号），原生查询或表态错误沿用现有映射。
+
 ## 文件发送
 
 服务端拒绝文件消息路线：`sendMsg` 带 `fileElement` 时原生会自己发起上传，然后返回

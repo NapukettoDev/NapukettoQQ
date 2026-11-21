@@ -8,7 +8,9 @@
  * ⚠️ 不自研 kernel 依赖（loader 运行时 file:// 动态 import kernel，编译期不建
  * workspace 依赖——见 types.ts 注释）。错误码提取用宽松结构判断。
  */
+import { z } from "zod";
 import { getErrorCode, getOwnProp, hasCallableProp, isCallable, isRecord } from "../type-guards.js";
+import type { MsgApiLike } from "../types.js";
 import { errorMessage, log } from "../util.js";
 
 /** 宽松 Peer 最小面（kernel Peer：chatType + peerUid）。 */
@@ -19,12 +21,10 @@ export interface IpcPeer {
 
 /** kernel apis 最小面（仅本表用到的成员；真实实例由引导装配提供）。 */
 export interface IpcApiContext {
-    msgApi: {
-        sendMessage(target: IpcPeer, elements: unknown[]): Promise<{ msgId: string }>;
-        recallMessage(target: IpcPeer, msgIds: string[]): Promise<void>;
-        fetchMessages(target: IpcPeer, opts: { count: number; msgId?: string }): Promise<unknown[]>;
-        markRead(target: IpcPeer): Promise<void>;
-    };
+    msgApi: Pick<
+        MsgApiLike,
+        "sendMessage" | "recallMessage" | "fetchMessages" | "setMsgEmojiLikeById" | "markRead"
+    >;
     groupApi: {
         /** 触发原生群列表刷新（数据经 onGroupListUpdate 事件推送，返回值无数据）。 */
         getGroupList(force?: boolean): Promise<unknown[]>;
@@ -55,6 +55,18 @@ export interface IpcApiContext {
 
 /** 动作处理函数：params 宽松透传，返回值原样序列化（JSON 可序列化）。 */
 export type IpcActionHandler = (params: Record<string, unknown>) => Promise<unknown>;
+
+const addReactionParamsSchema = z
+    .object({
+        chatType: z.literal([1, 2, 100]).optional(),
+        peerUid: z.string().trim().min(1).optional(),
+        peerUin: z.string().trim().min(1).optional(),
+        msgId: z.string(),
+        emojiId: z.string(),
+    })
+    .refine(({ peerUid, peerUin }) => peerUid !== undefined || peerUin !== undefined, {
+        message: "需要 peerUid 或 peerUin",
+    });
 
 /**
  * 注册 login.refreshQr 动作（登录期即可用——不依赖 session 服务，只依赖
@@ -262,6 +274,24 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
         const count = typeof params["count"] === "number" ? params["count"] : 20;
         const msgId = typeof params["msgId"] === "string" ? params["msgId"] : undefined;
         return ctx.msgApi.fetchMessages(peer, { count, ...(msgId !== undefined ? { msgId } : {}) });
+    });
+
+    actions.set("msg.addReaction", async (params) => {
+        const parsed = addReactionParamsSchema.safeParse(params);
+        if (!parsed.success) {
+            throw Object.assign(new Error(z.prettifyError(parsed.error)), {
+                code: "INVALID_PARAM",
+            });
+        }
+        const { msgApi } = ctx;
+        if (msgApi.setMsgEmojiLikeById === undefined) {
+            throw Object.assign(new Error("当前 kernel 版本不支持按原生消息 ID 表态"), {
+                code: "INVALID_STATE",
+            });
+        }
+        const { msgId, emojiId } = parsed.data;
+        const peer = await toPeer(parsed.data, ctx.uinToUid);
+        await msgApi.setMsgEmojiLikeById(peer, { msgId, emojiId, like: true });
     });
 
     actions.set("msg.markRead", async (params) => {

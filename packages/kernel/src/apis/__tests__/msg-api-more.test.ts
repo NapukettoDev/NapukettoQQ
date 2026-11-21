@@ -98,6 +98,102 @@ describe("查询与状态类 API", () => {
         ).rejects.toBeInstanceOf(KernelError);
     });
 
+    describe("setMsgEmojiLikeById", () => {
+        const reaction = { msgId: "7451137051157323859", emojiId: "105", like: true };
+        const group: Peer = { chatType: ChatType.GROUP, peerUid: "20001" };
+        const privatePeer: Peer = { chatType: ChatType.C2C, peerUid: "u_10001" };
+
+        it.each([
+            { peer: group, like: true },
+            { peer: privatePeer, like: false },
+        ])("按会话查询历史原生 ID 并使用实际 msgSeq（$peer.chatType）", async ({ peer, like }) => {
+            const { api, service } = makeApi({
+                getMsgsByMsgId: vi.fn(async () => ({
+                    result: 0,
+                    msgList: [
+                        { ...peer, msgId: "other-id", msgSeq: "43" },
+                        { ...peer, msgId: reaction.msgId, msgSeq: "42" },
+                    ],
+                })),
+            });
+            await api.setMsgEmojiLikeById(peer, { ...reaction, like });
+            expect(service.getMsgsByMsgId).toHaveBeenCalledExactlyOnceWith(peer, [reaction.msgId]);
+            expect(service.setMsgEmojiLikes).toHaveBeenCalledExactlyOnceWith(
+                peer,
+                "42",
+                "105",
+                "1",
+                like,
+            );
+            expect(service.getMsgs).not.toHaveBeenCalled();
+        });
+
+        it("拒绝其他会话或其他原生 ID，即使查找返回了非空列表", async () => {
+            const { api, service } = makeApi({
+                getMsgsByMsgId: vi.fn(async () => ({
+                    result: 0,
+                    msgList: [
+                        { ...group, peerUid: "30001", msgId: reaction.msgId, msgSeq: "42" },
+                        { ...group, chatType: 1, msgId: reaction.msgId, msgSeq: "42" },
+                        { ...group, msgId: "other-id", msgSeq: "42" },
+                    ],
+                })),
+            });
+            await expect(api.setMsgEmojiLikeById(group, reaction)).rejects.toMatchObject({
+                code: "NOT_FOUND",
+            });
+            expect(service.setMsgEmojiLikes).not.toHaveBeenCalled();
+        });
+
+        it("找不到消息时返回 NOT_FOUND", async () => {
+            const { api, service } = makeApi();
+            await expect(api.setMsgEmojiLikeById(group, reaction)).rejects.toMatchObject({
+                code: "NOT_FOUND",
+            });
+            expect(service.setMsgEmojiLikes).not.toHaveBeenCalled();
+        });
+
+        it.each([undefined, null, "", "0"])("拒绝缺少可用序号的消息（%s）", async (msgSeq) => {
+            const { api, service } = makeApi({
+                getMsgsByMsgId: vi.fn(async () => ({
+                    result: 0,
+                    msgList: [{ ...group, msgId: reaction.msgId, msgSeq }],
+                })),
+            });
+            await expect(api.setMsgEmojiLikeById(group, reaction)).rejects.toMatchObject({
+                code: "INVALID_STATE",
+            });
+            expect(service.setMsgEmojiLikes).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            { ...reaction, msgId: " " },
+            { ...reaction, emojiId: "👍" },
+            { ...reaction, emojiId: "-1" },
+        ])("在查询前拒绝无效消息 ID 或表情 ID", async (input) => {
+            const { api, service } = makeApi();
+            await expect(api.setMsgEmojiLikeById(group, input)).rejects.toMatchObject({
+                code: "INVALID_PARAM",
+            });
+            expect(service.getMsgsByMsgId).not.toHaveBeenCalled();
+            expect(service.setMsgEmojiLikes).not.toHaveBeenCalled();
+        });
+
+        it("保留平台权限错误", async () => {
+            const { api } = makeApi({
+                getMsgsByMsgId: vi.fn(async () => ({
+                    result: 0,
+                    msgList: [{ ...group, msgId: reaction.msgId, msgSeq: "42" }],
+                })),
+                setMsgEmojiLikes: vi.fn(async () => ({ result: 1, errMsg: "无权限" })),
+            });
+            await expect(api.setMsgEmojiLikeById(group, reaction)).rejects.toMatchObject({
+                code: "PERMISSION_DENIED",
+                message: "setMsgEmojiLikes 失败: 无权限",
+            });
+        });
+    });
+
     it("markRead：原生失败抛 KernelError", async () => {
         const { api } = makeApi({
             setMsgRead: vi.fn(async () => ({ result: 3, errMsg: "x" })),

@@ -33,6 +33,9 @@ const SEND_STATUS = { FAILED: 0, SENDING: 1, SUCCESS: 2, SUCCESS_NO_SEQ: 3 } as 
 /** 发送确认超时（毫秒）。 */
 const SEND_CONFIRM_TIMEOUT_MS = 15_000;
 
+const QQ_EMOJI_ID_PATTERN = /^\d+$/;
+const MESSAGE_SEQ_PATTERN = /^[1-9]\d*$/;
+
 /**
  * PIC 元素发送契约值（NapCat 同款发送契约值，未逐字段校准）。
  * 下列固定值均为实测调通的 wrapper 发送契约（picType / picSubType /
@@ -566,6 +569,36 @@ export class MsgApi {
             opts.like,
         );
         unwrapResult("setMsgEmojiLikes", raw);
+    }
+
+    /** 按原生消息 ID 添加或移除 QQ 系统表情表态。 */
+    async setMsgEmojiLikeById(
+        target: Peer,
+        { msgId, emojiId, like }: { msgId: string; emojiId: string; like: boolean },
+    ): Promise<void> {
+        if (typeof msgId !== "string" || msgId.trim() === "") {
+            throw kernelError("缺少原生消息 ID", "INVALID_PARAM");
+        }
+        if (typeof emojiId !== "string" || !QQ_EMOJI_ID_PATTERN.test(emojiId)) {
+            throw kernelError("表情 ID 必须是 QQ 系统表情索引的十进制字符串", "INVALID_PARAM");
+        }
+
+        const messages = await this.fetchMsgsByMsgId(target, [msgId]);
+        const message = messages.find(
+            (msg) =>
+                msg.msgId === msgId &&
+                msg.chatType === target.chatType &&
+                msg.peerUid === target.peerUid,
+        );
+        if (message === undefined) {
+            throw kernelError("会话中找不到指定消息", "NOT_FOUND");
+        }
+
+        const { msgSeq } = message;
+        if (typeof msgSeq !== "string" || !MESSAGE_SEQ_PATTERN.test(msgSeq)) {
+            throw kernelError("消息缺少可用的序号", "INVALID_STATE");
+        }
+        await this.setMsgEmojiLike(target, { msgSeq, emojiId, emojiType: "1", like });
     }
 
     /**

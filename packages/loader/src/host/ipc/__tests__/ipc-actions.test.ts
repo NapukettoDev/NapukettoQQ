@@ -10,6 +10,88 @@ import {
     registerLoginRefreshAction,
 } from "../ipc-actions.js";
 
+describe("msg.addReaction", () => {
+    const reaction = { msgId: "7451137051157323859", emojiId: "105" };
+
+    it.each([
+        [
+            { chatType: 2, peerUid: "12345" },
+            { chatType: 2, peerUid: "12345" },
+        ],
+        [
+            { chatType: 2, peerUin: "12345" },
+            { chatType: 2, peerUid: "12345" },
+        ],
+        [{ peerUin: "12345" }, { chatType: 1, peerUid: "u_12345" }],
+        [
+            { chatType: 100, peerUin: "12345" },
+            { chatType: 100, peerUid: "u_12345" },
+        ],
+    ])("解析会话并添加表态（%j）", async (conversation, peer) => {
+        const ctx = mockCtx();
+        const setMsgEmojiLikeById = vi.fn(async () => undefined);
+        ctx.msgApi.setMsgEmojiLikeById = setMsgEmojiLikeById;
+
+        const result = await callIpcAction(createIpcActions(ctx), "msg.addReaction", {
+            ...conversation,
+            ...reaction,
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(setMsgEmojiLikeById).toHaveBeenCalledExactlyOnceWith(peer, {
+            ...reaction,
+            like: true,
+        });
+    });
+
+    it.each([
+        reaction,
+        { ...reaction, peerUid: "12345", msgId: 42 },
+        { ...reaction, peerUid: "12345", emojiId: 105 },
+        { ...reaction, peerUid: "12345", chatType: "2" },
+    ])("无效 IPC 参数返回 INVALID_PARAM（%j）", async (params) => {
+        const ctx = mockCtx();
+        const setMsgEmojiLikeById = vi.fn(async () => undefined);
+        ctx.msgApi.setMsgEmojiLikeById = setMsgEmojiLikeById;
+        await expect(
+            callIpcAction(createIpcActions(ctx), "msg.addReaction", params),
+        ).resolves.toMatchObject({
+            ok: false,
+            error: { code: "INVALID_PARAM" },
+        });
+        expect(setMsgEmojiLikeById).not.toHaveBeenCalled();
+    });
+
+    it("保留 kernel 的权限错误", async () => {
+        const ctx = mockCtx();
+        ctx.msgApi.setMsgEmojiLikeById = vi.fn(async () => {
+            throw Object.assign(new Error("无权限"), { code: "PERMISSION_DENIED" });
+        });
+        const result = await callIpcAction(createIpcActions(ctx), "msg.addReaction", {
+            peerUid: "u_12345",
+            ...reaction,
+        });
+        expect(result).toEqual({
+            ok: false,
+            error: { code: "PERMISSION_DENIED", message: "无权限" },
+        });
+    });
+
+    it("旧版 kernel 返回 INVALID_STATE，其他动作仍可调用", async () => {
+        const ctx = mockCtx();
+        const actions = createIpcActions(ctx);
+        const result = await callIpcAction(actions, "msg.addReaction", {
+            peerUid: "u_12345",
+            ...reaction,
+        });
+        expect(result).toMatchObject({ ok: false, error: { code: "INVALID_STATE" } });
+        expect(await callIpcAction(actions, "login.getSelf", undefined)).toEqual({
+            ok: true,
+            value: ctx.self,
+        });
+    });
+});
+
 /** mock kernel apis 上下文。 */
 function mockCtx(): IpcApiContext {
     return {
