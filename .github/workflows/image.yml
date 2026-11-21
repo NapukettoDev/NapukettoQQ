@@ -59,7 +59,7 @@ jobs:
         timeout-minutes: 360
         steps:
             - name: Checkout
-              uses: actions/checkout@v7
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             - name: 解析版本与镜像名
               id: ver
@@ -75,7 +75,7 @@ jobs:
             # 与 Dockerfile 里的 node:24 对齐：预检要复现构建期 npm 的解析行为
             # （不同 npm 大版本的 semver 处理有差异，如 11 拒绝隐式 latest 降级）。
             - name: Setup Node（预检用，与镜像内 node:24 对齐）
-              uses: actions/setup-node@v7
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
                   node-version: 24
 
@@ -114,10 +114,10 @@ jobs:
                   done
 
             - name: Set up Buildx
-              uses: docker/setup-buildx-action@v4
+              uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
             - name: 登录 GHCR
-              uses: docker/login-action@v4
+              uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
@@ -125,7 +125,7 @@ jobs:
 
             - name: 生成镜像标签（默认，含 ffmpeg）
               id: meta
-              uses: docker/metadata-action@v6
+              uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
               with:
                   images: ${{ steps.ver.outputs.image }}
                   tags: |
@@ -134,7 +134,7 @@ jobs:
                       type=sha,format=short,prefix=sha-
 
             - name: 构建并推送（默认，含 ffmpeg）
-              uses: docker/build-push-action@v7
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
               with:
                   context: docker
                   file: docker/Dockerfile
@@ -152,7 +152,7 @@ jobs:
 
             - name: 生成镜像标签（slim，无 ffmpeg）
               id: meta-slim
-              uses: docker/metadata-action@v6
+              uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
               with:
                   images: ${{ steps.ver.outputs.image }}
                   flavor: |
@@ -163,7 +163,7 @@ jobs:
                       type=sha,format=short,prefix=sha-
 
             - name: 构建并推送（slim，无 ffmpeg）
-              uses: docker/build-push-action@v7
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
               with:
                   context: docker
                   file: docker/Dockerfile

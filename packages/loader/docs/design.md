@@ -28,8 +28,9 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 
 - 版本选择：`latestRelease` 先按 `platform`/`arch` 过滤再取末条；`version` 既是缓存目录名
   也是 `app_version`，Linux 另记 `coreVersion`（清单 schema 2，`qq-releases.json` 为纯文本）。
-- 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时、完成后
-  stat 兜底；`NAPUTO_QQ_URL` 覆盖清单 URL；临时文件带 pid + 时间戳保证并发隔离。
+- 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时。
+  收到 HTTP 200 才打开目标文件，流关闭后检查文件大小与摘要。`NAPUTO_QQ_URL` 覆盖清单
+  URL，QQ 安装包临时文件带 pid + 时间戳保证并发隔离。
 - URL 归一化：`normalizeDownloadUrl` 在唯一出站口把路径段 `/QQNTV2/` 降为 `/qqntv2/`
   （CDN 边缘对该段大小写敏感，大写必 403）；清单仍存官方原样 URL。
 - Windows 解包：官方 exe 是 NSIS，必须完整版 `7z`（`7za` 不支持）；产物在 `Files/`，
@@ -39,9 +40,19 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
   整体保留；跳过 `avsdk/`、`resource/`、`application.asar`。
 - 缓存布局固定为 Windows 同构的 `<版本>/versions/<版本>/resources/app/`，kernel 的
   wrapper 路径解析（ADR-018）无需平台分支。
-- 7-Zip 选择：`NAPUTO_7Z_PATH` > 内置资产（x64；缺失时数据根缓存 / 官网兜底）> 系统
-  PATH（`7zz` → `7z`）；Linux 非 x64 跳过内置（内置 `7zz` 是 x86-64 ELF），缺系统 7-Zip
-  时抛安装指引。
+- 7-Zip 选择：调用方显式指定的解包工具优先。Windows 探测按 `NAPUTO_7Z_PATH`、内置资产、
+  系统 PATH 顺序。Linux x64 自动下载 QQ 时优先用内置 `7zz`，缺失时复用通过 SHA-256
+  校验的数据根缓存 `runtime/7zip/7zz`，否则重新下载。Linux 非 x64 使用系统 PATH
+  （`7zz` → `7z`），缺失时抛安装指引。
+- [内置资产清单](../assets/7zip/manifest.json)记录官方发行版本、归档 URL、归档与文件的
+  SHA-256。许可证按仓库规则保存为 LF，清单记录入库后的字节摘要。测试校验所有资产及
+  许可证。loader 和 QQ 版本清单更新脚本使用内置工具前校验可执行文件及 Windows 的
+  `7z.dll`，缺失的 DLL 或不匹配的摘要会阻止执行该工具。
+- Linux x64 兜底下载使用清单中的官方归档 SHA-256。`NAPUTO_7Z_URL` 仅覆盖 HTTPS
+  下载位置，镜像必须提供逐字节相同的归档。无效地址、非 HTTPS 地址或重定向、下载失败
+  及摘要不匹配均终止兜底。归档通过校验后才在独立临时目录提取 `7zz`，校验可执行文件
+  后原子更新缓存，下载或解包失败会清理临时目录。并发写入冲突时仅复用摘要匹配的成品，
+  不匹配的旧缓存只在成功取得可信文件后替换。
 
 ### 平台分支
 

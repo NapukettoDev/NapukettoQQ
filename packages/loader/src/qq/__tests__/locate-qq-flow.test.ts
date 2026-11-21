@@ -10,7 +10,16 @@
  * 保证跨机器确定性），其余透传；node:child_process 按 exe 分发（reg → 注册表、
  * tar → 解压）。
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    renameSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,9 +46,9 @@ const h = vi.hoisted(() => {
         execCalls: [] as Array<{ exe: string; args: string[] }>,
         /** reg query 输出（null = 抛错走常见路径）。 */
         regOutput: null as null | string,
-        /** tar 解压回调（成功时建 7zz）。 */
-        tarCreatesExe: false,
-        tarError: false,
+        /** tar 解压产出的 7zz 内容。 */
+        tarExe: null as Buffer | string | null,
+        rejectConcurrentRename: false,
         /** downloadFile 记录与行为。 */
         downloads: [] as Array<{ dest: string; url: string; expectedSha256?: string }>,
         downloadError: null as null | Error,
@@ -79,6 +88,23 @@ vi.mock("node:child_process", () => ({
     }),
 }));
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    return {
+        ...actual,
+        rename: async (...args: Parameters<typeof actual.rename>) => {
+            if (h.rejectConcurrentRename) {
+                if (existsSync(args[1])) {
+                    throw new Error("另一个实例已发布该文件");
+                }
+                renameSync(...args);
+                return;
+            }
+            await actual.rename(...args);
+        },
+    };
+});
+
 /** reg query 假实现（null 输出 = 抛错走常见路径）。 */
 function execFileSyncFake(exe: string, args: string[]): string {
     if (exe === "reg") {
@@ -98,17 +124,11 @@ function regQueryFake(): string {
     return h.regOutput;
 }
 
-/** tar 解压假实现（成功时在 cacheDir 建 7zz 占位）。 */
+/** tar 解压假实现（在 -C 指定的目录中写出 7zz）。 */
 function tarExtractFake(args: string[]): string {
-    if (h.tarError) {
-        throw new Error("xz 缺失");
-    }
-    if (h.tarCreatesExe) {
-        // args: ["-xJf", archive, "-C", cacheDir]
-        const cacheDir = String(args[3] ?? "");
-        if (cacheDir !== "") {
-            writeFileSync(join(cacheDir, "7zz"), "exe");
-        }
+    const extractionDir = args[3];
+    if (h.tarExe !== null && extractionDir !== undefined) {
+        writeFileSync(join(extractionDir, "7zz"), h.tarExe);
     }
     return "";
 }
@@ -192,8 +212,8 @@ beforeEach(() => {
     h.hidden.add("c:/program files (x86)/tencent/qqnt/qq.exe");
     h.execCalls.length = 0;
     h.regOutput = null;
-    h.tarCreatesExe = false;
-    h.tarError = false;
+    h.tarExe = null;
+    h.rejectConcurrentRename = false;
     h.downloads.length = 0;
     h.downloadError = null;
     h.downloadCreatesFile = true;
@@ -620,6 +640,89 @@ describe("ensureQqFiles 下载流", () => {
 describe("ensureLinuxSevenZip", () => {
     /** 与源码推导一致的内置资产路径（src → 包根 assets/7zip/7zz）。 */
     const Bundled7zz = join(packageRoot(), "assets", "7zip", "7zz");
+
+    function hideBundledSevenZip(): void {
+        h.hidden.add(Bundled7zz.replaceAll("\\", "/").toLowerCase());
+    }
+
+    it.each([
+        [undefined, "https://github.com/ip7z/7zip/releases/download/25.01/7z2501-linux-x64.tar.xz"],
+        ["https://mirror.example/7zz.tar.xz", "https://mirror.example/7zz.tar.xz"],
+    ])("用固定摘要下载并替换不可信的旧缓存（URL 覆盖 %s）", async (override, url) => {
+        hideBundledSevenZip();
+        if (override !== undefined) {
+            vi.stubEnv("NAPUTO_7Z_URL", override);
+        }
+        h.tarExe = readFileSync(Bundled7zz);
+        const cacheDir = join(tmpRoot, "runtime", "7zip");
+        const exe = join(cacheDir, "7zz");
+        mkdirSync(cacheDir, { recursive: true });
+        writeFileSync(exe, "unverified legacy binary");
+
+        expect((await ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).exe).toBe(exe);
+        expect(h.downloads).toEqual([
+            expect.objectContaining({
+                url,
+                expectedSha256: "4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4",
+            }),
+        ]);
+        expect(readFileSync(exe).equals(h.tarExe)).toBe(true);
+        expect(readdirSync(cacheDir)).toEqual(["7zz"]);
+        expect((await ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).source).toContain(
+            "数据根缓存",
+        );
+        expect(h.downloads).toHaveLength(1);
+    });
+
+    it("下载器拒绝镜像摘要时不解包，也不发布缓存", async () => {
+        hideBundledSevenZip();
+        vi.stubEnv("NAPUTO_7Z_URL", "https://mirror.example/7zz.tar.xz");
+        h.downloadError = new Error("sha256 校验失败");
+
+        await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).rejects.toThrow(
+            "sha256 校验失败",
+        );
+        expect(h.execCalls).toEqual([]);
+        expect(readdirSync(join(tmpRoot, "runtime", "7zip"))).toEqual([]);
+    });
+
+    it("并发下载使用独立的暂存路径，只发布通过校验的 7zz", async () => {
+        hideBundledSevenZip();
+        h.tarExe = readFileSync(Bundled7zz);
+        h.rejectConcurrentRename = true;
+        const options = { dataRoot: tmpRoot, arch: "x64" };
+
+        const [first, second] = await Promise.all([
+            ensureLinuxSevenZip(options),
+            ensureLinuxSevenZip(options),
+        ]);
+        expect(first.exe).toBe(second.exe);
+        expect(h.downloads).toHaveLength(2);
+        expect(new Set(h.downloads.map(({ dest }) => dest)).size).toBe(2);
+        expect(readdirSync(join(tmpRoot, "runtime", "7zip"))).toEqual(["7zz"]);
+        expect(readFileSync(first.exe).equals(h.tarExe)).toBe(true);
+    });
+
+    it.each(["", "http://mirror.example/7zz.tar.xz"])("拒绝非 HTTPS 镜像地址 %s", async (url) => {
+        hideBundledSevenZip();
+        vi.stubEnv("NAPUTO_7Z_URL", url);
+
+        await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).rejects.toThrow(
+            /NAPUTO_7Z_URL.*HTTPS/,
+        );
+        expect(h.downloads).toEqual([]);
+        expect(h.execCalls).toEqual([]);
+    });
+
+    it("提取的 7zz 摘要不匹配时不发布文件并清理暂存", async () => {
+        hideBundledSevenZip();
+        h.tarExe = "corrupt extracted binary";
+
+        await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).rejects.toThrow(
+            /SHA-256.*7zz/,
+        );
+        expect(readdirSync(join(tmpRoot, "runtime", "7zip"))).toEqual([]);
+    });
 
     it.skipIf(!existsSync(Bundled7zz))(
         "内置资产命中（发布包静态二进制，7zz 已 755 → chmod 幂等）→ 直接返回",

@@ -33,7 +33,7 @@ FROM mwader/static-ffmpeg:9.0.2@sha256:7d9bdaaf887f7e6ce6151f67325c344074b5ff1fb
 # ==========================================
 # 2. Builder：安装已发布的 CLI（独立 prefix，运行阶段整目录 COPY）
 # ==========================================
-FROM node:24-bookworm-slim AS builder
+FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS builder
 
 ARG NAPUKETTO_VERSION=latest
 
@@ -72,7 +72,7 @@ RUN strip --strip-unneeded /usr/local/bin/node
 # ==========================================
 # 3. Runtime：debian slim + 只带运行期必需
 # ==========================================
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
 
 # 默认带 ffmpeg/ffprobe（完整媒体能力）；-slim 用 --build-arg WITH_FFMPEG=false
 ARG WITH_FFMPEG=true

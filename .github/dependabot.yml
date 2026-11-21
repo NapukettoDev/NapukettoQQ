@@ -5,7 +5,7 @@
 # 审计。这份配置把「常规更新」纳入 Git：
 #   - npm（pnpm workspace）：每周一次，patch/minor 按生产/开发分组，避免一次
 #     十几条 PR；major 单独开，便于人工 review 破坏性变更。
-#   - github-actions：每周一次，跟随 action 大版本（checkout v7 等）。
+#   - github-actions：每周更新固定的 commit SHA 及同行的版本注释。
 #
 # @napuketto/* 是 workspace 内部包，版本由 changesets 联动，Dependabot 不应该碰。
 # 升级后仍需人工跑 `pnpm install && pnpm check && pnpm test`（本文件不自动改代码）。

@@ -26,6 +26,7 @@ import process from "node:process";
 import { getErrorCode } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "./qq-types.js";
+import { findBundledSevenZip } from "./seven-zip-assets.js";
 
 /** resources/app 下需要提取的文件扩展名（.node 原生模块 + .dll 依赖）。 */
 const EXTRACT_EXTENSIONS = new Set([".node", ".dll"]);
@@ -130,9 +131,8 @@ export function findSevenZip(
         (platform === "win32" || platform === "linux") &&
         bundledSevenZipSupported(platform, arch)
     ) {
-        const exeName = platform === "win32" ? "7z.exe" : "7zz";
-        const bundled = join(packageRoot(), "assets", "7zip", exeName);
-        if (existsSync(bundled)) {
+        const bundled = findBundledSevenZip(join(packageRoot(), "assets", "7zip"), platform);
+        if (bundled !== null) {
             return { exe: bundled, source: "内置资产 assets/7zip" };
         }
     }

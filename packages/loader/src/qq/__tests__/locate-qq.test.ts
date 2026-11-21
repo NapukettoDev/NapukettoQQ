@@ -43,7 +43,9 @@ afterEach(() => {
 describe("linuxSevenZipUrl", () => {
     it("缺省：7-Zip 官方 linux 版 tar.xz", () => {
         const url = linuxSevenZipUrl();
-        expect(url).toMatch(/^https:\/\/www\.7-zip\.org\/a\/7z\d+-linux-x64\.tar\.xz$/);
+        expect(url).toMatch(
+            /^https:\/\/github\.com\/ip7z\/7zip\/releases\/download\/\d+\.\d+\/7z\d+-linux-x64\.tar\.xz$/,
+        );
     });
 
     it("NAPUTO_7Z_URL 覆盖下载地址", () => {
