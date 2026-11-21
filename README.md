@@ -21,7 +21,7 @@
 
 | 协议 | 传输形态 | 能力概览 |
 | :--- | :--- | :--- |
-| **Milky** | 单端口 HTTP + SSE / WS + WebHook | 对齐 Milky 1.3.0；消息、群管、好友、群通知、群文件与表态 |
+| **Milky** | 单端口 HTTP + SSE / WS + WebHook | 消息、群管、好友、群通知、群文件与表态 |
 | **Satori** | HTTP RPC / WS 事件 | 消息、频道、群组、成员、好友与表态 |
 | **OneBot11** | HTTP / WS / 反向 WS / Webhook | 消息、群管、好友、通知、系统与媒体 |
 | **KuroBot** | 出站 WS 客户端 | QQ 群聊与 Minecraft 服务器互通 |
