@@ -430,7 +430,7 @@ export async function bootstrapWithCore(
         await activateSession(kernel, state, ctx, chosen, loginResult, Appid, bootEnv);
         // 等 session 就绪（getMsgService 非 null）——init 完成后才有
         await waitSessionReady(kernel, ctx);
-        if (isEnvEnabled(env.NAPUTO_IPC)) {
+        if (initial && ipcActions !== null) {
             sendStatus("sessioning");
         }
         if (initial) {
@@ -446,12 +446,20 @@ export async function bootstrapWithCore(
             return false;
         }
         // 登录后把 kernel 服务动作并入登录期动作表（同一张 Map，服务端实时可见）
-        if (isEnvEnabled(env.NAPUTO_IPC) && ipcActions !== null) {
-            stopIpcServices = attachIpcServices(ipcActions, newServices);
-            // OB11 动作桥（可选，2026-08-27）：app 层注入 adapter/network 入口时整表
-            // 挂载 OB11 动作容器（79 动作 + ob11 事件透出）；未注入静默跳过，装配
-            // 失败 fail-soft 降级纯 kernel 动作面（ipc-ob11.ts 内部兜底）
-            stopOb11Bridge = await attachOb11IpcBridge(ipcActions, newServices);
+        if (ipcActions !== null) {
+            try {
+                stopIpcServices = attachIpcServices(ipcActions, newServices);
+                // OB11 动作桥可选，失败时内部回滚并降级为纯 kernel 动作面。
+                stopOb11Bridge = await attachOb11IpcBridge(ipcActions, newServices);
+            } catch (err) {
+                try {
+                    stopIpcServices?.();
+                } finally {
+                    stopIpcServices = null;
+                    newServices.dispose();
+                }
+                throw err;
+            }
         }
         services = newServices;
         // 优雅关停钩子（哨兵/信号触发，2026-10-25）：与软重登清理同一顺序——
@@ -481,6 +489,7 @@ export async function bootstrapWithCore(
      * → kernel 桥/缓存/消息日志（dispose，幂等）。失败返回 false（上报退出）。
      */
     const softRelogin = async (loginResult: LoginResultLike): Promise<boolean> => {
+        sendStatus("sessioning");
         log(`bootstrap: 软重登 uin=${loginResult.uin}——清理旧装配并重跑装配链`);
         stopOb11Bridge?.();
         stopOb11Bridge = null;

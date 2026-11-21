@@ -8,6 +8,7 @@
 
 import { isCallable } from "../type-guards.js";
 import type { CoreLike, KernelServices } from "../types.js";
+import { errMsg, log } from "../util.js";
 import {
     createIpcActions,
     type IpcActionHandler,
@@ -85,15 +86,13 @@ export function attachIpcServices(
     }
 
     const stops: Array<() => void> = [];
-    forwardChannel(services.channel, stops);
-    forwardChannel(services.groupChannel, stops);
-    forwardChannel(services.friendChannel, stops);
-    forwardChannel(services.recentContactChannel, stops);
-    forwardChannel(services.loginChannel, stops);
-
-    return () => {
+    const stopForwarding = (): void => {
         for (const stop of stops) {
-            stop();
+            try {
+                stop();
+            } catch (err) {
+                log(`ipc-bootstrap: 事件通道退订失败: ${errMsg(err)}`);
+            }
         }
         // 移除并入的动作表条目（软重登重装配清理，2026-09-08）：点分命名与
         // OB11 snake_case / login.refreshQr 不冲突；重装配在同表重挂前必先停旧
@@ -101,4 +100,15 @@ export function attachIpcServices(
             actions.delete(name);
         }
     };
+    try {
+        forwardChannel(services.channel, stops);
+        forwardChannel(services.groupChannel, stops);
+        forwardChannel(services.friendChannel, stops);
+        forwardChannel(services.recentContactChannel, stops);
+        forwardChannel(services.loginChannel, stops);
+    } catch (err) {
+        stopForwarding();
+        throw err;
+    }
+    return stopForwarding;
 }

@@ -271,22 +271,30 @@ describe("createLoginControlHandler", () => {
         cap.restore();
     });
 
-    it("ready 软重登失败：调用注入的失败处理（不走默认 process.exit）", async () => {
-        const control = new LoginControl({ resolve: null });
-        control.beginAssembly();
-        control.markReady();
-        const onReassembleFailed = vi.fn();
-        const { core, settle } = makeDeferredCore();
-        const handler = createLoginControlHandler(core, 1, control, {
-            reassemble: () => Promise.resolve(false),
-            onReassembleFailed,
-        });
-        handler({});
-        settle(RESULT2);
-        await vi.waitFor(() => {
-            expect(onReassembleFailed).toHaveBeenCalledTimes(1);
-        });
-    });
+    it.each([false, new Error("订阅装配失败")])(
+        "ready 软重登失败（%s）：调用注入的失败处理",
+        async (failure) => {
+            const control = new LoginControl({ resolve: null });
+            control.beginAssembly();
+            control.markReady();
+            const onReassembleFailed = vi.fn();
+            const { core, settle } = makeDeferredCore();
+            const handler = createLoginControlHandler(core, 1, control, {
+                reassemble: async () => {
+                    if (failure instanceof Error) {
+                        throw failure;
+                    }
+                    return failure;
+                },
+                onReassembleFailed,
+            });
+            handler({});
+            settle(RESULT2);
+            await vi.waitFor(() => {
+                expect(onReassembleFailed).toHaveBeenCalledTimes(1);
+            });
+        },
+    );
 
     it("在途互斥：control login 未 settle 时的新指令被忽略", async () => {
         const cap = captureStdout();

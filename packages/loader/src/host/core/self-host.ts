@@ -234,6 +234,7 @@ void (async () => {
         // stub 补丁状态上报（观测面，issue #105）：pending 时内部延迟复读一次
         reportMediaPatchStatus();
         if (ipcMode) {
+            // 引导成功、动作表挂载完成后，写出 ready 才放行 IPC 事件。
             sendStatus("ready");
         }
         // 常驻：协议服务在事件循环上；不 process.exit（业务运行中）

@@ -191,6 +191,25 @@ describe("attachIpcServices", () => {
         expect(() => stop()).not.toThrow();
         expect(h.events).toHaveLength(0);
     });
+
+    it("后续通道订阅失败时退订已挂通道并回滚动作表", () => {
+        const { services } = mockServices();
+        const off = vi.fn();
+        const merged = {
+            ...services,
+            channel: { onAny: () => off },
+            groupChannel: {
+                onAny: () => {
+                    throw new Error("通道订阅失败");
+                },
+            },
+        } as unknown as KernelServices;
+        const actions = new Map<string, IpcActionHandler>([["login.refreshQr", async () => true]]);
+
+        expect(() => attachIpcServices(actions, merged)).toThrow("通道订阅失败");
+        expect(off).toHaveBeenCalledOnce();
+        expect([...actions.keys()]).toEqual(["login.refreshQr"]);
+    });
 });
 
 describe("createIpcActionsForCore", () => {

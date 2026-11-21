@@ -20,6 +20,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IpcActionHandler } from "../../ipc/ipc-actions.js";
+import { decodeIpcMessage } from "../../ipc/ipc-codec.js";
 import type { KernelLike } from "../../types.js";
 import type { SharedState } from "../../util.js";
 import type { KernelServices } from "../kernel-services.js";
@@ -29,6 +31,9 @@ const h = vi.hoisted(() => {
     return {
         /** 装配/清理事件时序（断言顺序用）。 */
         events: [] as string[],
+        lines: [] as string[],
+        actions: new Map<string, IpcActionHandler>(),
+        onEvent: null as null | ((event: string, ...args: unknown[]) => void),
         /** sendStatus 记录（phase + message）。 */
         statuses: [] as Array<{ phase: string; message?: string }>,
         /** sendLogin 记录（state + selfInfo + message）。 */
@@ -38,40 +43,53 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("../../ipc/index.js", () => ({
-    attachIpcServices: vi.fn(() => {
-        h.events.push("attach:ipc-services");
-        return () => {
-            h.events.push("stop:ipc-services");
-        };
-    }),
-    attachOb11IpcBridge: vi.fn(async () => {
-        h.events.push("attach:ob11-bridge");
-        return () => {
-            h.events.push("stop:ob11-bridge");
-        };
-    }),
-    createIpcActionsForCore: vi.fn(() => new Map()),
-    sendLogin: vi.fn((state: string, selfInfo?: unknown, message?: string) => {
-        h.logins.push({
-            state,
-            ...(selfInfo !== undefined ? { selfInfo } : {}),
-            ...(message !== undefined ? { message } : {}),
-        });
-    }),
-    sendQr: vi.fn(),
-    sendStatus: vi.fn((phase: string, message?: string) => {
-        h.statuses.push({ phase, ...(message !== undefined ? { message } : {}) });
-    }),
-    startIpcServer: vi.fn(
-        (options: { onLogin?: (payload: { uin?: string; qr?: boolean }) => void }) => {
-            h.onLogin = options.onLogin ?? null;
+vi.mock("../../ipc/index.js", async () => {
+    const sender = await import("../../ipc/ipc-sender.js");
+    const ipcBootstrap = await import("../../ipc/ipc-bootstrap.js");
+    return {
+        ...sender,
+        attachIpcServices: vi.fn(
+            (actions: Map<string, IpcActionHandler>, services: KernelServices) => {
+                h.events.push("attach:ipc-services");
+                const stop = ipcBootstrap.attachIpcServices(actions, services);
+                return () => {
+                    h.events.push("stop:ipc-services");
+                    stop();
+                };
+            },
+        ),
+        attachOb11IpcBridge: vi.fn(async (actions: Map<string, IpcActionHandler>) => {
+            h.events.push("attach:ob11-bridge");
+            await Promise.resolve();
+            h.onEvent?.("Msg/onRecvMsg", "装配中");
+            actions.set("get_login_info", async () => undefined);
+            sender.sendEvent("ob11", "message", ["装配中"]);
             return () => {
-                // 停止服务端（测试内不触发）
+                h.events.push("stop:ob11-bridge");
+                actions.delete("get_login_info");
             };
-        },
-    ),
-}));
+        }),
+        createIpcActionsForCore: vi.fn(() => h.actions),
+        sendLogin: vi.fn((state: string, selfInfo?: unknown, message?: string) => {
+            h.logins.push({
+                state,
+                ...(selfInfo !== undefined ? { selfInfo } : {}),
+                ...(message !== undefined ? { message } : {}),
+            });
+        }),
+        sendStatus: vi.fn((...args: Parameters<typeof sender.sendStatus>) => {
+            const [phase, message] = args;
+            h.statuses.push({ phase, ...(message !== undefined ? { message } : {}) });
+            sender.sendStatus(...args);
+        }),
+        startIpcServer: vi.fn(
+            (options: { onLogin?: (payload: { uin?: string; qr?: boolean }) => void }) => {
+                h.onLogin = options.onLogin ?? null;
+                return () => undefined;
+            },
+        ),
+    };
+});
 
 vi.mock("../protocols.js", () => ({
     startProtocols: vi.fn(async (_kernel: unknown, _ctx: unknown, loginResult: { uin: string }) => {
@@ -80,7 +98,16 @@ vi.mock("../protocols.js", () => ({
             kernel: {},
             ctx: {},
             logger: {},
-            channel: {},
+            channel: {
+                onAny: (handler: NonNullable<typeof h.onEvent>) => {
+                    h.onEvent = handler;
+                    return () => {
+                        // 模拟清理期间旧服务最后一次回调。
+                        handler("Msg/onRecvMsg", "清理中");
+                        h.onEvent = null;
+                    };
+                },
+            },
             groupChannel: {},
             friendChannel: {},
             msgApi: {},
@@ -107,6 +134,7 @@ vi.mock("../protocols.js", () => ({
 
 /** 动态加载的被测模块（beforeAll stubEnv 之后首次 import，env 快照正确）。 */
 let bootstrapCore: typeof import("../bootstrap-core.js");
+let ipc: typeof import("../../ipc/index.js");
 let tmpRoot = "";
 
 /** 假 kernel：NapukettoCore 路径 + 登录结果队列（逐次出队，空队列 → null）。 */
@@ -155,17 +183,27 @@ beforeAll(async () => {
     vi.stubEnv("NAPUTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
     vi.useFakeTimers(); // startSessionProbe 起 5s interval / 60s timeout，假定时器隔离
     bootstrapCore = await import("../bootstrap-core.js");
+    ipc = await import("../../ipc/index.js");
 });
 
 beforeEach(() => {
     h.events.length = 0;
     h.statuses.length = 0;
     h.logins.length = 0;
+    h.lines.length = 0;
+    h.actions.clear();
+    h.onEvent = null;
     h.onLogin = null;
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        h.lines.push(String(chunk));
+        return true;
+    });
+    ipc.enableIpc();
 });
 
 afterEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -201,6 +239,15 @@ describe("bootstrapWithCore 软重登重装配（A2）", () => {
         ]);
         // 状态/登录推送：logging → logged_in(初始结果) → sessioning
         expect(h.statuses.map((s) => s.phase)).toEqual(["logging", "sessioning"]);
+        expect(h.lines.map(decodeIpcMessage).map((message) => message?.type)).toEqual([
+            "status",
+            "status",
+        ]);
+        expect(h.actions.has("msg.sendMessage")).toBe(true);
+        expect(h.actions.has("get_login_info")).toBe(true);
+        // 模拟 self-host 在 bootstrap 返回成功后发出初次 ready。
+        ipc.sendStatus("ready");
+        h.onEvent?.("Msg/onRecvMsg", "初次就绪");
         expect(h.logins).toEqual([
             { state: "logged_in", selfInfo: { uin: "10001", uid: "u1", nick: "甲" } },
         ]);
@@ -209,7 +256,7 @@ describe("bootstrapWithCore 软重登重装配（A2）", () => {
         // ready 态 control login（A2 软重登）
         h.onLogin?.({ uin: "20002" });
         await vi.waitFor(() => {
-            expect(h.events).toContain("startProtocols:20002");
+            expect(h.statuses.filter((status) => status.phase === "ready")).toHaveLength(2);
         });
         // 清理顺序：OB11 桥 → IPC 服务 → kernel 服务 dispose，再重装配
         expect(h.events.slice(3)).toEqual([
@@ -224,8 +271,21 @@ describe("bootstrapWithCore 软重登重装配（A2）", () => {
         expect(h.statuses.map((s) => s.phase)).toEqual([
             "logging",
             "sessioning",
+            "ready",
             "sessioning",
             "ready",
+        ]);
+        h.onEvent?.("Msg/onRecvMsg", "重登就绪");
+        ipc.sendEvent("ob11", "message", ["重登就绪"]);
+        expect(h.lines.map(decodeIpcMessage)).toMatchObject([
+            { type: "status", payload: { phase: "logging" } },
+            { type: "status", payload: { phase: "sessioning" } },
+            { type: "status", payload: { phase: "ready" } },
+            { type: "event", payload: { service: "Msg", args: ["初次就绪"] } },
+            { type: "status", payload: { phase: "sessioning" } },
+            { type: "status", payload: { phase: "ready" } },
+            { type: "event", payload: { service: "Msg", args: ["重登就绪"] } },
+            { type: "event", payload: { service: "ob11", args: ["重登就绪"] } },
         ]);
         expect(h.logins).toEqual([
             { state: "logged_in", selfInfo: { uin: "10001", uid: "u1", nick: "甲" } },
