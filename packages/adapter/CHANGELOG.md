@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.18.21
+
+### Patch Changes
+
+- Updated dependencies [4340a0f]
+  - @napuketto/media@0.2.3
+
 ## 0.18.20
 
 ### Patch Changes
