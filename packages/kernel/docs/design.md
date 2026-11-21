@@ -202,6 +202,9 @@ bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evid
 - `resolveQqUserDataRoot`：Linux 直接用数据根（`NAPUTO_DATA_ROOT` 或 `attachWrapper` 的
   `env.dataRoot`）；Windows 走官方 `getNTUserDataInfoConfig()` + `Tencent Files` 兜底。
   `resolveQqGlobalPath` 统一拼 `<数据根>/nt_qq/global`，不读写 `$HOME`。
+- 调试入口注入 `NAPUKETTO_SANDBOX_ROOT` 时，Windows 与 Linux 都使用已校验的沙箱数据根。
+  配置、数据和日志路径在写盘前检查真实路径边界。不存在的路径按最近的真实祖先解析，
+  已有的符号链接和 junction 按其目标检查。
 
 ### sendMessage 返回 msgId
 

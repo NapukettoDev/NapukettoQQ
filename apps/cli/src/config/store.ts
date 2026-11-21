@@ -7,13 +7,14 @@
  * - 4 个 config 子命令留在 commands/config.ts，不反向依赖本文件的私有实现。
  */
 import { mkdirSync } from "node:fs";
-import { access, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import process from "node:process";
 import type { ConfigSchema } from "@napuketto/kernel";
 import {
     CONFIG_FILE_MODE,
     ConfigBase,
+    isRecord,
     resolveConfigPath,
     resolveDataRoot,
 } from "@napuketto/kernel";
@@ -23,6 +24,7 @@ import {
     parseInlineConfig,
     readInlineConfigText,
 } from "./inline.js";
+import { validateSandboxConfigPaths } from "./sandbox.js";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 import { configTemplate } from "./template.js";
 
@@ -48,16 +50,20 @@ export interface LoadCliConfigOptions {
 }
 
 /** 配置文件缺失 → 生成带注释模板（首次启动自动生成默认配置）。 */
-async function ensureConfigTemplate(path: string, onInfo?: ConfigInfoLogger): Promise<void> {
+export async function ensureConfigTemplate(path: string): Promise<boolean> {
+    mkdirSync(dirname(path), { recursive: true });
     try {
-        await access(path);
-    } catch {
-        mkdirSync(dirname(path), { recursive: true });
         await writeFile(path, `${configTemplate()}\n`, {
             encoding: "utf8",
+            flag: "wx",
             ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
         });
-        onInfo?.({ path }, "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）");
+        return true;
+    } catch (err) {
+        if (isRecord(err) && err["code"] === "EEXIST") {
+            return false;
+        }
+        throw err;
     }
 }
 
@@ -76,7 +82,12 @@ export class CliConfigStore extends ConfigBase<CliConfig> {
 /** 读取主配置（缺失自动落模板；loadCliConfigWithSource 文件分支内部用）。 */
 async function loadCliConfig(dataRoot: string, onInfo?: ConfigInfoLogger): Promise<CliConfig> {
     const store = new CliConfigStore(dataRoot);
-    await ensureConfigTemplate(store.path, onInfo);
+    if (await ensureConfigTemplate(store.path)) {
+        onInfo?.(
+            { path: store.path },
+            "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）",
+        );
+    }
     return await store.load();
 }
 
@@ -121,6 +132,7 @@ export async function loadCliConfigWithSource(
     const resolved = resolveCliConfigSource(opts);
     if (resolved.source === "inline") {
         const config = parseInlineConfig(resolved.text);
+        validateSandboxConfigPaths(config, opts.dataDir);
         if (!sourceLogged) {
             sourceLogged = true;
             // 旧前缀 NAPKETTO_CONFIG_JSON 仍在兼容期内，日志输出实际命中的键名，
@@ -130,5 +142,6 @@ export async function loadCliConfigWithSource(
         return { config, source: "inline" };
     }
     const config = await loadCliConfig(resolved.dataRoot, opts.onInfo);
+    validateSandboxConfigPaths(config, resolved.dataRoot);
     return { config, source: "file", path: resolved.path };
 }

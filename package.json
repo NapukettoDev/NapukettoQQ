@@ -34,9 +34,10 @@
     "scripts": {
         "prepare": "git config core.hooksPath tooling/git-hooks && pnpm -r build",
         "build": "pnpm -r build",
-        "dev": "node apps/cli/dist/index.mjs",
-        "start": "node apps/cli/dist/index.mjs",
-        "config": "node apps/cli/dist/index.mjs config",
+        "dev": "node --experimental-strip-types tooling/sandbox/index.ts run",
+        "start": "node --experimental-strip-types tooling/sandbox/index.ts run",
+        "config": "node --experimental-strip-types tooling/sandbox/index.ts config",
+        "sandbox": "node --experimental-strip-types tooling/sandbox/index.ts init",
         "check": "biome check . && tsc --noEmit",
         "fix": "biome check --write . && tsc --noEmit",
         "format": "biome format --write .",

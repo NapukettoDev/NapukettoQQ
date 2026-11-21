@@ -12,7 +12,7 @@
 import { homedir, version as osVersion } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { kernelError } from "../infra/index.js";
+import { kernelError, resolveDataRoot, resolveSandboxWritePath } from "../infra/index.js";
 import type {
     EnginInitDesktopConfig,
     NodeIKernelLoginService,
@@ -91,7 +91,7 @@ export function electronProcessType(): string | undefined {
 
 /** `resolveQqUserDataRoot` 选项（平台覆盖供测试/联调，缺省按 `process.platform` 探测）。 */
 export interface QqDataRootOptions {
-    /** 数据根（`NAPKETTO_DATA` / `--data-dir` 解析结果）。Linux 下 QQ 数据落 `<dataRoot>/nt_qq`。 */
+    /** 数据根（`NAPKETTO_DATA` / `--data-dir` 解析结果）。Linux 和调试沙箱在此存放 QQ 数据。 */
     dataRoot?: string | undefined;
     /** 平台覆盖（缺省 `detectPlatformType()`）。 */
     platform?: PlatformType | undefined;
@@ -109,12 +109,20 @@ export interface QqDataRootOptions {
  *
  * 平台分流（2026-11-09 Stage 1 E2E）：Linux（KLINUX）自建宿主持有 QQ 数据，直接
  * 用数据根（`<数据根>/nt_qq`），不读 `$HOME`——否则换机器/换用户读不到历史账号，
- * 还会把 QQ 崩溃目录等写进用户主目录。Windows 保持官方 API + 默认位置兜底。
+ * 还会把 QQ 崩溃目录等写进用户主目录。Windows 调试沙箱也使用传入的数据根，
+ * 其余 Windows 场景走官方 API + 默认位置兜底。
  */
 export function resolveQqUserDataRoot(
     exports: WrapperNodeApi,
     opts: QqDataRootOptions = {},
 ): string | null {
+    if (process.env["NAPUKETTO_SANDBOX_ROOT"]) {
+        const dataRoot = resolveDataRoot(
+            opts.dataRoot || process.env["NAPUKETTO_DATA_ROOT"] || process.env["NAPUTO_DATA_ROOT"],
+        );
+        resolveSandboxWritePath(resolveQqGlobalPath(dataRoot), "QQ 数据目录");
+        return dataRoot;
+    }
     const platform = opts.platform ?? detectPlatformType();
     if (platform === PlatformType.KLINUX) {
         const dataRoot =
@@ -435,7 +443,7 @@ function captureSession(
  * （P2-1 实测 2026-08-06；getLoginList 空）。QQ 主进程（V1）QQ 自己已配置
  * engine，无需解析。
  *
- * `dataRoot` 仅 Linux 生效（`resolveQqUserDataRoot` 平台分流）：loader 由
+ * `dataRoot` 在 Linux 和调试沙箱生效（`resolveQqUserDataRoot` 平台分流）：loader 由
  * `NAPUTO_DATA_ROOT` 注入，QQ 数据固定落 `<数据根>/nt_qq/global`。
  */
 function resolveBootQqGlobalPath(ctx: WrapperContext, dataRoot?: string): string | undefined {
@@ -484,7 +492,7 @@ export interface BootEnv {
     qqVersion?: string | undefined;
     /** 用户数据目录（cfgDir 的父级，用于 desktopPathConfig）。 */
     dataDir?: string | undefined;
-    /** 数据根（Linux 下 QQ 数据根 = `<dataRoot>/nt_qq`；Windows 忽略）。 */
+    /** 数据根（Linux 和调试沙箱下 QQ 数据存放在 `<dataRoot>/nt_qq`）。 */
     dataRoot?: string | undefined;
     /** 账号 uin（可选，提供则一步 init+start）。 */
     selfUin?: string | undefined;

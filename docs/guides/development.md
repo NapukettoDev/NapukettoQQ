@@ -28,10 +28,34 @@ git submodule update --init --recursive   # 有权限时
 | `pnpm test` | vitest 全量单测 |
 | `pnpm test:coverage` | `vitest run --coverage` |
 | `pnpm -r build` | 全量 tsdown 构建 |
+| `pnpm sandbox` | 初始化外部调试沙箱，显示配置位置 |
+| `pnpm dev` / `pnpm start` | 在同一个外部沙箱前台启动仓库 CLI |
+| `pnpm run config validate` | 校验沙箱内的配置 |
 | `pnpm changeset` | 记录版本 bump |
 | `pnpm release:dryrun` | 升版本 + 构建 + dry-run 发布 |
 
 单包 watch 构建：`pnpm --filter @napuketto/kernel dev`。
+
+## 外部调试沙箱
+
+```bash
+pnpm --filter "@napuketto/cli..." build
+pnpm sandbox
+pnpm run config validate
+pnpm dev
+```
+
+`pnpm sandbox` 会提示 `napuketto.toml` 的位置。先填入调试账号，再校验并启动。
+默认目录是仓库同级的 `Debug/napukettoqq-sandbox`，可用 `NAPUKETTO_SANDBOX_DIR`
+覆盖。相对设置值以仓库根为基准。PowerShell 当前会话可用
+`$env:NAPUKETTO_SANDBOX_DIR = '../Debug/napukettoqq-sandbox'` 设置。
+
+数据、日志、缓存和原生 QQ 数据都放在外部目录。CLI 参数中的相对路径以沙箱为基准，
+例如从其他地方读取配置时，给 `pnpm run config apply` 或 `pnpm run config validate --config`
+传绝对路径。CLI 会拒绝越界的写入路径。调试入口加载当前 `dist`，修改源代码后先重新构建。
+
+用 `pnpm dev status` 查询实例，`pnpm dev stop` 停止实例。需要重置时，先停止实例，再删除
+含 `.napuketto-sandbox.json` 标记的沙箱目录。不同 checkout 并行使用时，各自指定独立目录。
 
 ## 构建顺序
 

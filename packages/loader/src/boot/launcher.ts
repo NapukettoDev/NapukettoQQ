@@ -143,7 +143,7 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     // 平台分支：win32 解析宿主 node（非 node 宿主如 Bun 需真 node.exe）
     const hostNode = await resolveHostNodePath(options);
 
-    const env = buildLaunchEnv(options);
+    const env = { ...buildLaunchEnv(options), ...windowsSandboxProfile() };
     applyPathEnv(env, { stub, wrapperPath: options.qq.wrapperPath });
 
     // 标准 node 直接跑入口（不拉起 QQ，不注入）
@@ -361,6 +361,20 @@ function applyPathEnv(
  */
 export function defaultStubDir(): string {
     return join(packageRoot(), "native", "prebuilt", "win32-x64");
+}
+
+/** Keep native profile fallbacks local while the CLI can still locate an installed QQ. */
+function windowsSandboxProfile(): Record<string, string> {
+    const root = process.env["NAPUKETTO_SANDBOX_ROOT"];
+    if (!root) {
+        return {};
+    }
+    const profile = join(root, "home");
+    const roaming = join(profile, "AppData", "Roaming");
+    const local = join(profile, "AppData", "Local");
+    mkdirSync(roaming, { recursive: true });
+    mkdirSync(local, { recursive: true });
+    return { HOME: profile, USERPROFILE: profile, APPDATA: roaming, LOCALAPPDATA: local };
 }
 
 /** 装配自建宿主环境变量。 */

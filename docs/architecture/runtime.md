@@ -99,7 +99,8 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 1. `loginService.initConfig`。`commonPath` 必须指向 QQ 真实数据目录
    （`<QQ 用户数据根>/nt_qq/global`），否则快速登录列表为空。Windows 数据根来自
-   `getNTUserDataInfoConfig()`；Linux 固定用 `<数据根>/nt_qq`，loader 把子进程
+   `getNTUserDataInfoConfig()`，仓库外调试沙箱则显式使用沙箱数据根。Linux 固定用
+   `<数据根>/nt_qq`，loader 把子进程
    `HOME`/`XDG_*` 收敛到 `<数据根>/home`，管住 `libbugly` 崩溃文件等残余写入。
 2. 先 `connect()` 等 `onLoginConnected` 再留短暂缓冲；快速登录默认选第一个可用账号
    （`-q` / `NAPUTO_QUICK_UIN` 可指定），单步有超时兜底。

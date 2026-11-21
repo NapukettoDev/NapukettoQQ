@@ -95,6 +95,15 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
 普通启动与 supervisor 不加载协议包。新增协议时要同步登记进
 `config/protocol-validate.ts`。
 
+## 仓库外调试沙箱
+
+仓库根的调试入口在加载 CLI 前设置沙箱 cwd、绝对配置路径与数据根，并通过
+`NAPUKETTO_SANDBOX_ROOT` 将写入边界传给 supervisor、账号进程与自建宿主。
+CLI 按原有优先级处理内联配置和命令行参数，沙箱内的写目标经真实路径检查。
+`--data-dir`、配置中的数据目录、日志和协议缓存若越界，按配置错误退出。
+启动入口在同一 Node 进程加载 CLI，`process.argv[1]` 指向真实构建产物，供
+supervisor 与 `restart` 派生进程使用。终端与信号由 CLI 原有处理器接管。
+
 ## 凭据保护口径
 
 - **stdout 脱敏**：`config list` / `config apply` 输出 TOML 时，`token` 等敏感字段

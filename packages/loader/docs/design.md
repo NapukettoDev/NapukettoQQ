@@ -109,6 +109,12 @@ Linux：
 - `stdio` 缺省 `inherit`；cli 接管 pipe 后逐行过滤 wrapper 原生噪音。
 - `onStage` 回调覆盖 stub 校验 / node 解析 / 下载 / 解包 / 提取 / spawn 各阶段提示。
 
+### 外部调试沙箱
+
+调试入口通过 `NAPUKETTO_SANDBOX_ROOT` 启用写入边界。自建宿主继承沙箱内的
+临时目录和用户数据目录，工作目录仍由 CLI 设为沙箱数据根。文件日志通过
+kernel 日志设施检查路径，自定义协议缓存通过同一边界检查后装配。
+
 ### 实例锁与进程治理
 
 - 锁文件 `<账号数据目录>/instance.lock`，内容 `{pid, startedAt, cmdline}`。

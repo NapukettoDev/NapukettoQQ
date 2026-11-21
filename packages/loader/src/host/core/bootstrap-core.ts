@@ -51,7 +51,7 @@ import { runSmokeTest } from "./smoke.js";
 export interface BootstrapEnv {
     qqVersion: string;
     dataDir: string;
-    /** 数据根（Linux 下 QQ 数据根 = `<dataRoot>/nt_qq`；Windows 忽略）。 */
+    /** 数据根（Linux 和调试沙箱下 QQ 数据存放在 `<dataRoot>/nt_qq`）。 */
     dataRoot: string;
     wrapperPath: string;
 }

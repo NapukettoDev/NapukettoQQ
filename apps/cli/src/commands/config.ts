@@ -34,12 +34,10 @@
  */
 import type { Dirent } from "node:fs";
 import { mkdirSync, readdirSync } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
-import process from "node:process";
+import { readFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 import type { ConfigSchema } from "@napuketto/kernel";
 import {
-    CONFIG_FILE_MODE,
     ConfigBase,
     configError,
     errorMessage,
@@ -51,9 +49,14 @@ import {
 } from "@napuketto/kernel";
 import { type ConfigSource, parseInlineConfig } from "../config/inline.js";
 import { validateProtocolSections } from "../config/protocol-validate.js";
+import { validateSandboxConfigPaths } from "../config/sandbox.js";
 import { type CliConfig, parseCliConfig } from "../config/schema.js";
-import { CliConfigStore, defaultCliConfig, resolveCliConfigSource } from "../config/store.js";
-import { configTemplate } from "../config/template.js";
+import {
+    CliConfigStore,
+    defaultCliConfig,
+    ensureConfigTemplate,
+    resolveCliConfigSource,
+} from "../config/store.js";
 import { logger } from "../logger.js";
 
 /**
@@ -119,17 +122,7 @@ export async function cmdConfigInit(opts: { dataDir?: string }): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
     mkdirSync(dataRoot, { recursive: true });
     const store = new CliConfigStore(dataRoot);
-    let created = false;
-    try {
-        await access(store.path);
-    } catch {
-        mkdirSync(dirname(store.path), { recursive: true });
-        await writeFile(store.path, `${configTemplate()}\n`, {
-            encoding: "utf8",
-            ...(process.platform === "win32" ? {} : { mode: CONFIG_FILE_MODE }),
-        });
-        created = true;
-    }
+    const created = await ensureConfigTemplate(store.path);
     const raw = await readFile(store.path, "utf8");
     logger.info({ dataRoot }, "数据根");
     if (created) {
@@ -210,6 +203,7 @@ export async function cmdConfigApply(file: string, opts: ConfigOutputOptions): P
     }
     const merged: Record<string, unknown> = { ...existing, ...partial };
     const next = parseCliConfig(merged);
+    validateSandboxConfigPaths(next, dataRoot);
     // 与 config validate 同口径：非法协议段不得写入主配置（否则「apply 通过、启动 78」）
     await validateProtocolSections(next);
     await store.save(next);
@@ -241,7 +235,9 @@ async function validateConfigFile(path: string, dataRoot: string): Promise<void>
         schema: { parse: parseCliConfig } satisfies ConfigSchema<CliConfig>,
         defaults: defaultCliConfig(dataRoot),
     });
-    await validateProtocolSections(store.parseText(raw));
+    const config = store.parseText(raw);
+    validateSandboxConfigPaths(config, dataRoot);
+    await validateProtocolSections(config);
 }
 
 /** config validate 选项（--config / --config-json 二选一；无参 = 校验生效配置）。 */
@@ -273,7 +269,9 @@ export async function cmdConfigValidate(
         throw kernelError("config validate：--config 与 --config-json 只能二选一", "INVALID_PARAM");
     }
     if (configJson !== undefined) {
-        await validateProtocolSections(parseInlineConfig(configJson));
+        const config = parseInlineConfig(configJson);
+        validateSandboxConfigPaths(config, opts.dataDir);
+        await validateProtocolSections(config);
         return { source: "inline" };
     }
     if (configPath !== undefined) {
@@ -283,7 +281,9 @@ export async function cmdConfigValidate(
     // 无参：校验当前生效配置（内联优先；文件缺失按配置缺失报 78，不落模板）
     const resolved = resolveCliConfigSource(opts);
     if (resolved.source === "inline") {
-        await validateProtocolSections(parseInlineConfig(resolved.text));
+        const config = parseInlineConfig(resolved.text);
+        validateSandboxConfigPaths(config, opts.dataDir);
+        await validateProtocolSections(config);
         return { source: "inline" };
     }
     await validateConfigFile(resolved.path, resolved.dataRoot);

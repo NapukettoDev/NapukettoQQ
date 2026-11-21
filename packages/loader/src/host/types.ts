@@ -268,6 +268,7 @@ export interface LogConfigLike {
  * 必选成员 = 自建宿主主路径（2026-08-07 实测）必须存在。
  */
 export interface KernelLike {
+    resolveSandboxWritePath?: (path: string, field: string) => string;
     // 装配层
     NapukettoCore?: {
         create(options: {
