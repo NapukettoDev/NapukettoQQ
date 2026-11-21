@@ -146,6 +146,11 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
   `napuketto.stop`。`cmdRestart` 在 `cmdStop` 置非 0 退出码或 `process.argv[1]` 为空时
   立即中断，不 detached 拉起空 `node` 进程。
 
+## 类型检查与构建
+
+包级 `tsconfig.json` 继承根编译选项，独立检查 `src`。`tsc -p apps/cli` 沿用
+`noEmit`，发布入口 `dist/index.mjs` 和声明 `dist/index.d.mts` 由 tsdown 生成。
+
 ## 测试布局
 测试收拢在模块目录的 `__tests__/` 下，文件名对应被测模块；跨模块的领域套件可用领域名
 （`cli/error.test.ts` 与根级 `logger.test.ts` 保持原位）：

@@ -9,7 +9,7 @@ const MAX_FRAME_HEADER_BYTES = 14;
 export function sendWsText(
     sockets: Iterable<WsSocket>,
     data: string | undefined,
-    maxBufferedBytes = DEFAULT_MAX_BUFFERED_BYTES,
+    maxBufferedBytes: number = DEFAULT_MAX_BUFFERED_BYTES,
 ): void {
     const limit =
         Number.isSafeInteger(maxBufferedBytes) && maxBufferedBytes > 0

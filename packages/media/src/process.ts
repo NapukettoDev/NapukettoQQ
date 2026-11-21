@@ -8,14 +8,23 @@ const NETWORK_OR_DEVICE_PATH = /^[\\/]{2}/;
 const PROTOCOL_PREFIX = /^[a-z][a-z\d+.-]*:/i;
 
 /** Input options must precede -i (also applied by ffprobe to nested inputs). */
-export const LOCAL_MEDIA_INPUT_OPTIONS = [
+export const LOCAL_MEDIA_INPUT_OPTIONS: string[] = [
     "-protocol_whitelist",
     "file",
     "-format_whitelist",
     "mov,matroska,webm,avi,flv,asf,mpeg,mpegts,ogg,wav,mp3,flac,aac,amr,aiff,ape,ac3,eac3,dts,au",
 ];
 
-export function mediaProcessOptions(timeout: number) {
+export function mediaProcessOptions(timeout: number): {
+    reject: false;
+    timeout: number;
+    killSignal: "SIGTERM";
+    forceKillAfterDelay: number;
+    cleanup: true;
+    stdin: "ignore";
+    windowsHide: true;
+    maxBuffer: number;
+} {
     return {
         reject: false,
         timeout,
@@ -60,7 +69,7 @@ export async function localMediaPath(input: string): Promise<string> {
 
 export async function assertMediaOutput(
     path: string,
-    maxBytes = Number.MAX_SAFE_INTEGER,
+    maxBytes: number = Number.MAX_SAFE_INTEGER,
 ): Promise<void> {
     const info = await stat(path);
     if (!info.isFile() || info.size === 0 || info.size > maxBytes) {

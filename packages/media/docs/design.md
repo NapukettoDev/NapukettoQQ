@@ -87,22 +87,12 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 
 ## 构建与发布形态
 
-产物为 **ESM + CJS 双格式**（`tsdown.config.ts`）：
-
-- `dist/index.mjs`（ESM）+ `dist/index.cjs`（CJS），类型声明 `dist/index.d.mts` /
-  `dist/index.d.cts`；`package.json` 的 `exports` 同时保留 `import` 与 `require`
-  条件。
-- **为什么必须双格式**（历史生产事故）：koishi 适配器发布形态是 CJS
-  （`lib/index.cjs`），koishi loader 用 `require()` 加载插件 → 插件 CJS 产物
-  `require` 本包。此前本包只有 ESM 入口，CJS 解析报
-  `ERR_PACKAGE_PATH_NOT_EXPORTED`。修复方式是与 kernel/loader 一致补双格式 +
-  `require` 条件。
-- **`deps.alwaysBundle: ["execa", "file-type"]` 的原因**：这两个依赖是纯 ESM、
-  无 CJS 入口（`execa` v10 / `file-type` v22），CJS 产物 `require` 它们会在
-  Node <22.12 抛 `ERR_REQUIRE_ESM`。因此由 tsdown 把它们**内联进产物**（ESM
-  产物同样内联，无碍——ESM 消费方不受影响）。
-- **保持 external 的依赖**：`image-size`（双格式）与 `silk-wasm`（CJS）本身可被
-  CJS `require` 正常加载，按默认 externals 处理，避免无谓增大产物体积。
+- tsdown 从 `src/index.ts` 构建 `dist/index.mjs`。包级 `tsconfig.json` 开启
+  `isolatedDeclarations`，tsdown 使用 Oxc 生成 `dist/index.d.mts`。
+- `exports` 的 `types` 和 `default` 分别指向声明和 ESM 入口。CJS 消费方通过
+  Node ≥ 22.12 的 `require(esm)` 加载同一个 ESM 入口。
+- `execa`、`file-type`、`image-size` 和 `silk-wasm` 通过 `dependencies` 安装，
+  由 tsdown 保持 external。
 
 ## 测试布局
 

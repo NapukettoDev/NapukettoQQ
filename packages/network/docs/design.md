@@ -100,19 +100,11 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 
 ## 构建与导出形态
 
-- **零配置 tsdown**：包内没有 `tsdown.config.ts`，直接 `tsdown` 默认行为——入口
-  `src/index.ts`、默认 ESM 格式，产出 `dist/index.mjs` 与类型声明
-  `dist/index.d.mts`。`hono` / `@hono/node-server` / `ws` 是 `dependencies`，
-  按 tsdown 默认 externals 处理，不打入产物。
-- **ESM-only 现状（历史契约观察项，本次不动）**：`package.json` 的 `exports`
-  三个条件（`types` / `import` / `require`）都指向 `.mjs` / `.d.mts`——即
-  `exports["."].require` 也指向 `./dist/index.mjs`。因此 CJS 消费方 `require()`
-  本包时，实际依赖 **Node ≥ 22.12 的 `require(esm)`** 能力；在更早的 Node 20
-  上会抛 `ERR_REQUIRE_ESM`。
-  - 这是历史契约，不是本包刻意的设计选择。本次结构重构**不改动它**：改
-    `exports` 属于运行时契约变更，需单独评估（若要支持旧 Node 的 CJS 消费方，
-    应参照 `@napuketto/media` 的双格式 + `require` 条件方案另开 PR）。
-  - 记录为观察项，供后续依赖方（Koishi 插件的加载形态）核对。
+- tsdown 从 `src/index.ts` 构建 `dist/index.mjs`。包级 `tsconfig.json` 开启
+  `isolatedDeclarations`，tsdown 使用 Oxc 生成 `dist/index.d.mts`。
+- `exports` 的 `types` 和 `default` 分别指向声明和 ESM 入口。CJS 消费方通过
+  Node ≥ 22.12 的 `require(esm)` 加载同一个 ESM 入口。
+- `hono`、`@hono/node-server` 和 `ws` 通过 `dependencies` 安装，由 tsdown 保持 external。
 
 ## 测试布局
 
