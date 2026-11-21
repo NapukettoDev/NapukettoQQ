@@ -8,7 +8,7 @@
         },
         "files": {
             "7zz": "a1860fdf0d6ec395e0e277e5222e9aa488747db4aa5c87d1ec879a0916ba0b2f",
-            "License-linux.txt": "99df5a516035baca9f2e8095977599d4a4340f58ba900f870238943996014f53"
+            "License-linux.txt": "bfcb66ce77b67efd57465ecce23425841e1defba4307fcb012080cccfc11a870"
         }
     },
     "windows-x64": {
@@ -21,7 +21,7 @@
         "files": {
             "7z.dll": "69fd4df057985c40e510e2fac182881c7f85e90aa13ec703f763a8fdb2ce61f8",
             "7z.exe": "83967f1b02b43c4efeda302795722c809e0e81b8307de73558d10484d5676a7d",
-            "License.txt": "519ac0a4bded9c18ea02e0afb71f663d8c47373bd9facd3ac96a79f51d77765d"
+            "License.txt": "32369594a3a9f7c643d124035120eaa6a7707e75e57c4386ef509f801447bc49"
         }
     }
 }

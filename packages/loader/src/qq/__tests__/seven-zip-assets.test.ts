@@ -13,7 +13,7 @@ import {
 const assetsDir = join(packageRoot(), "assets", "7zip");
 
 describe("内置 7-Zip 资产清单", () => {
-    it("覆盖所有内置资产及许可证，并与官方文件摘要一致", () => {
+    it("内置资产及许可证的入库字节与清单摘要一致", () => {
         const files = { ...linuxSevenZip.files, ...windowsSevenZip.files };
         expect(readdirSync(assetsDir).sort()).toEqual(
             [...Object.keys(files), "manifest.json"].sort(),
