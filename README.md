@@ -30,6 +30,14 @@
 [Satori](./docs/protocols/satori.md) · [OneBot 11](./docs/protocols/onebot11.md) ·
 [KuroBot](./docs/protocols/kurobot.md)。
 
+## 嵌入的框架
+
+除独立运行提供协议端外，也可作为插件直接运行在机器人框架内：
+
+| 框架 | 适配器仓库 |
+| :--- | :--- |
+| **Koishi** | [Adapter-Koishi](https://github.com/NapukettoDev/Adapter-Koishi) |
+
 ## 快速开始
 
 - **运行环境**：Node.js 24+（Windows 10/11 x64 或 Linux x64）；无需安装 QQ 客户端。
