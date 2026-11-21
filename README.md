@@ -102,6 +102,7 @@ pnpm exec napuketto restart             # 重启 supervisor
 ## 开发
 
 所有改动合入前本地 `pnpm check` 必须通过；涉及发布内容的改动随提交附changeset
+
 规范见 [贡献指南](./.github/CONTRIBUTING.md) · [工程指南](./AGENTS.md) ·
 [开发指南](./docs/guides/development.md) · [安全策略](./.github/SECURITY.md) ·
 [Koishi适配器](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto)
