@@ -16,6 +16,8 @@ import type { IncomingMessage } from "node:http";
 import { get, type RequestOptions } from "node:https";
 import { dirname } from "node:path";
 import process from "node:process";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { loaderVersion } from "../internal/package-info.js";
 import { normalizeDownloadUrl } from "./qq-releases.js";
 
@@ -101,7 +103,8 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
 }
 
 /**
- * 下载文件并（可选）校验 sha256。失败时清理半成品文件。
+ * 下载文件并（可选）校验 sha256。传输中断时保留半成品供调用方处理；
+ * 完整传输后发现文件为空或摘要不匹配时删除文件。
  * 返回实际 sha256（无论是否校验），便于调用方回填清单。
  */
 export async function downloadFile(options: DownloadOptions): Promise<DownloadResult> {
@@ -114,36 +117,16 @@ export async function downloadFile(options: DownloadOptions): Promise<DownloadRe
     const timeoutMs = options.timeoutMs ?? 60_000;
     // 目标目录必须提前建好（createWriteStream 不自动建目录）
     mkdirSync(dirname(options.dest), { recursive: true });
+    // 在 HTTP 200 之前不打开目标，避免请求失败时删除和异步建文件竞态。
+    const res = await httpsGet(url, timeoutMs);
     const hash = createHash("sha256");
-    const fileStream = createWriteStream(options.dest);
-    let fileFailed = false;
-
-    try {
-        const res = await httpsGet(url, timeoutMs);
-        await new Promise<void>((resolve, reject) => {
-            res.on("data", (chunk: Buffer) => {
-                hash.update(chunk);
-            });
-            res.on("error", (err: Error) => {
-                fileFailed = true;
-                reject(err instanceof Error ? err : new DownloadError(String(err)));
-            });
-            fileStream.on("error", (err) => {
-                fileFailed = true;
-                reject(err);
-            });
-            fileStream.on("finish", () => {
-                resolve();
-            });
-            res.pipe(fileStream);
-        });
-    } catch (err) {
-        fileStream.destroy();
-        if (!fileFailed) {
-            await rm(options.dest, { force: true });
-        }
-        throw err instanceof Error ? err : new DownloadError(String(err));
-    }
+    const hashStream = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+            hash.update(chunk);
+            callback(null, chunk);
+        },
+    });
+    await pipeline(res, hashStream, createWriteStream(options.dest));
 
     // ⚠️ 完成态校验（2026-08-23 WSL 生产事故）：Promise 正常 resolve 但文件
     // 缺失/为空是真实发生过的（koishi 场景 7z 解包报「No such file or

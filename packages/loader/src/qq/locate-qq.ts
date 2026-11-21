@@ -404,7 +404,14 @@ async function downloadLinuxSevenZip(cacheDir: string, exe: string): Promise<voi
         const stagedExe = join(stagingDir, "7zz");
         assertSevenZipHash(stagedExe, linuxSevenZip.files["7zz"]);
         await chmod(stagedExe, 0o755);
-        await rename(stagedExe, exe);
+        try {
+            await rename(stagedExe, exe);
+        } catch (err) {
+            // 另一实例可能已经发布了同一文件。
+            if (!existsSync(exe) || !matchesSevenZipHash(exe, linuxSevenZip.files["7zz"])) {
+                throw err;
+            }
+        }
     } finally {
         await rm(stagingDir, { recursive: true, force: true });
     }

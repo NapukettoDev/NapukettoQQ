@@ -2,7 +2,7 @@
  * qq-download.test.ts：QQ 官方安装包下载器单测（qq-download.ts，node:https mock）。
  *
  * vi.mock("node:https") 拦截 get；假响应用真实 PassThrough 流（statusCode/headers
- * 附加属性），pipe/finish 走真实流语义。node:fs 部分替身（statSync 可注入失败，
+ * 附加属性），pipeline 走真实流语义。node:fs 部分替身（statSync 可注入失败，
  * 其余透传）。覆盖：
  *  - 成功下载：sha256 计算 + 落盘完成态校验（文件非空）+ 目录自动创建
  *  - sha256 校验：无期望值恒 true、大小写不敏感、失败 → DownloadError + 清理
@@ -10,10 +10,10 @@
  *  - normalizeDownloadUrl 统一生效（QQNTV2 → qqntv2，含 env 兜底路径）
  *  - HTTP 非 200 → DownloadError；302 重定向跟随 + 5 跳上限
  *  - 请求超时（setTimeout → destroy）→ DownloadError；连接错误 → 抛出
- *  - 流中错误（fileFailed → 不删半成品）；完成但文件为空/缺失 → 报错清理
+ *  - 流中错误保留半成品；完成但文件为空/缺失 → 报错
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -33,8 +33,6 @@ const h = vi.hoisted(() => {
                   req?: FakeReq;
                   /** 连接错误（延迟 emit，先于响应投递）。 */
                   error?: Error;
-                  /** error 延迟毫秒（默认 nextTick；给 write 流 open 留时间用 10+）。 */
-                  errorDelayMs?: number;
                   /** true = 不投递响应（测试手动触发 req 超时/错误）。 */
                   defer?: boolean;
               }),
@@ -84,7 +82,6 @@ vi.mock("node:https", () => ({
             res: FakeResponse;
             req?: FakeReq;
             error?: Error;
-            errorDelayMs?: number;
             defer?: boolean;
         } = responder
             ? responder(url)
@@ -97,14 +94,7 @@ vi.mock("node:https", () => ({
         const req = built.req ?? fakeReq;
         process.nextTick(() => {
             if (built.error !== undefined) {
-                const emit = (): void => {
-                    req.emitError(built.error as Error);
-                };
-                if (built.errorDelayMs !== undefined) {
-                    setTimeout(emit, built.errorDelayMs);
-                } else {
-                    emit();
-                }
+                req.emitError(built.error);
                 return;
             }
             if (!built.defer) {
@@ -138,7 +128,6 @@ function respond(
         res: FakeResponse;
         req?: FakeReq;
         error?: Error;
-        errorDelayMs?: number;
         defer?: boolean;
     },
 ): void {
@@ -257,7 +246,8 @@ describe("downloadFile 失败路径", () => {
         expect(existsSync(dest)).toBe(false);
     });
 
-    it("HTTP 404 → DownloadError（半成品清理）", async () => {
+    it("HTTP 404 → DownloadError，保留已有文件", async () => {
+        writeFileSync(dest, "existing download");
         respond(() => ({ res: okResponse("not found", { status: 404 }) }));
         await expect(
             downloadFile({ dest, url: "https://example.com/a.exe" }),
@@ -265,7 +255,7 @@ describe("downloadFile 失败路径", () => {
             name: "DownloadError",
             message: expect.stringContaining("HTTP 404"),
         });
-        expect(existsSync(dest)).toBe(false);
+        expect(readFileSync(dest, "utf8")).toBe("existing download");
     });
 
     it("302 重定向跟随（新 URL 发起请求）", async () => {
@@ -332,8 +322,6 @@ describe("downloadFile 失败路径", () => {
             };
         });
         const pending = downloadFile({ dest, url: "https://example.com/slow.exe", timeoutMs: 500 });
-        // 等 write 流 open 完成（macrotask），避免 rm 与建文件竞态
-        await new Promise((r) => setTimeout(r, 20));
         expect(req.timeoutCb).toBeTypeOf("function");
         req.timeoutCb?.();
         await expect(pending).rejects.toMatchObject({
@@ -352,7 +340,6 @@ describe("downloadFile 失败路径", () => {
                     headers: {},
                 }) as FakeResponse,
                 error: new Error("ECONNREFUSED"),
-                errorDelayMs: 10,
             };
         });
         await expect(
@@ -361,7 +348,7 @@ describe("downloadFile 失败路径", () => {
         expect(existsSync(dest)).toBe(false);
     });
 
-    it("流中错误（res error）→ fileFailed 不删半成品", async () => {
+    it("流中错误（res error）→ 保留半成品", async () => {
         respond(() => {
             const res = Object.assign(new PassThrough(), {
                 statusCode: 200,
@@ -377,7 +364,7 @@ describe("downloadFile 失败路径", () => {
         await expect(downloadFile({ dest, url: "https://example.com/cut.exe" })).rejects.toThrow(
             "stream aborted",
         );
-        // fileFailed=true：保留现场供诊断（下载器 catch 不清理）
+        // 下载器保留半成品，供调用方按需处理。
         expect(existsSync(dest)).toBe(true);
     });
 

@@ -16,6 +16,7 @@ import {
     mkdtempSync,
     readdirSync,
     readFileSync,
+    renameSync,
     rmSync,
     writeFileSync,
 } from "node:fs";
@@ -47,6 +48,7 @@ const h = vi.hoisted(() => {
         regOutput: null as null | string,
         /** tar 解压产出的 7zz 内容。 */
         tarExe: null as Buffer | string | null,
+        rejectConcurrentRename: false,
         /** downloadFile 记录与行为。 */
         downloads: [] as Array<{ dest: string; url: string; expectedSha256?: string }>,
         downloadError: null as null | Error,
@@ -85,6 +87,23 @@ vi.mock("node:child_process", () => ({
         return execFileSyncFake(exe, args);
     }),
 }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    return {
+        ...actual,
+        rename: async (...args: Parameters<typeof actual.rename>) => {
+            if (h.rejectConcurrentRename) {
+                if (existsSync(args[1])) {
+                    throw new Error("另一个实例已发布该文件");
+                }
+                renameSync(...args);
+                return;
+            }
+            await actual.rename(...args);
+        },
+    };
+});
 
 /** reg query 假实现（null 输出 = 抛错走常见路径）。 */
 function execFileSyncFake(exe: string, args: string[]): string {
@@ -194,6 +213,7 @@ beforeEach(() => {
     h.execCalls.length = 0;
     h.regOutput = null;
     h.tarExe = null;
+    h.rejectConcurrentRename = false;
     h.downloads.length = 0;
     h.downloadError = null;
     h.downloadCreatesFile = true;
@@ -669,6 +689,7 @@ describe("ensureLinuxSevenZip", () => {
     it("并发下载使用独立的暂存路径，只发布通过校验的 7zz", async () => {
         hideBundledSevenZip();
         h.tarExe = readFileSync(Bundled7zz);
+        h.rejectConcurrentRename = true;
         const options = { dataRoot: tmpRoot, arch: "x64" };
 
         const [first, second] = await Promise.all([

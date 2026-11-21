@@ -28,8 +28,9 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 
 - 版本选择：`latestRelease` 先按 `platform`/`arch` 过滤再取末条；`version` 既是缓存目录名
   也是 `app_version`，Linux 另记 `coreVersion`（清单 schema 2，`qq-releases.json` 为纯文本）。
-- 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时、完成后
-  stat 兜底；`NAPUTO_QQ_URL` 覆盖清单 URL；临时文件带 pid + 时间戳保证并发隔离。
+- 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时。
+  收到 HTTP 200 才打开目标文件，流关闭后检查文件大小与摘要。`NAPUTO_QQ_URL` 覆盖清单
+  URL，QQ 安装包临时文件带 pid + 时间戳保证并发隔离。
 - URL 归一化：`normalizeDownloadUrl` 在唯一出站口把路径段 `/QQNTV2/` 降为 `/qqntv2/`
   （CDN 边缘对该段大小写敏感，大写必 403）；清单仍存官方原样 URL。
 - Windows 解包：官方 exe 是 NSIS，必须完整版 `7z`（`7za` 不支持）；产物在 `Files/`，
@@ -50,7 +51,8 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 - Linux x64 兜底下载使用清单中的官方归档 SHA-256。`NAPUTO_7Z_URL` 仅覆盖 HTTPS
   下载位置，镜像必须提供逐字节相同的归档。无效地址、非 HTTPS 地址或重定向、下载失败
   及摘要不匹配均终止兜底。归档通过校验后才在独立临时目录提取 `7zz`，校验可执行文件
-  后原子更新缓存，下载或解包失败会清理临时目录。不匹配的旧缓存只在成功取得可信文件后替换。
+  后原子更新缓存，下载或解包失败会清理临时目录。并发写入冲突时仅复用摘要匹配的成品，
+  不匹配的旧缓存只在成功取得可信文件后替换。
 
 ### 平台分支
 
