@@ -8,6 +8,12 @@
 第二个实例会卡在 `loginService.initConfig` 之后或顶掉先启动者。兜底锁
 `<账号目录>/instance.lock`（pid、启动时间、命令行摘要）可接管已死或复用的 pid；旧锁无摘要时保守判占用，probe/E2E 前先停常驻实例。
 
+## Koishi 适配器依赖同步
+
+npm 发布任务成功后，`release.yml` 的 `notify-koishi` job 通知 Adapter-Koishi 重新检查五个
+`@napuketto/*` 包的 npm latest。发布 App 须同时安装到 Adapter-Koishi，通知只申请该仓库的
+`Contents: Write` 权限。通知失败可单独重跑该 job，或在 Adapter-Koishi 手动运行依赖同步。
+
 ## 操作步骤
 
 1. 查看状态：`napuketto status`；只看单账号用 `napuketto status -q <uin>`。
