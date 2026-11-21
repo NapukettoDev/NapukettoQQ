@@ -120,6 +120,11 @@ pnpm exec napuketto restart             # 重启 supervisor
 > [!CAUTION]
 > **本项目没有且不会有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
 
+## 状态
+
+<p align="center">
+  <img src="https://repobeats.axiom.co/api/embed/1bf92988cdc683dd8eec6232b526e6c619984c37.svg" alt="Repobeats analytics image">
+</p>
 
 ## English
 
