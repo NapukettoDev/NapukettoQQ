@@ -5,6 +5,9 @@
  * 覆盖 createWrapper / createSession / startSession / resolveQqUserDataRoot
  * 等引导路径，用 mock exports 对象模拟 QQ 环境，不依赖真实 wrapper.node。
  */
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeIQQNTWrapperSession, WrapperNodeApi } from "../../types/index.js";
 import { PlatformType } from "../../types/index.js";
@@ -166,6 +169,28 @@ describe("resolveQqUserDataRoot", () => {
         expect(resolveQqUserDataRoot(exports, { platform: PlatformType.KWINDOWS })).toContain(
             "Tencent Files",
         );
+    });
+
+    it("Windows 沙箱：使用沙箱数据根且拒绝越界", () => {
+        const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "napuketto-qq-root-")));
+        try {
+            vi.stubEnv("NAPUKETTO_SANDBOX_ROOT", sandbox);
+            const dataRoot = join(sandbox, ".napuketto");
+            const getNTUserDataInfoConfig = vi.fn(
+                () => "C:\\Users\\test\\Documents\\Tencent Files",
+            );
+            const exports = mockExports({
+                NodeQQNTWrapperUtil: { get: () => ({ getNTUserDataInfoConfig }) },
+            });
+            const platform = PlatformType.KWINDOWS;
+            expect(resolveQqUserDataRoot(exports, { dataRoot, platform })).toBe(dataRoot);
+            expect(() =>
+                resolveQqUserDataRoot(exports, { dataRoot: dirname(sandbox), platform }),
+            ).toThrow("必须位于调试沙箱内");
+            expect(getNTUserDataInfoConfig).not.toHaveBeenCalled();
+        } finally {
+            rmSync(sandbox, { recursive: true, force: true });
+        }
     });
 
     it("Windows：API 不可用时回退默认位置", () => {

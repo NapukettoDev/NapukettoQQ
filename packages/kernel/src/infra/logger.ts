@@ -19,6 +19,7 @@ import { kernelError } from "./errors.js";
 import type { LogFormat, LogLevel, TimestampMode } from "./log-config.js";
 import { createConsoleFormatStream } from "./log-format.js";
 import { redactLogLine } from "./log-redaction.js";
+import { resolveSandboxWritePath } from "./paths.js";
 
 export type { LogLevel } from "./log-config.js";
 
@@ -107,10 +108,10 @@ function buildConsoleTarget(
 
 /** 文件目的地（未配置 file 返回 null；同步写入，父目录自动创建）。 */
 function buildFileTarget(opts: LoggerOptions, level: LogLevel): OutputTarget | null {
-    const { file } = opts;
-    if (file === undefined) {
+    if (opts.file === undefined) {
         return null;
     }
+    const file = resolveSandboxWritePath(opts.file, "log.file.path");
     mkdirSync(dirname(file), { recursive: true });
     return { stream: pino.destination({ dest: file, sync: true }), level };
 }

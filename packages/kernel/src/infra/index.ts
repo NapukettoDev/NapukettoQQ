@@ -37,5 +37,6 @@ export {
     PathWrapper,
     resolveConfigPath,
     resolveDataRoot,
+    resolveSandboxWritePath,
 } from "./paths.js";
 export { sleep, waitFor } from "./wait.js";

@@ -20,12 +20,36 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { configError } from "./errors.js";
+import { isPathWithin, resolveExistingPath } from "./path-boundary.js";
 
 /** 默认数据根目录名（项目根下，2026-08-08 用户拍板：不放用户目录）。 */
 export const DEFAULT_DATA_ROOT_NAME = ".napuketto";
 
 /** 全局配置文件名。 */
 export const MAIN_CONFIG_FILE = "napuketto.toml";
+
+/** Check an actual write destination when the development launcher has set a boundary. */
+export function resolveSandboxWritePath(path: string, field: string): string {
+    const sandbox = process.env["NAPUKETTO_SANDBOX_ROOT"];
+    if (!sandbox) {
+        return path;
+    }
+    const target = resolve(path);
+    if (!isPathWithin(sandbox, target)) {
+        throw configError(`${field} 必须位于调试沙箱内: ${target}`);
+    }
+    let realTarget: string;
+    try {
+        realTarget = resolveExistingPath(target);
+    } catch (err) {
+        throw configError(`无法解析沙箱内的 ${field}: ${target}`, { cause: err });
+    }
+    if (!isPathWithin(sandbox, realTarget)) {
+        throw configError(`${field} 必须位于调试沙箱内: ${target}`);
+    }
+    return target;
+}
 
 export interface PathOptions {
     /** 显式数据根（cli `--data-dir` 传入，优先级最高）。 */
@@ -69,7 +93,11 @@ function resolveProjectRoot(): string | undefined {
 export function resolveDataRoot(dataRoot?: string): string {
     const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"] ?? process.env["NAPKETTO_DATA"];
     if (explicit !== undefined && explicit !== "") {
-        return resolve(expandTilde(explicit));
+        return resolveSandboxWritePath(resolve(expandTilde(explicit)), "数据目录");
+    }
+    const sandbox = process.env["NAPUKETTO_SANDBOX_ROOT"];
+    if (sandbox) {
+        return resolveSandboxWritePath(join(sandbox, DEFAULT_DATA_ROOT_NAME), "数据目录");
     }
     const projectRoot = resolveProjectRoot();
     if (projectRoot !== undefined) {
@@ -112,7 +140,11 @@ export interface ConfigPathOptions {
 export function resolveConfigPath(opts: ConfigPathOptions = {}): string {
     const explicit = process.env["NAPUKETTO_CONFIG"] ?? process.env["NAPKETTO_CONFIG"];
     if (explicit !== undefined && explicit !== "") {
-        return resolve(explicit);
+        return resolveSandboxWritePath(resolve(explicit), "配置文件");
+    }
+    const sandbox = process.env["NAPUKETTO_SANDBOX_ROOT"];
+    if (sandbox) {
+        return resolveSandboxWritePath(join(sandbox, MAIN_CONFIG_FILE), "配置文件");
     }
     const projectRoot = resolveProjectRoot();
     if (projectRoot !== undefined) {

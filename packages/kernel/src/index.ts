@@ -111,6 +111,7 @@ export {
     parseToml,
     resolveConfigPath,
     resolveDataRoot,
+    resolveSandboxWritePath,
     sleep,
     stringifyToml,
     waitFor,

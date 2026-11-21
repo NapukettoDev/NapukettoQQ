@@ -214,5 +214,5 @@ export function main(): void {
     registerOpsCommands(program);
     registerMainAction(program);
 
-    program.parse(process.argv);
+    program.parseAsync(process.argv).catch(handleActionError);
 }

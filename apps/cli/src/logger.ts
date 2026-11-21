@@ -21,6 +21,7 @@ import {
     parseToml,
     resolveConfigPath,
     resolveDataRoot,
+    resolveSandboxWritePath,
 } from "@napuketto/kernel";
 import { isInlineConfigActive, readInlineConfigSection } from "./config/inline.js";
 
@@ -62,6 +63,15 @@ export function resolveCliLogConfig(dataDir?: string): LogConfig {
         // [log] 段非法：env 覆盖仍生效，缺省兜底（主配置加载路径会给出确切报错）
         cachedConfig = parseLogConfig(undefined, process.env);
     }
+    if (cachedConfig.file !== undefined) {
+        try {
+            resolveLogFilePath(cachedConfig.file.path);
+        } catch (err) {
+            // Report the configuration error through a console-only logger.
+            cachedConfig = parseLogConfig(undefined, process.env);
+            throw err;
+        }
+    }
     return cachedConfig;
 }
 
@@ -91,7 +101,10 @@ export function effectiveConsoleEnv(cfg: LogConfig): Record<string, string> {
 
 /** [log.file] 相对路径按数据根展开。 */
 function resolveLogFilePath(path: string): string {
-    return isAbsolute(path) ? path : join(cachedDataRoot, path);
+    return resolveSandboxWritePath(
+        isAbsolute(path) ? path : join(cachedDataRoot, path),
+        "log.file.path",
+    );
 }
 
 /**

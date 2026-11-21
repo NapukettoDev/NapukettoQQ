@@ -62,6 +62,7 @@ function hasSection(section: Record<string, unknown>): boolean {
 
 /** 可选协议装配的公共依赖（广播器 / 配置框架 / seed 来源 / kernel 服务）。 */
 interface OptionalAssemblyDeps {
+    kernel: KernelLike;
     network: NetworkModuleLike;
     adapterCore: AdapterCoreModuleLike;
     cfgFile: string;
@@ -94,6 +95,8 @@ async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle
     if (typeof configuredCacheDir === "string" && configuredCacheDir !== "") {
         cacheDir = configuredCacheDir;
     }
+    cacheDir =
+        input.kernel.resolveSandboxWritePath?.(cacheDir, "accounts.satori.cacheDir") ?? cacheDir;
     const config = new input.adapterCore.ProtocolConfig({
         path: input.cfgFile,
         schema: input.satoriAdapter.satoriConfigSchema,
@@ -439,7 +442,7 @@ export async function assembleOb11AndSatori(
         // 与 OB11 共享 kernel apis / 消息通道 / 缓存，但广播器各自独立（协议隔离）。
         activeAdapters.push(
             ...(await assembleOptionalProtocols(
-                { network, adapterCore, cfgFile, services },
+                { kernel, network, adapterCore, cfgFile, services },
                 {
                     satori: sections.satori,
                     kurobot: sections.kurobot,
