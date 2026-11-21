@@ -1,5 +1,15 @@
 # @napuketto/cli
 
+## 0.6.41
+
+### Patch Changes
+
+- d1d85ae: Add an external development sandbox for the repository CLI with isolated configuration, data, logs, and caches, including native QQ data on Windows.
+- Updated dependencies [d1d85ae]
+  - @napuketto/kernel@0.16.3
+  - @napuketto/loader@0.10.8
+  - @napuketto/adapter@0.18.20
+
 ## 0.6.40
 
 ### Patch Changes
