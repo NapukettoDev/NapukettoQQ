@@ -13,8 +13,7 @@
  * - 流式落盘（临时文件 + 原子替换），内存占用不随文件大小增长；
  * - 超时覆盖整个下载（含跳转与读 body），大小上限同时校验 Content-Length 与实际字节数。
  *
- * 已知边界：不解析域名（DNS rebinding 不在本层防护内）；域名解析到内网的场景由部署侧
- * 网络策略兜底。需要更严格策略时应在协议配置层增加开关，而不是把解析逻辑塞进本原语。
+ * 兼容入口仅校验字面地址。公网入口同时校验实际连接的地址。
  */
 
 import { randomUUID } from "node:crypto";
@@ -25,6 +24,7 @@ import { dirname } from "node:path";
 import process from "node:process";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createPublicRequest } from "./public-download.js";
 import { MediaError } from "./types.js";
 
 /** 下载选项。 */
@@ -150,23 +150,27 @@ function isRedirect(status: number): boolean {
     return REDIRECT_STATUS.has(status);
 }
 
+export interface DownloadResponse {
+    status: number;
+    headers: Pick<Headers, "get">;
+    body: ReadableStream<Uint8Array> | null;
+}
+
+export type DownloadRequest = (url: URL, signal: AbortSignal) => Promise<DownloadResponse>;
+
 /**
  * 发起请求并手动跟随重定向：每一跳都先过 assertDownloadUrlSafe。
  * 返回非 30x 的最终响应。
  */
 async function requestFollowingRedirects(
     url: string,
-    headers: Record<string, string> | undefined,
+    request: DownloadRequest,
     signal: AbortSignal,
-): Promise<Response> {
+): Promise<DownloadResponse> {
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
         const parsed = assertDownloadUrlSafe(current);
-        const response = await fetch(parsed.href, {
-            ...(headers === undefined ? {} : { headers }),
-            redirect: "manual",
-            signal,
-        });
+        const response = await request(parsed, signal);
         if (!isRedirect(response.status)) {
             return response;
         }
@@ -186,6 +190,7 @@ async function writeCapped(
     body: ReadableStream<Uint8Array>,
     temp: string,
     maxBytes: number,
+    signal: AbortSignal,
 ): Promise<number> {
     let total = 0;
     const counter = new Transform({
@@ -198,7 +203,9 @@ async function writeCapped(
             callback(null, chunk);
         },
     });
-    await pipeline(Readable.fromWeb(body), counter, createWriteStream(temp));
+    await pipeline(Readable.fromWeb(body), counter, createWriteStream(temp, { flags: "wx" }), {
+        signal,
+    });
     return total;
 }
 
@@ -223,6 +230,30 @@ export async function downloadUrl(
     dest: string,
     options: DownloadUrlOptions = {},
 ): Promise<number> {
+    return download(url, dest, options, (target, signal) =>
+        fetch(target.href, {
+            ...(options.headers === undefined ? {} : { headers: options.headers }),
+            redirect: "manual",
+            signal,
+        }),
+    );
+}
+
+/** 下载公网 HTTP(S) URL。每一跳校验实际连接使用的地址。 */
+export async function downloadPublicUrl(
+    url: string,
+    dest: string,
+    options: Omit<DownloadUrlOptions, "headers"> = {},
+): Promise<number> {
+    return download(url, dest, options, createPublicRequest(assertDownloadUrlSafe));
+}
+
+async function download(
+    url: string,
+    dest: string,
+    options: DownloadUrlOptions,
+    request: DownloadRequest,
+): Promise<number> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     const controller = new AbortController();
@@ -230,21 +261,22 @@ export async function downloadUrl(
     // 下载未完成不影响进程自然退出
     timer.unref?.();
     const temp = `${dest}.part-${process.pid}-${randomUUID()}`;
+    let body: DownloadResponse["body"] = null;
     try {
-        const response = await requestFollowingRedirects(url, options.headers, controller.signal);
-        if (!response.ok) {
+        const response = await requestFollowingRedirects(url, request, controller.signal);
+        body = response.body;
+        if (response.status < 200 || response.status >= 300) {
             throw new MediaError(`HTTP ${response.status}`);
         }
         const declared = Number(response.headers.get("content-length") ?? "0");
         if (declared > maxBytes) {
             throw new MediaError(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
         }
-        const body = response.body;
         if (body === null) {
             throw new MediaError("响应无 body");
         }
         await mkdir(dirname(dest), { recursive: true });
-        const written = await writeCapped(body, temp, maxBytes);
+        const written = await writeCapped(body, temp, maxBytes, controller.signal);
         if (written === 0) {
             throw new MediaError("下载内容为空");
         }
@@ -255,6 +287,7 @@ export async function downloadUrl(
         throw toMediaError(err, timeoutMs);
     } finally {
         clearTimeout(timer);
+        await body?.cancel().catch(() => undefined);
     }
 }
 
