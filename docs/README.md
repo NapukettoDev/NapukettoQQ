@@ -14,6 +14,7 @@
 | A | 接 Koishi / 第三方客户端 | [OneBot 11](protocols/onebot11.md) · [Satori](protocols/satori.md) · [KuroBot](protocols/kurobot.md) · [Milky](protocols/milky.md) |
 | A | 启动失败、掉线、端口冲突 | [运维与排障](guides/operations.md) |
 | B | 本地开发、提交、changeset | [开发指南](guides/development.md) |
+| B | 复核协议、缓存、宿主与发布边界 | [专项审计复核](audit-followup.md) |
 | B | 改某个包 | 该包 `docs/design.md`（实测细节在同级 `docs/evidence.md`） |
 | B/C | 架构、启动链、历史取舍 | [架构总览](architecture/overview.md) · [运行链路](architecture/runtime.md) · [ADR](architecture/decisions.md) |
 | C | 固定入口链 | [AGENTS.md](../AGENTS.md) → 本页 → [overview](architecture/overview.md) → [runtime](architecture/runtime.md) → 包 design |
