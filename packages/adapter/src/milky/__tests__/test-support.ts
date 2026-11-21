@@ -111,9 +111,6 @@ export interface EnvOptions {
     selfUin?: string;
 }
 
-/** 环境构造默认端口（lifecycle 用固定高位端口；events 不依赖端口仅占用）。 */
-const ADAPTER_TEST_PORT = 36381;
-
 /** 构造适配器测试环境（不 start；测试自行 start/stop）。 */
 export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
     const logger = {
@@ -202,7 +199,7 @@ export async function adapterEnv(opts: EnvOptions = {}): Promise<AdapterEnv> {
     const defaults = milkyConfigSchema.parse({
         enabled: true,
         host: "127.0.0.1",
-        port: ADAPTER_TEST_PORT,
+        port: 0,
         ...opts.config,
     });
     const config = new ConfigBase({

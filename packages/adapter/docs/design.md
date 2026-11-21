@@ -219,8 +219,9 @@
   `HttpClient` 主动推送。事件统一经 `MilkyEventHub` 广播（`event: milky_event`）。
   WS 事件使用 network 的 `sendWsText`，超限连接终止并从集合移除，事件不重放；
   SSE 与 WebHook 继续独立发送。
-- 仅验证出站 WebHook 的测试以 `port: 0` 启动 HTTP server，由系统分配端口；无需回连的
-  用例不占固定监听端口，避免 CI 并行网络活动引发 `EADDRINUSE`。
+- Milky 适配器生命周期、事件及仅验证出站 WebHook 的测试以 `port: 0` 启动 HTTP server，
+  由系统分配端口。生命周期测试需要回连时读取实际监听地址，避免 CI 并行网络活动
+  引发 `EADDRINUSE`。
 - 鉴权：token 非空时校验 Bearer 头或 `?access_token=`；HTTP 语义 401 鉴权、404 未知
   API（空 body）、415 Content-Type、200 规范信封。
 - 收链路三源：消息通道（seq 登记 → grayTip notice / 群文件上传 / message_receive）、

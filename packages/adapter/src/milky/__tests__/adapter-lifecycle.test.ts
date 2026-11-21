@@ -5,6 +5,7 @@
  * start 幂等、stop 退订（通道不再派发）+ 关传输、reload 重建（enabled 切换生效）、
  * token 鉴权装配、广播路径（捕获 adapter 收到事件）。
  */
+import { Server } from "node:http";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { expectCacheTimerReleased } from "../../internal/__tests__/media-cache-timer.js";
 import { type AdapterEnv, adapterEnv, cleanupEnvDirs, flushAsync, rawMsg } from "./test-support.js";
@@ -17,32 +18,36 @@ afterEach(async () => {
         await env.adapter.stop().catch(() => undefined);
     }
     started.length = 0;
+    vi.restoreAllMocks();
 });
 
 afterAll(async () => {
-    vi.restoreAllMocks();
     await cleanupEnvDirs();
 });
 
+/** 从真实监听的 HTTP server 读取系统分配的端口。 */
+function listeningUrl(server: unknown): string {
+    const address = server instanceof Server ? server.address() : null;
+    if (address === null || typeof address === "string") {
+        throw new Error("Milky HTTP server 未监听 TCP");
+    }
+    return `http://127.0.0.1:${address.port}`;
+}
+
 describe("enabled=false 空转", () => {
-    it("start 后：无传输监听（/api 不可达）且消息不产生事件", async () => {
-        const env = await adapterEnv({ config: { enabled: false, port: 36382 } });
+    it("start 后：无传输监听且消息不产生事件", async () => {
+        const listen = vi.spyOn(Server.prototype, "listen");
+        const env = await adapterEnv({ config: { enabled: false } });
         started.push(env);
         await env.adapter.start();
         await env.msgCh.emit("Msg/onRecvMsg", [rawMsgOf(env)]);
         await flushAsync();
         expect(env.captures).toHaveLength(0);
-        // 未启用时不装配 HTTP：端口探测应失败
-        const probe = await fetch("http://127.0.0.1:36382/api/get_impl_info", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: "{}",
-        }).catch(() => undefined);
-        expect(probe).toBeUndefined();
+        expect(listen).not.toHaveBeenCalled();
     });
 
     it("未启用时 start 走校准日志提示", async () => {
-        const env = await adapterEnv({ config: { enabled: false, port: 36383 } });
+        const env = await adapterEnv({ config: { enabled: false } });
         started.push(env);
         await env.adapter.start();
         expect(env.logger.info).toHaveBeenCalledWith(
@@ -54,7 +59,7 @@ describe("enabled=false 空转", () => {
 
 describe("enabled=true 启动", () => {
     it("H-04: stop releases the unref media cache timer", async () => {
-        const env = await adapterEnv({ config: { port: 0 } });
+        const env = await adapterEnv();
         started.push(env);
         await expectCacheTimerReleased(
             () => env.adapter.start(),
@@ -63,10 +68,11 @@ describe("enabled=true 启动", () => {
     });
 
     it("start 即监听：HTTP /api 动作可达（无需显式 open）", async () => {
-        const env = await adapterEnv({ config: { port: 36384 } });
+        const listen = vi.spyOn(Server.prototype, "listen");
+        const env = await adapterEnv();
         started.push(env);
         await env.adapter.start();
-        const res = await fetch("http://127.0.0.1:36384/api/get_login_info", {
+        const res = await fetch(`${listeningUrl(listen.mock.contexts[0])}/api/get_login_info`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: "{}",
@@ -78,16 +84,18 @@ describe("enabled=true 启动", () => {
     });
 
     it("token 配置生效：无凭据 401，Bearer 头放行", async () => {
-        const env = await adapterEnv({ config: { port: 36385, token: "s3cret" } });
+        const listen = vi.spyOn(Server.prototype, "listen");
+        const env = await adapterEnv({ config: { token: "s3cret" } });
         started.push(env);
         await env.adapter.start();
-        const denied = await fetch("http://127.0.0.1:36385/api/get_login_info", {
+        const url = `${listeningUrl(listen.mock.contexts[0])}/api/get_login_info`;
+        const denied = await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: "{}",
         });
         expect(denied.status).toBe(401);
-        const ok = await fetch("http://127.0.0.1:36385/api/get_login_info", {
+        const ok = await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json", authorization: "Bearer s3cret" },
             body: "{}",
@@ -96,7 +104,7 @@ describe("enabled=true 启动", () => {
     });
 
     it("start 后消息派发产生事件（订阅链路已接）", async () => {
-        const env = await adapterEnv({ config: { port: 36386 } });
+        const env = await adapterEnv();
         started.push(env);
         await env.adapter.start();
         await env.msgCh.emit("Msg/onRecvMsg", [rawMsgOf(env)]);
@@ -107,7 +115,7 @@ describe("enabled=true 启动", () => {
     });
 
     it("start 幂等：二次 start 不重复订阅（单条消息只广播一次）", async () => {
-        const env = await adapterEnv({ config: { port: 36387 } });
+        const env = await adapterEnv();
         started.push(env);
         await env.adapter.start();
         await env.adapter.start();
@@ -118,7 +126,7 @@ describe("enabled=true 启动", () => {
 
     it("webhook 配置：装配 HttpClient 并注册广播（数量 = adapters 含捕获面）", async () => {
         const env = await adapterEnv({
-            config: { port: 36388, webhooks: ["http://127.0.0.1:9/hook"] },
+            config: { webhooks: ["http://127.0.0.1:9/hook"] },
         });
         started.push(env);
         await env.adapter.start();
@@ -131,27 +139,27 @@ describe("enabled=true 启动", () => {
 
 describe("stop / reload", () => {
     it("stop 后：通道派发不再产生事件（退订）且端口已关闭", async () => {
-        const env = await adapterEnv({ config: { port: 36389 } });
+        const listen = vi.spyOn(Server.prototype, "listen");
+        const env = await adapterEnv();
+        started.push(env);
         await env.adapter.start();
+        const server = listen.mock.contexts[0];
+        expect(server).toBeInstanceOf(Server);
+        expect(server).toHaveProperty("listening", true);
         await env.adapter.stop();
         await env.msgCh.emit("Msg/onRecvMsg", [rawMsgOf(env)]);
         await flushAsync();
         expect(env.captures).toHaveLength(0);
-        const probe = await fetch("http://127.0.0.1:36389/api/get_login_info", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: "{}",
-        }).catch(() => undefined);
-        expect(probe).toBeUndefined();
+        expect(server).toHaveProperty("listening", false);
     });
 
     it("stop 幂等：未 start 直接 stop 不抛", async () => {
-        const env = await adapterEnv({ config: { enabled: false, port: 36390 } });
+        const env = await adapterEnv({ config: { enabled: false } });
         await expect(env.adapter.stop()).resolves.toBeUndefined();
     });
 
     it("reload：enabled true→false 热更新后停止订阅（文件态配置）", async () => {
-        const env = await adapterEnv({ configFile: true, config: { port: 36391 } });
+        const env = await adapterEnv({ configFile: true });
         started.push(env);
         await env.adapter.start();
         await env.config.save({ ...env.config.get(), enabled: false });
@@ -162,15 +170,16 @@ describe("stop / reload", () => {
     });
 
     it("reload：enabled false→true 后恢复监听与订阅（文件态配置）", async () => {
+        const listen = vi.spyOn(Server.prototype, "listen");
         const env = await adapterEnv({
             configFile: true,
-            config: { enabled: false, port: 36392 },
+            config: { enabled: false },
         });
         started.push(env);
         await env.adapter.start();
         await env.config.save({ ...env.config.get(), enabled: true });
         await env.adapter.reload();
-        const res = await fetch("http://127.0.0.1:36392/api/get_login_info", {
+        const res = await fetch(`${listeningUrl(listen.mock.contexts[0])}/api/get_login_info`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: "{}",
@@ -182,7 +191,7 @@ describe("stop / reload", () => {
     });
 
     it("reload：enabled 不变 → 重建后仍单份订阅（无重复广播）", async () => {
-        const env = await adapterEnv({ config: { port: 36393 } });
+        const env = await adapterEnv();
         started.push(env);
         await env.adapter.start();
         await env.msgCh.emit("Msg/onRecvMsg", [rawMsgOf(env)]);

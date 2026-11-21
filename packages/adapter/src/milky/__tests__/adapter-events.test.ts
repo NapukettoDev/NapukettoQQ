@@ -36,7 +36,6 @@ function events(): Array<{ event_type: string; data: Record<string, unknown> }> 
 
 beforeAll(async () => {
     env = await adapterEnv({
-        config: { port: 36395 },
         withGroupChannel: true,
         withBuddyChannel: true,
         withRecentContactChannel: true,
@@ -345,7 +344,6 @@ describe("消息通道分流（Msg/onRecvMsg）", () => {
 
     it("群场景 + groupCache：实体回填进 message_receive（fillGroupEntities）", async () => {
         const envCache = await adapterEnv({
-            config: { port: 36397 },
             withGroupChannel: false,
             groupCache: stub<GroupCache>({
                 getGroupDetail: vi.fn(async () => ({
@@ -854,7 +852,6 @@ describe("置顶翻转（RecentContact/onRecentContactListChangedVer2）", () =>
     it("start 期播种：getPinnedContacts 命中后首个取消置顶可观测", async () => {
         // 独立环境：播种在 start 时发生
         const seeded = await adapterEnv({
-            config: { port: 36396 },
             withRecentContactChannel: true,
             recentContactApi: {
                 getPinnedContacts: vi.fn(async () => [
@@ -882,7 +879,6 @@ describe("置顶翻转（RecentContact/onRecentContactListChangedVer2）", () =>
 
     it("start 期播种失败 → 静默（catch 吞错，不阻断启动）", async () => {
         const failing = await adapterEnv({
-            config: { port: 36398 },
             withRecentContactChannel: true,
             recentContactApi: {
                 getPinnedContacts: vi.fn(async () => {
