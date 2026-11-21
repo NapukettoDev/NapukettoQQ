@@ -28,7 +28,7 @@
 
 协议文档（传输、鉴权、事件字段与限制）：[Milky](./docs/protocols/milky.md) ·
 [Satori](./docs/protocols/satori.md) · [OneBot 11](./docs/protocols/onebot11.md) ·
-[KuroBot](./docs/protocols/kurobot.md)。
+[KuroBot](./docs/protocols/kurobot.md)
 
 ## 嵌入的框架
 
