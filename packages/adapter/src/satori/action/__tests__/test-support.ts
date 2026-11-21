@@ -57,7 +57,7 @@ export function stubSatoriApi() {
             fetchMsgsByMsgId: vi.fn(async () => [] as never[]),
             fetchMessages: vi.fn(async () => [] as never[]),
             recallMessage: vi.fn(async () => undefined),
-            setMsgEmojiLike: vi.fn(async () => undefined),
+            setMsgEmojiLikeById: vi.fn(async () => undefined),
         }),
         groupApi: stub<GroupApi>({
             getGroupInfo: vi.fn(async () => ({ groupCode: "10001", groupName: "测试群" }) as never),

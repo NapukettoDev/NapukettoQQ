@@ -172,6 +172,9 @@
 - 事件：`message-created`、`message-deleted`、`guild-member-added/removed`；sn 从 1
   递增，启停广播 `login-updated`（在线/离线）。非登录事件只带最小 login 字段。
   消息订阅与 OB11 / Milky 共用 `subscribeRawMessages`（启动前历史消息同样拦截）。
+- `reaction.create` / `reaction.delete` 接受 `message-created`、发送及历史返回的原生 `msgId`。
+  按频道解析会话后委托 kernel 精确查询 `msgSeq` 并写入表态，`emoji_id` 使用十进制 QQ 系统
+  表情索引。删除动作仅支持删除自己的表态。
 - 消息 content 是 XML 风格字符串：`parseElements` 容错解析（注释、实体、无值属性、
   未配对标签），`renderElements` 序列化；canonical 双向转换在 `element-convert.ts` /
   `canonical.ts`。

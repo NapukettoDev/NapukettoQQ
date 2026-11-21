@@ -159,6 +159,10 @@ export interface MsgApiLike {
         peer: { chatType: number; peerUid: string },
         options: { count: number; msgId?: string },
     ): Promise<unknown[]>;
+    setMsgEmojiLikeById?(
+        peer: { chatType: number; peerUid: string },
+        options: { msgId: string; emojiId: string; like: boolean },
+    ): Promise<void>;
     markRead(peer: { chatType: number; peerUid: string }): Promise<void>;
     /** 设置在线状态（自建宿主无 UI，引导链必须显式上报——缺它 = 半在线无推送，2026-09-15 发现 I）。 */
     setOnlineStatus(opts: {

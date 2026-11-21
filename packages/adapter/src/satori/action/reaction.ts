@@ -10,9 +10,6 @@ import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type ReactionActionDeps = Pick<SatoriApi, "msgApi" | "resolvePeer">;
 
-/** 表情 ID 默认类型（QQ 表情 id 为 qq 表情索引）。 */
-const EMOJI_TYPE = "1";
-
 /** 表态动作工厂（reaction.create / reaction.delete）。 */
 export function createReactionActions(deps: ReactionActionDeps): SatoriActionHandler[] {
     return [
@@ -27,10 +24,9 @@ export function createReactionActions(deps: ReactionActionDeps): SatoriActionHan
             handle: async (payload): Promise<void> => {
                 const { channel_id: channelId, message_id: messageId, emoji_id: emojiId } = payload;
                 const peer = await deps.resolvePeer(channelId);
-                await deps.msgApi.setMsgEmojiLike(peer, {
-                    msgSeq: messageId,
+                await deps.msgApi.setMsgEmojiLikeById(peer, {
+                    msgId: messageId,
                     emojiId,
-                    emojiType: EMOJI_TYPE,
                     like: true,
                 });
             },
@@ -56,10 +52,9 @@ export function createReactionActions(deps: ReactionActionDeps): SatoriActionHan
                     throw kernelError("暂不支持删除他人表态", "INVALID_PARAM");
                 }
                 const peer = await deps.resolvePeer(channelId);
-                await deps.msgApi.setMsgEmojiLike(peer, {
-                    msgSeq: messageId,
+                await deps.msgApi.setMsgEmojiLikeById(peer, {
+                    msgId: messageId,
                     emojiId,
-                    emojiType: EMOJI_TYPE,
                     like: false,
                 });
             },

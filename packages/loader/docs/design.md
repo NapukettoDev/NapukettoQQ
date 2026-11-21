@@ -136,6 +136,14 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   event、result、log、ping/pong、action、control（stop/restart/login/status）。
 - 登录前就启动 stdin 服务端（只含 `login.refreshQr`）；登录后 `attachIpcServices` 把
   kernel 点分动作并入同一张表，Msg/Group/Buddy/RecentContact/Login 五条通道转 event。
+- `msg.addReaction` 是稳定业务动作，参数为 `{ chatType?, peerUid? / peerUin?, msgId, emojiId }`。
+  私聊（默认 `chatType: 1`）和临时会话（`100`）可传 UID，或传 QQ 号转换为 UID；
+  群聊（`2`）的 `peerUid` 或 `peerUin` 填群号。两者都提供时优先 `peerUid`。
+  `msgId` 为消息事件、发送或历史返回的原生字符串，`emojiId` 为 QQ 系统表情索引的十进制
+  字符串（如 `"105"`），使用 QQ 表情类型 `"1"`。每次委托 kernel 按会话精确查找并添加
+  表态，独立于 OB11 映射。成功返回 `{ ok: true }`，失败返回带 `code` 和 `message` 的
+  IPC 错误（包括 `INVALID_PARAM`、`NOT_FOUND`、`INVALID_STATE` 及平台权限错误）。调用
+  需要支持 `MsgApi.setMsgEmojiLikeById` 的 kernel，旧 kernel 下该动作返回 `INVALID_STATE`。
 - 初次引导与软重登都先完成动作挂载，再写出 `status(ready)`，随后才允许写出
   `event`（含 OB11）。装配期间到达 IPC 出口的事件直接丢弃。软重登在清理旧装配前
   发 `status(sessioning)`，暂停事件转发。如果写入 ready 同步失败，成功重播后才放行。
