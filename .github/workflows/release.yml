@@ -434,3 +434,26 @@ jobs:
               env:
                   NPM_CONFIG_LOGLEVEL: verbose
               run: node tooling/release/release-npm.ts
+
+    notify-koishi:
+        name: 通知 Koishi 适配器检查 npm 依赖
+        needs: publish
+        if: github.ref == 'refs/heads/main' && needs.publish.result == 'success'
+        runs-on: ubuntu-24.04
+        timeout-minutes: 5
+        steps:
+            - id: app-token
+              uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+              with:
+                  client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  owner: NapukettoDev
+                  repositories: Adapter-Koishi
+                  permission-contents: write
+
+            - name: 发送发布完成事件
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+              run: |
+                  gh api repos/NapukettoDev/Adapter-Koishi/dispatches \
+                      -f event_type=napuketto-published
