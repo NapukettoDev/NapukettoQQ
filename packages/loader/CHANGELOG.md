@@ -1,5 +1,11 @@
 # @napuketto/loader
 
+## 0.10.9
+
+### Patch Changes
+
+- e9ea614: Add the Loader IPC action `msg.addReaction` for QQ system emoji reactions on native message IDs. Resolve the message sequence in the requested conversation for both IPC and the Satori reaction actions.
+
 ## 0.10.8
 
 ### Patch Changes
