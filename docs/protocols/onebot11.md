@@ -7,7 +7,7 @@
 
 ```toml
 [accounts.onebot11]
-token = "change-me"           # 空 = 不鉴权（仅本机调试）
+token = ""                    # 示例仅绑定本机回环，非回环监听须设置随机 token
 messagePostFormat = "array"   # array | string（CQ 码）
 heartbeatInterval = 3000      # meta 事件心跳；0 关闭
 

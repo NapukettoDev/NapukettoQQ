@@ -65,7 +65,9 @@
   相等语义），SHA-256 固定长度摘要后用 Node `timingSafeEqual` 比较；不同长度不抛错，
   不做 Unicode 规范化。摘要计算仍与输入长度相关，不承诺整个请求恒定耗时。
   Bearer / 裸头复用同一头名解析结果（小写优先、`Authorization` 兜底）；Bearer 前缀
-  大小写、空 token 免鉴权、查询参数和错误 Bearer 回退规则保持不变。
+  大小写、查询参数和错误 Bearer 回退规则保持不变。鉴权解析的诊断回调不传入 URL 或异常对象。
+- 启用的 OneBot 11 / Satori HTTP、WS 实例按 `实例 token ?? 协议 token` 校验，Milky 按单端口 token 校验。只有数值回环地址可省略 token。非回环监听拒绝缺失、空白和文档占位 token。CLI 配置命令与 loader 启动装配复用协议 schema，错误指出字段位置且不回显配置值。回环免鉴权要求所有直连进程可信，或由仅有的可达入口统一鉴权。Docker 的宿主机映射与容器监听分别配置，容器非回环监听同样要求 token。
+- OneBot 11 正向 WS 的首连和重试诊断使用配置序号与固定错误类别。
 - fail-soft 降级分支必须留痕：kernel API 调用失败（uid↔uin、群缓存读、媒体下载）→
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
@@ -227,6 +229,7 @@
   引发 `EADDRINUSE`。
 - 鉴权：token 非空时校验 Bearer 头或 `?access_token=`；HTTP 语义 401 鉴权、404 未知
   API（空 body）、415 Content-Type、200 规范信封。
+- Upgrade 与 HTTP 共用鉴权规则。Upgrade 对非 `/event` 或禁用 WS 返回 404，对凭据不匹配返回 401，对无法解析的目标返回 400。协议层做路由与鉴权决定，network 回应、握手并管理底层 socket。请求诊断只记录固定类别或路由模板，WebHook 日志用配置序号定位。
 - 收链路三源：消息通道（seq 登记 → grayTip notice / 群文件上传 / message_receive）、
   群通知、好友申请；另接 sysmsg（732:16 表情回应、732:1 精华快路径）、最近会话置顶
   翻转、登录掉线、私聊文件。自消息不上报。

@@ -12,8 +12,8 @@
  * 事件推送统一经 MilkyEventHub（注册到 EventBroadcaster，send → SSE/WS 客户端）。
  */
 
-import { errorMessage } from "@napuketto/kernel";
 import type {
+    AuthorizeHook,
     EventBroadcaster,
     HttpRouteContext,
     Respond,
@@ -22,7 +22,7 @@ import type {
 } from "@napuketto/network";
 import { createSseResponse, HttpClient, HttpServer, sendWsText } from "@napuketto/network";
 import type { ActionRegistry } from "../framework/index.js";
-import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential } from "../framework/index.js";
+import { BEARER_PREFIX, createTokenAuthorize } from "../framework/index.js";
 import type { MilkyAction } from "./action/index.js";
 import type { MilkyConfig } from "./config.js";
 
@@ -57,7 +57,12 @@ class MilkyEventHub implements TransportAdapter {
     private readonly sockets = new Set<WsSocket>();
 
     /** 把 /event 的 SSE（onRawRequest）与 WS 升级（onUpgrade）挂到 HTTP server。 */
-    attachTo(server: HttpServer, config: MilkyConfig): void {
+    attachTo(
+        server: HttpServer,
+        config: MilkyConfig,
+        authorize: AuthorizeHook | undefined,
+        logger: MilkyLoggerLike | undefined,
+    ): void {
         server.onRawRequest = (ctx) => {
             if (ctx.path !== EVENT_PATH || ctx.method !== "GET") {
                 return undefined;
@@ -73,18 +78,22 @@ class MilkyEventHub implements TransportAdapter {
             });
         };
         server.onUpgrade = (req, accept, reject) => {
-            if (pathnameOf(req.url) !== EVENT_PATH) {
+            const target = URL.parse(req.url, "http://localhost");
+            if (target === null) {
+                logger?.debug({ category: "invalid_upgrade_target" }, "milky: 升级目标解析失败");
+                reject(400);
+                return;
+            }
+            if (target.pathname !== EVENT_PATH) {
+                reject(404);
                 return;
             }
             if (!config.eventModes.includes("ws")) {
-                reject(404, "event mode ws disabled");
+                reject(404);
                 return;
             }
-            if (
-                config.token !== "" &&
-                !matchTokenCredential(req, config.token, { allowQueryToken: true })
-            ) {
-                reject(401, "unauthorized");
+            if (authorize && !authorize(req)) {
+                reject(401);
                 return;
             }
             accept((socket) => {
@@ -143,9 +152,9 @@ export function assembleMilkyTransports(opts: {
     const token = config.token;
     const authorize = createTokenAuthorize(token, {
         allowQueryToken: true,
-        onQueryParseError: (url, err) => {
+        onQueryParseError: () => {
             logger?.debug(
-                { url, error: errorMessage(err) },
+                { category: "invalid_auth_target" },
                 "milky: 鉴权 URL 解析失败，按未授权拒绝",
             );
         },
@@ -156,19 +165,22 @@ export function assembleMilkyTransports(opts: {
         port: config.port,
         ...(authorize !== undefined ? { authorize } : {}),
     });
-    hub.attachTo(server, config);
+    hub.attachTo(server, config, authorize, logger);
     server.onPathRequest = (ctx, req, respond) => {
         handleMilkyHttpRequest(ctx, req, respond, registry, logger);
     };
 
     const adapters: TransportAdapter[] = [server, hub];
-    for (const url of config.webhooks) {
+    for (const [index, url] of config.webhooks.entries()) {
         const client = new HttpClient({
             url,
             ...(token !== "" ? { headers: { authorization: `${BEARER_PREFIX}${token}` } } : {}),
             timeoutMs: 5000,
-            onError: (err: unknown) => {
-                logger?.warn({ url, err: String(err) }, "milky: webhook 推送失败");
+            onError: () => {
+                logger?.warn(
+                    { category: "webhook_delivery_failed", index },
+                    "milky: webhook 推送失败",
+                );
             },
         });
         adapters.push(client);
@@ -239,21 +251,12 @@ function handleMilkyHttpRequest(
                 });
             }
         })
-        .catch((err) => {
+        .catch(() => {
             // runAction 之外的意外异常：warn 留痕后统一回 -500（响应面不变）
             logger?.warn(
-                { path: ctx.path, error: errorMessage(err) },
+                { path: "/api/:api", category: "action_dispatch_failed" },
                 "milky: 动作分发异常，已回 -500",
             );
             respond({ status: "failed", retcode: -500, data: null, message: "internal error" });
         });
-}
-
-/** URL 路径部分（无 scheme 相对 url 容错）。 */
-function pathnameOf(url: string): string {
-    try {
-        return new URL(url, "http://localhost").pathname;
-    } catch {
-        return url.split("?")[0] ?? "";
-    }
 }

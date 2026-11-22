@@ -86,9 +86,10 @@ export type RawRequestHook = (ctx: HttpRouteContext, req: RequestContext) => Res
 
 /**
  * 同端口 WS 升级注入点。
- * accept 把升级后的 WS 连接交协议层收发；reject 以 HTTP 状态码拒绝（socket 直毁）。
- * 升级请求不走 authorize 钩子（升级握手无标准响应通道），鉴权由协议层在
- * 钩子内按 ctx 自行判定（token 头或 access_token 查询参数）。
+ * 同步选择 accept 或 reject，只采纳第一次调用并在钩子返回后执行。
+ * 未选择回 404，钩子抛错回 500，拒绝时写完 HTTP 响应并关闭连接。
+ * accept 完成握手后交付 WS 连接，交接回调抛错时终止该连接。
+ * 升级鉴权由协议层在钩子内判定。
  */
 export type WsUpgradeHook = (
     req: RequestContext,

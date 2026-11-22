@@ -5,10 +5,11 @@
  * 鉴权（token）通过 `authorize` 钩子，规则由协议层决定。
  */
 
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, STATUS_CODES } from "node:http";
 import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
-import { getRequestListener } from "@hono/node-server";
+import { types } from "node:util";
+import { getRequestListener, RequestError } from "@hono/node-server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -22,12 +23,14 @@ import {
     type RequestContext,
     type Respond,
     type TransportAdapter,
+    type WsSocket,
     type WsUpgradeHook,
 } from "./types.js";
 
 const HTTP_STATUS = {
     badRequest: 400,
     unauthorized: 401,
+    notFound: 404,
     payloadTooLarge: 413,
     internalError: 500,
     unavailable: 503,
@@ -36,6 +39,50 @@ const HTTP_STATUS = {
 
 /** 关闭握手宽限期；之后强断所有剩余 TCP 连接，包括升级后的 WS。 */
 const CLOSE_GRACE_MS = 250;
+const STATUS_REASON = /^[ -~]{1,128}$/;
+
+type UpgradeDecision =
+    | { accept: (socket: WsSocket) => void }
+    | { status: number; reason?: string | undefined };
+
+function decideUpgrade(hook: WsUpgradeHook | undefined, req: RequestContext): UpgradeDecision {
+    let decision: UpgradeDecision | undefined;
+    try {
+        const result: unknown = hook?.(
+            req,
+            (accept) => {
+                decision ??= { accept };
+            },
+            (status, reason) => {
+                decision ??= { status, reason };
+            },
+        );
+        if (types.isPromise(result)) {
+            result.catch(() => undefined);
+            return { status: HTTP_STATUS.internalError };
+        }
+        return decision ?? { status: HTTP_STATUS.notFound };
+    } catch {
+        return { status: HTTP_STATUS.internalError };
+    }
+}
+
+function rejectUpgrade(socket: Duplex, status: number, reason?: string): void {
+    if (socket.destroyed || !socket.writable) {
+        socket.destroy();
+        return;
+    }
+    if (!Number.isInteger(status) || status < 400 || status > 599) {
+        status = HTTP_STATUS.internalError;
+        reason = undefined;
+    }
+    const text =
+        reason !== undefined && STATUS_REASON.test(reason) ? reason : (STATUS_CODES[status] ?? "");
+    socket.once("error", () => socket.destroy());
+    socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, () =>
+        socket.destroy(),
+    );
+}
 
 function toRequestContext(c: Context): RequestContext {
     const raw = c.req.header();
@@ -79,6 +126,12 @@ export class HttpServer implements TransportAdapter {
     constructor(opts: HttpServerOptions) {
         this.opts = opts;
         this.app = new Hono();
+        this.app.onError((err, c) => {
+            if (err instanceof RequestError) {
+                return c.json({ error: "invalid request" }, HTTP_STATUS.badRequest);
+            }
+            return c.json({ error: "internal server error" }, HTTP_STATUS.internalError);
+        });
         // 请求体上限（2026-11-03 依赖审计整改）：第三方可直接 POST，
         // 无上限时一个超大 JSON 就能把解析阶段的内存打爆。默认值考虑
         // base64 媒体，见 types.ts DEFAULT_MAX_BODY_BYTES。
@@ -262,17 +315,30 @@ export class HttpServer implements TransportAdapter {
         });
         this.wss = wss;
         server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
-            this.onUpgrade?.(
-                incomingMessageToRequestContext(req),
-                (accept) => {
-                    wss.handleUpgrade(req, socket, head, (client) => accept(client));
-                },
-                (status, reason) => {
-                    const text = reason ?? "";
-                    socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\n\r\n`);
-                    socket.destroy();
-                },
-            );
+            const decision = decideUpgrade(this.onUpgrade, incomingMessageToRequestContext(req));
+            if (this.closing) {
+                rejectUpgrade(socket, HTTP_STATUS.unavailable);
+                return;
+            }
+            if ("status" in decision) {
+                rejectUpgrade(socket, decision.status, decision.reason);
+                return;
+            }
+            try {
+                wss.handleUpgrade(req, socket, head, (client) => {
+                    try {
+                        const result: unknown = decision.accept(client);
+                        if (types.isPromise(result)) {
+                            result.catch(() => client.terminate());
+                        }
+                    } catch {
+                        client.terminate();
+                    }
+                });
+            } catch {
+                // ws 已接手握手与 socket 监听器，握手内部异常交给 socket 回收。
+                socket.destroy();
+            }
         });
     }
 

@@ -10,10 +10,12 @@
  * 注意：onUpgrade 必须在 open() 之前挂（open 时才 attach upgrade 监听），
  * 注入点统一经 start(configure) 在 open 前配置。
  */
+import { once } from "node:events";
+import { createConnection } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { HttpServer } from "../http-server.js";
-import type { HttpServerOptions, RequestContext, Respond } from "../types.js";
+import type { HttpServerOptions, RequestContext, Respond, WsUpgradeHook } from "../types.js";
 import { getFreePort, waitOpen } from "./test-support.js";
 
 describe("HttpServer", () => {
@@ -127,6 +129,27 @@ describe("HttpServer", () => {
         await fetch(`${base}/api?token=abc`, { method: "POST", body: "{}" });
         expect(seen?.url).toContain("/api?token=abc");
         expect(seen?.headers["content-type"]).toBeDefined();
+    });
+
+    it("请求钩子异常返回固定错误，框架不输出请求数据", async () => {
+        const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            const { base } = await start(undefined, {
+                authorize: (ctx) => {
+                    throw new Error(JSON.stringify(ctx));
+                },
+            });
+            const res = await fetch(`${base}/api?access_token=query-test-value`, {
+                method: "POST",
+                headers: { authorization: "Bearer header-test-value" },
+                body: "{}",
+            });
+            expect(res.status).toBe(500);
+            expect(await res.json()).toEqual({ error: "internal server error" });
+            expect(stderr).not.toHaveBeenCalled();
+        } finally {
+            stderr.mockRestore();
+        }
     });
 
     it("非法 JSON body → 400 {error: invalid json body}", async () => {
@@ -330,16 +353,77 @@ describe("HttpServer", () => {
         await replacement.open();
     });
 
-    it("onUpgrade reject(status) → WS 握手以该状态码被拒", async () => {
-        const { base } = await start((server) => {
-            server.onUpgrade = (_req, _accept, reject) => {
+    const rejectedUpgrades: { name: string; hook: WsUpgradeHook; status: number }[] = [
+        { name: "未匹配", hook: () => undefined, status: 404 },
+        {
+            name: "显式拒绝",
+            hook: (_req, accept, reject) => {
                 reject(403, "forbidden");
-            };
-        });
+                accept(() => undefined);
+            },
+            status: 403,
+        },
+        {
+            name: "同步异常",
+            hook: (_req, accept) => {
+                accept(() => undefined);
+                throw new Error("test hook error");
+            },
+            status: 500,
+        },
+        {
+            name: "异步钩子误用",
+            hook: async () => {
+                throw new Error("test hook rejection");
+            },
+            status: 500,
+        },
+    ];
 
+    it.each(rejectedUpgrades)(
+        "onUpgrade $name 返回 $status 并主动关闭",
+        async ({ hook, status }) => {
+            const { base } = await start((server) => {
+                server.onUpgrade = hook;
+            });
+
+            const { hostname, port } = new URL(base);
+            const socket = createConnection({ host: hostname, port: Number(port) });
+            socket.setEncoding("utf8");
+            let response = "";
+            socket.on("data", (chunk: string) => {
+                response += chunk;
+            });
+            try {
+                const closed = once(socket, "close", { signal: AbortSignal.timeout(1000) });
+                socket.write(
+                    "GET /ws HTTP/1.1\r\nHost: localhost\r\n" +
+                        "Connection: Upgrade\r\nUpgrade: websocket\r\n" +
+                        "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+                );
+                await closed;
+                expect(response).toMatch(new RegExp(`^HTTP/1.1 ${status} `));
+                expect(response).toContain("\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+            } finally {
+                socket.destroy();
+            }
+        },
+    );
+
+    it("accept 交接抛错后终止已升级客户端", async () => {
+        const { base } = await start((server) => {
+            server.onUpgrade = (_req, accept) =>
+                accept(() => {
+                    throw new Error("test handoff error");
+                });
+        });
         const ws = new WebSocket(`${base.replace("http", "ws")}/ws`);
-        await expect(waitOpen(ws)).rejects.toThrow(/403/);
-        ws.terminate();
+        try {
+            const closed = once(ws, "close", { signal: AbortSignal.timeout(1000) });
+            await Promise.all([waitOpen(ws), closed]);
+        } finally {
+            ws.terminate();
+        }
     });
 
     it("onUpgrade 收到含查询串的 url 与升级头（accept 建立连接）", async () => {

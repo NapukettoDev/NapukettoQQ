@@ -39,8 +39,8 @@ export interface TokenAuthOptions {
     allowQueryToken?: boolean | undefined;
     /** 是否允许裸 authorization 头直接等于 token（OB11 兼容，默认 false）。 */
     allowRawHeader?: boolean | undefined;
-    /** 查询参数 URL 解析异常回调（Milky debug 校准日志用）。 */
-    onQueryParseError?: ((url: string, err: unknown) => void) | undefined;
+    /** 查询参数 URL 解析失败通知，避免诊断路径携带请求原文。 */
+    onQueryParseError?: (() => void) | undefined;
 }
 
 /**
@@ -72,8 +72,8 @@ export function matchTokenCredential(
         try {
             const parsed = new URL(ctx.url, QUERY_BASE);
             return tokenEquals(parsed.searchParams.get("access_token"), token);
-        } catch (err) {
-            opts.onQueryParseError?.(ctx.url, err);
+        } catch {
+            opts.onQueryParseError?.();
             return false;
         }
     }

@@ -178,7 +178,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             }
             this.outboundCancels.push(
                 openOutboundWithRetry(item.transport, {
-                    label: `onebot11 正向 WS ${reconnect.url}`,
+                    label: `onebot11 wsReverseUrls[${reconnect.index}]`,
                     delayMs: reconnect.delayMs,
                     ...(reconnect.maxAttempts !== undefined
                         ? { maxAttempts: reconnect.maxAttempts }

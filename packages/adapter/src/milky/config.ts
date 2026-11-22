@@ -5,16 +5,17 @@
  * 单端口 HTTP 模型（/api + /event 同端口），`enabled` 缺省 false = 不启用。
  */
 import { z } from "zod";
+import { validateListenerToken } from "../framework/transport-schema.js";
 
 /** Milky 配置 schema。 */
-export const milkyConfigSchema = z.object({
+const configFields = z.object({
     /** 启用开关（缺省 false：账号段存在但 enabled 未开 = 装配为空转）。 */
     enabled: z.boolean().default(false),
     /** HTTP 监听地址。 */
     host: z.string().min(1).default("127.0.0.1"),
     /** HTTP 监听端口（/api 与 /event 同端口）。 */
     port: z.number().int().min(0).max(65535).default(3001),
-    /** access_token（空 = 不校验，仅限内网）。 */
+    /** access_token（仅数值回环监听可以省略）。 */
     token: z.string().default(""),
     /** /event 允许的连接形态（缺省两者都开）。 */
     eventModes: z.array(z.enum(["sse", "ws"])).default(["sse", "ws"]),
@@ -22,6 +23,12 @@ export const milkyConfigSchema = z.object({
     webhooks: z.array(z.string().min(1)).default([]),
     /** 发送媒体 http(s) URI 下载缓存目录（缺省不下载 = http(s) 发送媒体不可用）。 */
     cacheDir: z.string().optional(),
+});
+
+export const milkyConfigSchema = configFields.superRefine((config, ctx) => {
+    if (config.enabled) {
+        validateListenerToken(config.host, config.token, ctx, ["token"]);
+    }
 });
 
 /** Milky 配置类型（由 schema 推导）。 */

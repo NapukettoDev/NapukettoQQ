@@ -7,7 +7,7 @@
 
 ```toml
 [accounts.satori]
-token = "change-me"     # 空 = 不鉴权
+token = ""              # 示例仅绑定本机回环，非回环监听须设置随机 token
 # cacheDir = "<账号目录>/cache"
 
 [[accounts.satori.httpServers]]
