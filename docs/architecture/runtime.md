@@ -61,18 +61,18 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 `self-host.cjs`（`src/host/core/self-host.ts` 打成单文件 CJS bundle）：
 
-1. `NAPUTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后取账号目录实例锁，失败即退出。
-2. 校验 `NAPUTO_WRAPPER_PATH`，`process.dlopen` 加载 `wrapper.node`；检查 exports 至少含
-   `NodeIKernelLoginService`，并调 `NodeIO3MiscService.get().addO3MiscListener(...)` 激活
-   事件分发（不激活会导致 `getLoginList` 永不 resolve）。
-3. 动态 import kernel；从 `major.node` 解析 appid（失败即报错）；`NapukettoCore.create` →
+1. `NAPUTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后原子获取账号目录实例锁，失败即退出。
+2. 校验 `NAPUTO_WRAPPER_PATH`，动态 import kernel 后调用其 `dlopenWrapper` 加载并校验原生导出。
+   分发监听由 kernel 的 `activateO3MiscService` 激活。此步骤是 `getLoginList` 的前置条件。
+3. 从 `major.node` 解析 appid（失败即报错）；`NapukettoCore.create` →
    `attachWrapper`：在 `engine.initWithDeskTopConfig` **之前**创建 session
    （`StartupSessionWrapper.create` / `getNTWrapperSession`），顺序反了登录后
    `onOpentelemetryInit` 不触发。
 4. 登录 → 激活 session → 等 `getMsgService` 就绪 → 创建 kernel 业务服务（事件通道与桥、
    `GroupCache`、`BuddyCache`、各 API、消息日志、在线状态）。
 5. 装配协议（非 IPC）或挂 IPC 动作表（IPC）；成功后常驻（IPC 上报 `ready`）。
-6. 任一步失败：返回 `false` 并退出，IPC 额外上报 `failed`；supervisor 按 `autoRestart`
+6. 信号、停止哨兵、父进程断管以及 IPC 或协议退出请求都接入限时关停，退出时最后释放账号锁。
+   任一步失败：返回 `false` 并退出，IPC 额外上报 `failed`；supervisor 按 `autoRestart`
    决定是否重启，单账号直接退出。
 
 ## QQ 原生文件来源

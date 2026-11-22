@@ -5,10 +5,14 @@
  * 非 IPC 模式（cli pnpm start）stdout 不输出协议行，零干扰。
  */
 
+import { isShuttingDown } from "../../lifecycle/shutdown.js";
+import { log } from "../util.js";
 import { encodeIpcMessage } from "./ipc-codec.js";
 import {
+    DEFAULT_MAX_IPC_LINE_BYTES,
     IPC_VERSION,
     type IpcBootPhase,
+    type IpcLoginPayload,
     type IpcLogLevel,
     type IpcMessage,
     type IpcResultPayload,
@@ -24,23 +28,81 @@ let enabled = false;
 let lastStatus: IpcStatusPayload | null = null;
 let eventForwardingEnabled = false;
 
-/** 启用 IPC 发送（幂等）。 */
-export function enableIpc(): void {
+let onOutputLost: (() => void) | undefined;
+
+/** 启用 IPC；self-host 在首帧之前挂输出故障处理。 */
+export function enableIpc(onLost?: () => void): void {
     enabled = true;
+    if (onLost !== undefined && onOutputLost === undefined) {
+        onOutputLost = onLost;
+        process.stdout.on("error", loseOutput);
+        process.stdout.once("close", loseOutput);
+    }
 }
 
-/** 将一条 JSON 行交给 stdout，含写入缓冲区。失败不阻塞引导。 */
+function loseOutput(): void {
+    if (enabled && onOutputLost !== undefined) {
+        enabled = false;
+        onOutputLost();
+    }
+}
+
+/** 关停时尝试冲刷已排队的协议帧，由关停编排限制等待时间。 */
+export async function flushIpc(): Promise<void> {
+    if (enabled && process.stdout.writableLength > 0) {
+        await new Promise<void>((resolve) => {
+            process.stdout.write("", (error) => {
+                if (error) {
+                    loseOutput();
+                }
+                resolve();
+            });
+        });
+    }
+}
+
 function sendIpc(message: IpcMessage): boolean {
-    if (!enabled) {
+    if (!enabled || isShuttingDown()) {
+        return false;
+    }
+    let line: string;
+    try {
+        line = encodeIpcMessage(message);
+    } catch {
+        log("[ipc] 无法编码输出帧");
         return false;
     }
     try {
-        process.stdout.write(encodeIpcMessage(message));
+        if (onOutputLost === undefined) {
+            process.stdout.write(line);
+        } else {
+            if (
+                !process.stdout.writable ||
+                process.stdout.writableLength > 2 * DEFAULT_MAX_IPC_LINE_BYTES
+            ) {
+                loseOutput();
+                return false;
+            }
+            process.stdout.write(line, (error) => {
+                if (error) {
+                    loseOutput();
+                }
+            });
+        }
         return true;
     } catch {
-        // ignore：stdout 不可写不阻塞引导（崩溃堆栈仍走 stderr）
+        loseOutput();
         return false;
     }
+}
+
+type SelfInfo = NonNullable<IpcLoginPayload["selfInfo"]>;
+
+/** 从同一代已发布的 ready 快照读取身份。 */
+export function readReadySelf(): SelfInfo | undefined {
+    return lastStatus?.phase === "ready" && eventForwardingEnabled
+        ? lastStatus.selfInfo
+        : undefined;
 }
 
 /** 引导状态（booting/dlopening/logging/sessioning/ready/failed）。 */
@@ -48,9 +110,11 @@ export function sendStatus(
     phase: IpcBootPhase,
     message?: string,
     error?: { code: string; message: string },
+    selfInfo?: SelfInfo,
 ): void {
     const payload: IpcStatusPayload = {
         phase,
+        ...(phase === "ready" && selfInfo?.uin.trim() && selfInfo.uid.trim() ? { selfInfo } : {}),
         ...(message !== undefined ? { message } : {}),
         ...(error !== undefined ? { error } : {}),
     };

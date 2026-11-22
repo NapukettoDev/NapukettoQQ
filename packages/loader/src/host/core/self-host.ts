@@ -1,27 +1,4 @@
-/**
- * self-host.ts：自建宿主（路线 A，NAPUTO_SELF_HOST）入口——标准 Node 进程直接运行。
- * 2026-08-07 阶段 2：由 runtime/self-host.cjs TS 化（零语义改动）。
- * 由 loader launcher.launchSelfHost() spawn 标准 node 启动；环境变量继承。
- *
- * 背景（2026-08-07 HANDOVER-V6/V9 实测，勿重复探索）：
- *  - 纯 Node（系统 node）+ stub QQNT.dll 转发 + 9.9.33 官方 wrapper.node 可完整登录，
- *    且 session 业务 service 全部 READY（getMsgService 298 方法）。
- *  - 与路线 B（注入 QQ worker，继承 QQ env）不同：标准 node 没有 QQ 的环境与事件分发
- *    对象，必须手动完成三要素：
- *      ① 加载 = stub QQNT.dll 转发（napi_* → node.exe，PATH 前置 stub 目录，
- *         launcher.launchSelfHost 负责装配 PATH）
- *      ② `NodeIO3MiscService.get()` + `addO3MiscListener` 激活事件分发
- *         （否则 getLoginList 永不 resolve——挂起，V6 实测）
- *      ③ commonPath/desktopGlobalPath = 数据根/nt_qq/global（kernel 已按
- *         electronProcessType() !== "browser" 自动解析，见 wrapper-loader.ts）
- *
- * 职责（本文件只做自建宿主特有的引导前置，业务链路完全复用）：
- *  1. process.dlopen(wrapper.node) → exports（98 个，stub 提供宿主符号）
- *  2. O3MiscService 激活事件分发
- *  3. 构造 state（wrapperExports）→ 调 bootstrap(state)
- *     → kernel 装配 → 登录（快速/QR）→ session（先 init 后 start）→ 冒烟 → 协议装配
- */
-
+/** 标准 Node 自建宿主入口。加载与激活原生模块由 kernel 负责。 */
 import {
     acquireInstanceLock,
     checkInstanceLock,
@@ -29,216 +6,111 @@ import {
 } from "../../lifecycle/instance-lock.js";
 import {
     installSignalShutdown,
+    isShuttingDown,
+    registerShutdownHook,
     requestShutdown,
     watchStopSentinel,
 } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import {
     enableIpc,
+    flushIpc,
+    type IpcServerOptions,
     lastIpcStatusPhase,
     sendStatus,
     shouldSendGenericBootFailed,
+    startIpcServer,
 } from "../ipc/index.js";
-import { getOwnProp, hasCallableProp } from "../type-guards.js";
 import { bootstrapExitCode, createState, errMsg, log, logFatal } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";
 
-const state = createState();
+const ACCOUNT_PATH_SEPARATOR = /[\\/]/;
+const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
+const ipc: IpcServerOptions | undefined = ipcMode ? { actions: new Map() } : undefined;
 
-// 优雅关停接入（2026-10-25 生命周期契约）：
-//  - 信号：SIGINT/SIGTERM/SIGBREAK（Windows CTRL_BREAK_EVENT 可达——嵌入式宿主
-//    CREATE_NEW_PROCESS_GROUP + GenerateConsoleCtrlEvent 优雅停整树）
-//  - 停止哨兵：<数据根>/napuketto.stop（宿主/脚本写文件即可，零 win32 依赖；
-//    mtime 晚于进程启动才触发，账号内容匹配 basename(NAPUTO_CFG_DIR)）
-//  - 编排：关停钩子（bootstrapWithCore 注册：适配器停止 → IPC 面 → 桥/缓存
-//    退订）→ exit 0（0 = 请求式正常退出，与崩溃区分）
 installSignalShutdown();
-{
-    const dataRoot = env.NAPUTO_DATA_ROOT;
-    if (dataRoot !== undefined && dataRoot !== "") {
-        const account =
-            env.NAPUTO_CFG_DIR !== undefined && env.NAPUTO_CFG_DIR !== ""
-                ? (env.NAPUTO_CFG_DIR.split(/[\\/]/).filter(Boolean).pop() ?? "default")
-                : "default";
+const dataRoot = env.NAPUTO_DATA_ROOT;
+if (dataRoot) {
+    const account =
+        env.NAPUTO_CFG_DIR?.split(ACCOUNT_PATH_SEPARATOR).filter(Boolean).pop() ?? "default";
+    registerShutdownHook(
         watchStopSentinel({
             dataRoot,
             account,
             onTrigger: () => {
                 void requestShutdown("停止哨兵");
             },
-        });
+        }),
+        "intake",
+    );
+}
+
+if (ipc !== undefined) {
+    enableIpc(() => {
+        void requestShutdown("IPC stdout 已失效");
+    });
+    registerShutdownHook(flushIpc, "flush");
+    registerShutdownHook(startIpcServer(ipc), "intake");
+    if (!isShuttingDown()) {
+        sendStatus("booting");
     }
 }
 
-// IPC 子进程模式（NAPUTO_IPC=1，koishi 插件驱动）：stdout 专用于 JSON 行协议
-const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
-if (ipcMode) {
-    enableIpc();
-    sendStatus("booting");
-}
-
-log(
-    `[self-host] 启动 @ ${new Date().toISOString()} pid=${process.pid} node=${process.version} type=${getOwnProp(process, "type") ?? "(标准 node)"}`,
-);
-log(`[self-host] stub 目录: ${env.NAPUTO_STUB_DIR ?? "(PATH 前置，未记录)"}`);
-
-// unhandledRejection 兜底（2026-08-22 崩溃防御）：一次失败的 Promise 不应拖垮
-// 整个子进程（实测：sendMsg 确认事件 reject 未被消费 → Node 默认抛错退出，连带
-// IPC 通道关闭、Koishi 侧全部动作失败）。记录日志但不退出——业务错误仍由调用方
-// 显式处理（不静默吞掉），此处只防「漏网」的进程级崩溃。
-process.on("unhandledRejection", (reason: unknown) => {
-    log(`[self-host] ⚠️ unhandledRejection: ${errMsg(reason)}`);
+process.once("beforeExit", (code) => {
+    void requestShutdown("事件循环结束", code);
 });
 
-// 0. 单实例锁兜底（2026-08-07 根治）：数据目录粒度锁——同一账号数据目录
-//    只允许一个实例（QQ 原生层 MMKV/登录单例有锁，第二个实例抢不到会挂起）。
-//    cli 已做启动前检测，此处防 supervisor/直接跑 self-host 绕过 cli 的路径。
-//    NAPUTO_CFG_DIR 即账号数据目录（launcher 注入）。
-const lockDataDir = env.NAPUTO_CFG_DIR;
-if (lockDataDir) {
-    if (!acquireInstanceLock(lockDataDir)) {
-        const { pid: holderPid } = checkInstanceLock(lockDataDir);
-        logFatal(
-            `[self-host] ❌ 数据目录已被其他实例占用（pid=${holderPid ?? "?"}），退出；` +
-                "同一账号数据目录仅允许一个实例，请先停止已有实例",
-        );
-        if (ipcMode) {
-            sendStatus("failed", "数据目录被占用", {
-                code: "INVALID_STATE",
-                message: `数据目录已被其他实例占用（pid=${holderPid ?? "?"}）`,
-            });
-        }
-        process.exit(1);
-    }
-    registerLockCleanup(lockDataDir);
-    log(`[self-host] ✅ 已获取数据目录锁（${lockDataDir}）`);
-} else {
-    log("[self-host] ⚠️ NAPUTO_CFG_DIR 未设置，跳过单实例锁");
-}
+process.on("unhandledRejection", (reason: unknown) => {
+    log(`[self-host] unhandledRejection: ${errMsg(reason)}`);
+});
 
-const wrapperPath = env.NAPUTO_WRAPPER_PATH;
-if (!wrapperPath) {
-    logFatal("[self-host] NAPUTO_WRAPPER_PATH 未设置，退出");
-    if (ipcMode) {
-        sendStatus("failed", "NAPUTO_WRAPPER_PATH 未设置", {
-            code: "INVALID_STATE",
-            message: "NAPUTO_WRAPPER_PATH 未设置，退出",
-        });
+async function failBoot(message: string, code: number, errorCode: string): Promise<void> {
+    if (isShuttingDown()) {
+        return;
     }
-    process.exit(1);
-}
-
-// 1. dlopen wrapper.node（stub QQNT.dll 转发 napi_*/uv_* → node.exe，标准 node 可注册）
-//    原生 dlopen/O3 契约的权威原语在 @napuketto/kernel
-//    （dlopenWrapper / activateO3MiscService，经 kernel index 导出）：本文件是
-//    被 spawn 的 CJS 引导入口，loader 编译期仅依赖 zod，无法静态 import kernel，
-//    故此处保留同步内联实现（行为与原语一致），供没有 kernel 模块可加载的极早期阶段使用。
-log(`[self-host] dlopen wrapper.node: ${wrapperPath}`);
-if (ipcMode) {
-    sendStatus("dlopening");
-}
-try {
-    // { exports: {} } 是 process.dlopen 的最小载体（wrapper 向其中填充 NAPI exports）
-    const m: { exports: Record<string, unknown> } = { exports: {} };
-    process.dlopen(m, wrapperPath);
-    const keys = Object.keys(m.exports ?? {});
-    log(`[self-host] ✅ dlopen 成功，exports ${keys.length} 个`);
-    if (!keys.includes("NodeIKernelLoginService")) {
-        logFatal("[self-host] ❌ exports 无 NodeIKernelLoginService（stub 环境异常？）");
-        if (ipcMode) {
-            sendStatus("failed", "exports 无 NodeIKernelLoginService", {
-                code: "INVALID_STATE",
-                message: "exports 无 NodeIKernelLoginService（stub 环境异常？）",
-            });
-        }
-        process.exit(1);
-    }
-    state.wrapperExports = m.exports;
-} catch (e) {
-    logFatal(`[self-host] ❌ dlopen 失败: ${errMsg(e)}`);
-    if (ipcMode) {
-        sendStatus("failed", "dlopen 失败", { code: "UNKNOWN", message: errMsg(e) });
-    }
-    process.exit(1);
-}
-
-// 2. 🔑 O3MiscService 激活事件分发（自建宿主三要素之二，V6 实测决定性）：
-//    不激活则 getLoginList 永不 resolve（挂起）。listener 用普通 JS 对象
-//    （getOnAmgomDataPiece 空实现，wrapper 契约回调）。
-try {
-    const o3Ctor = state.wrapperExports?.["NodeIO3MiscService"];
-    if (hasCallableProp(o3Ctor, "get")) {
-        const svc = o3Ctor.get();
-        if (hasCallableProp(svc, "addO3MiscListener")) {
-            svc.addO3MiscListener({
-                getOnAmgomDataPiece() {
-                    // 空实现：wrapper 契约回调，仅需注册存在即可激活事件分发
-                },
-            });
-            log("[self-host] ✅ O3MiscService 激活事件分发");
-        } else {
-            log("[self-host] ⚠️ NodeIO3MiscService 缺 addO3MiscListener（版本变化？继续尝试）");
-        }
-    } else {
-        log("[self-host] ⚠️ NodeIO3MiscService 缺失（版本变化？继续尝试）");
-    }
-} catch (e) {
-    log(`[self-host] ⚠️ O3MiscService 激活失败: ${errMsg(e)}`);
-}
-
-// 3. kernel 引导（bootstrap.ts 完全复用——登录/initAndStartSession/冒烟/协议装配）
-log("[self-host] 调 bootstrap(state) ...");
-
-/** 引导未完成出口：补发（或不覆盖）failed 状态后退出——运行时失败，exit 1。 */
-function exitBootIncomplete(): never {
-    // 引导未完成（登录失败/服务装配失败/生命周期异常——bootstrap 内部
-    // 不抛错，具体原因见 NAPUTO_CFG_DIR 下 napuketto-boot.log）。
-    // stderr 是 Docker / 终端唯一可见通道（stdout 在 IPC 模式被 JSON 协议占用）。
-    logFatal("[self-host] bootstrap 未完成（登录失败 / 服务装配失败 / 生命周期异常），进程退出");
-    // 已发过更具体的 failed（如 NOT_LOGIN）则不覆盖，否则补发通用
-    // failed；随后退出，由 koishi driver 既有重启循环接管（cli 模式
-    // 同样退出——失败留驻只会以假 ready 干扰父进程判断，2026-09-06）。
+    logFatal(`[self-host] ${message}`);
     if (shouldSendGenericBootFailed(ipcMode, lastIpcStatusPhase())) {
-        sendStatus("failed", "bootstrap 未完成", {
-            code: "UNKNOWN",
-            message: "bootstrap 未完成，详见 napuketto-boot.log",
-        });
+        sendStatus("failed", message, { code: errorCode, message });
     }
-    process.exit(1);
+    await requestShutdown("引导失败", code);
 }
 
-/** bootstrap 抛错出口（2026-10-25 退出码契约）：配置校验失败（ConfigError 一族，
- * 含协议段 seed zod 校验）= 78（EX_CONFIG 惯例，宿主据此免重启）；其余 = 1。
- * 日志文案不做机器耦合，判定只认错误名。 */
-function exitOnBootstrapError(e: unknown): never {
-    const code = bootstrapExitCode(e);
-    logFatal(`[self-host] bootstrap 失败${code === 78 ? "（配置校验失败）" : ""}: ${errMsg(e)}`);
-    if (ipcMode) {
-        sendStatus("failed", "bootstrap 失败", {
-            code: code === 78 ? "INVALID_PARAM" : "UNKNOWN",
-            message: errMsg(e),
-        });
+async function main(): Promise<void> {
+    if (isShuttingDown()) {
+        return;
     }
-    process.exit(code);
-}
-
-// void：显式忽略 IIFE promise（内部已 try/catch 兜底，不会 reject）
-void (async () => {
-    try {
-        const ok = await bootstrap(state);
-        if (!ok) {
-            exitBootIncomplete();
+    log(`[self-host] 启动 pid=${process.pid} node=${process.version}`);
+    const lockDataDir = env.NAPUTO_CFG_DIR;
+    if (lockDataDir) {
+        if (!acquireInstanceLock(lockDataDir)) {
+            const { pid } = checkInstanceLock(lockDataDir);
+            await failBoot(`无法获取账号目录锁（持有者 PID=${pid ?? "未知"}）`, 1, "INVALID_STATE");
+            return;
         }
+        registerLockCleanup(lockDataDir);
+    } else {
+        log("[self-host] NAPUTO_CFG_DIR 未设置，跳过单实例锁");
+    }
+    if (!env.NAPUTO_WRAPPER_PATH) {
+        await failBoot("NAPUTO_WRAPPER_PATH 未设置", 1, "INVALID_STATE");
+        return;
+    }
+    if (!(await bootstrap(createState(), ipc))) {
+        await failBoot("bootstrap 未完成，详见 napuketto-boot.log", 1, "UNKNOWN");
+        return;
+    }
+    if (!isShuttingDown()) {
         log("[self-host] bootstrap 完成");
-        // stub 补丁状态上报（观测面，issue #105）：pending 时内部延迟复读一次
         reportMediaPatchStatus();
-        if (ipcMode) {
-            // 引导成功、动作表挂载完成后，写出 ready 才放行 IPC 事件。
-            sendStatus("ready");
-        }
-        // 常驻：协议服务在事件循环上；不 process.exit（业务运行中）
-    } catch (e) {
-        exitOnBootstrapError(e);
     }
-})();
+}
+
+void main().catch(async (err: unknown) => {
+    const code = bootstrapExitCode(err);
+    await failBoot(
+        `bootstrap 失败: ${errMsg(err)}`,
+        code,
+        code === 78 ? "INVALID_PARAM" : "UNKNOWN",
+    );
+});

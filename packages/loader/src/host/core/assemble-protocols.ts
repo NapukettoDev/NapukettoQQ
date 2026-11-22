@@ -6,6 +6,12 @@
  * 才 `import()` 对应子路径——未启用协议零加载、零实例化。
  */
 import { join } from "node:path";
+import {
+    isShuttingDown,
+    registerShutdownHook,
+    requestShutdown,
+    runShutdownHook,
+} from "../../lifecycle/shutdown.js";
 import { env } from "../env.js";
 import { loadProtocolSections } from "../load-config.js";
 import type {
@@ -83,7 +89,7 @@ interface SatoriAssemblyInput extends OptionalAssemblyDeps {
  * 与 OB11 共享 kernel apis / 消息通道 / 缓存，但**广播器独立**（协议隔离）：
  * 事件只推给 satori 自己的传输客户端，不会串到 OB11 / Milky 端口。
  */
-async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle | null> {
+function createSatori(input: SatoriAssemblyInput): AdapterHandle | null {
     const { section, services } = input;
     if (!hasSection(section)) {
         return null;
@@ -103,7 +109,7 @@ async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle
         defaults: input.satoriAdapter.satoriConfigSchema.parse({}),
         seed: parseSeed("satori", input.satoriAdapter.satoriConfigSchema, section),
     });
-    const satori = new input.satoriAdapter.NapukettoSatoriAdapter({
+    return new input.satoriAdapter.NapukettoSatoriAdapter({
         config,
         broadcaster,
         msgChannel: services.channel,
@@ -116,9 +122,6 @@ async function assembleSatori(input: SatoriAssemblyInput): Promise<AdapterHandle
         cacheDir,
         groupCache: services.groupCache,
     });
-    await satori.start();
-    log("bootstrap: satori adapter started");
-    return satori;
 }
 
 /** Kurobot 装配依赖（段非空才调用）。 */
@@ -132,7 +135,7 @@ interface KurobotAssemblyInput extends OptionalAssemblyDeps {
  * parse 会炸；「段存在即启用、不写不启用」）。作为 WS 客户端连入 KuroBot 服务端
  * （kurobot-ws），段内协议配置经 zod 校验作 seed。
  */
-async function assembleKurobot(input: KurobotAssemblyInput): Promise<AdapterHandle> {
+function createKurobot(input: KurobotAssemblyInput): AdapterHandle {
     const { section, services } = input;
     const config = new input.adapterCore.ProtocolConfig({
         path: input.cfgFile,
@@ -140,7 +143,7 @@ async function assembleKurobot(input: KurobotAssemblyInput): Promise<AdapterHand
         defaults: input.kurobotAdapter.kurobotConfigDefaults(),
         seed: parseSeed("kurobot", input.kurobotAdapter.kurobotConfigSchema, section),
     });
-    const kurobot = new input.kurobotAdapter.NapukettoKurobotAdapter({
+    return new input.kurobotAdapter.NapukettoKurobotAdapter({
         config,
         msgChannel: services.channel,
         msgApi: services.msgApi,
@@ -151,9 +154,6 @@ async function assembleKurobot(input: KurobotAssemblyInput): Promise<AdapterHand
         // 连接生命周期 / 握手被拒等日志（pino 实例，最小面）
         logger: services.logger,
     });
-    await kurobot.start();
-    log("bootstrap: kurobot adapter started");
-    return kurobot;
 }
 
 /** Milky 装配依赖（段非空才调用）。 */
@@ -166,7 +166,7 @@ interface MilkyAssemblyInput extends OptionalAssemblyDeps {
  * 装配 Milky（P0，2026-10-28）：段 enabled=true 才生效（enabled 缺省 false =
  * 空转不占端口）。单端口 HTTP（/api + /event SSE/WS）+ WebHook。
  */
-async function assembleMilky(input: MilkyAssemblyInput): Promise<AdapterHandle> {
+function createMilky(input: MilkyAssemblyInput): AdapterHandle {
     const { section, services } = input;
     const broadcaster = new input.network.EventBroadcaster();
     const config = new input.adapterCore.ProtocolConfig({
@@ -175,7 +175,7 @@ async function assembleMilky(input: MilkyAssemblyInput): Promise<AdapterHandle> 
         defaults: input.milkyAdapter.milkyConfigSchema.parse({}),
         seed: parseSeed("milky", input.milkyAdapter.milkyConfigSchema, section),
     });
-    const milky = new input.milkyAdapter.NapukettoMilkyAdapter({
+    return new input.milkyAdapter.NapukettoMilkyAdapter({
         config,
         broadcaster,
         msgChannel: services.channel,
@@ -204,9 +204,6 @@ async function assembleMilky(input: MilkyAssemblyInput): Promise<AdapterHandle> 
         mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
         logger: services.calibLogger,
     });
-    await milky.start();
-    log("bootstrap: milky adapter started");
-    return milky;
 }
 
 /** 可选协议子模块（undefined = 段为空，未加载）。 */
@@ -223,45 +220,78 @@ interface OptionalSections {
     milky: Record<string, unknown>;
 }
 
-/**
- * 按装配顺序（satori → kurobot → milky）启动已启用协议，返回 handle 列表。
- * 段为空的可选协议既不会走到这里（module 未加载），也不会构造实例。
- */
+/** 停止动作相互独立，某个传输异常或挂起时其他协议也会尝试退出。 */
+async function stopAdapters(adapters: AdapterHandle[]): Promise<void> {
+    await Promise.all(
+        adapters
+            .splice(0)
+            .reverse()
+            .map(async (adapter) => {
+                try {
+                    await adapter.stop();
+                } catch (err) {
+                    log(`bootstrap: 协议关停失败: ${errMsg(err)}`);
+                }
+            }),
+    );
+}
+
+async function startAdapter(
+    adapters: AdapterHandle[],
+    adapter: AdapterHandle | null,
+    name: string,
+): Promise<void> {
+    if (adapter === null || isShuttingDown()) {
+        return;
+    }
+    adapters.push(adapter);
+    await adapter.start();
+    log(`bootstrap: ${name} adapter started`);
+    if (isShuttingDown()) {
+        await stopAdapters([adapter]);
+    }
+}
+
+/** 按配置顺序启动可选协议，启动失败时共享列表仍保留已构造的实例。 */
 async function assembleOptionalProtocols(
     deps: OptionalAssemblyDeps,
     sections: OptionalSections,
     modules: OptionalModules,
-): Promise<AdapterHandle[]> {
-    const handles: AdapterHandle[] = [];
-    if (modules.satori !== undefined) {
-        const satori = await assembleSatori({
-            ...deps,
-            satoriAdapter: modules.satori,
-            section: sections.satori,
-        });
-        if (satori !== null) {
-            handles.push(satori);
-        }
+    adapters: AdapterHandle[],
+): Promise<void> {
+    if (modules.satori !== undefined && !isShuttingDown()) {
+        await startAdapter(
+            adapters,
+            createSatori({
+                ...deps,
+                satoriAdapter: modules.satori,
+                section: sections.satori,
+            }),
+            "satori",
+        );
     }
-    if (modules.kurobot !== undefined) {
-        handles.push(
-            await assembleKurobot({
+    if (modules.kurobot !== undefined && !isShuttingDown()) {
+        await startAdapter(
+            adapters,
+            createKurobot({
                 ...deps,
                 kurobotAdapter: modules.kurobot,
                 section: sections.kurobot,
             }),
+            "kurobot",
         );
     }
-    if (modules.milky !== undefined) {
-        handles.push(
-            await assembleMilky({
+    if (modules.milky !== undefined && !isShuttingDown()) {
+        await startAdapter(
+            adapters,
+            createMilky({
                 ...deps,
                 milkyAdapter: modules.milky,
                 section: sections.milky,
             }),
+            "milky",
         );
     }
-    return handles;
 }
 
 /** file:// URL 化（Windows 反斜杠转正斜杠）。 */
@@ -336,6 +366,10 @@ export async function assembleOb11AndSatori(
             // 未装配，无资源可清
         };
     }
+    const activeAdapters: AdapterHandle[] = [];
+    let stopping: Promise<void> | undefined;
+    const stop = () => (stopping ??= stopAdapters(activeAdapters));
+    const unregisterShutdown = registerShutdownHook(stop, "protocols");
     try {
         const network = await importNetworkModule(networkEntry);
         // 全局 TOML 配置段：按登录账号 uin 从 accounts 取协议段作 seed
@@ -368,9 +402,6 @@ export async function assembleOb11AndSatori(
         // 客户端（OB11 的 WS 收到 Satori 的 op/body 信封，事件流不可判型）。
         // kurobot 是纯客户端出向协议（无第三方接入门面、不发协议事件），无广播器。
         const ob11Broadcaster = new network.EventBroadcaster();
-        // 已启动适配器（装配顺序 ob11 → satori → kurobot → milky）：停止函数按同一
-        // 顺序逐个 stop（start 成功才入列，未装配协议不产生空操作项）。
-        const activeAdapters: AdapterHandle[] = [];
         const ob11Config = new adapterCore.ProtocolConfig({
             path: cfgFile,
             schema: adapter.ob11ConfigSchema,
@@ -424,42 +455,34 @@ export async function assembleOb11AndSatori(
                 // bot_exit / set_restart：进程控制（退出 QQ 主进程由 launcher 观察）
                 exit: async () => {
                     log("bootstrap: bot_exit 触发，退出 QQ 主进程");
-                    process.exit(0);
+                    void requestShutdown("OB11 进程控制请求");
                 },
                 restart: async () => {
                     log("bootstrap: set_restart 触发，退出 QQ 主进程（由 launcher 重启）");
-                    process.exit(0);
+                    void requestShutdown("OB11 进程控制请求");
                 },
             },
             // P2-17：群/成员缓存（ADR-008，翻译层只读消费）
             groupCache,
         });
-        await ob11.start();
-        log("bootstrap: onebot11 adapter started");
-        activeAdapters.push(ob11);
-
-        // 可选协议（satori → kurobot → milky）：段非空才装配（见各 assemble*）。
-        // 与 OB11 共享 kernel apis / 消息通道 / 缓存，但广播器各自独立（协议隔离）。
-        activeAdapters.push(
-            ...(await assembleOptionalProtocols(
-                { kernel, network, adapterCore, cfgFile, services },
-                {
-                    satori: sections.satori,
-                    kurobot: sections.kurobot,
-                    milky: sections.milky,
-                },
-                optionalModules,
-            )),
+        await startAdapter(activeAdapters, ob11, "onebot11");
+        await assembleOptionalProtocols(
+            { kernel, network, adapterCore, cfgFile, services },
+            {
+                satori: sections.satori,
+                kurobot: sections.kurobot,
+                milky: sections.milky,
+            },
+            optionalModules,
+            activeAdapters,
         );
-        return async () => {
-            // 适配器 stop 幂等（started 标志守卫）：传输关闭 + kernel 事件退订
-            for (const inst of activeAdapters) {
-                await inst.stop();
-            }
-        };
+        return stop;
     } catch (e) {
         // 抛给 startProtocols 判引导失败（见函数头注释；不再吞错 fail-soft）
         log(`bootstrap: 协议装配失败: ${errMsg(e)}`);
+        await runShutdownHook(stop, "protocols");
         throw e;
+    } finally {
+        unregisterShutdown();
     }
 }

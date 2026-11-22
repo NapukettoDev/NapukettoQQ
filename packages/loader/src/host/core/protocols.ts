@@ -8,6 +8,7 @@
  *    kernel 服务），返回 KernelServices 由 bootstrap 装配 ipc-server。
  *  - 非 IPC（cli pnpm start）：照旧装配 OB11/Satori 网络传输。
  */
+import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
 import { errMsg, isConfigError, log, logFatal } from "../util.js";
@@ -34,13 +35,19 @@ export async function startProtocols(
     if (services === null) {
         return null;
     }
+    if (isShuttingDown()) {
+        services.dispose();
+        return null;
+    }
     if (isEnvEnabled(env.NAPUTO_IPC)) {
         log("bootstrap: IPC 模式，跳过 OB11/Satori 装配（koishi 插件直接消费 kernel 服务）");
         return services;
     }
+    const unregister = registerShutdownHook(() => services.dispose());
     try {
         services.stopAdapters = await assembleOb11AndSatori(kernel, services, loginResult);
     } catch (e) {
+        services.dispose();
         // 配置校验失败重抛（ConfigError 契约，2026-10-25）：沿 bootstrap 链传给
         // self-host 以 78 退出（宿主免重启），由 exitOnBootstrapError 统一输出原因；
         // 其余装配失败仍收敛为 null 判引导失败——此处先落 file + stderr 留痕，
@@ -50,6 +57,8 @@ export async function startProtocols(
         }
         logFatal(`bootstrap: 协议装配失败: ${errMsg(e)}`);
         return null;
+    } finally {
+        unregister();
     }
     return services;
 }

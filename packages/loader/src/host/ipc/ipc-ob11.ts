@@ -13,7 +13,7 @@
  * fail-soft：装配失败回滚到纯 kernel 动作面，不阻断登录链路。
  */
 import { join } from "node:path";
-import process from "node:process";
+import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../core/module-guards.js";
 import { env } from "../env.js";
 import { isRecord } from "../type-guards.js";
@@ -117,7 +117,7 @@ export async function attachOb11IpcBridge(
     };
     const adapterEntry = e.adapterEntry;
     const networkEntry = e.networkEntry;
-    if (!adapterEntry || !networkEntry) {
+    if (isShuttingDown() || !adapterEntry || !networkEntry) {
         return noop;
     }
     const importModule = deps.importModule ?? importFileUrl;
@@ -179,11 +179,11 @@ export async function attachOb11IpcBridge(
                 // bot_exit / set_restart：退出子进程，koishi 插件 driver 重启机制接管
                 exit: async () => {
                     log("ipc-ob11: bot_exit 触发，退出子进程");
-                    process.exit(0);
+                    void requestShutdown("OB11 进程控制请求");
                 },
                 restart: async () => {
                     log("ipc-ob11: set_restart 触发，退出子进程（driver 重启）");
-                    process.exit(0);
+                    void requestShutdown("OB11 进程控制请求");
                 },
             },
             groupCache: services.groupCache,

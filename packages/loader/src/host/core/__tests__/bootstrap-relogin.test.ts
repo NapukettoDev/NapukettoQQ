@@ -83,7 +83,11 @@ vi.mock("../../ipc/index.js", async () => {
             sender.sendStatus(...args);
         }),
         startIpcServer: vi.fn(
-            (options: { onLogin?: (payload: { uin?: string; qr?: boolean }) => void }) => {
+            (options: {
+                actions: Map<string, IpcActionHandler>;
+                onLogin?: (payload: { uin?: string; qr?: boolean }) => void;
+            }) => {
+                h.actions = options.actions;
                 h.onLogin = options.onLogin ?? null;
                 return () => undefined;
             },
@@ -238,15 +242,14 @@ describe("bootstrapWithCore 软重登重装配（A2）", () => {
             "attach:ob11-bridge",
         ]);
         // 状态/登录推送：logging → logged_in(初始结果) → sessioning
-        expect(h.statuses.map((s) => s.phase)).toEqual(["logging", "sessioning"]);
+        expect(h.statuses.map((s) => s.phase)).toEqual(["logging", "sessioning", "ready"]);
         expect(h.lines.map(decodeIpcMessage).map((message) => message?.type)).toEqual([
+            "status",
             "status",
             "status",
         ]);
         expect(h.actions.has("msg.sendMessage")).toBe(true);
         expect(h.actions.has("get_login_info")).toBe(true);
-        // 模拟 self-host 在 bootstrap 返回成功后发出初次 ready。
-        ipc.sendStatus("ready");
         h.onEvent?.("Msg/onRecvMsg", "初次就绪");
         expect(h.logins).toEqual([
             { state: "logged_in", selfInfo: { uin: "10001", uid: "u1", nick: "甲" } },
@@ -280,10 +283,10 @@ describe("bootstrapWithCore 软重登重装配（A2）", () => {
         expect(h.lines.map(decodeIpcMessage)).toMatchObject([
             { type: "status", payload: { phase: "logging" } },
             { type: "status", payload: { phase: "sessioning" } },
-            { type: "status", payload: { phase: "ready" } },
+            { type: "status", payload: { phase: "ready", selfInfo: { uin: "10001", uid: "u1" } } },
             { type: "event", payload: { service: "Msg", args: ["初次就绪"] } },
             { type: "status", payload: { phase: "sessioning" } },
-            { type: "status", payload: { phase: "ready" } },
+            { type: "status", payload: { phase: "ready", selfInfo: { uin: "20002", uid: "u2" } } },
             { type: "event", payload: { service: "Msg", args: ["重登就绪"] } },
             { type: "event", payload: { service: "ob11", args: ["重登就绪"] } },
         ]);

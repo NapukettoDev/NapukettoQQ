@@ -43,7 +43,7 @@ function stubBootEnv(kernelSource: string): void {
     ensureTmpRoot();
     kernelSeq += 1;
     const kernelEntry = join(tmpRoot, `kernel-${kernelSeq}.mjs`);
-    writeFileSync(kernelEntry, kernelSource);
+    writeFileSync(kernelEntry, `export function dlopenWrapper() { return {}; }\n${kernelSource}`);
     vi.stubEnv("NAPUTO_KERNEL_ENTRY", kernelEntry);
     vi.stubEnv("NAPUTO_QQ_VERSION", "9.9.9-Test");
     vi.stubEnv("NAPUTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));

@@ -387,9 +387,10 @@ describe("assembleOb11AndSatori", () => {
 
     it("system.exit / restart 回调 → 退出进程（bot_exit / set_restart）", async () => {
         stubInlineConfig({});
-        const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+        const assemble = await freshAssemble();
+        const shutdown = await import("../../../lifecycle/shutdown.js");
+        const exitSpy = vi.spyOn(shutdown, "requestShutdown").mockResolvedValue();
         try {
-            const assemble = await freshAssemble();
             await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
             const system = adapterOf("ob11")?.options["system"] as {
                 exit: () => Promise<void>;
@@ -397,7 +398,7 @@ describe("assembleOb11AndSatori", () => {
             };
             await system.exit();
             await system.restart();
-            expect(exitSpy).toHaveBeenCalledWith(0);
+            expect(exitSpy).toHaveBeenCalledWith("OB11 进程控制请求");
             expect(exitSpy).toHaveBeenCalledTimes(2);
         } finally {
             exitSpy.mockRestore();

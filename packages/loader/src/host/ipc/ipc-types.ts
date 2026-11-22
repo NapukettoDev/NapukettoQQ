@@ -13,6 +13,10 @@ import { z } from "zod";
 /** IPC 协议版本（解码校验）。 */
 export const IPC_VERSION = 1;
 
+/** IPC v1 stdin 的物理行与在途动作上限。 */
+export const DEFAULT_MAX_IPC_LINE_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MAX_PENDING_REQUESTS = 256;
+
 /** 引导阶段（status 消息）。 */
 const ipcBootPhaseSchema = z.enum([
     "booting", // 子进程已启动（spawn 成功）
@@ -39,6 +43,7 @@ const selfInfoSchema = z.object({
 /** status 消息 payload。 */
 const ipcStatusPayloadSchema = z.object({
     phase: ipcBootPhaseSchema,
+    selfInfo: selfInfoSchema.optional(),
     message: z.string().optional(),
     error: z.object({ code: z.string(), message: z.string() }).optional(),
 });

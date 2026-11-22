@@ -17,7 +17,7 @@
  * 的真实状态收敛）。
  */
 
-import process from "node:process";
+import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { sendLogin, sendQr, sendStatus } from "../ipc/index.js";
 import type { CoreLike, LoginResultLike } from "../types.js";
 import { errMsg, log } from "../util.js";
@@ -111,8 +111,25 @@ const LOGIN_STATES = ["idle", "waiting_scan", "scanned", "logged_in", "failed"] 
 type LoginStateLike = (typeof LOGIN_STATES)[number];
 
 /** 宽松收窄（kernel onLoginProgress.state 是 string；bootstrap-core 登录回调共用）。 */
-export function isLoginState(value: string): value is LoginStateLike {
+function isLoginState(value: string): value is LoginStateLike {
     return LOGIN_STATES.some((s) => s === value);
+}
+
+export interface LoginProgressLike {
+    state: string;
+    qr?: { pngBase64: string; qrcodeUrl: string };
+    selfInfo?: { uin: string; uid: string; nick: string };
+    message?: string;
+}
+
+/** logged_in 由实际采纳登录结果的一方发布。 */
+export function forwardIpcLoginProgress(progress: LoginProgressLike): void {
+    if (progress.qr !== undefined) {
+        sendQr(progress.qr.pngBase64, progress.qr.qrcodeUrl);
+    }
+    if (isLoginState(progress.state) && progress.state !== "logged_in") {
+        sendLogin(progress.state, progress.selfInfo, progress.message);
+    }
 }
 
 /** ready 态软重登：重装配 → 成功重播 ready/logged_in，失败交失败处理。 */
@@ -120,18 +137,25 @@ async function softReloginAndReport(
     loginResult: LoginResultLike,
     selfInfo: { uin: string; uid: string; nick: string },
     deps: LoginControlDeps,
+    control: LoginControl,
 ): Promise<void> {
+    control.beginAssembly();
     const ok = await deps.reassemble(loginResult).catch((err: unknown) => {
         log(`relogin: 软重登重装配异常: ${errMsg(err)}`);
         return false;
     });
+    if (isShuttingDown()) {
+        return;
+    }
     if (!ok) {
+        control.abort();
         (deps.onReassembleFailed ?? defaultReassembleFailed)();
         return;
     }
     // 重播 ready（driver ready 幂等守卫不重复 onReady）+ 刷新 selfInfo
     //（换账号由 koishi 侧 checkIdentity 拒绝上线）
-    sendStatus("ready");
+    control.markReady();
+    sendStatus("ready", undefined, undefined, selfInfo);
     sendLogin("logged_in", selfInfo);
 }
 
@@ -145,13 +169,12 @@ async function dispatchLoginSuccess(
     // ① 登录期抢占：初始 doLogin 仍在竞速等待时，用本结果接管引导链
     const preemptResolve = control.takePreempt();
     if (preemptResolve !== null) {
-        sendLogin("logged_in", selfInfo);
         preemptResolve(result);
         return;
     }
     // ② ready 态软重登：重装配（清理旧服务 + 重跑装配链）
     if (control.currentPhase === "ready") {
-        await softReloginAndReport(result, selfInfo, deps);
+        await softReloginAndReport(result, selfInfo, deps, control);
         return;
     }
     // ③ assembling/aborted：迟到结果不上报（防 failed→logged_in 误导序列 /
@@ -166,7 +189,7 @@ function defaultReassembleFailed(): void {
         code: "UNKNOWN",
         message: "软重登重装配失败，详见 napuketto-boot.log",
     });
-    process.exit(1);
+    void requestShutdown("软重登装配失败", 1);
 }
 
 /**
@@ -182,10 +205,12 @@ export function createLoginControlHandler(
     deps: LoginControlDeps,
 ): (payload: { uin?: string; qr?: boolean }) => void {
     return (payload) => {
-        if (!control.claim()) {
-            log("relogin: control login 在途（登录/软重登进行中），忽略本次请求");
+        const phase = control.currentPhase;
+        if (isShuttingDown() || phase === "assembling" || phase === "aborted" || !control.claim()) {
+            log("relogin: 当前相位或在途登录禁止新的 control login");
             return;
         }
+        const isCurrent = () => !isShuttingDown() && control.currentPhase === phase;
         const opts: Record<string, unknown> = {
             appid: String(Appid),
             initTimeoutMs: 20000,
@@ -193,23 +218,18 @@ export function createLoginControlHandler(
             qrFallback: true,
             ...(payload.uin !== undefined ? { quickUin: payload.uin } : {}),
             ...(payload.qr === true ? { qrOnly: true } : {}),
-            onLoginProgress: (progress: {
-                state: string;
-                qr?: { pngBase64: string; qrcodeUrl: string };
-                selfInfo?: { uin: string; uid: string; nick: string };
-                message?: string;
-            }) => {
-                if (progress.qr !== undefined) {
-                    sendQr(progress.qr.pngBase64, progress.qr.qrcodeUrl);
-                }
-                if (isLoginState(progress.state)) {
-                    sendLogin(progress.state, progress.selfInfo, progress.message);
+            onLoginProgress: (progress: LoginProgressLike) => {
+                if (isCurrent()) {
+                    forwardIpcLoginProgress(progress);
                 }
             },
         };
         void core
             .login(opts)
             .then(async (result) => {
+                if (!isCurrent()) {
+                    return;
+                }
                 if (result === null) {
                     sendLogin("failed", undefined, "登录返回空结果");
                     return;
@@ -218,7 +238,9 @@ export function createLoginControlHandler(
             })
             .catch((err) => {
                 log(`bootstrap: control login 失败: ${errMsg(err)}`);
-                sendLogin("failed", undefined, errMsg(err));
+                if (isCurrent()) {
+                    sendLogin("failed", undefined, errMsg(err));
+                }
             })
             .finally(() => {
                 control.release();

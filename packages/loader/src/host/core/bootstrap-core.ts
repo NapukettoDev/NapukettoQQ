@@ -6,15 +6,14 @@
  */
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
-import { registerShutdownHook } from "../../lifecycle/shutdown.js";
+import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import {
     attachIpcServices,
     attachOb11IpcBridge,
     createIpcActionsForCore,
-    type IpcActionHandler,
+    type IpcServerOptions,
     sendLogin,
-    sendQr,
     sendStatus,
     startIpcServer,
 } from "../ipc/index.js";
@@ -33,9 +32,10 @@ import { doLogin, type LoginTargetRef, pickLoginAccount } from "./login.js";
 import { startProtocols } from "./protocols.js";
 import {
     createLoginControlHandler,
-    isLoginState,
+    forwardIpcLoginProgress,
     LoginControl,
     type LoginPreemptRef,
+    type LoginProgressLike,
 } from "./relogin.js";
 import {
     collectCandidateSessions,
@@ -83,7 +83,8 @@ function buildLoginOpts(
     Appid: string | number,
     forcedUin: string | undefined,
     ref: LoginTargetRef,
-    qrOnly = false,
+    qrOnly: boolean,
+    isCurrent: () => boolean,
 ): Record<string, unknown> {
     const quickUin = qrOnly ? undefined : (forcedUin ?? ref.targetUin);
     const opts: Record<string, unknown> = {
@@ -97,26 +98,15 @@ function buildLoginOpts(
     //  - IPC 模式：走 JSON 行协议 sendQr/sendLogin（koishi 插件驱动，不变）
     //  - cli 自建宿主模式：QR 数据以 NAPUTO_QR 标记行输出 stdout，由 cli
     //    forwardFiltered 解析后用 uqr 编码渲染终端二维码（qr.ts；png 落盘由 kernel 完成）
-    opts["onLoginProgress"] = (progress: {
-        state: string;
-        qr?: { pngBase64: string; qrcodeUrl: string };
-        selfInfo?: { uin: string; uid: string; nick: string };
-        message?: string;
-    }) => {
-        if (progress.qr !== undefined) {
-            if (ipcMode) {
-                sendQr(progress.qr.pngBase64, progress.qr.qrcodeUrl);
-            } else {
-                process.stdout.write(
-                    `${QR_LINE_PREFIX}${JSON.stringify({
-                        pngBase64: progress.qr.pngBase64,
-                        qrcodeUrl: progress.qr.qrcodeUrl,
-                    })}\n`,
-                );
-            }
+    opts["onLoginProgress"] = (progress: LoginProgressLike) => {
+        if (!isCurrent()) {
+            return;
         }
-        if (ipcMode && isLoginState(progress.state)) {
-            sendLogin(progress.state, progress.selfInfo, progress.message);
+        if (ipcMode) {
+            forwardIpcLoginProgress(progress);
+        } else if (progress.qr !== undefined) {
+            const { pngBase64, qrcodeUrl } = progress.qr;
+            process.stdout.write(`${QR_LINE_PREFIX}${JSON.stringify({ pngBase64, qrcodeUrl })}\n`);
         }
     };
     return opts;
@@ -304,6 +294,7 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
     }, 35000);
     // 晚探测定时器不阻塞进程自然退出
     lateProbeTimer.unref?.();
+    registerShutdownHook(() => clearTimeout(lateProbeTimer), "intake");
 }
 
 /**
@@ -344,6 +335,21 @@ function buildCoreCreateOptions(
     };
 }
 
+function mountIpcLogin(
+    ipc: IpcServerOptions,
+    core: CoreLike,
+    onLogin: NonNullable<IpcServerOptions["onLogin"]>,
+    startServer: boolean,
+): void {
+    for (const [name, handler] of createIpcActionsForCore(core)) {
+        ipc.actions.set(name, handler);
+    }
+    ipc.onLogin = onLogin;
+    if (startServer) {
+        registerShutdownHook(startIpcServer(ipc), "intake");
+    }
+}
+
 /** NapukettoCore 装配路径：create → attachWrapper → 登录 → 激活 → 协议 → 探测。
  * @returns 引导是否完整完成（协议服务装配成功 = true；登录失败/服务装配失败等
  *   静默收敛为 false，具体原因见 napuketto-boot.log）。 */
@@ -352,6 +358,7 @@ export async function bootstrapWithCore(
     state: SharedState,
     bootEnv: BootstrapEnv,
     Appid: string | number,
+    hostIpc?: IpcServerOptions,
 ): Promise<boolean> {
     // 日志配置（napuketto.toml [log] 段 + env 覆盖；失败回退缺省）——kernel 与
     // loader 两个 logger 的格式/级别/时间戳统一从这里来（2026-10-25 日志可配置化）
@@ -367,7 +374,7 @@ export async function bootstrapWithCore(
     // 否则登录中（waiting_scan）前端刷新/control 指令堆积在 pipe 缓冲区，
     // 子进程不读 stdin → 指令不可达；同时心跳 ping（15s）提前启动，
     // 防扫码耗时超过 45s 被 driver 误判失联强杀（2026-08-13 结构性修复）。
-    let ipcActions: Map<string, IpcActionHandler> | null = null;
+    const ipc = hostIpc ?? (isEnvEnabled(env.NAPUTO_IPC) ? { actions: new Map() } : undefined);
     // control login 抢占（2026-09-08）：初始登录竞速——doLogin 与 control login
     // 先 settle 者胜。快速登录风控挂起时「强制扫码」control login 成功的结果
     // 接管引导链（否则 doLogin 永远不 settle，出码登录成功也到不了 ready）。
@@ -383,22 +390,18 @@ export async function bootstrapWithCore(
     const reassembleRef: {
         current: ((loginResult: LoginResultLike) => Promise<boolean>) | null;
     } = { current: null };
-    if (isEnvEnabled(env.NAPUTO_IPC)) {
-        ipcActions = createIpcActionsForCore(core);
-        startIpcServer({
-            actions: ipcActions,
-            onLogin: createLoginControlHandler(core, Appid, control, {
-                reassemble: (loginResult) => {
-                    const fn = reassembleRef.current;
-                    if (fn === null) {
-                        log("bootstrap: softRelogin 未就绪（理论不可达：相位机 ready 守卫）");
-                        return Promise.resolve(false);
-                    }
-                    return fn(loginResult);
-                },
+    if (ipc !== undefined) {
+        mountIpcLogin(
+            ipc,
+            core,
+            createLoginControlHandler(core, Appid, control, {
+                reassemble: (loginResult) =>
+                    reassembleRef.current?.(loginResult) ?? Promise.resolve(false),
             }),
-        });
+            hostIpc === undefined,
+        );
     }
+    registerShutdownHook(() => control.abort(), "intake");
 
     // 不传 qqSession/qqLoginService（登录前捕获的旧实例已失效/会干扰；
     // framework 语义：登录成功后 kernel 自己 create+init）
@@ -407,79 +410,88 @@ export async function bootstrapWithCore(
         `bootstrap: attachWrapper OK, engine=${typeof ctx.engine}, session=${ctx.session !== null}`,
     );
 
-    // 装配产物句柄（软重登重装配的清理面：OB11 桥 → IPC 服务 → kernel 服务）
     let services: KernelServices | null = null;
     let stopIpcServices: (() => void) | null = null;
     let stopOb11Bridge: (() => void) | null = null;
-    // 关停钩子一次性注册守卫（软重登重装配不重复注册）
-    let shutdownHooksRegistered = false;
 
-    /**
-     * 装配链尾部（登录成功后；初次引导与软重登共用）。
-     * @returns 装配是否成功（协议服务未装配 = false，调用方判引导失败）。
-     */
+    async function stopProtocols(): Promise<void> {
+        const stopBridge = stopOb11Bridge;
+        stopOb11Bridge = null;
+        try {
+            stopBridge?.();
+        } finally {
+            await services?.stopAdapters?.();
+        }
+    }
+
+    function disposeServices(): void {
+        const stopIpc = stopIpcServices;
+        const current = services;
+        stopIpcServices = null;
+        services = null;
+        try {
+            stopIpc?.();
+        } finally {
+            current?.dispose();
+        }
+    }
+
+    registerShutdownHook(stopProtocols, "protocols");
+    registerShutdownHook(disposeServices);
+
+    async function prepareSession(loginResult: LoginResultLike, initial: boolean): Promise<void> {
+        const chosen = replaceSession(kernel, core, state, ctx);
+        await activateSession(kernel, state, ctx, chosen, loginResult, Appid, bootEnv);
+        if (isShuttingDown()) {
+            return;
+        }
+        await waitSessionReady(kernel, ctx);
+        if (initial && !isShuttingDown()) {
+            if (ipc !== undefined) {
+                sendStatus("sessioning");
+            }
+            await runSmokeIfEnabled(kernel, ctx, loginResult);
+        }
+    }
+
+    async function attachIpc(newServices: KernelServices): Promise<void> {
+        if (ipc === undefined) {
+            return;
+        }
+        stopIpcServices = attachIpcServices(ipc.actions, newServices);
+        const stopBridge = await attachOb11IpcBridge(ipc.actions, newServices);
+        if (isShuttingDown()) {
+            stopBridge();
+        } else {
+            stopOb11Bridge = stopBridge;
+        }
+    }
+
+    /** 初次引导与软重登共用，关停期间不发布新的装配结果。 */
     const runAssembly = async (
         loginResult: LoginResultLike,
         initial: boolean,
     ): Promise<boolean> => {
-        // ⭐ V2 登录后替换 session：优先 QQ 主 session（渲染进程已 init），
-        // 其次 vehicle 激活的单例表 session。替换 kernel 自建的无效 session。
-        // 自建宿主（NAPUTO_SELF_HOST）恒 null（见 replaceSession）。
-        const chosen = replaceSession(kernel, core, state, ctx);
-        // ⭐ 激活目标：优先候选 session，否则 kernel 自建 session（幂等：已激活跳过）。
-        await activateSession(kernel, state, ctx, chosen, loginResult, Appid, bootEnv);
-        // 等 session 就绪（getMsgService 非 null）——init 完成后才有
-        await waitSessionReady(kernel, ctx);
-        if (initial && ipcActions !== null) {
-            sendStatus("sessioning");
+        await prepareSession(loginResult, initial);
+        if (isShuttingDown()) {
+            return false;
         }
-        if (initial) {
-            // P2-1 收发消息冒烟自检（NAPUTO_SMOKE=1，仅初次引导一次性执行）
-            await runSmokeIfEnabled(kernel, ctx, loginResult);
-        }
-        // 协议装配：IPC 模式返回 kernel 服务（bootstrap 装配 ipc-server），非 IPC
-        // 装配 OB11/Satori。null = 服务未装配——引导判失败，由 self-host 决定补发
-        // failed 并退出（服务未装配的常驻进程只会以假 ready 干扰父进程）。
         const newServices = await startProtocols(kernel, ctx, loginResult, logCfg);
         if (newServices === null) {
             log("bootstrap: 协议服务装配失败，引导中止");
             return false;
         }
-        // 登录后把 kernel 服务动作并入登录期动作表（同一张 Map，服务端实时可见）
-        if (ipcActions !== null) {
+        if (isShuttingDown()) {
             try {
-                stopIpcServices = attachIpcServices(ipcActions, newServices);
-                // OB11 动作桥可选，失败时内部回滚并降级为纯 kernel 动作面。
-                stopOb11Bridge = await attachOb11IpcBridge(ipcActions, newServices);
-            } catch (err) {
-                try {
-                    stopIpcServices?.();
-                } finally {
-                    stopIpcServices = null;
-                    newServices.dispose();
-                }
-                throw err;
+                await newServices.stopAdapters?.();
+            } finally {
+                newServices.dispose();
             }
+            return false;
         }
         services = newServices;
-        // 优雅关停钩子（哨兵/信号触发，2026-10-25）：与软重登清理同一顺序——
-        // 协议消费方 → IPC 附加面 → kernel 桥/缓存/消息日志。逆序执行
-        // （registerShutdownHook 语义），故按清理顺序的反向注册；软重登重装配
-        // 不重复注册（守卫一次性），钩子读闭包变量取最新装配面。
-        if (!shutdownHooksRegistered) {
-            shutdownHooksRegistered = true;
-            registerShutdownHook(() => {
-                services?.dispose();
-            });
-            registerShutdownHook(() => {
-                stopIpcServices?.();
-                stopOb11Bridge?.();
-            });
-            registerShutdownHook(() => {
-                return services?.stopAdapters?.();
-            });
-        }
-        return true;
+        await attachIpc(newServices);
+        return !isShuttingDown();
     };
 
     /**
@@ -491,19 +503,22 @@ export async function bootstrapWithCore(
     const softRelogin = async (loginResult: LoginResultLike): Promise<boolean> => {
         sendStatus("sessioning");
         log(`bootstrap: 软重登 uin=${loginResult.uin}——清理旧装配并重跑装配链`);
-        stopOb11Bridge?.();
-        stopOb11Bridge = null;
-        stopIpcServices?.();
-        stopIpcServices = null;
-        services?.dispose();
-        services = null;
+        try {
+            await stopProtocols();
+        } finally {
+            disposeServices();
+        }
+        if (isShuttingDown()) {
+            return false;
+        }
         return await runAssembly(loginResult, false);
     };
     reassembleRef.current = softRelogin;
 
     probeCreatedSession(state, ctx);
     // 多源 session 就绪探测（5s 间隔，60s 上限）
-    startSessionProbe(state, ctx);
+    const sessionProbe = startSessionProbe(state, ctx);
+    registerShutdownHook(() => clearInterval(sessionProbe), "intake");
     // 探测 session 方法面（NAPI 反射，验证 startNT/init 等关键方法）
     probeSessionMethods(ctx);
 
@@ -521,22 +536,35 @@ export async function bootstrapWithCore(
     const qrOnly = isEnvEnabled(env.NAPUTO_QR_ONLY);
     const ref: LoginTargetRef = { targetUin: undefined };
     await pickLoginAccount(kernel, ctx, ref, forcedUin);
-    if (isEnvEnabled(env.NAPUTO_IPC)) {
+    if (isShuttingDown()) {
+        return false;
+    }
+    if (ipc !== undefined) {
         sendStatus("logging");
     }
     const loginResult = await Promise.race([
-        doLogin(core, buildLoginOpts(Appid, forcedUin, ref, qrOnly)),
+        doLogin(
+            core,
+            buildLoginOpts(
+                Appid,
+                forcedUin,
+                ref,
+                qrOnly,
+                () => control.currentPhase === "login-race" && !isShuttingDown(),
+            ),
+        ),
         preemptLogin,
     ]);
     // 竞速结束：关抢占口进入装配期（后续 control login 走 ready 态软重登
     // 或按相位忽略，见 relogin.ts 相位机——A1 修复迟到结果的误导上报）
+    if (isShuttingDown()) {
+        return false;
+    }
     control.beginAssembly();
     if (loginResult === null) {
         control.abort();
         log("bootstrap: 登录失败，引导中止");
-        if (isEnvEnabled(env.NAPUTO_IPC)) {
-            sendStatus("failed", "登录失败", { code: "NOT_LOGIN", message: "登录失败" });
-        }
+        sendStatus("failed", "登录失败", { code: "NOT_LOGIN", message: "登录失败" });
         return false;
     }
     log(
@@ -560,5 +588,12 @@ export async function bootstrapWithCore(
     runListenerRecordingPhase(kernel, ctx);
     // 探测模式
     runProbePhase(kernel, ctx);
+    if (ipc !== undefined) {
+        sendStatus("ready", undefined, undefined, {
+            uin: loginResult.uin,
+            uid: loginResult.uid,
+            nick: loginResult.nick ?? "",
+        });
+    }
     return true;
 }

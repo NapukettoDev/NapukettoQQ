@@ -13,7 +13,7 @@ launchSelfHost（调用进程）
   └─ spawn    标准 node 跑 self-host.cjs，env 注入 NAPUTO_*
 self-host（宿主子进程）
   ├─ lifecycle/ 实例锁 → 停止哨兵 / 信号
-  ├─ dlopen wrapper.node → O3MiscService 激活事件分发
+  ├─ 动态 import kernel → dlopenWrapper → activateO3MiscService
   └─ host/core  kernel 动态 import → 登录 → session → 协议装配 ｜ IPC
 ```
 
@@ -115,18 +115,25 @@ Linux：
 临时目录和用户数据目录，工作目录仍由 CLI 设为沙箱数据根。文件日志通过
 kernel 日志设施检查路径，自定义协议缓存通过同一边界检查后装配。
 
+自建宿主动态导入 kernel 后使用 `dlopenWrapper` 和 `activateO3MiscService` 完成
+原生加载与事件分发激活。这两个原语自 kernel 0.12.3 起提供，当前装配依赖以仓库锁定版本为准。
+
 ### 实例锁与进程治理
 
-- 锁文件 `<账号数据目录>/instance.lock`，内容 `{pid, startedAt, cmdline}`。
-- 判定：无锁或损坏 → 可启动；PID 不存活 → 崩溃残留，接管；存活则比对 cmdline
-  （Windows `Get-CimInstance Win32_Process`，Linux `/proc/<pid>/cmdline`），查不到或不
-  一致 → PID 已被复用，接管；旧锁无 cmdline → 保守判占用。
-- 占用时 self-host 记日志、IPC 发 failed（`INVALID_STATE`）后 exit 1。
-- 退出清理只在持有者是本进程时删锁；崩溃强杀残留由下次启动的探活兜底。
-- 关停：`<数据根>/napuketto.stop` 全局哨兵（内容 `all` / uin / 空，mtime 晚于进程启动才
-  触发）与 `<数据根>/napuketto.stop.<uin>` 单账号独立哨兵（存在即触发；并发 `stop -q`
-  互不覆盖，清理只动本账号文件），两者都接入 SIGINT/SIGTERM/SIGBREAK；逆序跑关停钩子
-  后 exit 0。单文件 + uin 内容形态保留兼容，观察方对全局与独立文件同时生效。
+- 以账号目录为粒度。 `instance.lock` 保留旧字段，新增随机所有权标记；临时记录写完整后
+  原子发布。同目录短时变更目录串行化检查、回收、发布和释放，变更目录先装入唯一标记再发布。
+  清理残留变更目录时只删除观察到的标记，只移除空目录。
+- PID 死亡或已确认命令行不同可回收；存活但命令行无法查询时保留占用。无锁、空或损坏
+  记录可以重建。释放必须匹配本进程取得的所有权标记。退出时释放，强杀后下次启动回收。
+  升级同一账号目录的宿主时先停止旧宿主，旧代码写锁没有参与变更互斥。
+- 信号、全局与单账号停止哨兵、IPC stop/restart、父进程断开 stdin/stdout、OB11
+  进程控制和引导失败都进入同一关停。首次触发决定退出码，后续请求共享完成结果。
+  先停止接收 IPC 和心跳、取消探测，再停止协议和 IPC 转发，最后释放桥、缓存和监听器。
+  每个异步清理钩子最多等待 1.5 秒，整个关停最多 7 秒。超时后尝试后续清理，到总时限强制退出。
+  同步阻塞的原生调用仍由父进程超时强杀。
+  退出前尽量冲刷 stdout，进程退出钩子最后释放账号锁。请求式退出为 0，保留引导错误码 1/78。
+- 停止哨兵仍使用 `<数据根>/napuketto.stop` 或 `<数据根>/napuketto.stop.<uin>`。
+  只识别进程启动后写入的请求，全局内容可指定 `all`、uin 或留空。
 
 ### IPC 模式与 OB11 容器
 
@@ -134,7 +141,11 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   action / control / ping；kernel console 日志关闭，避免撕裂协议行。
 - 消息类型：status（booting/dlopening/logging/sessioning/ready/failed）、login、qr、
   event、result、log、ping/pong、action、control（stop/restart/login/status）。
-- 登录前就启动 stdin 服务端（只含 `login.refreshQr`）；登录后 `attachIpcServices` 把
+- 宿主启动即读 stdin。物理行上限 16 MiB（UTF-8 原始字节，含可选 CR，不含 LF）。
+  超长行丢弃至下一 LF，日志不含原文。不调度 EOF 时未结束的尾帧。最多 256 个在途动作，
+  无等待队列；超限以原请求 ID 返回 `IPC_BUSY`。ping 和 control 不占用动作名额。
+- 登录前可调用 `login.getSelf`（身份未知时返回 `INVALID_STATE`）；core 创建后开放
+  `login.refreshQr`。登录后 `attachIpcServices` 把
   kernel 点分动作并入同一张表，Msg/Group/Buddy/RecentContact/Login 五条通道转 event。
 - `msg.addReaction` 是稳定业务动作，参数为 `{ chatType?, peerUid? / peerUin?, msgId, emojiId }`。
   私聊（默认 `chatType: 1`）和临时会话（`100`）可传 UID，或传 QQ 号转换为 UID；
@@ -147,7 +158,16 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
 - 初次引导与软重登都先完成动作挂载，再写出 `status(ready)`，随后才允许写出
   `event`（含 OB11）。装配期间到达 IPC 出口的事件直接丢弃。软重登在清理旧装配前
   发 `status(sessioning)`，暂停事件转发。如果写入 ready 同步失败，成功重播后才放行。
-- 心跳 15s；`control status` 重播最近一条 status（父进程丢消息后重同步）。
+- 心跳 15s。stdout 关闭、写失败或发送队列超过 32 MiB 时关停。
+- `status(ready)` 可携带 `selfInfo: {uin, uid, nick}`，来自同一次装配采用的登录结果。`control status` 重播完整快照。 `login.getSelf` 从同一快照返回
+  `{uin, uid, nickname}`，只在该代服务 ready 且身份完整时成功。旧版解析器兼容 IPC v1
+  并可能丢弃新增字段，消费方更新 schema 后才能原子读取 ready 与身份。
+- 单独的 `login` 帧供登录 UI 使用。初次竞速的迟到进度/成功结果不会改写身份。
+  软重登等待登录结果期间保留当前服务快照；采纳新结果并发出 sessioning 后身份未知，
+  新一代 ready 才发布新身份。早期、失败或缺 uin/uid 时保持未知。跨代或跨子进程收到的
+  异步查询结果由驱动按当前连接与状态校验，不能拿配置账号填补。
+- Node 宿主诊断走 stderr 或安全日志。真实 QQ 可绕过 JS 直接写 fd 1，仍需下游过滤
+  原生日志及执行状态恢复；该平台边界需要真实 QQ 环境复验。
 - 编码统一 `encodeIpcMessage`：先 `toJsonSafe`（Map→对象、Set→数组、环引用丢分支）再
   stringify，否则 Map/Set 跨进程即丢。
 - OB11 容器可选：IPC 模式且 `NAPUTO_ADAPTER_ENTRY` + `NAPUTO_NETWORK_ENTRY` 已注入时，
@@ -170,12 +190,12 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 | ready | 软重登：重装配后重播 ready |
 | assembling / aborted | 忽略（只记日志） |
 
-- login-race 的抢占结果是 `sendLogin(logged_in)` + 经 `preemptRef` 接管初始竞速；ready
-  态重装配完成后重播 `status(ready)` 与 `login(logged_in, 新 selfInfo)`。
+- login-race 的抢占结果经 `preemptRef` 接管初始竞速，由初次装配发布 `login(logged_in)`。
+  ready 态重装配完成后发布 `status(ready, selfInfo)` 与 `login(logged_in, 新 selfInfo)`。
 - 互斥 claim/release：在途登录或重装配期间的新指令直接忽略。
 - 清理顺序：OB11 桥 stop（含动作表条目移除）→ `attachIpcServices` stop →
   `services.dispose()`（桥 / 缓存 / 消息日志退订，幂等）。
-- 重装配失败：sendStatus(failed) + exit 1，交宿主重启循环回收。
+- 重装配失败：sendStatus(failed) 后走统一关停并退出 1，交宿主重启循环回收。
 
 ### 协议装配：一协议一广播器
 

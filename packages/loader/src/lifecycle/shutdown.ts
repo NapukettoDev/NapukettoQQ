@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { getErrorMessage } from "../host/type-guards.js";
+import { errMsg, log } from "../host/util.js";
 
 /** 哨兵文件名（置于数据根）。 */
 export const STOP_SENTINEL_FILENAME = "napuketto.stop";
@@ -156,52 +156,90 @@ export function watchStopSentinel(opts: StopSentinelWatchOptions): () => void {
     };
 }
 
-/** 关停钩子（自建宿主引导链注册：协议适配器停止 / 桥退订等）。 */
 type ShutdownHook = () => void | Promise<void>;
+const SHUTDOWN_PHASES = ["intake", "protocols", "services", "flush"] as const;
+type ShutdownPhase = (typeof SHUTDOWN_PHASES)[number];
 
-const shutdownHooks: ShutdownHook[] = [];
-let shutdownStarted = false;
+const HOOK_TIMEOUT_MS = 1500;
+const SHUTDOWN_TIMEOUT_MS = 7000;
+const hooks: Record<ShutdownPhase, ShutdownHook[]> = {
+    intake: [],
+    protocols: [],
+    services: [],
+    flush: [],
+};
+let shutdown: Promise<void> | undefined;
 
-/**
- * 注册关停钩子（按注册逆序执行）。
- * @returns 退订函数（从钩子表移除该 hook；重复调用幂等）。
- */
-export function registerShutdownHook(hook: ShutdownHook): () => void {
-    if (shutdownStarted) {
+export function isShuttingDown(): boolean {
+    return shutdown !== undefined;
+}
+
+/** 在各阶段内按注册逆序清理，默认保留原来的通用钩子语义。 */
+export function registerShutdownHook(
+    hook: ShutdownHook,
+    phase: ShutdownPhase = "services",
+): () => void {
+    if (isShuttingDown()) {
         return () => undefined;
     }
-    shutdownHooks.push(hook);
+    const pending = hooks[phase];
+    pending.push(hook);
     return () => {
-        const index = shutdownHooks.indexOf(hook);
+        const index = pending.indexOf(hook);
         if (index !== -1) {
-            shutdownHooks.splice(index, 1);
+            pending.splice(index, 1);
         }
     };
 }
 
-/**
- * 执行关停编排：逆序跑全部钩子（单钩子异常不阻断后续）后 exit 0。
- * 幂等（重复调用只跑一次）。退出码 0 = 请求式正常退出（生命周期契约）。
- */
-export async function requestShutdown(reason: string): Promise<void> {
-    if (shutdownStarted) {
+/** 限制单钩子的等待时间。同步阻塞的原生调用由父进程强杀兜底。 */
+export async function runShutdownHook(hook: ShutdownHook, phase: ShutdownPhase): Promise<void> {
+    const result = hook();
+    if (result === undefined) {
         return;
     }
-    shutdownStarted = true;
-    process.stdout.write(`[self-host] 优雅关停：${reason}\n`);
-    while (shutdownHooks.length > 0) {
-        const hook = shutdownHooks.pop();
-        if (hook === undefined) {
-            break;
-        }
-        try {
-            await hook();
-        } catch (err) {
-            const message = getErrorMessage(err);
-            process.stdout.write(`[self-host] 关停钩子异常（继续）: ${message}\n`);
-        }
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        await Promise.race([
+            result,
+            new Promise<void>((resolve) => {
+                timer = setTimeout(() => {
+                    log(`[self-host] 关停阶段 ${phase} 等待超时`);
+                    resolve();
+                }, HOOK_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
     }
-    process.exit(0);
+}
+
+async function drainShutdown(reason: string, exitCode: number): Promise<void> {
+    log(`[self-host] 关停：${reason}`);
+    const watchdog = setTimeout(() => {
+        log("[self-host] 关停超过总时限，强制退出");
+        process.exit(exitCode);
+    }, SHUTDOWN_TIMEOUT_MS);
+    try {
+        for (const phase of SHUTDOWN_PHASES) {
+            for (const hook of hooks[phase].splice(0).reverse()) {
+                try {
+                    await runShutdownHook(hook, phase);
+                } catch (err) {
+                    log(`[self-host] 关停阶段 ${phase} 异常: ${errMsg(err)}`);
+                }
+            }
+        }
+    } finally {
+        clearTimeout(watchdog);
+        process.exit(exitCode);
+    }
+}
+
+/** 首次请求决定退出码。并发或重入请求共用一次关停。 */
+export function requestShutdown(reason: string, exitCode = 0): Promise<void> {
+    shutdown ??= Promise.resolve().then(() => drainShutdown(reason, exitCode));
+    return shutdown;
 }
 
 /**

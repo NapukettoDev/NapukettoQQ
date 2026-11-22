@@ -162,7 +162,7 @@ describe("createLoginControlHandler", () => {
         settle(null); // 收尾（不产生额外断言）
     });
 
-    it("登录期抢占：竞速中被接管（wire 上报 logged_in + preempt resolve）", async () => {
+    it("登录期抢占：结果交给初次装配统一发布身份", async () => {
         const cap = captureStdout();
         const preemptResolve = vi.fn();
         const control = new LoginControl({ resolve: preemptResolve });
@@ -176,9 +176,7 @@ describe("createLoginControlHandler", () => {
             expect(preemptResolve).toHaveBeenCalledWith(RESULT);
         });
         const logins = loginPayloads(cap.lines());
-        expect(logins).toHaveLength(1);
-        expect(logins[0]?.state).toBe("logged_in");
-        expect(logins[0]?.selfInfo).toEqual({ uin: "10001", uid: "u1", nick: "测试" });
+        expect(logins).toHaveLength(0);
         cap.restore();
     });
 

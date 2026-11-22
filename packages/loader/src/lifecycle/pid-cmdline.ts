@@ -4,10 +4,8 @@
  * 背景（2026-09-08 实测事故）：锁内 pid 的持有者已死、pid 被 Windows 复用给
  * 无关进程时，process.kill(pid, 0) 探活成功 → 误判存活 → 新实例永久拒绝启动
  * （只能手动删锁恢复）。根治：探活通过后再查该 pid 当前的真实命令行，与锁内
- * cmdline 摘要比对——查不到（进程已退/查询失败）或不一致（pid 复用）均视为
- * 持有者已死，允许接管。误判方向取舍：误判「死亡」→ 双实例抢 QQ 原生锁，
- * 后启动者挂起退出（可恢复）；误判「存活」→ 永久锁死需人工干预——前者代价
- * 远低，故查询失败宁可接管。
+ * cmdline 比对只在能查询到实际命令行时使用。不一致表明 PID 已被其他进程
+ * 使用；查询失败时保守保留正常探活的持有者，避免在平台查询故障时启动双实例。
  *
  * 平台实现：Windows 走 PowerShell Get-CimInstance Win32_Process 跨进程查询
  * （仅在启动判活时调用一次，冷启动 ~0.5-2s 可接受；wmic 在新 Win11 已移除，
@@ -31,7 +29,7 @@ export const CMDLINE_PROBE_SUPPORTED = process.platform === "win32" || process.p
  * 查询指定 pid 的当前命令行。
  *
  * @returns 命令行原文；进程不存在 / 命令行不可得（权限、系统进程 null）/
- *          查询机制失败（超时、PowerShell 缺失）均返回 null（调用方视为持有者已死）
+ *          查询机制失败（超时、PowerShell 缺失）均返回 null
  */
 export function readCmdlineForPid(pid: number): string | null {
     if (process.platform === "win32") {
@@ -89,12 +87,4 @@ export function normalizeCmdline(cmdline: string): string {
         .replaceAll("\\", "/")
         .replace(/\s+/g, " ")
         .trim();
-}
-
-/**
- * 本进程命令行摘要（写锁用）：execArgv（node 选项）+ argv（脚本与参数），
- * 与操作系统记录的完整命令行结构一致（规范化后可比对）。
- */
-export function selfCmdline(): string {
-    return [...process.execArgv, ...process.argv].join(" ").trim();
 }

@@ -57,6 +57,8 @@ export type {
 // 类型 + schema 值统一经 host/ipc/index.js 出口，插件侧 import 同一份定义。
 // wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
 export {
+    DEFAULT_MAX_IPC_LINE_BYTES,
+    DEFAULT_MAX_PENDING_REQUESTS,
     IPC_VERSION,
     IpcActionPayloadSchema,
     IpcBootPhaseSchema,
