@@ -96,7 +96,8 @@ groupUploadAsNotice = false
 
 # 远程媒体默认仅公网。仅受信任的调用方需要访问 LAN/本机媒体时改为 compat。
 # [accounts.onebot11.media]
-# outboundPolicy = "compat"
+# outboundPolicy = "public-only"
+# localMediaRoots = []                    # 默认拒绝本地文件，可填写专用导出目录
 
 # ---- HTTP 反向服务器（接收第三方 POST 指令），可配置多个 ----
 [[accounts.onebot11.httpServers]]
@@ -137,6 +138,7 @@ port = 3001
 # # token = ""                           # 可选：Satori 鉴权 token
 # [accounts.satori.media]
 # outboundPolicy = "public-only"          # 受信任 LAN 部署可显式设为 "compat"
+# localMediaRoots = []                    # 默认拒绝本地文件，可填写专用导出目录
 # [[accounts.satori.httpServers]]        # HTTP RPC（POST /v1/{resource}.{method}）
 # enabled = true
 # host = "127.0.0.1"
@@ -178,5 +180,6 @@ port = 3001
 # # cacheDir = "cache"                   # 可选：发送远程媒体 URI 的下载缓存目录
 # [accounts.milky.media]
 # outboundPolicy = "public-only"          # 受信任 LAN 部署可显式设为 "compat"
+# localMediaRoots = []                    # 默认拒绝本地文件，可填写专用导出目录
 `;
 }

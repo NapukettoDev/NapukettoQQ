@@ -134,6 +134,29 @@ Satori 和 Milky 分别使用 `[accounts.satori.media]` 和 `[accounts.milky.med
 受信任调用方，因为它允许调用方指定宿主可达的 LAN 和本机 HTTP(S) 目标。
 OB11 `download_file` 的鉴权头、自定义头仅随初始源及同源跳转发送，跨源时全部清除。
 
+### 本地媒体与缓存引用
+
+OB11（含 IPC）、Milky 和 Satori 默认只允许复用本账号、当前协议仍有效的媒体缓存引用。
+如需读取共享文件，为每个需要该能力的账号及协议设置 `media.localMediaRoots`：
+
+```toml
+[accounts.onebot11.media]
+localMediaRoots = ["exports/10001"]
+```
+
+也可用绝对目录。相对目录以主配置文件所在目录为基准。内联配置使用同样的
+`accounts[].<协议>.media.localMediaRoots`，相对目录以宿主数据根为基准。
+文件参数可用本机绝对路径、授权目录内可唯一定位的相对路径或本机 `file://` URI。
+请使用独立导出目录，在 Windows 上用 ACL 限制目录及其父级的结构变更权限。
+缓存目录由服务账户控制，调用方可以读返回的文件，并应在有效期内重新使用引用。
+跨容器或 IPC 进程共享文件时，配置宿主可读取的挂载路径。
+
+升级后重新获取既有 `download_file`、`get_image`、`get_record` 的缓存路径。
+Satori 可通过 `message.get` 获取可重新发送的 QQ 本地媒体引用，格式为
+`internal:qq/<账号>/_tmp/<条目>/<文件>`。
+原先依赖 `internal:` 剥前缀的本地用法迁移为授权目录内路径。
+旧的共享 `.napuketto-media-v1` 目录可在停止使用旧版本后由运营者回收。
+
 ## 环境变量
 
 | 变量 | 作用 |

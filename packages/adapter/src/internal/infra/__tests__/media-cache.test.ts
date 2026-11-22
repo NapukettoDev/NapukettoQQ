@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cacheMediaFile, MediaCache, protectMediaPath, withMediaScope } from "../media-cache.js";
+import { cacheMediaFile, leaseMediaReference, MediaCache, withMediaScope } from "../media-cache.js";
 
 vi.mock("node:crypto", async (original) => ({
     ...(await original<typeof import("node:crypto")>()),
@@ -84,7 +84,7 @@ describe("owned media cache", () => {
         expect(await entries()).toEqual([]);
     });
 
-    it("leases reused expired paths across concurrent scopes/instances until every send ends", async () => {
+    it("keeps an already leased reference past expiry and rejects new consumers", async () => {
         const path = await cache.run(() => cacheMediaFile(root, ".bin", write(), "reference"));
         let release = (): void => undefined;
         const held = new Promise<void>((done) => {
@@ -96,7 +96,7 @@ describe("owned media cache", () => {
         });
         const second = new MediaCache({ root, now: () => time });
         const sending = cache.run(async () => {
-            await protectMediaPath(path);
+            await leaseMediaReference(path);
             acquired();
             await held;
             expect(existsSync(path)).toBe(true);
@@ -104,7 +104,9 @@ describe("owned media cache", () => {
         await ready;
         time += 1000;
         await second.run(async () => {
-            await protectMediaPath(path);
+            await expect(leaseMediaReference(path)).rejects.toMatchObject({
+                code: "INVALID_PARAM",
+            });
             await second.sweep();
             expect(existsSync(path)).toBe(true);
         });
@@ -156,6 +158,26 @@ describe("owned media cache", () => {
         await cache.start();
         expect(existsSync(dir)).toBe(true);
         time = 1050;
+        await cache.sweep();
+        expect(existsSync(dir)).toBe(false);
+    });
+
+    it("reclaims the known orphaned staged input and its video output", async () => {
+        const dir = join(root, ".napuketto-media-v1", `entry-2147483647-${randomUUID()}`);
+        const input = join(dir, "input");
+        const video = join(input, ".napuketto-video-Ab123x");
+        await mkdir(video, { recursive: true });
+        await writeFile(
+            join(dir, ".owner.json"),
+            JSON.stringify({
+                version: 1,
+                lifetime: "temporary",
+                expires: 0,
+                inputName: "clip.webm",
+            }),
+        );
+        await writeFile(join(input, "clip.webm"), "staged");
+        await writeFile(join(video, "output.mp4"), "converted");
         await cache.sweep();
         expect(existsSync(dir)).toBe(false);
     });

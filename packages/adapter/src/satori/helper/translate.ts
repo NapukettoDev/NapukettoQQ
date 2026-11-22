@@ -18,6 +18,25 @@ export interface SatoriTranslateDeps {
     selfUin: string;
     /** uid → uin（at 目标 / 用户 ID；缺省不转换）。 */
     uidToUin?: (uids: string[]) => Promise<Map<string, string>>;
+    publishLocalAsset?: ((path: string) => Promise<string | undefined>) | undefined;
+}
+
+async function renderMessageContent(raw: RawMessage, deps: SatoriTranslateDeps): Promise<string> {
+    const elementDeps: { uidToUin?: (uids: string[]) => Promise<Map<string, string>> } = {};
+    if (deps.uidToUin !== undefined) {
+        elementDeps.uidToUin = deps.uidToUin;
+    }
+    const elements = await canonicalToSatoriElements(toCanonicalElements(raw), elementDeps);
+    if (deps.publishLocalAsset !== undefined) {
+        for (const element of elements) {
+            const attrs = element.attrs;
+            const source = attrs?.["src"];
+            if (!attrs || !source) continue;
+            const reference = await deps.publishLocalAsset(source);
+            if (reference !== undefined) attrs["src"] = reference;
+        }
+    }
+    return renderElements(elements);
 }
 
 /** RawMessage → Satori Message（资源提升：message 不嵌套 user/member/channel）。 */
@@ -25,12 +44,7 @@ export async function toSatoriMessage(
     raw: RawMessage,
     deps: SatoriTranslateDeps,
 ): Promise<Message> {
-    const elementDeps: { uidToUin?: (uids: string[]) => Promise<Map<string, string>> } = {};
-    if (deps.uidToUin !== undefined) {
-        elementDeps.uidToUin = deps.uidToUin;
-    }
-    const elements = await canonicalToSatoriElements(toCanonicalElements(raw), elementDeps);
-    const content = renderElements(elements);
+    const content = await renderMessageContent(raw, deps);
     const isGroup = raw.chatType === ChatType.GROUP;
     const peerUin = String(raw.peerUin ?? "");
     const senderUin = String(raw.senderUin ?? "");

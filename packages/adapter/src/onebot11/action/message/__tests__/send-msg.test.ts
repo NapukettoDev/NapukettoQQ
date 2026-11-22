@@ -170,7 +170,7 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
         expect(elements?.[0]?.type === "at" && elements?.[0]?.target).toBe("90002");
     });
 
-    it("语音段：不存在的文件路径经 ensureSilk 原样透传（转码失败兜底）", async () => {
+    it("语音段：未授权路径在转码和发送前拒绝", async () => {
         const { deps, sendMessage } = makeDeps();
         const action = sendActionOf(deps, "send_msg");
         const result = await action.handle({
@@ -178,10 +178,8 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
             group_id: 808,
             message: [{ type: "record", data: { file: "no-such-file.pcm" } }],
         });
-        expect(result.retcode).toBe(0);
-        const [, elements] = sendMessage.mock.calls[0] ?? [];
-        // record 段 → canonical voice；路径原样（读头失败兜底）
-        expect(elements?.some((el) => el.type === "voice")).toBe(true);
+        expect(result.retcode).toBe(105);
+        expect(sendMessage).not.toHaveBeenCalled();
     });
 
     it("缺 group_id 与 user_id → retcode 105（INVALID_PARAM）", async () => {

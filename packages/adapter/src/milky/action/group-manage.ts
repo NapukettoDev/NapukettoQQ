@@ -140,6 +140,7 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
                     payload.image_uri,
                     api.mediaDir,
                     api.getMediaOutboundPolicy?.(),
+                    api.getLocalMediaRoots?.(),
                 );
                 await api.groupApi.setGroupAvatar(String(payload.group_id), imagePath);
                 return {};
@@ -187,6 +188,7 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
                         payload.image_uri,
                         api.mediaDir,
                         api.getMediaOutboundPolicy?.(),
+                        api.getLocalMediaRoots?.(),
                     );
                 }
                 await api.groupApi.publishGroupAnnouncement(groupCode, payload.content, imagePath);

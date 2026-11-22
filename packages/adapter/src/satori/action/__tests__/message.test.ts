@@ -15,8 +15,10 @@ import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
 import { makeRawMsg } from "../../__tests__/test-support.js";
+import { SatoriApi } from "../../api/satori-api.js";
 import type { BidiList, Message } from "../../types/index.js";
 import { SatoriActionError } from "../base-action.js";
+import { createSatoriActionRegistry } from "../index.js";
 import type { MessageActionDeps } from "../message.js";
 import { createMessageActions } from "../message.js";
 
@@ -132,6 +134,11 @@ describe("message.create", () => {
             writeFileSync(output, "converted");
             transcodeMock.mockResolvedValueOnce(output);
             const api = stubSatoriApi();
+            api.toCanonicalDeps.mockReturnValue({
+                cacheDir: dir,
+                uinToUid: api.uinToUid,
+                localMediaRoots: [dir],
+            });
             vi.mocked(api.msgApi.sendMessage).mockImplementationOnce(async (_peer, elements) => {
                 expect(elements).toEqual([{ type: "video", path: output }]);
                 expect(readFileSync(output, "utf8")).toBe("converted");
@@ -215,6 +222,46 @@ describe("message.create", () => {
 });
 
 describe("message.get", () => {
+    it("发布当前账号 QQ 媒体引用并在 message.create 中复用", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "nk-satori-qq-"));
+        const source = join(dir, "avatar.png");
+        writeFileSync(source, "qq image");
+        try {
+            const fixture = stubSatoriApi();
+            const msg = makeRawMsg({
+                elements: [{ elementType: 2, picElement: { sourcePath: source } }] as never,
+            });
+            vi.mocked(fixture.msgApi.fetchMsgsByMsgId).mockResolvedValue([msg]);
+            const api = new SatoriApi({
+                ...fixture,
+                groupCache: undefined,
+                cacheDir: dir,
+                mediaBaseDir: dir,
+            });
+            const registry = createSatoriActionRegistry({ api });
+            const result = (await registry
+                .get("message.get")
+                ?.run({ channel_id: "10001", message_id: "msg-1" })) as Message | undefined;
+            expect(result?.content).toContain("internal:qq/10001/_tmp/");
+            vi.mocked(fixture.msgApi.sendMessage).mockImplementationOnce(
+                async (_peer, elements) => {
+                    const [image] = elements;
+                    if (image?.type !== "image") throw new Error("missing image");
+                    expect(image.path).not.toBe(source);
+                    expect(readFileSync(image.path, "utf8")).toBe("qq image");
+                    return { msgId: "sent" };
+                },
+            );
+            const response = await registry.get("message.create")?.run({
+                channel_id: "10001",
+                content: result?.content,
+            });
+            expect(response).toMatchObject([{ id: "sent" }]);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it("fetchMsgsByMsgId → toSatoriMessage 翻译（guild/channel/user 提升）", async () => {
         const api = stubSatoriApi();
         vi.mocked(api.msgApi.fetchMsgsByMsgId).mockResolvedValueOnce([makeRawMsg()] as never);

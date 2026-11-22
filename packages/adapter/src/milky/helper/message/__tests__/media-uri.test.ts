@@ -3,10 +3,10 @@
  *
  * downloadPublicUrl 以 vi.mock 替身拦截（不触网）；base64:// 走真实落盘链
  * （mkdtemp 临时目录 + 真实 detectFileType 探测/失败保留 .bin 两分支）。
- * 锁定：file:// 展开与畸形兜底、裸路径原样、http(s)/base64 需 mediaDir、
+ * 锁定：file:// 与裸路径授权、畸形 URI 拒绝、http(s)/base64 需 mediaDir、
  * base64 空/空载荷报错、探测失败保留 .bin。
  */
-import { access, mkdtemp, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,6 +21,7 @@ vi.mock("@napuketto/media", async (importOriginal) => ({
 }));
 
 import { downloadPublicUrl } from "@napuketto/media";
+import { withMediaScope } from "../../../../internal/infra/media-cache.js";
 import { resolveMediaUri, resolveUriToPath } from "../media-uri.js";
 
 const mockedDownload = vi.mocked(downloadPublicUrl);
@@ -47,21 +48,22 @@ afterAll(async () => {
 });
 
 describe("resolveUriToPath（动作参数 uri）", () => {
-    it("file:// → fileURLToPath 平台路径", async () => {
+    it("file:// 和裸路径从授权目录复制", async () => {
         const target = join(mediaDir, "x.png");
-        const out = await resolveUriToPath(pathToFileURL(target).href, undefined);
-        expect(out).toBe(target);
+        await writeFile(target, "test");
+        await withMediaScope(async () => {
+            for (const uri of [pathToFileURL(target).href, "x.png"]) {
+                const out = await resolveUriToPath(uri, undefined, undefined, [mediaDir]);
+                expect(out).not.toBe(target);
+                expect(await readFile(out, "utf8")).toBe("test");
+            }
+        });
     });
 
-    it("file:// 畸形 URI → 裸剥离前缀兜底", async () => {
-        const out = await resolveUriToPath("file://%zzbad", undefined);
-        expect(out.startsWith("file://")).toBe(false);
-        expect(out).toContain("%zzbad");
-    });
-
-    it("裸路径（go-cqhttp 惯例）→ 原样返回", async () => {
-        const raw = join("some", "dir", "a.jpg");
-        await expect(resolveUriToPath(raw, undefined)).resolves.toBe(raw);
+    it("畸形 file:// URI 拒绝", async () => {
+        await expect(resolveUriToPath("file://%zzbad", undefined)).rejects.toMatchObject({
+            code: "INVALID_PARAM",
+        });
     });
 
     it("http(s)/base64 → 转发 resolveMediaUri（需 mediaDir）", async () => {

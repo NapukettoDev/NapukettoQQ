@@ -24,6 +24,7 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
 import type { MediaOutboundPolicy } from "@napuketto/media";
+import { bindLocalMediaRoots } from "../internal/infra/local-media.js";
 import { MediaCache } from "../internal/infra/media-cache.js";
 import { toUnixSeconds } from "../internal/qq/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
@@ -31,6 +32,8 @@ import type { MilkyLoggerLike } from "./transport.js";
 
 /** MilkyApi 构造参数。 */
 export interface MilkyApiOptions {
+    /** 相对 media.localMediaRoots 的可信基准目录，缺省为工作目录。 */
+    localMediaBaseDir?: string | undefined;
     msgApi: MsgApi;
     groupApi: GroupApi;
     friendApi: FriendApi;
@@ -72,6 +75,7 @@ export interface MilkyInboundBase {
 
 export class MilkyApi {
     readonly mediaCache: MediaCache;
+    readonly getLocalMediaRoots?: (() => readonly string[]) | undefined;
     readonly msgApi: MsgApi;
     readonly groupApi: GroupApi;
     readonly friendApi: FriendApi;
@@ -99,9 +103,15 @@ export class MilkyApi {
         opts: MilkyApiOptions,
         seqIndex: MessageSeqIndex,
         getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+        getLocalMediaRoots?: () => readonly string[] | undefined,
     ) {
         this.getMediaOutboundPolicy = getMediaOutboundPolicy;
-        this.mediaCache = new MediaCache({ root: opts.mediaDir, logger: opts.logger });
+        this.getLocalMediaRoots = bindLocalMediaRoots(opts.localMediaBaseDir, getLocalMediaRoots);
+        this.mediaCache = new MediaCache({
+            root: opts.mediaDir,
+            logger: opts.logger,
+            owner: { protocol: "milky", account: opts.self.uin },
+        });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.friendApi = opts.friendApi;

@@ -1,11 +1,3 @@
-/**
- * helper/element/asset.test.ts：resolveAsset 资源解析单测（发方向媒体）。
- *
- * 锁定三种 src 形态：
- *  - internal:{platform}/{user.id}/{path} → 本地路径（_tmp 段剥离，无 _tmp 原样）
- *  - http(s):// → fetch 下载落盘 cacheDir（文件名消毒、非 2xx 抛 SEND_FAILED）
- *  - 其他 → 本地路径原样返回（无 IO）
- */
 import {
     existsSync,
     mkdtempSync,
@@ -15,8 +7,9 @@ import {
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cacheMediaFile, MediaCache } from "../../../../internal/infra/media-cache.js";
 import { resolveAsset } from "../asset.js";
 
 let cacheDir = "";
@@ -31,31 +24,47 @@ afterEach(() => {
 });
 
 describe("resolveAsset：internal: 路径", () => {
-    it("internal:{platform}/{uid}/{path} → 本地路径（剥前缀）", async () => {
-        await expect(resolveAsset("internal:qq/10001/Emoji/x.png", cacheDir)).resolves.toBe(
-            "Emoji/x.png",
+    it("仅允许当前账号的具名缓存引用，TTL 与缓存一致", async () => {
+        let now = 0;
+        const cache = new MediaCache({
+            root: cacheDir,
+            owner: { protocol: "satori", account: "10001" },
+            ttlMs: 10,
+            now: () => now,
+        });
+        const file = await cache.run(() =>
+            cacheMediaFile(
+                cacheDir,
+                ".png",
+                async (path) => {
+                    writeFileSync(path, "png");
+                },
+                "reference",
+            ),
         );
+        const id = `${basename(dirname(file))}/${basename(file)}`;
+        const src = `internal:qq/10001/_tmp/${id}`;
+        const resolve = (uri: string, account = "10001") =>
+            cache.run(() => resolveAsset(uri, cacheDir, { account }));
+        await expect(resolve(src)).resolves.toBe(file);
+        for (const uri of [
+            `internal:milky/10001/_tmp/${id}`,
+            `internal:qq/10002/_tmp/${id}`,
+            `internal:qq/10001/other/_tmp/${id}`,
+            `internal:qq/10001/_tmp/../${id}`,
+            `internal:qq/10001/_tmp/%2f${id}`,
+            "internal:qq/10001/Emoji/x.png",
+        ]) {
+            await expect(resolve(uri)).rejects.toMatchObject({ code: "INVALID_PARAM" });
+        }
+        now = 11;
+        await expect(resolve(src)).rejects.toMatchObject({ code: "INVALID_PARAM" });
     });
 
-    it("_tmp 段剥离（保留 _tmp/ 之后的部分）", async () => {
-        await expect(resolveAsset("internal:qq/10001/_tmp/pic/a.jpg", cacheDir)).resolves.toBe(
-            "pic/a.jpg",
-        );
-    });
-
-    it("只有一段（无第二个斜杠）→ 原样返回", async () => {
-        await expect(resolveAsset("internal:onlyname.png", cacheDir)).resolves.toBe("onlyname.png");
-    });
-
-    it("两段无 _tmp（platform/uid 形态但 path 缺失）→ 原样 pathPart", async () => {
-        await expect(resolveAsset("internal:qq/10001", cacheDir)).resolves.toBe("qq/10001");
-    });
-});
-
-describe("resolveAsset：本地路径", () => {
-    it("非 http / 非 internal 前缀：原样返回（无下载）", async () => {
-        await expect(resolveAsset("/abs/path/a.png", cacheDir)).resolves.toBe("/abs/path/a.png");
-        await expect(resolveAsset("C:\\dir\\a.png", cacheDir)).resolves.toBe("C:\\dir\\a.png");
+    it("裸路径缺省拒绝", async () => {
+        await expect(resolveAsset("a.png", cacheDir)).rejects.toMatchObject({
+            code: "INVALID_PARAM",
+        });
     });
 });
 
@@ -64,7 +73,9 @@ describe("resolveAsset：http(s) 下载", () => {
         const body = Buffer.from("png-data");
         const fetchMock = vi.fn(async () => new Response(body, { status: 200 }));
         vi.stubGlobal("fetch", fetchMock);
-        const out = await resolveAsset("http://example.com/pics/a%20b.png", cacheDir, "compat");
+        const out = await resolveAsset("http://example.com/pics/a%20b.png", cacheDir, {
+            outboundPolicy: "compat",
+        });
         // 下载器手动跟随重定向（逐跳校验），fetch 第二参带 redirect/signal
         expect(fetchMock).toHaveBeenCalledWith(
             "http://example.com/pics/a%20b.png",
@@ -81,7 +92,9 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const out = await resolveAsset("https://example.com/f/中文?.png", cacheDir, "compat");
+        const out = await resolveAsset("https://example.com/f/中文?.png", cacheDir, {
+            outboundPolicy: "compat",
+        });
         expect(basename(out)).toBe("media.bin");
     });
 
@@ -91,7 +104,7 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async () => new Response("nope", { status: 404 })),
         );
         await expect(
-            resolveAsset("https://example.com/missing.png", cacheDir, "compat"),
+            resolveAsset("https://example.com/missing.png", cacheDir, { outboundPolicy: "compat" }),
         ).rejects.toMatchObject({ code: "SEND_FAILED" });
     });
 
@@ -100,7 +113,9 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const out = await resolveAsset("https://example.com/", cacheDir, "compat");
+        const out = await resolveAsset("https://example.com/", cacheDir, {
+            outboundPolicy: "compat",
+        });
         expect(basename(out)).toBe("media.bin");
     });
 
@@ -109,8 +124,12 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const dots = await resolveAsset("https://example.com/..", cacheDir, "compat");
-        const dot = await resolveAsset("https://example.com/.", cacheDir, "compat");
+        const dots = await resolveAsset("https://example.com/..", cacheDir, {
+            outboundPolicy: "compat",
+        });
+        const dot = await resolveAsset("https://example.com/.", cacheDir, {
+            outboundPolicy: "compat",
+        });
         expect(dots.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
         expect(dot.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
     });
@@ -123,8 +142,8 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async (url: string) => new Response(url)),
         );
         const [a, b] = await Promise.all([
-            resolveAsset("https://a.example/a.png", cacheDir, "compat"),
-            resolveAsset("https://b.example/a.png", cacheDir, "compat"),
+            resolveAsset("https://a.example/a.png", cacheDir, { outboundPolicy: "compat" }),
+            resolveAsset("https://b.example/a.png", cacheDir, { outboundPolicy: "compat" }),
         ]);
         expect(a).not.toBe(b);
         expect(readFileSync(a, "utf8")).toBe("https://a.example/a.png");

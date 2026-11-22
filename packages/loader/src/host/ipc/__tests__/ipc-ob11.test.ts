@@ -3,7 +3,7 @@
  * ipc-ob11.test.ts：OB11 动作桥装配与实际动作验证。
  */
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -235,7 +235,9 @@ describe("attachOb11IpcBridge", () => {
                 url.includes("onebot11")
                     ? {
                           NapukettoOneBot11Adapter: FakeOb11Adapter,
-                          ob11ConfigSchema: { parse: () => ({}) },
+                          ob11ConfigSchema: {
+                              parse: () => ({ media: { outboundPolicy: "public-only" } }),
+                          },
                       }
                     : await load(url),
         });
@@ -323,6 +325,65 @@ describe("attachOb11IpcBridge", () => {
             server.close();
             await once(server, "close");
             await rm(cfgDir, { recursive: true, force: true });
+        }
+    });
+
+    it("真实 OB11 IPC 只授权登录账号的本地导出目录", async () => {
+        const dir = await mkdtemp(join(tmpdir(), "nk-ob11-ipc-local-"));
+        const exports = join(dir, "exports");
+        const other = join(dir, "other");
+        const source = join(exports, "avatar.png");
+        const foreignFile = join(other, "avatar.png");
+        await mkdir(exports);
+        await mkdir(other);
+        await writeFile(source, "login account");
+        await writeFile(foreignFile, "other account");
+        const setHeader = vi.fn(async (path: string) => {
+            expect(path).not.toBe(source);
+            expect(await readFile(path, "utf8")).toBe("login account");
+        });
+        const services = { ...mockServices(), profileApi: { setHeader } };
+        const original = env.NAPKETTO_CONFIG_JSON;
+        try {
+            for (const enabled of [false, true]) {
+                env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+                    accounts: [
+                        { qq: "10002", onebot11: { media: { localMediaRoots: ["other"] } } },
+                        {
+                            qq: "10001",
+                            ...(enabled
+                                ? { onebot11: { media: { localMediaRoots: ["exports"] } } }
+                                : {}),
+                        },
+                    ],
+                });
+                const actions = new Map<string, IpcActionHandler>();
+                const stop = await attachOb11IpcBridge(actions, services, {
+                    env: { ...baseEnv, cfgDir: dir, dataRoot: dir },
+                    importModule: async (url) => {
+                        if (url.includes("onebot11"))
+                            return await import("@napuketto/adapter/onebot11");
+                        if (url.includes("/core/")) return await import("@napuketto/adapter/core");
+                        return { EventBroadcaster: FakeBroadcaster };
+                    },
+                });
+                try {
+                    await expect(
+                        actions.get("set_qq_avatar")?.({ file: foreignFile }),
+                    ).resolves.toMatchObject({ retcode: 105 });
+                    await expect(
+                        actions.get("set_qq_avatar")?.({ file: source }),
+                    ).resolves.toMatchObject({
+                        retcode: enabled ? 0 : 105,
+                    });
+                } finally {
+                    stop();
+                }
+            }
+            expect(setHeader).toHaveBeenCalledTimes(1);
+        } finally {
+            env.NAPKETTO_CONFIG_JSON = original;
+            await rm(dir, { recursive: true, force: true });
         }
     });
 

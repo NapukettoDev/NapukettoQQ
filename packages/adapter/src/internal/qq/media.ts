@@ -10,7 +10,6 @@
 import { copyFile, mkdtemp, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
 import {
@@ -22,25 +21,11 @@ import {
     type MediaOutboundPolicy,
 } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
-import { cacheMediaFile, MEDIA_TEMP_ROOT, protectMediaPath } from "../infra/media-cache.js";
+import { cacheMediaFile, MEDIA_TEMP_ROOT } from "../infra/media-cache.js";
 
-/** file:// 前缀（fileURLToPath 解析失败时的裸剥离兜底）。 */
-export const FILE_URI_PREFIX_RE = /^file:\/\//;
 const MEDIA_EXTENSION_RE = /^\.[a-zA-Z0-9]+$/;
 // Match media's audio input bound before creating the owned conversion copy.
 const MAX_AUDIO_COPY_BYTES = 32 * 1024 * 1024;
-
-/**
- * file:// URI → 平台路径（Windows 盘符 / 百分号编码兼容）。
- * fileURLToPath 解析失败时退化为裸剥离前缀（历史兜底行为，协议侧共用）。
- */
-export function fileUriToPath(uri: string): string {
-    try {
-        return fileURLToPath(uri);
-    } catch {
-        return FILE_URI_PREFIX_RE.test(uri) ? uri.replace(FILE_URI_PREFIX_RE, "") : uri;
-    }
-}
 
 /** 协议动作默认走公网下载，兼容模式由受信任的装配方显式启用。 */
 export function mediaDownloader(policy: MediaOutboundPolicy | undefined): typeof downloadUrl {
@@ -89,7 +74,6 @@ async function readFileHead(path: string): Promise<string> {
  */
 export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Promise<string> {
     try {
-        await protectMediaPath(path);
         const info = await stat(path);
         if (!info.isFile() || info.size > MAX_AUDIO_COPY_BYTES) {
             throw kernelError("语音复制输入必须是 32MiB 以内的普通文件", "INVALID_PARAM");

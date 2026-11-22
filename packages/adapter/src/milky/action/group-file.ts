@@ -165,6 +165,7 @@ export function createGroupFileActions(api: MilkyApi): MilkyAction[] {
                     payload.file_uri,
                     api.mediaDir,
                     api.getMediaOutboundPolicy?.(),
+                    api.getLocalMediaRoots?.(),
                 );
                 const peer: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
                 const uploaded = await api.flashTransferApi.sendFile(peer, [path], {

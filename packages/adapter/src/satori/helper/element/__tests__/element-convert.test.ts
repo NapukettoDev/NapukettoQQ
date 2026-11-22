@@ -2,17 +2,18 @@
  * element-convert.ts 基线测试（fallow refactoring target #2，high impact）
  * 锁定 satoriToCanonicalElements / parseContentToCanonical 现有行为。
  *
- * 媒体元素用本地路径（resolveAsset 无 IO 原样返回）；audio 用 #!SILK 头
+ * 媒体元素使用临时目录内的授权路径；audio 用 #!SILK 头
  * 临时文件（避免真实转码）；http(s) src 不做测试（会真实下载）。
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { MediaCache } from "../../../../internal/infra/media-cache.js";
 import {
+    satoriToCanonicalElements as convertElements,
     parseContentToCanonical,
     type SatoriToCanonicalDeps,
-    satoriToCanonicalElements,
 } from "../element-convert.js";
 
 // transcodeVideo mock（video 归一化测试用，vi.hoisted 供工厂引用）
@@ -25,7 +26,9 @@ vi.mock("@napuketto/media", async (importOriginal) => ({
 let tempDir = "";
 
 beforeAll(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "napuketto-test-"));
+    tempDir = realpathSync.native(mkdtempSync(join(tmpdir(), "napuketto-test-")));
+    for (const file of ["a.png", "a.mp4", "a.bin", "n.bin"])
+        writeFileSync(join(tempDir, file), "data");
     // #!SILK 头文件：ensureSilk 直接原样返回，不触发转码
     writeFileSync(
         join(tempDir, "voice.silk"),
@@ -42,7 +45,16 @@ function makeDeps(uinToUid?: SatoriToCanonicalDeps["uinToUid"]): SatoriToCanonic
     return {
         uinToUid: uinToUid ?? (async (uins) => new Map(uins.map((u) => [u, `uid_${u}`] as const))),
         cacheDir: tempDir,
+        localMediaRoots: [tempDir],
+        account: "10001",
     };
+}
+
+function satoriToCanonicalElements(
+    elements: Parameters<typeof convertElements>[0],
+    deps: SatoriToCanonicalDeps,
+) {
+    return new MediaCache({ root: tempDir }).run(() => convertElements(elements, deps));
 }
 
 describe("satoriToCanonicalElements", () => {
@@ -175,8 +187,8 @@ describe("satoriToCanonicalElements", () => {
                 deps,
             ),
         ).resolves.toEqual([
-            { type: "image", path: img },
-            { type: "video", path: video },
+            { type: "image", path: expect.stringContaining(join("input", "a.png")) },
+            { type: "video", path: expect.stringContaining(join("input", "a.mp4")) },
         ]);
     });
 
@@ -186,14 +198,20 @@ describe("satoriToCanonicalElements", () => {
         const mp4 = join(tempDir, "a.mp4");
         await expect(
             satoriToCanonicalElements([{ type: "video", attrs: { src: mp4 } }], deps),
-        ).resolves.toEqual([{ type: "video", path: mp4 }]);
+        ).resolves.toEqual([
+            { type: "video", path: expect.stringContaining(join("input", "a.mp4")) },
+        ]);
         expect(transcodeMock).not.toHaveBeenCalled();
         const webm = join(tempDir, "b.webm");
         writeFileSync(webm, "x");
         await expect(
             satoriToCanonicalElements([{ type: "video", attrs: { src: webm } }], deps),
-        ).resolves.toEqual([{ type: "video", path: `${webm}.mp4` }]);
-        expect(transcodeMock).toHaveBeenCalledWith(webm);
+        ).resolves.toEqual([
+            { type: "video", path: expect.stringContaining(join("input", "b.webm.mp4")) },
+        ]);
+        expect(transcodeMock).toHaveBeenCalledWith(
+            expect.stringContaining(join("input", "b.webm")),
+        );
     });
 
     it("video：转码失败（transcodeMock 抛错）原样透传（fail-soft）", async () => {
@@ -203,7 +221,9 @@ describe("satoriToCanonicalElements", () => {
         writeFileSync(webm, "x");
         await expect(
             satoriToCanonicalElements([{ type: "video", attrs: { src: webm } }], deps),
-        ).resolves.toEqual([{ type: "video", path: webm }]);
+        ).resolves.toEqual([
+            { type: "video", path: expect.stringContaining(join("input", "c.webm")) },
+        ]);
         transcodeMock.mockReset();
         transcodeMock.mockImplementation(async (input: string) => `${input}.mp4`);
     });
@@ -213,7 +233,9 @@ describe("satoriToCanonicalElements", () => {
         const silk = join(tempDir, "voice.silk");
         await expect(
             satoriToCanonicalElements([{ type: "audio", attrs: { src: silk } }], deps),
-        ).resolves.toEqual([{ type: "voice", path: silk }]);
+        ).resolves.toEqual([
+            { type: "voice", path: expect.stringContaining(join("input", "voice.silk")) },
+        ]);
     });
 
     it("file 本地路径 + title → name", async () => {
@@ -224,20 +246,24 @@ describe("satoriToCanonicalElements", () => {
                 [{ type: "file", attrs: { src: file, title: "文档" } }],
                 deps,
             ),
-        ).resolves.toEqual([{ type: "file", path: file, name: "文档" }]);
+        ).resolves.toEqual([
+            { type: "file", path: expect.stringContaining(join("input", "a.bin")), name: "文档" },
+        ]);
         await expect(
             satoriToCanonicalElements([{ type: "file", attrs: { src: file } }], deps),
-        ).resolves.toEqual([{ type: "file", path: file }]);
+        ).resolves.toEqual([
+            { type: "file", path: expect.stringContaining(join("input", "a.bin")) },
+        ]);
     });
 
-    it("internal: 路径 → 本地路径（_tmp 段回落）", async () => {
+    it("旧 internal 路径无法充当受管引用", async () => {
         const deps = makeDeps();
         await expect(
             satoriToCanonicalElements(
                 [{ type: "img", attrs: { src: "internal:qq/10001/_tmp/x.png" } }],
                 deps,
             ),
-        ).resolves.toEqual([{ type: "image", path: "x.png" }]);
+        ).rejects.toMatchObject({ code: "INVALID_PARAM" });
     });
 });
 
@@ -285,6 +311,8 @@ describe("媒体元素空 src 容错（media-convert 分支）", () => {
         const file = join(tempDir, "n.bin");
         await expect(
             satoriToCanonicalElements([{ type: "file", attrs: { src: file, title: "" } }], deps),
-        ).resolves.toEqual([{ type: "file", path: file }]);
+        ).resolves.toEqual([
+            { type: "file", path: expect.stringContaining(join("input", "n.bin")) },
+        ]);
     });
 });

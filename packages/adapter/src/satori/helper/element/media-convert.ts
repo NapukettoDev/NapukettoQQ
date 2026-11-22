@@ -2,7 +2,7 @@
  * Satori 媒体元素 → canonical 转换器
  *
  * img / audio / video / file 四个媒体类型：src → 本地路径（internal: 路径 /
- * http 下载 / 本地原样），audio 额外 silk 转码（非 silk 失败原样返回），
+ * HTTP 下载 / 本地授权副本），audio 额外 silk 转码（非 silk 失败原样返回），
  * video 非 mp4 输入经 ffmpeg 归一化（ffmpeg 缺失/失败原样）。
  *
  * 发方向依赖契约（SatoriToCanonicalDeps）也收在本文件：element-convert 与
@@ -21,6 +21,8 @@ export interface SatoriToCanonicalDeps {
     /** 资源（img/audio/video/file）下载缓存目录。 */
     cacheDir: string;
     outboundPolicy?: MediaOutboundPolicy | undefined;
+    localMediaRoots?: readonly string[] | undefined;
+    account?: string;
     /** 转码成功即转移输出文件及其父临时目录的所有权；发送消费结束后清理。 */
     onVideoTranscoded?: (path: string) => void;
 }
@@ -34,7 +36,7 @@ async function resolveMediaSrc(
     if (src === "") {
         return null;
     }
-    return resolveAsset(src, deps.cacheDir, deps.outboundPolicy);
+    return resolveAsset(src, deps.cacheDir, deps);
 }
 
 /** Satori img → canonical image。 */

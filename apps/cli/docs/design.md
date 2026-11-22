@@ -99,6 +99,9 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
 普通启动与 supervisor 不加载协议包。新增协议时要同步登记进
 `config/protocol-validate.ts`。
 
+各账号的 OB11、Milky、Satori 可配置 `media.localMediaRoots`。模板缺省空数组，
+现有集成可将共享媒体或导出目录加到对应账号协议段。路径基准与 IPC 相同，参考[配置指南](../../../docs/guides/configuration.md)。
+
 ## 仓库外调试沙箱
 
 仓库根的调试入口在加载 CLI 前设置沙箱 cwd、绝对配置路径与数据根，并通过

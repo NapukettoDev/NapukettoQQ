@@ -95,6 +95,7 @@ export function createMessageOpsActions(api: MilkyApi): MilkyAction[] {
                     payload.file_uri,
                     api.mediaDir,
                     api.getMediaOutboundPolicy?.(),
+                    api.getLocalMediaRoots?.(),
                 );
                 const peer = await api.resolvePeer("friend", payload.user_id);
                 const uploaded = await api.flashTransferApi.sendFile(peer, [path], {

@@ -40,6 +40,7 @@ export interface ApiOverrides {
     selfUin?: string;
     groupCache?: Record<string, unknown>;
     mediaDir?: string;
+    getLocalMediaRoots?: () => readonly string[];
     logger?: unknown;
 }
 
@@ -136,7 +137,7 @@ export function buildMilkyApi(overrides: ApiOverrides = {}): MilkyApi {
         ...(overrides.mediaDir !== undefined ? { mediaDir: overrides.mediaDir } : {}),
         ...(overrides.logger !== undefined ? { logger: overrides.logger } : {}),
     } as unknown as ConstructorParameters<typeof MilkyApi>[0];
-    return new MilkyApi(opts, new MessageSeqIndex());
+    return new MilkyApi(opts, new MessageSeqIndex(), undefined, overrides.getLocalMediaRoots);
 }
 
 /** 构造动作注册表（共享桩 API）。 */

@@ -15,7 +15,6 @@
  */
 import type { CanonicalElement } from "@napuketto/kernel";
 import { hasNumberProp, hasStringProp, isRecord, kernelError } from "@napuketto/kernel";
-import { fileUriToPath } from "../../../internal/qq/media.js";
 import type { IncomingSegment, OutgoingSegment } from "../../types.js";
 
 /** 发送段的最小形状（入口只保证 type 为 string、data 为对象）。 */
@@ -358,7 +357,7 @@ function mediaSegment(
     if (!hasStringProp(data, "uri")) {
         return invalidSegment(type);
     }
-    const path = resolveUriToPathPlaceholder(data["uri"]);
+    const path = data["uri"];
     if (type === "record") {
         return { element: { type: "voice", path } };
     }
@@ -441,20 +440,4 @@ function outgoingSegmentToCanonical(
         return simpleOutgoingSegment(seg.type, data);
     }
     return complexOutgoingSegment(seg.type, data);
-}
-
-/**
- * 媒体 URI → 本地路径（同步面：file:// / 裸路径直接给 canonical；base64:// 与
- * http(s):// 需要异步落盘，由 send 核心在 canonical 上二次解析——此处先放原始
- * URI 作占位，send 核心按元素类型调用 resolveMediaUri 替换）。
- */
-function resolveUriToPathPlaceholder(uri: string): string {
-    if (uri.startsWith("file://")) {
-        return fileUriToPath(uri);
-    }
-    if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("base64://")) {
-        return uri;
-    }
-    // 裸路径（go-cqhttp 惯例）：按本地路径处理
-    return uri;
 }

@@ -87,7 +87,12 @@ export class NapukettoMilkyAdapter extends BaseProtocolAdapter<MilkyConfig> {
             hooks,
         });
         this.calibLogger = opts.logger;
-        this.api = new MilkyApi(opts, this.seqIndex, () => config.get?.()?.media?.outboundPolicy);
+        this.api = new MilkyApi(
+            opts,
+            this.seqIndex,
+            () => config.get?.()?.media?.outboundPolicy,
+            () => config.get?.()?.media?.localMediaRoots,
+        );
         // 领域处理器装配归 adapter；pipeline 接线板只做频道 → 处理器路由
         const base = {
             api: this.api,
