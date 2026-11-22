@@ -16,13 +16,13 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | 音频 SILK 编解码（语音消息） | `audio.ts` | `silk-wasm`、`ffmpeg`（PATH） |
 | 视频探测 / 转码 / 抽帧（视频消息与缩略图） | `video.ts` | `execa` + `ffmpeg` / `ffprobe`（PATH） |
 | 图片尺寸、文件类型（魔数）识别 | `image.ts` | `image-size`、`file-type` |
-| HTTP(S) 媒体下载（主动取图/语音） | `downloader.ts` | Node 内建 `fetch`（零额外依赖） |
+| HTTP(S) 媒体下载 | `downloader.ts` / `public-download.ts` | Node 内建 `fetch`、HTTP(S)、DNS |
 
 硬性边界（与 `docs/architecture/overview.md` 的依赖方向一致）：
 
 - **无内部依赖**：`@napuketto/media` 不 import 任何 `@napuketto/*` 包。
 - **只被 adapter 消费**：adapter 用 `encodePcmToSilk` / `decodeSilkToWav` /
-  `transcodeVideo` / `downloadUrl` / `inferExtension`（见
+  `transcodeVideo` / `downloadPublicUrl` / `downloadUrl` / `inferExtension`（见
   `packages/adapter/docs/design.md` 的媒体依赖面）。协议语义留在 adapter，本包只提供
   与协议无关的媒体原语。
 - **kernel 严禁依赖**：kernel 的 `package.json` 不得出现本包；反向 import 视为
@@ -39,8 +39,9 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/audio.ts` | `encodePcmToSilk`、`decodeSilkToPcm`、`decodeSilkToWav`、`getSilkInfo`、`SILK_SAMPLE_RATE` | SILK 编解码。QQ 语音 silk v3 固定 24000Hz 单声道：单声道 16-bit PCM WAV / 原始 `pcm_s16le` 直接交 `silk-wasm`；立体声、非 16-bit 或压缩编码（mp3/ogg/amr/flac…）先经 `ffmpeg` 归一化为 24000Hz 单声道 `pcm_s16le` 再编码 |
 | `src/video.ts` | `transcodeVideo`、`getVideoInfo`、`extractVideoFrame` | 视频转码/缩放/帧率、解析 `ffprobe` JSON 取宽高与时长、抽首帧作缩略图（QQ 视频消息发送必需） |
 | `src/image.ts` | `getImageSize`、`detectFileType` | `image-size` 读缓冲区算宽高；`file-type` 按魔数识别类型（返回 `undefined` → `MediaError`） |
-| `src/downloader.ts` | `downloadUrl`、`inferExtension`（内部 `assertDownloadUrlSafe`） | 下载原语：`fetch` + 大小上限（缺省 30MB）+ 超时（缺省 15s），**流式落盘**（临时文件 + rename，失败清理）；仅允许 http/https，手动跟随 30x（≤5 跳）且每跳复检，字面 IP 拒绝链路本地（含云元数据）/未指定/多播/保留段（环回与 RFC1918 放行，见该文件头）；从 URL pathname 推断扩展名。目录由本原语创建，清理由调用方负责 |
-| `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`DownloadUrlOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
+| `src/downloader.ts` | `downloadUrl`、`downloadPublicUrl`、`inferExtension`、`DownloadUrlOptions`、`MediaOutboundPolicy` | 共享逐跳校验、流式落盘、超时（缺省 15s）、大小上限（缺省 30 MiB）和失败清理。创建目标目录，成功文件由调用方管理 |
+| `src/public-download.ts` | 包内传输 | 绑定公网 DNS 校验与实际连接，逐跳直连并保留 TLS 主机认证 |
+| `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
 | `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
 | `src/__tests__/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
 
@@ -60,8 +61,19 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 连接保留 URL 的 HTTP Host 和 HTTPS SNI/证书验证，逐跳直连，禁用连接复用和全局代理。
 IPv4 含 mapped 地址复用兼容拒绝表后再拒绝环回和私网等特殊地址。IPv6 仅接受常规全局单播，
 排除特殊前缀和过渡地址。内部路由和出口访问规则仍由部署环境约束。
-两个入口共用重定向、流式写盘、全程超时、字节上限和失败清理。严格入口使用 identity 编码，
-暂不接受自定义请求头。
+`downloadUrl` 保留 LAN 兼容语义，`downloadPublicUrl` 执行公网策略。公开类型
+`MediaOutboundPolicy` 定义 `public-only` 和 `compat`，供协议配置与嵌入方复用。
+两个入口共用重定向、流式写盘、全程超时和失败清理。最终响应同时校验声明长度和实际写入量，
+跳转响应直接关闭，最多跟随 5 次。公网入口固定使用 identity 编码。
+
+两个入口都允许调用者为初始源设置普通 GET 请求头（包括鉴权、自定义 API 头、Origin 和 Referer）。
+传输和路由头由传输层管理，包括 Host、连接与消息分帧头、Proxy-*、Sec-*、Accept-Encoding、
+Forwarded 和 X-Forwarded-*，调用者设置会被忽略。头名匹配不区分大小写。
+同源跳转保留已接受的头，源按 scheme、主机和有效端口计算。跨源时清空所有调用者头，
+以后即使跳回初始源也不会恢复。响应的 `headers.get(name)` 不区分大小写。
+
+`inferExtension` 只从显式的媒体 MIME 类型表推断扩展名（忽略参数和大小写）。未知或畸形类型
+回退到 URL 最后一个路径段的 1–5 位 ASCII 字母数字扩展名，再回退到 `.bin`。
 
 ## 外部媒体进程与资源边界
 

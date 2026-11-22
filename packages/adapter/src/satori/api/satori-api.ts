@@ -18,6 +18,7 @@ import type {
     ProfileApi,
 } from "@napuketto/kernel";
 import { ChatType, type Peer } from "@napuketto/kernel";
+import type { MediaOutboundPolicy } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { SatoriToCanonicalDeps } from "../helper/element/media-convert.js";
@@ -58,7 +59,13 @@ export class SatoriApi {
      */
     private readonly channelTypeCache = new Map<string, boolean>();
 
-    constructor(opts: SatoriApiOptions) {
+    private readonly getMediaOutboundPolicy: (() => MediaOutboundPolicy | undefined) | undefined;
+
+    constructor(
+        opts: SatoriApiOptions,
+        getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+    ) {
+        this.getMediaOutboundPolicy = getMediaOutboundPolicy;
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.groupNotifyApi = opts.groupNotifyApi;
@@ -122,6 +129,7 @@ export class SatoriApi {
         return {
             uinToUid: (uins) => this.groupApi.uinToUid(uins),
             cacheDir: this.cacheDir,
+            outboundPolicy: this.getMediaOutboundPolicy?.(),
         };
     }
 }

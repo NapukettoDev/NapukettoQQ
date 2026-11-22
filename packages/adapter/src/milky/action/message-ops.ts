@@ -91,7 +91,11 @@ export function createMessageOpsActions(api: MilkyApi): MilkyAction[] {
                 file_uri: string;
                 file_name: string;
             }): Promise<UploadFileOutput> => {
-                const path = await resolveUriToPath(payload.file_uri, api.mediaDir);
+                const path = await resolveUriToPath(
+                    payload.file_uri,
+                    api.mediaDir,
+                    api.getMediaOutboundPolicy?.(),
+                );
                 const peer = await api.resolvePeer("friend", payload.user_id);
                 const uploaded = await api.flashTransferApi.sendFile(peer, [path], {
                     name: payload.file_name,

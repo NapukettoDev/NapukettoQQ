@@ -87,7 +87,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
         });
         this.selfUin = opts.self.uin;
         this.logger = opts.logger;
-        this.oneBotApi = new OneBotApi(opts);
+        this.oneBotApi = new OneBotApi(opts, () => config.get?.()?.media?.outboundPolicy);
         this.pipeline = new Ob11EventPipeline({
             selfUin: this.selfUin,
             api: this.oneBotApi,

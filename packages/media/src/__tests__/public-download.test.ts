@@ -41,8 +41,12 @@ describe("downloadPublicUrl", () => {
             { address: "2606:4700::1111", family: 6 },
         ];
         const second = [{ address: "8.8.8.8", family: 4 }];
-        lookup.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+        lookup
+            .mockResolvedValueOnce(first)
+            .mockResolvedValueOnce(first)
+            .mockResolvedValueOnce(second);
         const hops = [
+            { status: 307, headers: { location: "/same" }, addresses: first },
             { status: 302, headers: { location: "https://cdn.example/file" }, addresses: first },
             { status: 200, headers: {}, addresses: second },
         ];
@@ -63,9 +67,19 @@ describe("downloadPublicUrl", () => {
             }),
         );
 
-        await expect(downloadPublicUrl("https://media.example/start", dest)).resolves.toBe(5);
+        await expect(
+            downloadPublicUrl("https://media.example/start", dest, {
+                headers: {
+                    ["Authorization"]: "Bearer test",
+                    "X-API-Key": "test-only",
+                    ["Host"]: "ignored.example",
+                    "Accept-Encoding": "gzip",
+                },
+            }),
+        ).resolves.toBe(5);
         expect(await readFile(dest, "utf8")).toBe("asset");
         expect(lookup.mock.calls).toEqual([
+            ["media.example", { all: true }],
             ["media.example", { all: true }],
             ["cdn.example", { all: true }],
         ]);
@@ -73,12 +87,71 @@ describe("downloadPublicUrl", () => {
             url.hostname,
             options.agent,
             options.rejectUnauthorized,
-            options.headers.host,
+            options.headers,
         ]);
         expect(requests).toEqual([
-            ["media.example", false, true, undefined],
-            ["cdn.example", false, true, undefined],
+            [
+                "media.example",
+                false,
+                true,
+                {
+                    authorization: "Bearer test",
+                    "x-api-key": "test-only",
+                    "accept-encoding": "identity",
+                },
+            ],
+            [
+                "media.example",
+                false,
+                true,
+                {
+                    authorization: "Bearer test",
+                    "x-api-key": "test-only",
+                    "accept-encoding": "identity",
+                },
+            ],
+            ["cdn.example", false, true, { "accept-encoding": "identity" }],
         ]);
+    });
+
+    it.each([
+        { status: 302, headers: { location: "/next" }, error: "重定向次数超过上限", calls: 6 },
+        { status: 302, headers: {}, error: "重定向缺少 Location", calls: 1 },
+        { status: 404, headers: {}, error: "HTTP 404", calls: 1 },
+        { status: 200, headers: { "content-length": "2" }, error: "2 > 1 字节", calls: 1 },
+        { status: 200, headers: {}, error: "超过大小上限", calls: 1 },
+    ])("HTTP $status 的 $error 分支关闭响应", async ({ status, headers, error, calls }) => {
+        const closed = vi.fn();
+        httpsGet.mockImplementation(
+            (
+                _url: URL,
+                _options: RequestOptions,
+                respond: (
+                    response: Readable & Pick<IncomingMessage, "statusCode" | "headers">,
+                ) => void,
+            ) => ({
+                once: () => {
+                    // 保持响应打开，直到下载器主动销毁 body。
+                    const body = new Readable({
+                        read() {
+                            // No additional chunks are produced.
+                        },
+                        destroy(error, done) {
+                            closed();
+                            done(error);
+                        },
+                    });
+                    body.push(Buffer.from("bytes"));
+                    respond(Object.assign(body, { statusCode: status, headers }));
+                },
+            }),
+        );
+        await expect(
+            downloadPublicUrl("https://9.9.9.9/start", dest, { maxBytes: 1 }),
+        ).rejects.toThrow(error);
+        expect(httpsGet).toHaveBeenCalledTimes(calls);
+        expect(closed).toHaveBeenCalledTimes(calls);
+        expect(await readdir(directory)).toEqual([]);
     });
 
     it("真实 HTTP 连接拒绝混合 DNS 结果，跳转目标未收到请求", async () => {

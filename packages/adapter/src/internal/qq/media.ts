@@ -13,7 +13,14 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
-import { downloadUrl, encodePcmToSilk, extractVideoFrame, getVideoInfo } from "@napuketto/media";
+import {
+    downloadPublicUrl,
+    downloadUrl,
+    encodePcmToSilk,
+    extractVideoFrame,
+    getVideoInfo,
+    type MediaOutboundPolicy,
+} from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
 import { cacheMediaFile, MEDIA_TEMP_ROOT, protectMediaPath } from "../infra/media-cache.js";
 
@@ -35,38 +42,32 @@ export function fileUriToPath(uri: string): string {
     }
 }
 
-/**
- * 远程 URL → 本地文件（异步 mkdir + 流式落盘，全仓协议层唯一落盘入口）。
- *
- * - 走 `@napuketto/media` 的 `downloadUrl`：超时、大小上限、流式落盘、协议白名单
- *   与「逐跳复检」的重定向策略都在那里统一（此前这里是裸 `fetch` + `arrayBuffer()`，
- *   无超时无上限：恶意超大响应可直接打爆 Node 堆）；
- * - 父目录不存在时自动创建；
- * - 失败统一包成 KernelError SEND_FAILED（`label` 供调用方定制前缀，如「头像下载失败」）；
- * - 返回落盘路径（便于调用方直接回传）。
- */
-export async function downloadBufferToFile(
-    url: string,
-    filePath: string,
-    init?: RequestInit,
-    label = "下载失败",
-): Promise<string> {
-    try {
-        const headers = init?.headers === undefined ? undefined : normalizeHeaders(init.headers);
-        await downloadUrl(url, filePath, headers === undefined ? {} : { headers });
-    } catch (err) {
-        throw kernelError(`${label}: ${errorMessage(err)}`, "SEND_FAILED", { cause: err });
-    }
-    return filePath;
+/** 协议动作默认走公网下载，兼容模式由受信任的装配方显式启用。 */
+export function mediaDownloader(policy: MediaOutboundPolicy | undefined): typeof downloadUrl {
+    return policy === "compat" ? downloadUrl : downloadPublicUrl;
 }
 
-/** RequestInit.headers（Headers / 元组数组 / 普通对象）→ 普通字符串对象。 */
-function normalizeHeaders(headers: NonNullable<RequestInit["headers"]>): Record<string, string> {
-    const out: Record<string, string> = {};
-    new Headers(headers).forEach((value, key) => {
-        out[key] = value;
-    });
-    return out;
+/** 转换有上传语义的下载失败，保留既有 SEND_FAILED 信封。 */
+export async function downloadProtocolMedia(
+    url: string,
+    filePath: string,
+    options: {
+        outboundPolicy?: MediaOutboundPolicy | undefined;
+        headers?: Record<string, string> | undefined;
+        errorLabel?: string;
+    } = {},
+): Promise<void> {
+    try {
+        await mediaDownloader(options.outboundPolicy)(url, filePath, { headers: options.headers });
+    } catch (err) {
+        throw kernelError(
+            `${options.errorLabel ?? "下载失败"}: ${errorMessage(err)}`,
+            "SEND_FAILED",
+            {
+                cause: err,
+            },
+        );
+    }
 }
 
 /** 读文件头 8 字节（判断 silk 魔数）。 */

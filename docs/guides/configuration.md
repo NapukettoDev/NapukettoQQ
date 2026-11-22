@@ -118,6 +118,22 @@ enabled = true        # 可选，默认 true；supervisor 只拉起启用的账�
 
 全量字段、默认值与传输实例见各协议 schema；Milky 的 `enabled` 缺省 `false`，未开启不监听。
 
+### 远程媒体出站
+
+OneBot 11（含 IPC 动作桥）、Satori 和 Milky 默认按 `public-only` 下载 HTTP(S) 媒体。
+下载器会校验每次连接及跳转的地址。对需要从受信任的 LAN 或本机服务取媒体的账号，在
+当前 `[[accounts]]` 的对应协议段启用 `compat`，例如：
+
+```toml
+[accounts.onebot11.media]
+outboundPolicy = "compat"
+```
+
+Satori 和 Milky 分别使用 `[accounts.satori.media]` 和 `[accounts.milky.media]`。
+内联配置使用 `accounts[].<协议>.media.outboundPolicy`。启用 `compat` 的协议应只接受
+受信任调用方，因为它允许调用方指定宿主可达的 LAN 和本机 HTTP(S) 目标。
+OB11 `download_file` 的鉴权头、自定义头仅随初始源及同源跳转发送，跨源时全部清除。
+
 ## 环境变量
 
 | 变量 | 作用 |

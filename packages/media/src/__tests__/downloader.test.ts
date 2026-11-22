@@ -70,6 +70,73 @@ describe("downloadUrl", () => {
         expect(readFileSync(dest)).toEqual(payload);
     });
 
+    it("同源保留请求头，跨端口清空，跳回初始源也不会恢复", async () => {
+        const seen: IncomingMessage["headers"][] = [];
+        let returnLocation = "";
+        const other = await serve((req, res) => {
+            seen.push(req.headers);
+            res.setHeader("Location", returnLocation);
+            res.writeHead(302).end();
+        });
+        const original = await serve((req, res) => {
+            seen.push(req.headers);
+            if (req.url === "/start") {
+                res.setHeader("Location", "/same");
+                res.writeHead(302).end();
+            } else if (req.url === "/same") {
+                res.setHeader("Location", other.url);
+                res.writeHead(307).end();
+            } else {
+                res.end("asset");
+            }
+        });
+        returnLocation = `${original.url}/done`;
+        await expect(
+            downloadUrl(`${original.url}/start`, join(dir, "asset"), {
+                headers: {
+                    ["Authorization"]: "Bearer test",
+                    cOoKiE: "test=1",
+                    ["Referer"]: "https://example.test/original",
+                    "X-Test-Key": "test-only",
+                    ["Host"]: "ignored.example.test",
+                    ["Origin"]: "https://example.test",
+                    "Proxy-Authorization": "ignored",
+                    "X-Forwarded-Host": "ignored.example.test",
+                },
+            }),
+        ).resolves.toBe(5);
+        const custom = seen.map((headers) => [
+            headers.authorization,
+            headers.cookie,
+            headers.origin,
+            headers.referer,
+            headers["x-test-key"],
+        ]);
+        expect(custom).toEqual([
+            [
+                "Bearer test",
+                "test=1",
+                "https://example.test",
+                "https://example.test/original",
+                "test-only",
+            ],
+            [
+                "Bearer test",
+                "test=1",
+                "https://example.test",
+                "https://example.test/original",
+                "test-only",
+            ],
+            [undefined, undefined, undefined, undefined, undefined],
+            [undefined, undefined, undefined, undefined, undefined],
+        ]);
+        expect(seen.every((headers) => !headers["proxy-authorization"])).toBe(true);
+        expect(seen.every((headers) => !headers["x-forwarded-host"])).toBe(true);
+        expect(seen.map((headers) => headers.host)).toEqual(
+            [original, original, other, original].map(({ url }) => new URL(url).host),
+        );
+    });
+
     it("非 2xx（404）→ 抛 HTTP 404", async () => {
         const stub = await serve((_req, res) => {
             res.statusCode = 404;
@@ -388,6 +455,11 @@ describe("inferExtension", () => {
         ["audio/mpeg", "http://x/a", ".mpeg"],
         ["video/mp4", "http://x/a", ".mp4"],
         ["image/svg+xml", "http://x/a", ".svg"],
+        ["image/x-user-defined", "http://x/a.JpG", ".jpg"],
+        ["audio/wav/unknown", "http://x/a", ".bin"],
+        ["video/../../other", "http://x/a.ogg", ".ogg"],
+        ["image/png+unknown", "http://x/a", ".bin"],
+        ["image/..", "http://x/a", ".bin"],
         [null, "http://x/a.jpg", ".jpg"],
         [null, "http://x/a.JPG?token=1", ".jpg"],
         [null, "http://x/path/to/a.png", ".png"],

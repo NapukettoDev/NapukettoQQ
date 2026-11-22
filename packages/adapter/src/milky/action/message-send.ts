@@ -224,7 +224,10 @@ async function resolveElement(
         (el.type === "image" || el.type === "voice" || el.type === "video") &&
         isRemoteMediaUri(el)
     ) {
-        return { ...el, path: await resolveMediaUri(el.path, api.mediaDir) };
+        return {
+            ...el,
+            path: await resolveMediaUri(el.path, api.mediaDir, api.getMediaOutboundPolicy?.()),
+        };
     }
     if ("path" in el) await protectMediaPath(el.path);
     return el;

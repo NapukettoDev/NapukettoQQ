@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { createServerSchema, validateServerTokens } from "../../framework/transport-schema.js";
+import { protocolMediaSchema } from "../../internal/infra/media-config.js";
 
 /** HTTP RPC 服务器默认端口（satori.chat 惯例 5500 区间，取 5500）。 */
 const DEFAULT_HTTP_PORT = 5500;
@@ -18,6 +19,7 @@ const wsServerSchema = createServerSchema(DEFAULT_WS_PORT);
 
 /** Satori 配置 schema。 */
 const configFields = z.object({
+    media: protocolMediaSchema.optional(),
     /** 鉴权 token（全局默认，实例未指定时继承）。 */
     token: z.string().optional(),
     /** 媒体资源（img/audio/video/file）下载缓存目录。 */

@@ -20,6 +20,8 @@ import { ob11ActionOf } from "../../__tests__/test-support.js";
 import { createSystemAccountActions } from "../account.js";
 import { createSystemFileActions } from "../file.js";
 
+const getMediaOutboundPolicy = () => "compat" as const;
+
 let tmpRoot = "";
 afterAll(() => {
     if (tmpRoot !== "") {
@@ -116,7 +118,11 @@ describe("set_qq_avatar", () => {
                 }),
             };
             const result = await ob11ActionOf(
-                createSystemAccountActions({ profileApi, cacheDir: dir } as never),
+                createSystemAccountActions({
+                    profileApi,
+                    cacheDir: dir,
+                    getMediaOutboundPolicy,
+                } as never),
                 "set_qq_avatar",
             ).handle({ file: "https://example.com/a.png" });
             expect(result.retcode).toBe(0);
@@ -135,7 +141,11 @@ describe("set_qq_avatar", () => {
         try {
             const profileApi = { setHeader: vi.fn(async (_path: string) => undefined) };
             const result = await ob11ActionOf(
-                createSystemAccountActions({ profileApi, cacheDir: dir } as never),
+                createSystemAccountActions({
+                    profileApi,
+                    cacheDir: dir,
+                    getMediaOutboundPolicy,
+                } as never),
                 "set_qq_avatar",
             ).handle({ file: "https://example.com/" });
             expect(result.retcode).toBe(0);
@@ -158,6 +168,7 @@ describe("set_qq_avatar", () => {
                 createSystemAccountActions({
                     profileApi: { setHeader: vi.fn() },
                     cacheDir: dir,
+                    getMediaOutboundPolicy,
                 } as never),
                 "set_qq_avatar",
             ).handle({ file: "https://example.com/a.png" });
@@ -188,7 +199,7 @@ describe("download_file", () => {
         vi.stubGlobal("fetch", fetchStub);
         try {
             const result = await ob11ActionOf<{ file: string }>(
-                createSystemFileActions({ cacheDir: dir } as never),
+                createSystemFileActions({ cacheDir: dir, getMediaOutboundPolicy } as never),
                 "download_file",
             ).handle({
                 url: "https://example.com/pkg.bin",
@@ -209,7 +220,7 @@ describe("download_file", () => {
         vi.stubGlobal("fetch", fetchStub);
         try {
             const result = await ob11ActionOf<{ file: string }>(
-                createSystemFileActions({ cacheDir: dir } as never),
+                createSystemFileActions({ cacheDir: dir, getMediaOutboundPolicy } as never),
                 "download_file",
             ).handle({
                 url: "https://example.com/",
@@ -229,7 +240,7 @@ describe("download_file", () => {
         );
         try {
             const result = await ob11ActionOf(
-                createSystemFileActions({ cacheDir: dir } as never),
+                createSystemFileActions({ cacheDir: dir, getMediaOutboundPolicy } as never),
                 "download_file",
             ).handle({
                 url: "https://example.com/pkg.bin",

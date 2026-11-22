@@ -13,7 +13,7 @@ import {
     runShutdownHook,
 } from "../../lifecycle/shutdown.js";
 import { env } from "../env.js";
-import { loadProtocolSections } from "../load-config.js";
+import { loadProtocolSections, parseProtocolSeed } from "../load-config.js";
 import type {
     AdapterCoreModuleLike,
     KernelLike,
@@ -24,7 +24,7 @@ import type {
     SatoriModuleLike,
 } from "../types.js";
 import { BACKSLASH_RE, INDEX_MJS_RE, type ProtocolKey } from "../types.js";
-import { ConfigError, errMsg, log } from "../util.js";
+import { errMsg, log } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
 import {
     isAdapterCoreModule,
@@ -34,26 +34,6 @@ import {
     isOb11Module,
     isSatoriModule,
 } from "./module-guards.js";
-
-/**
- * 协议段 seed 校验（zod 错误 → ConfigError，2026-10-25 嵌入式退出码契约）：
- * 「必填缺失/形状非法」的本体就在这里（如 kurobot url 必填）——包装后沿
- * startProtocols → bootstrap 重抛，self-host 以 78 退出，supervisor 识别 78
- * 不再守护重启，堵死「少配协议必填项 → 子进程死循环重启」。zod issue 列表
- * 是多行 JSON，压成单行（日志单行契约）。
- */
-function parseSeed(
-    label: string,
-    schema: { parse(input: unknown): unknown },
-    section: Record<string, unknown>,
-): unknown {
-    try {
-        return schema.parse(section);
-    } catch (e) {
-        const detail = errMsg(e).replace(/\s+/g, " ").trim();
-        throw new ConfigError(`协议配置 ${label} 段校验失败: ${detail}`, { cause: e });
-    }
-}
 
 /** 可选协议 adapter 生命周期最小面（start/stop）。 */
 interface AdapterHandle {
@@ -107,7 +87,7 @@ function createSatori(input: SatoriAssemblyInput): AdapterHandle | null {
         path: input.cfgFile,
         schema: input.satoriAdapter.satoriConfigSchema,
         defaults: input.satoriAdapter.satoriConfigSchema.parse({}),
-        seed: parseSeed("satori", input.satoriAdapter.satoriConfigSchema, section),
+        seed: parseProtocolSeed("satori", input.satoriAdapter.satoriConfigSchema, section),
     });
     return new input.satoriAdapter.NapukettoSatoriAdapter({
         config,
@@ -141,7 +121,7 @@ function createKurobot(input: KurobotAssemblyInput): AdapterHandle {
         path: input.cfgFile,
         schema: input.kurobotAdapter.kurobotConfigSchema,
         defaults: input.kurobotAdapter.kurobotConfigDefaults(),
-        seed: parseSeed("kurobot", input.kurobotAdapter.kurobotConfigSchema, section),
+        seed: parseProtocolSeed("kurobot", input.kurobotAdapter.kurobotConfigSchema, section),
     });
     return new input.kurobotAdapter.NapukettoKurobotAdapter({
         config,
@@ -173,7 +153,7 @@ function createMilky(input: MilkyAssemblyInput): AdapterHandle {
         path: input.cfgFile,
         schema: input.milkyAdapter.milkyConfigSchema,
         defaults: input.milkyAdapter.milkyConfigSchema.parse({}),
-        seed: parseSeed("milky", input.milkyAdapter.milkyConfigSchema, section),
+        seed: parseProtocolSeed("milky", input.milkyAdapter.milkyConfigSchema, section),
     });
     return new input.milkyAdapter.NapukettoMilkyAdapter({
         config,
@@ -406,7 +386,7 @@ export async function assembleOb11AndSatori(
             path: cfgFile,
             schema: adapter.ob11ConfigSchema,
             defaults: adapter.ob11ConfigSchema.parse({}),
-            seed: parseSeed("onebot11", adapter.ob11ConfigSchema, sections.onebot11),
+            seed: parseProtocolSeed("onebot11", adapter.ob11ConfigSchema, sections.onebot11),
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
         // resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）

@@ -1,7 +1,7 @@
 // biome-ignore-all lint/style/useNamingConvention: adapter 导出名即宿主契约。
 import { appendFileSync } from "node:fs";
 
-export const ob11ConfigSchema = { parse: () => ({}) };
+export const ob11ConfigSchema = { parse: (input) => input };
 
 export class NapukettoOneBot11Adapter {
     constructor({ system }) {

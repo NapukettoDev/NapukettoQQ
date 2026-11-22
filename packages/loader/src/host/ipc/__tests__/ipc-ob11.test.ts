@@ -1,9 +1,16 @@
 // biome-ignore-all lint/style/useNamingConvention: 对象键名为包模块导出面（EventBroadcaster 等 PascalCase 类名），必须原样保留
 /**
- * ipc-ob11.test.ts：OB11 动作桥单测（deps 注入 mock 模块，不依赖真实 adapter/network）。
+ * ipc-ob11.test.ts：OB11 动作桥装配与实际动作验证。
  */
+import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { env } from "../../env.js";
 import type { KernelServices } from "../../types.js";
+import { ConfigError } from "../../util.js";
 import { callIpcAction, type IpcActionHandler } from "../ipc-actions.js";
 import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ipc-ob11.js";
 
@@ -183,8 +190,140 @@ describe("attachOb11IpcBridge", () => {
         expect(options["self"]).toEqual({ uin: "10001", nickname: "测试号" });
         expect(options["msgChannel"]).toBeDefined();
         expect(options["groupCache"]).toBeDefined();
+        expect(options["config"]).toMatchObject({
+            options: { seed: { media: { outboundPolicy: "public-only" } } },
+        });
         const system = options["system"] as { appVersion: string };
         expect(system.appVersion).toBe("9.9.33-51802");
+    });
+
+    it("只把实际登录账号的媒体配置传给动态注入的动作桥", async () => {
+        const original = env.NAPKETTO_CONFIG_JSON;
+        env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+            accounts: [
+                { qq: "10002", onebot11: { media: { outboundPolicy: "public-only" } } },
+                {
+                    qq: "10001",
+                    onebot11: {
+                        media: { outboundPolicy: "compat" },
+                        httpServers: [{ enabled: true, port: 3000 }],
+                    },
+                },
+            ],
+        });
+        try {
+            const { stop } = await attach();
+            expect(FakeOb11Adapter.constructOptions.at(-1)?.["config"]).toMatchObject({
+                options: { seed: { media: { outboundPolicy: "compat" } } },
+            });
+            const config = FakeOb11Adapter.constructOptions.at(-1)?.["config"];
+            expect(config).not.toMatchObject({
+                options: { seed: { httpServers: expect.anything() } },
+            });
+            stop();
+        } finally {
+            env.NAPKETTO_CONFIG_JSON = original;
+        }
+    });
+
+    it("不挂载会丢弃媒体策略的旧版 OB11 模块", async () => {
+        const load = fakeImport();
+        const actions = new Map<string, IpcActionHandler>();
+        await attachOb11IpcBridge(actions, mockServices(), {
+            env: baseEnv,
+            importModule: async (url) =>
+                url.includes("onebot11")
+                    ? {
+                          NapukettoOneBot11Adapter: FakeOb11Adapter,
+                          ob11ConfigSchema: { parse: () => ({}) },
+                      }
+                    : await load(url),
+        });
+        expect(actions.size).toBe(0);
+    });
+
+    it("IPC 使用线上协议 schema 校验，非法模式返回配置错误", async () => {
+        const original = env.NAPKETTO_CONFIG_JSON;
+        env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+            accounts: [{ qq: "10001", onebot11: { media: { outboundPolicy: "typo" } } }],
+        });
+        const load = fakeImport();
+        const actions = new Map<string, IpcActionHandler>();
+        try {
+            await expect(
+                attachOb11IpcBridge(actions, mockServices(), {
+                    env: baseEnv,
+                    importModule: async (url) =>
+                        url.includes("onebot11")
+                            ? await import("@napuketto/adapter/onebot11")
+                            : await load(url),
+                }),
+            ).rejects.toBeInstanceOf(ConfigError);
+            expect(actions.size).toBe(0);
+        } finally {
+            env.NAPKETTO_CONFIG_JSON = original;
+        }
+    });
+
+    it("注入真实 OB11 动作后，IPC download_file 默认拒绝环回且支持显式 compat", async () => {
+        const cfgDir = await mkdtemp(join(tmpdir(), "nk-ob11-ipc-media-"));
+        const request = vi.fn();
+        const server = createServer((req, res) => {
+            request(req.headers.authorization);
+            res.end("test media");
+        });
+        const original = env.NAPKETTO_CONFIG_JSON;
+        try {
+            await once(server.listen(0, "127.0.0.1"), "listening");
+            const address = server.address();
+            if (address === null || typeof address === "string")
+                throw new Error("Missing TCP port");
+            for (const outboundPolicy of ["public-only", "compat"]) {
+                env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+                    accounts: [
+                        {
+                            qq: "10001",
+                            ...(outboundPolicy === "compat"
+                                ? { onebot11: { media: { outboundPolicy } } }
+                                : {}),
+                        },
+                    ],
+                });
+                const actions = new Map<string, IpcActionHandler>();
+                const stop = await attachOb11IpcBridge(actions, mockServices(), {
+                    env: { ...baseEnv, cfgDir },
+                    importModule: async (url) => {
+                        if (url.includes("onebot11"))
+                            return await import("@napuketto/adapter/onebot11");
+                        if (url.includes("/core/")) return await import("@napuketto/adapter/core");
+                        return { EventBroadcaster: FakeBroadcaster };
+                    },
+                });
+                try {
+                    const result = await actions.get("download_file")?.({
+                        url: `http://127.0.0.1:${address.port}/media.png`,
+                        headers: { ["Authorization"]: "Bearer test" },
+                    });
+                    if (outboundPolicy === "compat") {
+                        expect(result).toMatchObject({ status: "ok" });
+                        expect(request).toHaveBeenCalledExactlyOnceWith("Bearer test");
+                    } else {
+                        expect(result).toMatchObject({
+                            status: "failed",
+                            message: expect.stringContaining("公网下载策略拒绝"),
+                        });
+                        expect(request).not.toHaveBeenCalled();
+                    }
+                } finally {
+                    stop();
+                }
+            }
+        } finally {
+            env.NAPKETTO_CONFIG_JSON = original;
+            server.close();
+            await once(server, "close");
+            await rm(cfgDir, { recursive: true, force: true });
+        }
     });
 
     it("subscribeOnly 被调用（不调 start/传输）", async () => {

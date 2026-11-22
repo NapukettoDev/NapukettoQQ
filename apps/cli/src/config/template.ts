@@ -94,6 +94,10 @@ messagePostFormat = "array"
 # true = 群文件消息改报 group_upload notice 事件（替代 message 事件）
 groupUploadAsNotice = false
 
+# 远程媒体默认仅公网。仅受信任的调用方需要访问 LAN/本机媒体时改为 compat。
+# [accounts.onebot11.media]
+# outboundPolicy = "compat"
+
 # ---- HTTP 反向服务器（接收第三方 POST 指令），可配置多个 ----
 [[accounts.onebot11.httpServers]]
 enabled = true
@@ -131,6 +135,8 @@ port = 3001
 # qq = "${RESERVED_PLACEHOLDER_QINS[1]}"
 # [accounts.satori]
 # # token = ""                           # 可选：Satori 鉴权 token
+# [accounts.satori.media]
+# outboundPolicy = "public-only"          # 受信任 LAN 部署可显式设为 "compat"
 # [[accounts.satori.httpServers]]        # HTTP RPC（POST /v1/{resource}.{method}）
 # enabled = true
 # host = "127.0.0.1"
@@ -170,5 +176,7 @@ port = 3001
 # # eventModes = ["sse", "ws"]           # /event 允许的连接形态
 # # webhooks = []                        # 可选：额外事件推送地址（WebHook POST）
 # # cacheDir = "cache"                   # 可选：发送远程媒体 URI 的下载缓存目录
+# [accounts.milky.media]
+# outboundPolicy = "public-only"          # 受信任 LAN 部署可显式设为 "compat"
 `;
 }

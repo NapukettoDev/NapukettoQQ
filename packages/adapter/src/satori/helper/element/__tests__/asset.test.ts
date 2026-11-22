@@ -64,7 +64,7 @@ describe("resolveAsset：http(s) 下载", () => {
         const body = Buffer.from("png-data");
         const fetchMock = vi.fn(async () => new Response(body, { status: 200 }));
         vi.stubGlobal("fetch", fetchMock);
-        const out = await resolveAsset("http://example.com/pics/a%20b.png", cacheDir);
+        const out = await resolveAsset("http://example.com/pics/a%20b.png", cacheDir, "compat");
         // 下载器手动跟随重定向（逐跳校验），fetch 第二参带 redirect/signal
         expect(fetchMock).toHaveBeenCalledWith(
             "http://example.com/pics/a%20b.png",
@@ -81,7 +81,7 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const out = await resolveAsset("https://example.com/f/中文?.png", cacheDir);
+        const out = await resolveAsset("https://example.com/f/中文?.png", cacheDir, "compat");
         expect(basename(out)).toBe("media.bin");
     });
 
@@ -91,7 +91,7 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async () => new Response("nope", { status: 404 })),
         );
         await expect(
-            resolveAsset("https://example.com/missing.png", cacheDir),
+            resolveAsset("https://example.com/missing.png", cacheDir, "compat"),
         ).rejects.toMatchObject({ code: "SEND_FAILED" });
     });
 
@@ -100,7 +100,7 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const out = await resolveAsset("https://example.com/", cacheDir);
+        const out = await resolveAsset("https://example.com/", cacheDir, "compat");
         expect(basename(out)).toBe("media.bin");
     });
 
@@ -109,8 +109,8 @@ describe("resolveAsset：http(s) 下载", () => {
             "fetch",
             vi.fn(async () => new Response(Buffer.from("x"), { status: 200 })),
         );
-        const dots = await resolveAsset("https://example.com/..", cacheDir);
-        const dot = await resolveAsset("https://example.com/.", cacheDir);
+        const dots = await resolveAsset("https://example.com/..", cacheDir, "compat");
+        const dot = await resolveAsset("https://example.com/.", cacheDir, "compat");
         expect(dots.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
         expect(dot.startsWith(join(cacheDir, ".napuketto-media-v1"))).toBe(true);
     });
@@ -123,8 +123,8 @@ describe("resolveAsset：http(s) 下载", () => {
             vi.fn(async (url: string) => new Response(url)),
         );
         const [a, b] = await Promise.all([
-            resolveAsset("https://a.example/a.png", cacheDir),
-            resolveAsset("https://b.example/a.png", cacheDir),
+            resolveAsset("https://a.example/a.png", cacheDir, "compat"),
+            resolveAsset("https://b.example/a.png", cacheDir, "compat"),
         ]);
         expect(a).not.toBe(b);
         expect(readFileSync(a, "utf8")).toBe("https://a.example/a.png");

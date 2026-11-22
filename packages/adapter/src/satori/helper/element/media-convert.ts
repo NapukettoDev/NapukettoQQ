@@ -9,7 +9,7 @@
  * 本文件都消费它，放这里可避免 element-convert ↔ media-convert 循环引用。
  */
 import type { CanonicalElement } from "@napuketto/kernel";
-import { transcodeVideo } from "@napuketto/media";
+import { type MediaOutboundPolicy, transcodeVideo } from "@napuketto/media";
 import { ensureSilk } from "../../../internal/qq/media.js";
 import { assetFileName, resolveAsset } from "./asset.js";
 import type { SatoriElement } from "./element.js";
@@ -20,6 +20,7 @@ export interface SatoriToCanonicalDeps {
     uinToUid: (uins: string[]) => Promise<Map<string, string>>;
     /** 资源（img/audio/video/file）下载缓存目录。 */
     cacheDir: string;
+    outboundPolicy?: MediaOutboundPolicy | undefined;
     /** 转码成功即转移输出文件及其父临时目录的所有权；发送消费结束后清理。 */
     onVideoTranscoded?: (path: string) => void;
 }
@@ -33,7 +34,7 @@ async function resolveMediaSrc(
     if (src === "") {
         return null;
     }
-    return resolveAsset(src, deps.cacheDir);
+    return resolveAsset(src, deps.cacheDir, deps.outboundPolicy);
 }
 
 /** Satori img → canonical image。 */

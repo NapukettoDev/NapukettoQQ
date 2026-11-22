@@ -1,8 +1,7 @@
 /**
  * 文件收发域动作
  *
- * - download_file：url → fetch 下载 → 存 cacheDir（缺省抛错）→ 返回
- *   { file }。文件名：download-<timestamp>-<basename>（headers 等扩展字段忽略）
+ * - download_file：按媒体出站策略下载到 cacheDir 的独立缓存文件，返回 { file }。
  * - upload_group_file / upload_private_file——**闪传通道**
  *
  * ⚠️ 语义降级（探测依据见 kernel design §15）：
@@ -23,7 +22,7 @@ import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
 import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
-import { downloadBufferToFile, fileUriToPath } from "../../../internal/qq/media.js";
+import { downloadProtocolMedia, fileUriToPath } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 
@@ -90,16 +89,14 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
                         "INVALID_STATE",
                     );
                 }
-                const init: RequestInit = {};
-                if (payload.headers !== undefined) {
-                    init.headers = payload.headers;
-                }
-                // 异步落盘（父目录由 shared/media 递归创建，不再同步阻塞）
                 const filePath = await cacheMediaFile(
                     cacheDir,
                     inferExtension(null, payload.url),
                     async (path) => {
-                        await downloadBufferToFile(payload.url, path, init);
+                        await downloadProtocolMedia(payload.url, path, {
+                            outboundPolicy: api.getMediaOutboundPolicy?.(),
+                            headers: payload.headers,
+                        });
                     },
                     "reference",
                 );

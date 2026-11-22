@@ -46,6 +46,7 @@ function makeDeps(
     return stub<GetMediaDeps>({
         messageUnique,
         cacheDir: extra.cacheDir,
+        getMediaOutboundPolicy: () => "compat",
         mediaBaseDir: extra.mediaBaseDir,
         msgApi: stub<MsgApi>({
             fetchMsgsByMsgId: vi.fn(async () => (msg === null ? [] : [msg])),
@@ -164,6 +165,23 @@ describe("GetImageAction", () => {
         const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
         expect(result?.url).toBe("https://x/img.jpg");
         expect(result?.file).toBeUndefined();
+    });
+
+    it("公网策略拒绝回环 picUrl 时保留原 URL，不创建下载文件", async () => {
+        const picUrl = "http://127.0.0.1:9/image.jpg";
+        const warn = vi.fn();
+        const deps = {
+            ...makeDeps(picMsg({ picUrl }), { cacheDir: tempDir("public-cache") }),
+            getMediaOutboundPolicy: undefined,
+            logger: stub<NonNullable<GetMediaDeps["logger"]>>({ warn }),
+        };
+        const result = await mediaActionOf(deps, "get_image").handle({ message_id: 1 });
+        expect(result.data?.file).toBeUndefined();
+        expect(result.data?.url).toBe(picUrl);
+        expect(warn).toHaveBeenCalledWith(
+            { error: expect.stringContaining("公网下载策略拒绝") },
+            expect.any(String),
+        );
     });
 
     it("消息无 pic 元素 → retcode 102「不包含图片」", async () => {

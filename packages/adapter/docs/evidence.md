@@ -274,3 +274,52 @@ seq 索引：接收链路双向登记 seq ↔ msgId（FIFO 4096）；反查未�
   512MiB 是每个受控根的媒体文件容量，写入/转换瞬时占用及元数据开销不属于磁盘硬配额。
   旧平铺文件与未知/损坏所有权内容保守保留；显式 `clean_cache` 的既有 kernel 管理回调、
   用户删文件和系统临时目录清理可使缓存路径提前失效。自动回收只管理可证明所有权的文件。
+
+## 任务 06 协议媒体出站
+
+### 审计项与代码证据
+
+出站地址控制属于 P1 纵深隔离，前提是调用方已经能分发相应的下载动作。
+该判定沿用审计基线中的可达性条件，以现有连接和动作实现复核。
+
+| 编号 | 当前代码与验收 |
+| --- | --- |
+| F-02 | 逐跳校验、映射 IPv6 归一化及实际连接 DNS 绑定分别由 [#153](https://github.com/NapukettoDev/NapukettoQQ/pull/153)（`691fea6`）、[#157](https://github.com/NapukettoDev/NapukettoQQ/pull/157)（`5ff7ae3`、media 0.2.1）、[#171](https://github.com/NapukettoDev/NapukettoQQ/pull/171)（`4340a0f`、media 0.2.3）引入。本次让协议下载实际采用公网入口。替身 DNS 验证逐跳候选，回环监听验证策略拒绝时端点未收到请求。 |
+| F-10 | [共享下载循环](../../media/src/downloader.ts) 按 URL 源应用逐跳请求头策略。首跳和同源保留允许的头，跨源丢弃调用者全部头，返回初始源时也不恢复。HTTP 和 HTTPS 桩覆盖跨端口、Cookie、Authorization、Origin、Referer、自定义 API 头、Host 和 identity 编码。 |
+| F-11 | [MIME 白名单和扩展名回退](../../media/src/downloader.ts)、[公网响应头适配](../../media/src/public-download.ts) 覆盖带参数、大小写、畸形和未知 MIME，及混合大小写的 Location 和 Content-Length 读取。 |
+| H-02 远程侧 | [公网和兼容下载器](../../media/src/downloader.ts) 共享 15 秒缺省全程超时、30 MiB 缺省最终响应上限和 5 次跳转上限。定向测试覆盖 DNS/传输超时、声明与实际大小、非 2xx、跳转上限、响应关闭和临时产物回收。Satori 转码收到本地下载文件。媒体子进程限制沿用 [#160](https://github.com/NapukettoDev/NapukettoQQ/pull/160)（`37087d5`、media 0.2.2）。 |
+| I-01 A | [IPC 动作桥](../../loader/src/host/ipc/ipc-ob11.ts) 使用实际登录账号的 `onebot11.media`，由动态加载的 adapter schema 校验。真实 adapter 注入和回环 HTTP 桩验证缺省拒绝、显式 `compat` 成功。测试同时覆盖旧 adapter 降级和非法模式报配置错误。 |
+
+### 生产动作验收
+
+| 入口 | 适用范围及剩余业务边界 |
+| --- | --- |
+| OB11 HTTP、入站 WS、反向 WS、IPC | 同一动作注册表覆盖 [`download_file`](../src/onebot11/action/system/file.ts)、[`set_qq_avatar` URL](../src/onebot11/action/system/account.ts) 和 [`get_image` 缓存回源](../src/onebot11/action/message/media.ts)。`get_image` 拒绝下载时仍可返回原 URL，由客户端决定如何处理。`get_record` 原生富媒体、消息发送的本地路径及本地文件闪传走各自业务路径。 |
+| Satori HTTP RPC | [`message.create` 的 `img/audio/video/file`](../src/satori/helper/element/media-convert.ts) 经统一资源解析执行出站策略。`internal:` 和裸路径由资源授权处理，事件 WS 仅传事件。 |
+| Milky HTTP 动作 | [`send_private_message`、`send_group_message` 及合并转发子段](../src/milky/action/message-send.ts) 的图片、语音、视频，[个人头像](../src/milky/action/profile.ts)、[群头像及群公告图](../src/milky/action/group-manage.ts)、[群文件](../src/milky/action/group-file.ts)、[私聊文件](../src/milky/action/message-ops.ts) 所用 HTTP(S) URI 均执行策略。file URI、裸路径、base64 和 QQ 临时资源链接按各动作语义处理。 |
+| KuroBot 和其他宿主连接 | [KuroBot 入向消息只向 QQ 发送文本](../src/kurobot/inbound/server-frames.ts)。Webhook、协议连接、QQ 安装包下载和 kernel 原生富媒体由各自的目的地与授权规则处理。 |
+
+### 兼容性、依赖与剩余验证
+
+- 以 `origin/main` 的 `bbcfd61` 为基线。`downloadPublicUrl` 用于公网下载，`downloadUrl`
+  用于 LAN 兼容下载。账号协议默认 `public-only`。受信任 LAN 调用方在相应
+  `[accounts.onebot11.media]`、`[accounts.satori.media]` 或 `[accounts.milky.media]`
+  设置 `outboundPolicy = "compat"`。内联配置层级相同。IPC 注入的 adapter 必须保留该字段。
+- 07 的本地媒体配置可扩展 adapter 的 `protocolMediaSchema`，使用同一个账号协议媒体段。
+  06 提供两种出站模式，可信 LAN 通过整个协议段显式切换。目标级 `outboundAllow` 是原审计
+  提案中的独立访问控制能力。
+- 09 更新依赖时，已发布的 `downloadPublicUrl` 最低是 media 0.2.3。本次出站行为和 IPC
+  装配需等待 media 0.3.0、adapter 0.20.0、loader 0.12.0。CLI 模板预计随 0.7.0
+  发布。版本按本次 changeset 和当前 main 推算，下游以正式 npm 版本及冻结锁文件为准。
+- 本次使用合成媒体、临时缓存、回环服务和 QQ API 桩。真实 QQ 上传、发送、播放及私有部署的
+  代理与路由策略，需要测试账号和部署授权才能验证。
+
+### 本机验证
+
+- Windows / Node 24.16.0 / pnpm 12.4.1，冻结锁文件安装通过。media、adapter、loader
+  及 CLI 各自构建通过。
+- `pnpm test:quiet packages/media packages/adapter packages/loader apps/cli` 通过，
+  164 个文件，2466 项通过，11 项跳过。内联配置的 `config validate` 对 `compat`
+  返回 0，对非法值返回 78。
+- `pnpm check && pnpm test:quiet` 通过，239 个文件，3616 项通过，14 项跳过。
+  `pnpm exec fallow audit --base origin/main` 退出 0，报告的存量项及复杂度增长为警告。

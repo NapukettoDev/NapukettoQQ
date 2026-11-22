@@ -67,7 +67,11 @@ export function createProfileActions(api: MilkyApi): MilkyAction[] {
             name: "set_avatar",
             schema: z.object({ uri: z.string().min(1) }),
             handle: async (payload: { uri: string }) => {
-                const path = await resolveMediaUri(payload.uri, api.mediaDir);
+                const path = await resolveMediaUri(
+                    payload.uri,
+                    api.mediaDir,
+                    api.getMediaOutboundPolicy?.(),
+                );
                 await api.profileApi.setHeader(path);
                 return {};
             },

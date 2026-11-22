@@ -19,7 +19,7 @@ import { env } from "./env.js";
 import { isRecord } from "./type-guards.js";
 import type { KernelLike, ProtocolKey } from "./types.js";
 import { PROTOCOL_KEYS } from "./types.js";
-import { errMsg, log } from "./util.js";
+import { ConfigError, errMsg, log } from "./util.js";
 
 /** 协议段表（协议键 → 宽松段对象；装配时 zod 校验）。 */
 type SectionMap = Record<ProtocolKey, Record<string, unknown>>;
@@ -44,6 +44,20 @@ type SectionFields = Pick<
 
 /** 内联来源时 cfgFile 的哨兵值（非文件路径；日志/错误标注里不出现真实路径）。 */
 const INLINE_CONFIG_SENTINEL = "<inline>";
+
+/** 用动态加载的协议 schema 校验内存配置，保留宿主配置错误的退出码。 */
+export function parseProtocolSeed(
+    label: string,
+    schema: { parse(input: unknown): unknown },
+    section: Record<string, unknown>,
+): unknown {
+    try {
+        return schema.parse(section);
+    } catch (error) {
+        const detail = errMsg(error).replace(/\s+/g, " ").trim();
+        throw new ConfigError(`协议配置 ${label} 段校验失败: ${detail}`, { cause: error });
+    }
+}
 
 /** 宽松账号项（TOML [[accounts]] 元素 / JSON accounts 元素）。 */
 type AccountLike = Record<string, unknown>;
