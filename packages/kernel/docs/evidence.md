@@ -10,15 +10,21 @@
 
 ### IPC 调用与探测手法
 
-`packages/loader/src/host/ipc/ipc-actions.ts` 暴露 `diag.sessionCall`、`diag.engineCall`、
-`diag.msgServiceCall`、`diag.richMediaCall`、`diag.flashCall`、`diag.utilCall`。
-`params.method = "__methods"` 枚举方法面，其余按 `params.args` 调用（JSON 行协议）：
+`packages/loader/src/host/ipc/ipc-actions.ts` 仅在显式设置 `NAPUKETTO_DIAG=1`（或
+launcher `diagnostics: true`）时注册 `diag.sessionCall`、`diag.engineCall`、
+`diag.msgServiceCall`、`diag.richMediaCall`、`diag.flashCall`、`diag.utilCall` 与
+`diag.richMediaTmpPaths`；常规动作表不含这些名字。启用后每个目标只接受固定方法
+allowlist，`params.method = "__methods"` 枚举有长度上限的方法面，`params.args` 有数量上限：
 
 ```text
+NAPUKETTO_DIAG=1
 {"v":1,"type":"action","id":"1","payload":{"action":"diag.msgServiceCall","params":
  {"method":"downloadRichMedia","args":[{"msgId":"…","elemId":"…","chatType":2,
  "downloadType":2,"thumbSize":0}]}}}
 ```
+
+`diag.richMediaTmpPaths` 只读枚举临时目录方法面，不再触发 setters 等副作用；破坏性实验用
+kernel 自己的 `probeRuntime` / listener 录制器，不扩大 IPC 反射面。
 
 ### 方法面、arity 与字段枚举
 
@@ -348,3 +354,12 @@ stub 补丁状态 `applied`（boot 日志 `[media-patch] pending → applied cle
 自动重放命中）后，真实入站图 432,173 B 落盘 `nt_data/Pic/<月>/Ori/`；OB11 事件 `file` 与
 Milky `resource_id` 均为 stat 通过的绝对路径。`Thumb/` 零文件、thumbPath 恒空（thumbSize=0
 走原图分支）；transferStatus 无暴露面未回查（防御层等文件存在性）；降级行为由单测覆盖。
+
+## 登录二维码日志与生命周期（L-01 上游）
+
+- `core.test.ts` 覆盖：默认落到 `<账号目录>/cache/qr/qrcode.png`，登录结束与 `stop()` 都删除；
+  显式 `qrCodePath` 保留；日志文本不含 `qrcodeUrl` 或票据原文，只留图片路径。
+- `log-redaction` 单测把 `qrcodeUrl` / `qr_code_url` 纳入结构化字段保护；调用方仍不得把
+  登录 URL 插值进 message / stack。
+- 剩余条件：未在装有真实 QQ 的 Windows/Linux 上复核原生 `onQRCodeGetPicture` 的 URL 形态与
+  过期自动刷新频率；未做 Bugly 外传抓包验证。

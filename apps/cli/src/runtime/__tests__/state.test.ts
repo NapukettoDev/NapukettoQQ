@@ -181,6 +181,41 @@ describe("runtime-state 读写", () => {
         rmSync(root, { recursive: true, force: true });
     });
 
+    it("selfHostPid 类型/范围非法 → 整个状态判非法（不把任意值当 PID）", () => {
+        const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-pid-"));
+        const writeAccount = (uin: string, selfHostPid: unknown): void => {
+            mkdirSync(join(root, uin), { recursive: true });
+            writeFileSync(
+                runtimeStatePath(root, uin),
+                JSON.stringify({
+                    uin,
+                    pid: 123,
+                    selfHostPid,
+                    startedAt: "t",
+                    kind: "single-boot",
+                    status: "running",
+                }),
+                "utf8",
+            );
+        };
+        writeAccount("30001", 222);
+        expect(readAccountRuntime(root, "30001")).toMatchObject({ pid: 123, selfHostPid: 222 });
+        for (const [index, value] of [
+            "222",
+            0,
+            -1,
+            1.5,
+            Number.NaN,
+            0x7fffffff + 1,
+            null,
+        ].entries()) {
+            const uin = `3001${index}`;
+            writeAccount(uin, value);
+            expect(readAccountRuntime(root, uin)).toBeNull();
+        }
+        rmSync(root, { recursive: true, force: true });
+    });
+
     it("listAccountRuntimes 扫描数据根一级目录（跳过无状态目录）", () => {
         const root = mkdtempSync(join(tmpdir(), "napuketto-runtime-list-"));
         writeAccountRuntime(root, makeRuntime({ uin: "20001" }));
@@ -195,12 +230,26 @@ describe("runtime-state 读写", () => {
 });
 
 describe("isPidAlive / killProcessTree", () => {
-    it("自身 pid 存活；不存在 pid 返回 false；非法 pid 返回 false", () => {
+    it("自身 pid 存活；不存在 pid / 非法类型返回 false", () => {
         expect(isPidAlive(process.pid)).toBe(true);
         expect(isPidAlive(99999999)).toBe(false);
         expect(isPidAlive(0)).toBe(false);
         expect(isPidAlive(-1)).toBe(false);
         expect(isPidAlive(Number.NaN)).toBe(false);
+    });
+
+    it("超出 PID 范围 / 小数不调用 process.kill（保留合法存活探测）", () => {
+        const kill = vi.spyOn(process, "kill");
+        try {
+            expect(isPidAlive(0x7fffffff + 1)).toBe(false);
+            expect(isPidAlive(Number.MAX_SAFE_INTEGER)).toBe(false);
+            expect(isPidAlive(1.5)).toBe(false);
+            expect(kill).not.toHaveBeenCalled();
+            expect(isPidAlive(process.pid)).toBe(true);
+            expect(kill).toHaveBeenCalledWith(process.pid, 0);
+        } finally {
+            kill.mockRestore();
+        }
     });
 });
 
@@ -326,6 +375,13 @@ describe("checkProcessIdentity（PID 复用校验）", () => {
     it("无指纹 / 空指纹 → unverified（不查询命令行）", () => {
         expect(checkProcessIdentity(process.pid, undefined)).toBe("unverified");
         expect(checkProcessIdentity(process.pid, "")).toBe("unverified");
+        expect(loaderMocks.readCmdlineForPid).not.toHaveBeenCalled();
+    });
+
+    it("PID 类型/范围非法 → mismatch，且不查询命令行", () => {
+        for (const pid of [0, -1, 1.5, Number.NaN, 0x7fffffff + 1]) {
+            expect(checkProcessIdentity(pid, "index.mjs")).toBe("mismatch");
+        }
         expect(loaderMocks.readCmdlineForPid).not.toHaveBeenCalled();
     });
 

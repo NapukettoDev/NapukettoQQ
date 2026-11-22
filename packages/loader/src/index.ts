@@ -104,6 +104,8 @@ export {
 // 跨进程 cmdline 查询（instance-lock pid 复用校验 + cli 树杀前身份校验共用单一来源）
 export {
     CMDLINE_PROBE_SUPPORTED,
+    isValidPid,
+    MAX_PID,
     normalizeCmdline,
     readCmdlineForPid,
 } from "./lifecycle/pid-cmdline.js";

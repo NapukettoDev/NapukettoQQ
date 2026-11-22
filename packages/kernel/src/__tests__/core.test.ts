@@ -296,6 +296,56 @@ describe("NapukettoCore.login QR 路径", () => {
         await loginPromise;
         expect(readFileSync(qrPath, "utf8")).toBe("png-bytes");
     });
+
+    it("默认二维码写独占 cache/qr，登录结束自动删除（生命周期）", async () => {
+        const { core } = attachedCore();
+        const qrPath = join(tmp, "cache", "qr", "qrcode.png");
+        const loginPromise = core.login({ appid: "537", qrOnly: true });
+        await vi.waitFor(() => expect(FakeQrSession.instances.length).toBe(1));
+        const session = onlySession();
+        session.emitQr({
+            pngBase64: Buffer.from("png-bytes").toString("base64"),
+            qrcodeUrl: "https://qq.example/secret-ticket",
+        });
+        expect(existsSync(qrPath)).toBe(true);
+        qrLoginSucceed(session);
+        await loginPromise;
+        expect(existsSync(qrPath)).toBe(false);
+    });
+
+    it("stop() 清理默认二维码文件（登录未结束时也生效）", async () => {
+        const { core } = attachedCore();
+        const qrPath = join(tmp, "cache", "qr", "qrcode.png");
+        const loginPromise = core.login({ appid: "537", qrOnly: true });
+        await vi.waitFor(() => expect(FakeQrSession.instances.length).toBe(1));
+        const session = onlySession();
+        session.emitQr({
+            pngBase64: Buffer.from("png-bytes").toString("base64"),
+            qrcodeUrl: "https://qq.example/secret-ticket",
+        });
+        expect(existsSync(qrPath)).toBe(true);
+        core.stop();
+        expect(existsSync(qrPath)).toBe(false);
+        qrLoginSucceed(session);
+        await loginPromise;
+    });
+
+    it("日志不落二维码 URL / 票据原文，只留图片路径", async () => {
+        const { core } = attachedCore();
+        const secretUrl = "https://qq.example/login?ticket=fake-secret-ticket";
+        const loginPromise = core.login({ appid: "537", qrOnly: true });
+        await vi.waitFor(() => expect(FakeQrSession.instances.length).toBe(1));
+        onlySession().emitQr({
+            pngBase64: Buffer.from("png-bytes").toString("base64"),
+            qrcodeUrl: secretUrl,
+        });
+        qrLoginSucceed(onlySession());
+        await loginPromise;
+        const logText = readFileSync(join(tmp, "logs", "napuketto.log"), "utf8");
+        expect(logText).not.toContain("fake-secret-ticket");
+        expect(logText).not.toContain("https://qq.example");
+        expect(logText).toContain("qrcode.png");
+    });
 });
 
 describe("NapukettoCore.refreshQr", () => {
@@ -314,6 +364,13 @@ describe("NapukettoCore.refreshQr", () => {
 });
 
 describe("装配与收尾补充", () => {
+    it("公开生命周期：createRuntime 入口可访问，dispose 幂等", () => {
+        const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
+        expect(typeof core.createRuntime).toBe("function");
+        core.dispose();
+        core.dispose();
+    });
+
     it("attachWrapper：无 env（QQ 主进程直连形态）→ startNapuketto 收到纯 exports", () => {
         const core = NapukettoCore.create({ paths: { dataRoot: freshRoot() }, consoleLog: false });
         const wrapper = {

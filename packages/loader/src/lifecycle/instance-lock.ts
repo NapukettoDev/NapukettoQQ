@@ -13,7 +13,12 @@ import { join } from "node:path";
 import process from "node:process";
 import { isRecord, parseJsonWithGuard } from "../host/type-guards.js";
 import { log } from "../host/util.js";
-import { CMDLINE_PROBE_SUPPORTED, normalizeCmdline, readCmdlineForPid } from "./pid-cmdline.js";
+import {
+    CMDLINE_PROBE_SUPPORTED,
+    isValidPid,
+    normalizeCmdline,
+    readCmdlineForPid,
+} from "./pid-cmdline.js";
 
 export const INSTANCE_LOCK_FILE = "instance.lock";
 
@@ -34,14 +39,10 @@ export interface InstanceLockCheck {
 const OWNER_PATTERN = /^[0-9a-f-]{36}$/;
 const owners = new Map<string, string>();
 
-function isLockPid(pid: unknown): pid is number {
-    return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0 && pid <= 0x7fffffff;
-}
-
 function isInstanceLockInfo(value: unknown): value is InstanceLockInfo {
     return (
         isRecord(value) &&
-        isLockPid(value["pid"]) &&
+        isValidPid(value["pid"]) &&
         typeof value["startedAt"] === "number" &&
         Number.isFinite(value["startedAt"]) &&
         (value["cmdline"] === undefined || typeof value["cmdline"] === "string") &&

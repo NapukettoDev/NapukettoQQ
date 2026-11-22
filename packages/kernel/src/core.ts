@@ -14,7 +14,7 @@
  * （ctx）集中管理，协议层直接消费 core.ctx。
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { type CoreContext, createCoreContext } from "./context.js";
@@ -121,11 +121,14 @@ export interface CoreLoginOptions {
      * （qrFallback 可接）。底层 promise 无法取消：超时后悬挂丢弃。
      */
     quickLoginTimeoutMs?: number | undefined;
-    /** 快速登录失败时回退 QR 登录（二维码写缓存目录），默认 false。 */
+    /** 快速登录失败时回退 QR 登录（二维码写账号 cache/qr 临时目录），默认 false。 */
     qrFallback?: boolean | undefined;
     /** 强制扫码：跳过快速登录，直接走 QR 登录（koishi 强制扫码 / 切账号）。默认 false。 */
     qrOnly?: boolean | undefined;
-    /** QR 二维码图片保存路径（默认缓存目录 qrcode.png）。 */
+    /**
+     * QR 二维码图片保存路径（显式指定时由调用方接管生命周期；默认
+     * `<账号目录>/cache/qr/qrcode.png`，登录结束删除）。
+     */
     qrCodePath?: string | undefined;
     /** 登录进度回调（QR 阶段：二维码数据 + 状态变化）。子进程 IPC 模式转发用。 */
     onLoginProgress?: ((progress: LoginProgress) => void) | undefined;
@@ -147,6 +150,9 @@ export class NapukettoCore {
 
     /** QR 登录会话句柄（登录期间非空；登录终态后清空）。refreshQr() 据此可达。 */
     private qrSession: QrLoginSession | null = null;
+
+    /** 本次登录默认落盘的临时二维码路径（显式 qrCodePath 不纳入自动清理）。 */
+    private ephemeralQrCodePath: string | null = null;
 
     /** 由 createRuntime() 装配的运行时服务集合（stop/dispose 时统一清理）。 */
     private runtime: KernelRuntime | null = null;
@@ -369,7 +375,7 @@ export class NapukettoCore {
         return true;
     }
 
-    /** QR 登录：QrLoginSession 状态机 + 二维码写缓存目录（无 UI，cli 可打印路径）。 */
+    /** QR 登录：QrLoginSession 状态机 + 二维码写独占缓存目录（无 UI，cli 可打印路径）。 */
     private async loginByQr(opts: CoreLoginOptions): Promise<LoginResult> {
         const { wrapper } = this.ctx;
         if (wrapper === null || wrapper.loginService === null) {
@@ -378,7 +384,10 @@ export class NapukettoCore {
         const session = new QrLoginSession(wrapper.loginService);
         // 暴露句柄：登录期间外部可经 refreshQr() 手动刷新二维码（koishi 前端刷新按钮）。
         this.qrSession = session;
-        const qrPath = opts.qrCodePath ?? this.ctx.paths.file("cache", "qrcode.png");
+        // 调用方显式 qrCodePath 视为自行接管生命周期；默认路径是本次登录的临时材料。
+        const explicitPath = opts.qrCodePath;
+        const qrPath = explicitPath ?? this.ctx.paths.file("cache", QR_CODE_DIR, QR_CODE_FILENAME);
+        this.ephemeralQrCodePath = explicitPath === undefined ? qrPath : null;
         this.subscribeQrProgress(session, opts, qrPath);
 
         try {
@@ -394,6 +403,7 @@ export class NapukettoCore {
         } finally {
             session.stop();
             this.qrSession = null;
+            this.cleanupEphemeralQrCode();
         }
     }
 
@@ -404,7 +414,8 @@ export class NapukettoCore {
         qrPath: string,
     ): void {
         session.onQrCode((qr) => {
-            this.ctx.logger.warn(`请扫描二维码登录（保存: ${qrPath} | URL: ${qr.qrcodeUrl}）`);
+            // 日志只留图片路径：qrcodeUrl 是登录 URL（含票据），不得写入日志/事件。
+            this.ctx.logger.warn(`请扫描二维码登录（图片: ${qrPath}）`);
             if (qr.pngBase64 !== "") {
                 writeQrCodePng(qrPath, qr.pngBase64);
             }
@@ -439,9 +450,19 @@ export class NapukettoCore {
         this.stopped = true;
         this.qrSession?.stop();
         this.qrSession = null;
+        this.cleanupEphemeralQrCode();
         this.runtime?.dispose();
         this.runtime = null;
         this.ctx.logger.info("NapukettoCore 停止");
+    }
+
+    /** 删除本次登录默认落盘的临时二维码（显式 qrCodePath 不删）。幂等。 */
+    private cleanupEphemeralQrCode(): void {
+        const path = this.ephemeralQrCodePath;
+        this.ephemeralQrCodePath = null;
+        if (path !== null) {
+            removeQrCodePng(path);
+        }
     }
 
     /** 显式释放（`using` / 手动调用的统一入口；等价 stop）。 */
@@ -517,13 +538,41 @@ function hasInitConfig(
     return typeof val["initConfig"] === "function";
 }
 
-/** 写二维码 png 到磁盘（base64 解码，供 cli/用户扫码）。 */
+/** 二维码 png 默认落盘目录（账号 cache 下的独占子目录）。 */
+const QR_CODE_DIR = "qr";
+/** 二维码 png 默认文件名。 */
+const QR_CODE_FILENAME = "qrcode.png";
+
+/**
+ * 写二维码 png 到磁盘（base64 解码，供 cli/用户扫码）。
+ *
+ * 安全边界：目录按 0o700 创建、文件按 0o600 写入；写入前拒绝符号链接，避免被
+ * 预置链接引到其他文件。失败不阻塞登录（cli 仍可打印 URL / 终端渲染）。
+ */
 function writeQrCodePng(filePath: string, pngBase64: string): void {
     try {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, Buffer.from(pngBase64, "base64"));
+        mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+        try {
+            if (lstatSync(filePath).isSymbolicLink()) {
+                return;
+            }
+        } catch {
+            // 文件尚不存在：正常路径
+        }
+        writeFileSync(filePath, Buffer.from(pngBase64, "base64"), { mode: 0o600 });
+        // 已存在的旧文件 mode 不会随 writeFileSync 改变，显式收紧权限。
+        chmodSync(filePath, 0o600);
     } catch {
         // 写失败不阻塞登录（cli 仍可打印 URL）
+    }
+}
+
+/** 删除默认落盘的二维码文件（不存在 / 权限失败静默）。 */
+function removeQrCodePng(filePath: string): void {
+    try {
+        unlinkSync(filePath);
+    } catch {
+        // 已清理 / 从未落盘
     }
 }
 

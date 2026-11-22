@@ -241,3 +241,19 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
   `^0.10.9` 不覆盖 0.11.0，发布后同步依赖范围与锁文件。原生引导原语自 kernel
   0.12.3 提供，下游当前锁定 0.16.4 已满足。升级同一账号目录前先停止旧宿主；
   原生模块同步卡死时保留父进程强杀兜底。
+
+## 宿主诊断、环境与 PID 校验（H-01 / H-06 / L-03）
+
+- `buildLaunchEnv` 白名单单测在 `src/boot/__tests__/launcher-env.test.ts`：win32 与 linux
+  模拟输入分别验证凭据/`NODE_OPTIONS`/`LD_PRELOAD` 不透传，代理/证书/日志/控制标记透传，
+  `NAPUKETTO_*` 优先并清除旧拼写，`qrOnly:false` 清一次性扫码标记，typed `log`/flags 覆盖
+  `extraEnv`，Windows `Path`/`PATH` 去重。
+- 诊断动作注册启停见 `src/host/ipc/__tests__/ipc-actions-diag.test.ts` 与
+  `ipc-bootstrap.test.ts`：默认动作表无 `diag.*`；`diagnostics:true` 才注册；反射调用只在
+  allowlist 内成功，`richMediaTmpPaths` 只读且不触发 setter。
+- PID：`isValidPid` 覆盖 0 / 负数 / 小数 / NaN / 超上限；`readCmdlineForPid` 对非法值直接
+  返回 null 且不发起 PowerShell / `/proc` 查询；cli `runtime.json` 的 `selfHostPid` 非法时
+  整条记录判非法（`apps/cli/src/runtime/__tests__/state.test.ts`）。合法 PID 的 signal 0
+  存活探测保留。
+- 剩余条件：未在真实 koishi 驱动上验证诊断关闭时前端收到 `NOT_FOUND` 的提示路径；未实测
+  Windows 组策略/代理客户端注入的额外变量。Bugly 外传仍为未证实报告主张，未做抓包复核。

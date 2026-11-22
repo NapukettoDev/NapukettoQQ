@@ -6,12 +6,14 @@
  * 返回停止函数（进程退出时清理）。
  */
 
+import { env, isEnvEnabled } from "../env.js";
 import { isCallable } from "../type-guards.js";
 import type { CoreLike, KernelServices } from "../types.js";
 import { errMsg, log } from "../util.js";
 import {
     createIpcActions,
     type IpcActionHandler,
+    type IpcActionOptions,
     registerLoginRefreshAction,
 } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
@@ -54,10 +56,13 @@ export function createIpcActionsForCore(core: CoreLike): Map<string, IpcActionHa
 /**
  * 把 kernel 服务动作并入共享动作表 + 事件通道转发（登录成功后调用）。
  * 返回停止函数（清理事件转发订阅；stdin 服务端由 bootstrap-core 独立管理）。
+ *
+ * 诊断动作默认不注册；`options.diagnostics` 缺省读 `NAPUKETTO_DIAG`（显式本地调试）。
  */
 export function attachIpcServices(
     actions: Map<string, IpcActionHandler>,
     services: KernelServices,
+    options: IpcActionOptions = {},
 ): () => void {
     // peerUin（QQ 号）→ uid 转换（kernel GroupApi.uinToUid，自研描述；
     // exactOptionalPropertyTypes：可选字段用条件展开，不显式赋 undefined）
@@ -70,17 +75,24 @@ export function attachIpcServices(
     // 且错误消息极具误导性。core/kernel-services.ts 注入 uidToUin 用的是箭头包装
     // （正确写法），此处漏了——注入 kernel 类方法一律 bind 或箭头包装。
     const uinToUid = groupApi.uinToUid?.bind(services.groupApi);
-    const full = createIpcActions({
-        msgApi: services.msgApi,
-        groupApi: services.groupApi,
-        groupCache: services.groupCache,
-        friendApi: services.friendApi,
-        self: services.self,
-        session: services.session,
-        engine: services.engine,
-        util: services.util,
-        ...(uinToUid !== undefined ? { uinToUid } : {}),
-    });
+    const diagnostics = options.diagnostics ?? isEnvEnabled(env.NAPUTO_DIAG);
+    if (diagnostics) {
+        log("ipc: 诊断动作已启用（仅本地调试；diag.* 按方法 allowlist 执行）");
+    }
+    const full = createIpcActions(
+        {
+            msgApi: services.msgApi,
+            groupApi: services.groupApi,
+            groupCache: services.groupCache,
+            friendApi: services.friendApi,
+            self: services.self,
+            session: services.session,
+            engine: services.engine,
+            util: services.util,
+            ...(uinToUid !== undefined ? { uinToUid } : {}),
+        },
+        { diagnostics },
+    );
     for (const [name, handler] of full) {
         actions.set(name, handler);
     }

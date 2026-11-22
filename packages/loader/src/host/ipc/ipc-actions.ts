@@ -9,9 +9,12 @@
  * workspace 依赖——见 types.ts 注释）。错误码提取用宽松结构判断。
  */
 import { z } from "zod";
-import { getErrorCode, getOwnProp, hasCallableProp, isCallable, isRecord } from "../type-guards.js";
+import { getErrorCode, isRecord } from "../type-guards.js";
 import type { MsgApiLike } from "../types.js";
 import { errorMessage, log } from "../util.js";
+import { type IpcDiagnosticContext, registerDiagnosticActions } from "./ipc-diagnostics.js";
+
+export { DIAGNOSTIC_ACTION_NAMES } from "./ipc-diagnostics.js";
 
 /** 宽松 Peer 最小面（kernel Peer：chatType + peerUid）。 */
 export interface IpcPeer {
@@ -20,7 +23,7 @@ export interface IpcPeer {
 }
 
 /** kernel apis 最小面（仅本表用到的成员；真实实例由引导装配提供）。 */
-export interface IpcApiContext {
+export interface IpcApiContext extends IpcDiagnosticContext {
     msgApi: Pick<
         MsgApiLike,
         "sendMessage" | "recallMessage" | "fetchMessages" | "setMsgEmojiLikeById" | "markRead"
@@ -45,12 +48,6 @@ export interface IpcApiContext {
     self: { uin: string; nickname: string };
     /** uin → uid 转换（Peer 目标解析；注入 groupApi.uinToUid）。 */
     uinToUid?: (uins: string[]) => Promise<Map<string, string>>;
-    /** wrapper session（诊断用：枚举/触发原生服务方法面，验证初始化链路）。 */
-    session?: unknown;
-    /** wrapper engine（诊断用：initLog 等初始化方法验证）。 */
-    engine?: unknown;
-    /** NodeQQNTWrapperUtil（诊断用：原生 copyFile 验证富媒体文件放置）。 */
-    util?: unknown;
 }
 
 /** 动作处理函数：params 宽松透传，返回值原样序列化（JSON 可序列化）。 */
@@ -242,8 +239,20 @@ async function resolveAtElements(
     return out;
 }
 
+/** 动作表构造选项。 */
+export interface IpcActionOptions {
+    /**
+     * 是否注册 `diag.*` 诊断动作。默认 false：常规动作表不含反射面；
+     * 只有本地显式调试（`NAPUKETTO_DIAG=1` / `LaunchOptions.diagnostics`）才开启。
+     */
+    diagnostics?: boolean;
+}
+
 /** 构造动作表（map 顺序即注册顺序，重复动作名后注册覆盖）。 */
-export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandler> {
+export function createIpcActions(
+    ctx: IpcApiContext,
+    options: IpcActionOptions = {},
+): Map<string, IpcActionHandler> {
     const actions = new Map<string, IpcActionHandler>();
 
     actions.set("login.getSelf", async () => ctx.self);
@@ -307,194 +316,14 @@ export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandl
 
     actions.set("friend.getFriendList", async () => ctx.friendApi.getFriendList());
 
-    // ── 诊断动作（2026-08-11 重建：调查 rich media transfer failed）──
-    // 枚举富媒体/闪传服务方法面 + 调用候选 side-effect 方法，
-    // 观察 wrapper 日志是否出现 FlashTransferUploadManager Init / AllocDedicatedThread sucess。
-    actions.set("diag.richMediaTmpPaths", async () => runRichMediaDiag(ctx.session));
-
-    // 诊断：按方法名 + 参数数组调用 flash 服务任意方法（2 参数组合实验用）。
-    actions.set("diag.flashCall", async (params) => {
-        const sess = ctx.session;
-        if (!hasCallableProp(sess, "getFlashTransferService")) {
-            return { error: "session 未注入" };
-        }
-        const flash = sess.getFlashTransferService();
-        if (flash === null || flash === undefined) {
-            return { error: "flash 服务为 null" };
-        }
-        return callDiagnosticMethod(flash, params);
-    });
-
-    // 诊断：调用 session 任意方法（上线信号验证：onLine 可能触发模块初始化）。
-    actions.set("diag.sessionCall", async (params) => {
-        const method = typeof params["method"] === "string" ? params["method"] : "";
-        // 安全拦截：onLine 会导致进程后续丢失全部入站消息；wifiphoto 相关方法非业务面。
-        if (method === "onLine" || method.toLowerCase().includes("wifiphoto")) {
-            return { ok: false, error: `method ${method} is blocked for safety` };
-        }
-        if (ctx.session === undefined) {
-            return { error: "session 未注入" };
-        }
-        return callDiagnosticMethod(ctx.session, params);
-    });
-
-    // 诊断：调用 engine 任意方法 + 枚举方法面（initLog 等初始化方法验证）。
-    actions.set("diag.engineCall", async (params) => {
-        if (ctx.engine === undefined) {
-            return { error: "engine 未注入" };
-        }
-        return callDiagnosticMethod(ctx.engine, params);
-    });
-
-    // 诊断：调用 richMediaService 任意方法（uploadRMFileWithoutMsg 等替代上传路径）。
-    actions.set("diag.richMediaCall", async (params) => {
-        const sess = ctx.session;
-        if (!hasCallableProp(sess, "getRichMediaService")) {
-            return { error: "session 未注入" };
-        }
-        const svc = sess.getRichMediaService();
-        if (svc === null || svc === undefined) {
-            return { error: "richMedia 服务为 null" };
-        }
-        return callDiagnosticMethod(svc, params);
-    });
-
-    // 诊断：调用 msgService 任意方法（getRichMediaFilePathForGuild 等富媒体路径计算）。
-    actions.set("diag.msgServiceCall", async (params) => {
-        const sess = ctx.session;
-        if (!hasCallableProp(sess, "getMsgService")) {
-            return { error: "session 未注入" };
-        }
-        const svc = sess.getMsgService();
-        if (svc === null || svc === undefined) {
-            return { error: "msgService 为 null" };
-        }
-        return callDiagnosticMethod(svc, params);
-    });
-
-    // 诊断：调用 NodeQQNTWrapperUtil 任意方法（原生 copyFile 等）。
-    actions.set("diag.utilCall", async (params) => {
-        const util = ctx.util;
-        if (util === undefined || util === null) {
-            return { error: "util 未注入" };
-        }
-        const instance = hasCallableProp(util, "get") ? util.get() : util;
-        if (instance === null || instance === undefined) {
-            return { error: "util 实例为 null" };
-        }
-        return callDiagnosticMethod(instance, params);
-    });
+    // 诊断动作默认不注册：常规动作表只含业务动作，避免外部驱动触达原生反射面。
+    // 显式调试（NAPUKETTO_DIAG=1 / LaunchOptions.diagnostics）才挂 diag.*，且内部仍按
+    // 目标方法 allowlist 收窄（见 ipc-diagnostics.ts）。
+    if (options.diagnostics === true) {
+        registerDiagnosticActions(actions, ctx);
+    }
 
     return actions;
-}
-
-/** 诊断：按方法名 + 参数数组调用对象任意方法（返回结构化结果，不抛）。
- * ⚠️ NAPI 对象方法挂在实例自身（非原型），__methods 须枚举实例 ownKeys。 */
-async function callDiagnosticMethod(
-    obj: unknown,
-    params: Record<string, unknown>,
-): Promise<unknown> {
-    const method = typeof params["method"] === "string" ? params["method"] : "";
-    const args = Array.isArray(params["args"]) ? params["args"] : [];
-    if ((typeof obj !== "object" && typeof obj !== "function") || obj === null) {
-        return { error: "target object is not a record" };
-    }
-    if (method === "__methods") {
-        const own = Object.getOwnPropertyNames(obj);
-        const proto: unknown = Object.getPrototypeOf(obj);
-        const protoKeys = isRecord(proto) ? Object.getOwnPropertyNames(proto) : [];
-        return { methods: [...new Set([...own, ...protoKeys])] };
-    }
-    const fn = getOwnProp(obj, method);
-    if (!isCallable(fn)) {
-        return { error: `方法不存在: ${method}` };
-    }
-    try {
-        const r = await fn.apply(obj, args);
-        return { ok: true, ret: r };
-    } catch (e) {
-        return { ok: false, err: errorMessage(e) };
-    }
-}
-
-/** 诊断：枚举富媒体临时路径（getPicTmpPath 等 0 参方法）。 */
-async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>> {
-    const tmp: Record<string, unknown> = {};
-    for (const name of [
-        "getPicTmpPath",
-        "getRichMeidaTmpPath",
-        "getPttTmpPath",
-        "getVideoTmpPath",
-        "getFileTmpPath",
-        "getTransferingTmpPath",
-    ]) {
-        const fn = getOwnProp(svc, name);
-        if (isCallable(fn)) {
-            try {
-                tmp[name] = await fn.call(svc);
-            } catch (e) {
-                tmp[name] = `调用失败: ${errorMessage(e)}`;
-            }
-        } else {
-            tmp[name] = "方法缺失";
-        }
-    }
-    return tmp;
-}
-
-/** 诊断：闪传服务候选 side-effect 触发（§5.3 候选动作 1，参数宽松猜测）。 */
-async function probeFlashSideEffects(flash: unknown): Promise<Record<string, unknown>> {
-    const sideEffects: Record<string, unknown> = {};
-    const candidates: [string, unknown[]][] = [
-        ["addFileSetSimpleStatusListener", [() => undefined]],
-        ["setFlashTransferDir", [""]],
-        ["setFileSetDownloadDir", [""]],
-        ["getFileSetIdByCode", [""]],
-    ];
-    for (const [name, args] of candidates) {
-        const fn = getOwnProp(flash, name);
-        if (isCallable(fn)) {
-            try {
-                const r = await fn.apply(flash, args);
-                sideEffects[name] = { ok: true, ret: r };
-            } catch (e) {
-                sideEffects[name] = {
-                    ok: false,
-                    err: errorMessage(e),
-                };
-            }
-        } else {
-            sideEffects[name] = { missing: true };
-        }
-    }
-    return sideEffects;
-}
-
-/** 诊断主流程：session → 富媒体服务 + 闪传服务的方法面与触发结果。 */
-async function runRichMediaDiag(session: unknown): Promise<Record<string, unknown>> {
-    if (session === undefined || session === null) {
-        return { error: "session 未注入（IPC 上下文缺 session）" };
-    }
-    const out: Record<string, unknown> = {};
-    const svc = hasCallableProp(session, "getRichMediaService")
-        ? session.getRichMediaService()
-        : null;
-    if (svc !== null && svc !== undefined) {
-        out["richMediaTmpPaths"] = await enumerateTmpPaths(svc);
-        out["richMediaMethods"] = Object.getOwnPropertyNames(Object.getPrototypeOf(svc));
-    } else {
-        out["richMediaService"] = "null";
-    }
-    const flash = hasCallableProp(session, "getFlashTransferService")
-        ? session.getFlashTransferService()
-        : null;
-    if (flash !== null && flash !== undefined) {
-        out["flashMethods"] = Object.getOwnPropertyNames(Object.getPrototypeOf(flash));
-        out["flashSideEffects"] = await probeFlashSideEffects(flash);
-    } else {
-        out["flashService"] = "null";
-    }
-    return out;
 }
 
 /** 统一动作调用：查找动作表 → 执行 → 返回结果或错误（不抛，调用方转 result）。 */

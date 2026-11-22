@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { KernelServices } from "../../types.js";
 import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../ipc-actions.js";
 import { attachIpcServices, createIpcActionsForCore } from "../ipc-bootstrap.js";
+import { DIAGNOSTIC_ACTION_NAMES } from "../ipc-diagnostics.js";
 
 /** sendEvent 捕获（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -209,6 +210,20 @@ describe("attachIpcServices", () => {
         expect(() => attachIpcServices(actions, merged)).toThrow("通道订阅失败");
         expect(off).toHaveBeenCalledOnce();
         expect([...actions.keys()]).toEqual(["login.refreshQr"]);
+    });
+
+    it("诊断动作默认关闭；显式 options.diagnostics=true 才并入", () => {
+        const { services } = mockServices();
+        const normal = new Map<string, IpcActionHandler>();
+        const stopNormal = attachIpcServices(normal, services, { diagnostics: false });
+        expect(DIAGNOSTIC_ACTION_NAMES.every((name) => !normal.has(name))).toBe(true);
+        stopNormal();
+
+        const diag = new Map<string, IpcActionHandler>();
+        const stopDiag = attachIpcServices(diag, services, { diagnostics: true });
+        expect(DIAGNOSTIC_ACTION_NAMES.every((name) => diag.has(name))).toBe(true);
+        stopDiag();
+        expect(diag.size).toBe(0);
     });
 });
 

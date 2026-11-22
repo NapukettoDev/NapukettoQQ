@@ -1,15 +1,19 @@
 /**
- * ipc-actions-diag.test.ts：IPC 诊断动作面 + toPeer/callIpcAction 边界分支单测。
+ * ipc-actions-diag.test.ts：IPC 诊断动作面（默认关闭 + 显式启用后 allowlist）+ 边界分支单测。
  *
- * 既有 ipc-actions.test.ts 覆盖消息主链路；本文件补：
- *  - 诊断动作（diag.richMediaTmpPaths / flashCall / sessionCall / engineCall /
- *    richMediaCall / msgServiceCall / utilCall）：session/服务缺失、方法面枚举、
- *    方法调用成功/抛错/缺失各分支（不依赖真实 wrapper，全部注入普通 JS 对象）
- *  - toPeer：peerUid 直通、chatType 缺省、uinToUid 缺失/空映射错误
- *  - callIpcAction：params 缺省透传 {}、非 Error 抛出值、空 code 回退 UNKNOWN
+ * 安全回归（H-01）：
+ *  - 常规 `createIpcActions(ctx)` 不含任何 `diag.*`，调用得到 NOT_FOUND；
+ *  - `diagnostics: true` 才注册 7 个诊断动作；
+ *  - 反射调用只接受目标 allowlist，未知/危险方法、超长 method、超量 args 直接拒绝；
+ *  - `diag.richMediaTmpPaths` 只读枚举，不再触发 setters 等副作用。
  */
 import { describe, expect, it, vi } from "vitest";
-import { callIpcAction, createIpcActions, type IpcApiContext } from "../ipc-actions.js";
+import {
+    callIpcAction,
+    createIpcActions,
+    DIAGNOSTIC_ACTION_NAMES,
+    type IpcApiContext,
+} from "../ipc-actions.js";
 import { mockIpcCtx } from "./test-support.js";
 
 /** 构造带 session/engine/util 的上下文（诊断动作消费面）。 */
@@ -22,9 +26,36 @@ function serviceOf(methods: Record<string, unknown>): object {
     return Object.assign(Object.create(Object.create(null)), methods);
 }
 
+/** 显式启用诊断的动作表。 */
+function diagActions(ctx: IpcApiContext) {
+    return createIpcActions(ctx, { diagnostics: true });
+}
+
+describe("诊断动作注册启停", () => {
+    it("默认动作表不含 diag.*（调用方得到 NOT_FOUND）", async () => {
+        const actions = createIpcActions(ctxWith({ session: {} }));
+        for (const name of DIAGNOSTIC_ACTION_NAMES) {
+            expect(actions.has(name)).toBe(false);
+        }
+        expect(await callIpcAction(actions, "diag.sessionCall", { method: "__methods" })).toEqual({
+            ok: false,
+            error: { code: "NOT_FOUND", message: "未知动作: diag.sessionCall" },
+        });
+    });
+
+    it("diagnostics: true → 7 个诊断动作全部注册；业务动作仍在", () => {
+        const actions = diagActions(ctxWith({ session: {}, engine: {}, util: {} }));
+        for (const name of DIAGNOSTIC_ACTION_NAMES) {
+            expect(actions.has(name)).toBe(true);
+        }
+        expect(actions.has("msg.sendMessage")).toBe(true);
+        expect(actions.has("login.getSelf")).toBe(true);
+    });
+});
+
 describe("diag 诊断动作：session/服务缺失分支", () => {
     it("diag.richMediaTmpPaths：session 未注入 → error", async () => {
-        const actions = createIpcActions(ctxWith({ session: undefined }));
+        const actions = diagActions(ctxWith({ session: undefined }));
         const result = await callIpcAction(actions, "diag.richMediaTmpPaths", {});
         expect(result).toEqual({
             ok: true,
@@ -37,7 +68,7 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
             getRichMediaService: () => null,
             getFlashTransferService: () => null,
         };
-        const actions = createIpcActions(ctxWith({ session }));
+        const actions = diagActions(ctxWith({ session }));
         const result = await callIpcAction(actions, "diag.richMediaTmpPaths", {});
         expect(result).toEqual({
             ok: true,
@@ -46,14 +77,12 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
     });
 
     it("diag.flashCall：session 未注入 → error；flash 服务 null → error", async () => {
-        const actions = createIpcActions(ctxWith({ session: undefined }));
+        const actions = diagActions(ctxWith({ session: undefined }));
         expect(await callIpcAction(actions, "diag.flashCall", {})).toEqual({
             ok: true,
             value: { error: "session 未注入" },
         });
-        const actions2 = createIpcActions(
-            ctxWith({ session: { getFlashTransferService: () => null } }),
-        );
+        const actions2 = diagActions(ctxWith({ session: { getFlashTransferService: () => null } }));
         expect(await callIpcAction(actions2, "diag.flashCall", {})).toEqual({
             ok: true,
             value: { error: "flash 服务为 null" },
@@ -61,7 +90,7 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
     });
 
     it("diag.sessionCall/engineCall：目标未注入 → error", async () => {
-        const actions = createIpcActions(ctxWith({ session: undefined, engine: undefined }));
+        const actions = diagActions(ctxWith({ session: undefined, engine: undefined }));
         expect(await callIpcAction(actions, "diag.sessionCall", {})).toEqual({
             ok: true,
             value: { error: "session 未注入" },
@@ -73,7 +102,7 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
     });
 
     it("diag.richMediaCall/msgServiceCall：服务 getter 缺失或返回 null → error", async () => {
-        const actions = createIpcActions(ctxWith({ session: undefined }));
+        const actions = diagActions(ctxWith({ session: undefined }));
         expect(await callIpcAction(actions, "diag.richMediaCall", {})).toEqual({
             ok: true,
             value: { error: "session 未注入" },
@@ -82,7 +111,7 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
             ok: true,
             value: { error: "session 未注入" },
         });
-        const actions2 = createIpcActions(
+        const actions2 = diagActions(
             ctxWith({ session: { getRichMediaService: () => null, getMsgService: () => null } }),
         );
         expect(await callIpcAction(actions2, "diag.richMediaCall", {})).toEqual({
@@ -91,17 +120,17 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
         });
         expect(await callIpcAction(actions2, "diag.msgServiceCall", {})).toEqual({
             ok: true,
-            value: { error: "msgService 为 null" },
+            value: { error: "msgService 服务为 null" },
         });
     });
 
     it("diag.utilCall：util 未注入 / 实例 null → error", async () => {
-        const actions = createIpcActions(ctxWith({ util: undefined }));
+        const actions = diagActions(ctxWith({ util: undefined }));
         expect(await callIpcAction(actions, "diag.utilCall", {})).toEqual({
             ok: true,
             value: { error: "util 未注入" },
         });
-        const actions2 = createIpcActions(ctxWith({ util: { get: () => null } }));
+        const actions2 = diagActions(ctxWith({ util: { get: () => null } }));
         expect(await callIpcAction(actions2, "diag.utilCall", {})).toEqual({
             ok: true,
             value: { error: "util 实例为 null" },
@@ -109,71 +138,35 @@ describe("diag 诊断动作：session/服务缺失分支", () => {
     });
 });
 
-describe("diag 诊断动作：方法面枚举与调用", () => {
-    it("diag.richMediaTmpPaths：枚举 0 参方法（成功/抛错/缺失三分支）", async () => {
+describe("diag 诊断动作：方法面枚举与 allowlist", () => {
+    it("diag.richMediaTmpPaths：只读枚举 0 参方法（成功/抛错/缺失三分支）且不触发 setter", async () => {
+        const setter = vi.fn(() => "should-not-run");
         const svc = serviceOf({
             getPicTmpPath: () => "C:/tmp/pic",
             getPttTmpPath: () => {
                 throw new Error("权限不足");
             },
+            setFlashTransferDir: setter,
         });
-        const session = { getRichMediaService: () => svc, getFlashTransferService: () => null };
-        const actions = createIpcActions(ctxWith({ session }));
+        const flash = serviceOf({ setFlashTransferDir: setter });
+        const session = { getRichMediaService: () => svc, getFlashTransferService: () => flash };
+        const actions = diagActions(ctxWith({ session }));
         const result = await callIpcAction(actions, "diag.richMediaTmpPaths", {});
         const value = result.ok === true ? (result.value as Record<string, unknown>) : {};
         const tmp = value["richMediaTmpPaths"] as Record<string, unknown>;
         expect(tmp["getPicTmpPath"]).toBe("C:/tmp/pic");
         expect(tmp["getPttTmpPath"]).toBe("调用失败: 权限不足");
         expect(tmp["getVideoTmpPath"]).toBe("方法缺失");
-        // 方法面来自服务原型（Object.getOwnPropertyNames(getPrototypeOf(svc))——
-        // serviceOf 用两层 null 原型，原型方法面为空数组）
-        expect(value["richMediaMethods"]).toEqual([]);
+        expect(Array.isArray(value["richMediaMethods"])).toBe(true);
+        expect(Array.isArray(value["flashMethods"])).toBe(true);
+        expect(value["flashSideEffects"]).toBeUndefined();
+        expect(setter).not.toHaveBeenCalled();
     });
 
-    it("diag.flashCall：按方法名调用闪传服务任意方法", async () => {
-        const flash = {
-            getFileSetIdByCode: (code: string) => `code:${code}`,
-        };
-        const session = { getFlashTransferService: () => flash };
-        const actions = createIpcActions(ctxWith({ session }));
-        expect(
-            await callIpcAction(actions, "diag.flashCall", {
-                method: "getFileSetIdByCode",
-                args: ["abc"],
-            }),
-        ).toEqual({ ok: true, value: { ok: true, ret: "code:abc" } });
-    });
-
-    it("diag.richMediaTmpPaths：flash 候选 side-effect 触发（函数 ok / 抛错 / 缺失）", async () => {
-        // 空原型链（getPrototypeOf → 空对象 → flashMethods []，与 NAPI 服务实例同构）
-        const flash = Object.assign(Object.create({}), {
-            addFileSetSimpleStatusListener: () => "listening",
-            setFlashTransferDir: () => {
-                throw new Error("目录无效");
-            },
-        });
-        const session = { getRichMediaService: () => null, getFlashTransferService: () => flash };
-        const actions = createIpcActions(ctxWith({ session }));
-        const result = await callIpcAction(actions, "diag.richMediaTmpPaths", {});
-        expect(result).toEqual({
-            ok: true,
-            value: {
-                richMediaService: "null",
-                flashMethods: [],
-                flashSideEffects: {
-                    addFileSetSimpleStatusListener: { ok: true, ret: "listening" },
-                    setFlashTransferDir: { ok: false, err: "目录无效" },
-                    setFileSetDownloadDir: { missing: true },
-                    getFileSetIdByCode: { missing: true },
-                },
-            },
-        });
-    });
-
-    it("diag.sessionCall：__methods 枚举 ownKeys + 原型", async () => {
+    it("diag.sessionCall：__methods 枚举 ownKeys + 原型，有数量上限", async () => {
         const proto = { protoMethod: () => 1 };
         const session = Object.assign(Object.create(proto), { ownMethod: () => 2 });
-        const actions = createIpcActions(ctxWith({ session }));
+        const actions = diagActions(ctxWith({ session }));
         const result = await callIpcAction(actions, "diag.sessionCall", { method: "__methods" });
         const methods = (
             result.ok === true ? (result.value as { methods: string[] }) : { methods: [] }
@@ -181,94 +174,128 @@ describe("diag 诊断动作：方法面枚举与调用", () => {
         expect(methods).toEqual(["ownMethod", "protoMethod"]);
     });
 
-    it("diag.sessionCall：方法调用成功返回 ret；参数数组透传", async () => {
-        const session = { doWork: (a: unknown, b: unknown) => `${String(a)}-${String(b)}` };
-        const actions = createIpcActions(ctxWith({ session }));
-        const result = await callIpcAction(actions, "diag.sessionCall", {
-            method: "doWork",
-            args: ["x", 1],
-        });
-        expect(result).toEqual({ ok: true, value: { ok: true, ret: "x-1" } });
+    it("sessionCall / flashCall / utilCall：allowlist 外方法直接拒绝（不再任意反射）", async () => {
+        const session = { doWork: () => "ran", onLine: () => "ran" };
+        const flash = { getFileSetIdByCode: () => "ok", setFlashTransferDir: () => "ran" };
+        const util = { copyFile: () => "copied", deleteFile: () => "ran" };
+        const actions = diagActions(
+            ctxWith({ session: { ...session, getFlashTransferService: () => flash }, util }),
+        );
+        for (const [action, method] of [
+            ["diag.sessionCall", "doWork"],
+            ["diag.sessionCall", "onLine"],
+            ["diag.flashCall", "setFlashTransferDir"],
+            ["diag.utilCall", "deleteFile"],
+        ] as const) {
+            expect(await callIpcAction(actions, action, { method })).toEqual({
+                ok: true,
+                value: { ok: false, error: `诊断方法不在允许列表: ${method}` },
+            });
+        }
     });
 
-    it("diag.sessionCall：onLine / wifiphoto 方法被安全拦截", async () => {
-        const session = { onLine: () => "should-not-run" };
-        const actions = createIpcActions(ctxWith({ session }));
-        const blocked = await callIpcAction(actions, "diag.sessionCall", { method: "onLine" });
-        expect(blocked).toEqual({
-            ok: true,
-            value: { ok: false, error: "method onLine is blocked for safety" },
-        });
-        const blockedPhoto = await callIpcAction(actions, "diag.sessionCall", {
-            method: "getWifiPhotoList",
-        });
-        expect(blockedPhoto).toEqual({
-            ok: true,
-            value: { ok: false, error: "method getWifiPhotoList is blocked for safety" },
-        });
-    });
-
-    it("diag.sessionCall：方法抛错 → ok:false + err（Error message / 非 Error 字符串化）", async () => {
-        const session = {
-            boom: () => {
-                throw new Error("原生断言");
-            },
-            boom2: () => {
-                throw "裸字符串";
-            },
-        };
-        const actions = createIpcActions(ctxWith({ session }));
-        expect(await callIpcAction(actions, "diag.sessionCall", { method: "boom" })).toEqual({
-            ok: true,
-            value: { ok: false, err: "原生断言" },
-        });
-        expect(await callIpcAction(actions, "diag.sessionCall", { method: "boom2" })).toEqual({
-            ok: true,
-            value: { ok: false, err: "裸字符串" },
-        });
-    });
-
-    it("diag.sessionCall：方法不存在 → error；method 缺省按空串处理", async () => {
-        const session = { real: () => 1 };
-        const actions = createIpcActions(ctxWith({ session }));
-        expect(await callIpcAction(actions, "diag.sessionCall", { method: "nope" })).toEqual({
-            ok: true,
-            value: { error: "方法不存在: nope" },
-        });
-        expect(await callIpcAction(actions, "diag.sessionCall", {})).toEqual({
-            ok: true,
-            value: { error: "方法不存在: " },
-        });
-    });
-
-    it("diag.engineCall / diag.msgServiceCall / diag.richMediaCall：方法调用透传", async () => {
+    it("allowlist 内方法正常调用：engine.initLog / flash.getFileSetIdByCode / util.copyFile", async () => {
         const engine = { initLog: (level: string) => `log:${level}` };
-        const msgSvc = { getRichMediaFilePathForGuild: () => "path" };
-        const richSvc = { uploadRMFileWithoutMsg: () => "uploaded" };
-        const session = { getMsgService: () => msgSvc, getRichMediaService: () => richSvc };
-        const actions = createIpcActions(ctxWith({ session, engine }));
+        const flash = { getFileSetIdByCode: (code: string) => `code:${code}` };
+        const util = { copyFile: (src: string) => `copied:${src}` };
+        const actions = diagActions(
+            ctxWith({
+                session: { getFlashTransferService: () => flash },
+                engine,
+                util,
+            }),
+        );
         expect(
             await callIpcAction(actions, "diag.engineCall", { method: "initLog", args: ["debug"] }),
         ).toEqual({ ok: true, value: { ok: true, ret: "log:debug" } });
+        expect(
+            await callIpcAction(actions, "diag.flashCall", {
+                method: "getFileSetIdByCode",
+                args: ["abc"],
+            }),
+        ).toEqual({ ok: true, value: { ok: true, ret: "code:abc" } });
+        expect(
+            await callIpcAction(actions, "diag.utilCall", { method: "copyFile", args: ["a"] }),
+        ).toEqual({ ok: true, value: { ok: true, ret: "copied:a" } });
+    });
+
+    it("参数边界：method 缺失/过长、args 超量、方法抛错均返回结构化错误", async () => {
+        const engine = {
+            initLog: () => {
+                throw new Error("原生断言");
+            },
+        };
+        const actions = diagActions(ctxWith({ engine }));
+        expect(await callIpcAction(actions, "diag.engineCall", {})).toEqual({
+            ok: true,
+            value: { error: "缺 method" },
+        });
+        expect(
+            await callIpcAction(actions, "diag.engineCall", { method: "x".repeat(129) }),
+        ).toEqual({ ok: true, value: { error: "method 过长（上限 128）" } });
+        expect(
+            await callIpcAction(actions, "diag.engineCall", {
+                method: "initLog",
+                args: Array.from({ length: 9 }, () => 0),
+            }),
+        ).toEqual({ ok: true, value: { error: "args 数量超限（上限 8）" } });
+        expect(await callIpcAction(actions, "diag.engineCall", { method: "initLog" })).toEqual({
+            ok: true,
+            value: { ok: false, err: "原生断言" },
+        });
+    });
+
+    it("allowlist 内但对象缺方法 → 方法不存在（不抛）", async () => {
+        const engine = {};
+        const actions = diagActions(ctxWith({ engine }));
+        expect(await callIpcAction(actions, "diag.engineCall", { method: "initLog" })).toEqual({
+            ok: true,
+            value: { error: "方法不存在: initLog" },
+        });
+    });
+
+    it("msgServiceCall / richMediaCall：允许方法透传，未列出方法拒绝", async () => {
+        const msgSvc = {
+            getRichMediaFilePathForGuild: () => "path",
+            deleteMsg: () => "ran",
+        };
+        const richSvc = {
+            uploadRMFileWithoutMsg: () => "uploaded",
+            setUploadDir: () => "ran",
+        };
+        const session = { getMsgService: () => msgSvc, getRichMediaService: () => richSvc };
+        const actions = diagActions(ctxWith({ session }));
         expect(
             await callIpcAction(actions, "diag.msgServiceCall", {
                 method: "getRichMediaFilePathForGuild",
             }),
         ).toEqual({ ok: true, value: { ok: true, ret: "path" } });
         expect(
+            await callIpcAction(actions, "diag.msgServiceCall", { method: "deleteMsg" }),
+        ).toEqual({
+            ok: true,
+            value: { ok: false, error: "诊断方法不在允许列表: deleteMsg" },
+        });
+        expect(
             await callIpcAction(actions, "diag.richMediaCall", {
                 method: "uploadRMFileWithoutMsg",
             }),
         ).toEqual({ ok: true, value: { ok: true, ret: "uploaded" } });
+        expect(
+            await callIpcAction(actions, "diag.richMediaCall", { method: "setUploadDir" }),
+        ).toEqual({
+            ok: true,
+            value: { ok: false, error: "诊断方法不在允许列表: setUploadDir" },
+        });
     });
 
     it("diag.utilCall：util.get() 实例调用；无 get 时直接用 util 本体", async () => {
         const instance = { copyFile: (src: string) => `copied:${src}` };
-        const actions = createIpcActions(ctxWith({ util: { get: () => instance } }));
+        const actions = diagActions(ctxWith({ util: { get: () => instance } }));
         expect(
             await callIpcAction(actions, "diag.utilCall", { method: "copyFile", args: ["a"] }),
         ).toEqual({ ok: true, value: { ok: true, ret: "copied:a" } });
-        const actions2 = createIpcActions(ctxWith({ util: instance }));
+        const actions2 = diagActions(ctxWith({ util: instance }));
         expect(
             await callIpcAction(actions2, "diag.utilCall", { method: "copyFile", args: ["b"] }),
         ).toEqual({ ok: true, value: { ok: true, ret: "copied:b" } });

@@ -181,11 +181,17 @@ Satori 可通过 `message.get` 获取可重新发送的 QQ 本地媒体引用，
 | `NAPUTO_SMOKE` | 启动后收发冒烟自检 |
 | `NAPUTO_SMOKE_PEER` | 冒烟自检对端 |
 | `NAPUTO_PROBE` | 运行时探测（诊断） |
+| `NAPUKETTO_DIAG` | `1`/`true` 启用 IPC 诊断动作（默认关闭，仅本地调试） |
 
 日志变量的旧拼写 `NAPKETTO_LOG_LEVEL` 仍被接受（`NAPUKETTO_` 优先）。
 
 `NAPUTO_KERNEL_ENTRY`、`NAPUTO_ADAPTER_ENTRY`、`NAPUTO_CFG_DIR`、`NAPUTO_IPC` 等由
 CLI/loader 注入，正常部署不要手工设置。
+
+自建宿主子进程不再继承父进程全部环境变量：只透传平台运行变量、代理／证书、主配置、
+日志覆盖与上表控制标记。需要额外变量时用 `LaunchOptions.extraEnv` 显式传入；不要把凭据放进
+可继承环境。代理与私有 CA 使用 `HTTP(S)_PROXY` / `NO_PROXY`、`NODE_EXTRA_CA_CERTS` /
+`SSL_CERT_FILE` / `SSL_CERT_DIR`，这些会原样进入子进程。
 
 ## 验证与常见排障
 

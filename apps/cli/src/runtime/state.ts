@@ -13,14 +13,13 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
+import { configError, errorMessage, hasStringProp, isRecord } from "@napuketto/kernel";
 import {
-    configError,
-    errorMessage,
-    hasNumberProp,
-    hasStringProp,
-    isRecord,
-} from "@napuketto/kernel";
-import { CMDLINE_PROBE_SUPPORTED, normalizeCmdline, readCmdlineForPid } from "@napuketto/loader";
+    CMDLINE_PROBE_SUPPORTED,
+    isValidPid,
+    normalizeCmdline,
+    readCmdlineForPid,
+} from "@napuketto/loader";
 
 /** 账号运行时状态（runtime.json）。 */
 export interface AccountRuntime {
@@ -206,12 +205,11 @@ function isAccountRuntime(val: unknown): val is AccountRuntime {
     return (
         isRecord(val) &&
         hasStringProp(val, "uin") &&
-        hasNumberProp(val, "pid") &&
-        Number.isInteger(val["pid"]) &&
-        val["pid"] > 0 &&
+        isValidPid(val["pid"]) &&
         hasStringProp(val, "startedAt") &&
         isAccountRuntimeKind(val["kind"]) &&
         isAccountRuntimeStatus(val["status"]) &&
+        (val["selfHostPid"] === undefined || isValidPid(val["selfHostPid"])) &&
         isOptionalString(val["cmdline"]) &&
         isOptionalString(val["selfHostCmdline"])
     );
@@ -221,9 +219,7 @@ function isAccountRuntime(val: unknown): val is AccountRuntime {
 function isSupervisorRuntime(val: unknown): val is SupervisorRuntime {
     return (
         isRecord(val) &&
-        hasNumberProp(val, "pid") &&
-        Number.isInteger(val["pid"]) &&
-        val["pid"] > 0 &&
+        isValidPid(val["pid"]) &&
         hasStringProp(val, "startedAt") &&
         Array.isArray(val["accounts"]) &&
         val["accounts"].every((item): item is string => typeof item === "string") &&
@@ -279,7 +275,7 @@ export function listAccountRuntimes(dataRoot: string): AccountRuntime[] {
 
 /** pid 存活检测（signal 0；EPERM 视为存活——进程存在但无权限）。 */
 export function isPidAlive(pid: number): boolean {
-    if (!Number.isInteger(pid) || pid <= 0) {
+    if (!isValidPid(pid)) {
         return false;
     }
     try {
@@ -306,9 +302,9 @@ function isNoSuchProcess(err: unknown): boolean {
     return isRecord(err) && err["code"] === "ESRCH";
 }
 
-/** 去重并过滤非法 pid（0/负数/非整数视为无效）。 */
+/** 去重并过滤非法 pid（类型/范围统一走 loader isValidPid）。 */
 function uniquePids(pids: number[]): number[] {
-    return [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+    return [...new Set(pids)].filter((pid) => isValidPid(pid));
 }
 
 /**
@@ -396,6 +392,9 @@ export function selfArgvFingerprint(): string | undefined {
  * （调用方保守沿用旧行为，不因升级而让 stop 失效）。
  */
 export function checkProcessIdentity(pid: number, cmdline: string | undefined): ProcessIdentity {
+    if (!isValidPid(pid)) {
+        return "mismatch";
+    }
     if (cmdline === undefined || cmdline === "" || !CMDLINE_PROBE_SUPPORTED) {
         return "unverified";
     }
