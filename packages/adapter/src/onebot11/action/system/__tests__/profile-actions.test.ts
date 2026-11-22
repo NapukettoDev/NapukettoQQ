@@ -81,30 +81,32 @@ describe("set_self_longnick / set_qq_profile", () => {
 });
 
 describe("set_qq_avatar", () => {
-    it("本地文件存在 → setHeader(绝对路径)", async () => {
+    it("授权头像 → setHeader(受控副本)", async () => {
         const dir = ensureTmp();
         const avatar = join(dir, "avatar.png");
         writeFileSync(avatar, "png");
         const profileApi = { setHeader: vi.fn(async () => undefined) };
         const result = await ob11ActionOf(
-            createSystemAccountActions({ profileApi } as never),
+            createSystemAccountActions({ profileApi, getLocalMediaRoots: () => [dir] } as never),
             "set_qq_avatar",
         ).handle({
             file: avatar,
         });
         expect(result.retcode).toBe(0);
-        expect(profileApi.setHeader).toHaveBeenCalledWith(avatar);
+        expect(profileApi.setHeader).toHaveBeenCalledWith(
+            expect.stringContaining(join("input", "avatar.png")),
+        );
     });
 
-    it("本地文件不存在 → retcode 102 NOT_FOUND", async () => {
+    it("本地文件不存在 → retcode 105 INVALID_PARAM", async () => {
         const dir = ensureTmp();
         const missing = join(dir, "no-such-avatar.png");
         const result = await ob11ActionOf(
             createSystemAccountActions({ profileApi: { setHeader: vi.fn() } } as never),
             "set_qq_avatar",
         ).handle({ file: missing });
-        expect(result.retcode).toBe(102);
-        expect(result.message).toContain("头像文件不存在");
+        expect(result.retcode).toBe(105);
+        expect(result.message).toContain("本地媒体路径未授权");
     });
 
     it("URL 头像：下载落盘后 setHeader（fetch 桩 200）", async () => {

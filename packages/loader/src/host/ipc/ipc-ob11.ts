@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../core/module-guards.js";
 import { env } from "../env.js";
-import { loadProtocolSections, parseProtocolSeed } from "../load-config.js";
+import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
 import { isRecord } from "../type-guards.js";
 import type {
     AdapterCoreModuleLike,
@@ -33,7 +33,7 @@ import { sendEvent } from "./ipc-sender.js";
 
 /** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
  * resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）。 */
-export function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): string | undefined {
+function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): string | undefined {
     if (ctx === undefined || ctx === null) {
         return undefined;
     }
@@ -100,19 +100,20 @@ async function loadOb11BridgeModules(
 /** 确认动态载入的 adapter 认识该字段，再从主配置注入账号策略。 */
 function resolveBridgeConfig(schema: Ob11ModuleLike["ob11ConfigSchema"], services: KernelServices) {
     const defaults = parseProtocolSeed("onebot11", schema, {
-        media: { outboundPolicy: "public-only" },
+        media: { outboundPolicy: "public-only", localMediaRoots: [] },
     });
     if (
         !isRecord(defaults) ||
         !isRecord(defaults["media"]) ||
-        defaults["media"]["outboundPolicy"] !== "public-only"
+        defaults["media"]["outboundPolicy"] !== "public-only" ||
+        !Array.isArray(defaults["media"]["localMediaRoots"])
     ) {
-        throw new Error("注入的 OB11 adapter 不支持 media.outboundPolicy");
+        throw new Error("注入的 OB11 adapter 不支持 media.outboundPolicy / media.localMediaRoots");
     }
-    const { ob11Section } = loadProtocolSections(services.kernel, services.self.uin);
+    const { cfgFile, ob11Section } = loadProtocolSections(services.kernel, services.self.uin);
     const media = ob11Section["media"];
     const seed = media === undefined ? defaults : parseProtocolSeed("onebot11", schema, { media });
-    return { defaults, seed };
+    return { defaults, seed, cfgFile };
 }
 
 function mountOb11Actions(
@@ -164,16 +165,18 @@ export async function attachOb11IpcBridge(
         });
 
         const schema = adapter.ob11ConfigSchema;
+        const { cfgFile, ...bridgeConfig } = resolveBridgeConfig(schema, services);
         const broadcaster = new network.EventBroadcaster();
         const protocolConfig = new adapterCore.ProtocolConfig({
             path: join(e.cfgDir ?? ".", "ob11-ipc.toml"),
             schema,
-            ...resolveBridgeConfig(schema, services),
+            ...bridgeConfig,
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）
         const mediaBaseDir = resolveMediaBaseDir(services.kernel, services.ctx);
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: protocolConfig,
+            localMediaBaseDir: localMediaBaseDir(cfgFile, e.dataRoot ?? e.cfgDir),
             broadcaster,
             msgChannel: services.channel,
             // OB11 request 事件源（2026-09-08）：群通知 + 好友申请推送

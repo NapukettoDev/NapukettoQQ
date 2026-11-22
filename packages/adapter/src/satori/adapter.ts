@@ -55,6 +55,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
     private eventSn = 0;
 
     constructor(opts: SatoriAdapterOptions) {
+        const { broadcaster, msgChannel } = opts;
         const config = resolveProtocolConfig(
             opts.config,
             satoriConfigSchema,
@@ -62,15 +63,19 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
         );
         super({
             config,
-            broadcaster: opts.broadcaster,
+            broadcaster,
             hooks: {
                 onStart: (config) => this.startTransports(config),
                 onStop: () => this.stopAll(),
                 onReload: (config) => this.reloadTransports(config),
             },
         });
-        this.msgChannel = opts.msgChannel;
-        this.api = new SatoriApi(opts, () => config.get?.()?.media?.outboundPolicy);
+        this.msgChannel = msgChannel;
+        this.api = new SatoriApi(
+            opts,
+            () => config.get?.()?.media?.outboundPolicy,
+            () => config.get?.()?.media?.localMediaRoots,
+        );
         this.logger = opts.logger;
         // 动作注册表（HTTP RPC 分发）
         this.registry = createSatoriActionRegistry({ api: this.api });

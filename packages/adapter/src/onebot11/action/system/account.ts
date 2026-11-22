@@ -10,11 +10,11 @@
  *   set_qq_profile 的 sex 忽略，头像 URL 需先经 cacheDir 下载
  */
 
-import { existsSync } from "node:fs";
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
-import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
+import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
+import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
 import { downloadProtocolMedia } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
@@ -145,14 +145,10 @@ export function createSystemAccountActions(api: OneBotApi): Ob11Action[] {
             name: "set_qq_avatar",
             schema: setQQAvatarSchema,
             handle: async (payload) => {
-                let filePath = payload.file;
-                if (URL_PREFIX.test(filePath)) {
-                    filePath = await downloadAvatarToCache(filePath, api);
-                }
-                if (!existsSync(filePath)) {
-                    throw kernelError(`头像文件不存在: ${filePath}`, "NOT_FOUND");
-                }
-                await api.profileApi.setHeader(await protectMediaPath(filePath));
+                const filePath = URL_PREFIX.test(payload.file)
+                    ? await downloadAvatarToCache(payload.file, api)
+                    : await resolveLocalMedia(payload.file, api.getLocalMediaRoots?.());
+                await api.profileApi.setHeader(filePath);
                 return null;
             },
         }),

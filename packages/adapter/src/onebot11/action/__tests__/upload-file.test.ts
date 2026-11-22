@@ -10,8 +10,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { FlashTransferUploadOptions, Peer } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { useLocalMediaFixture } from "../../../internal/__tests__/local-media-fixture.js";
 import { createSystemFileActions } from "../system/file.js";
 import { ob11ActionOf, stubConverters } from "./test-support.js";
+
+const media = useLocalMediaFixture();
 
 function makeDeps(
     sendFile = vi.fn(
@@ -24,7 +27,14 @@ function makeDeps(
 ) {
     const { uinToUid } = stubConverters();
     // 局部桩缺 OneBotApi 其余成员，整体 as never（与其他域测试桩约定一致）
-    return { deps: { flashTransferApi: { sendFile } as never, uinToUid } as never, sendFile };
+    return {
+        deps: {
+            flashTransferApi: { sendFile } as never,
+            uinToUid,
+            getLocalMediaRoots: media.roots,
+        } as never,
+        sendFile,
+    };
 }
 
 describe("upload_group_file（闪传）", () => {
@@ -32,7 +42,7 @@ describe("upload_group_file（闪传）", () => {
         const { deps, sendFile } = makeDeps();
         const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
-            file: pathToFileURL(join("tmp", "up.bin")).href,
+            file: pathToFileURL(media.file("up.bin")).href,
             name: "up.bin",
         });
         expect(res.status).toBe("ok");
@@ -40,7 +50,7 @@ describe("upload_group_file（闪传）", () => {
         const [peer, paths, opts] = sendFile.mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: 2, peerUid: "10001" });
         // pathToFileURL 把相对路径解析为绝对路径：断言 file:// 已剥离
-        expect(paths?.[0]?.endsWith(join("tmp", "up.bin"))).toBe(true);
+        expect(paths?.[0]?.endsWith(join("input", "up.bin"))).toBe(true);
         expect(opts?.name).toBe("up.bin");
     });
 
@@ -48,12 +58,12 @@ describe("upload_group_file（闪传）", () => {
         const { deps, sendFile } = makeDeps();
         const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
-            file: "/data/report.pdf",
+            file: media.file("report.pdf"),
             folder: "/docs",
         });
         expect(res.status).toBe("ok");
         const [, paths, opts] = sendFile.mock.calls[0] ?? [];
-        expect(paths).toEqual(["/data/report.pdf"]);
+        expect(paths?.[0]).toEqual(expect.stringContaining(join("input", "report.pdf")));
         expect(opts?.name).toBe("report.pdf");
     });
 
@@ -64,7 +74,7 @@ describe("upload_group_file（闪传）", () => {
             file: "https://example.com/a.zip",
         });
         expect(res.retcode).toBe(105);
-        expect(res.message).toContain("只支持本地路径");
+        expect(res.message).toContain("本地媒体路径未授权");
         expect(sendFile).not.toHaveBeenCalled();
     });
 
@@ -84,7 +94,7 @@ describe("upload_group_file（闪传）", () => {
         const { deps } = makeDeps(sendFile);
         const res = await ob11ActionOf(createSystemFileActions(deps), "upload_group_file").handle({
             group_id: 10001,
-            file: "/data/a.bin",
+            file: media.file("a.bin"),
         });
         expect(res.status).not.toBe("ok");
     });
@@ -96,7 +106,7 @@ describe("upload_private_file（闪传）", () => {
         const res = await ob11ActionOf(createSystemFileActions(deps), "upload_private_file").handle(
             {
                 user_id: 90001,
-                file: "/data/a.zip",
+                file: media.file("a.zip"),
                 name: "a.zip",
             },
         );
@@ -104,7 +114,7 @@ describe("upload_private_file（闪传）", () => {
         expect(res.data).toEqual({ file_id: "fs-1" });
         const [peer, paths, opts] = sendFile.mock.calls[0] ?? [];
         expect(peer).toEqual({ chatType: 1, peerUid: "u90001" });
-        expect(paths).toEqual(["/data/a.zip"]);
+        expect(paths?.[0]).toEqual(expect.stringContaining(join("input", "a.zip")));
         expect(opts?.name).toBe("a.zip");
     });
 
@@ -113,7 +123,7 @@ describe("upload_private_file（闪传）", () => {
         const res = await ob11ActionOf(createSystemFileActions(deps), "upload_private_file").handle(
             {
                 user_id: 123456,
-                file: "/data/a.zip",
+                file: media.file("a.zip"),
             },
         );
         expect(res.retcode).toBe(105);

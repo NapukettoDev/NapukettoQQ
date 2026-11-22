@@ -10,7 +10,7 @@ import { kernelError, TicketApi } from "@napuketto/kernel";
 import { z } from "zod";
 import type { MilkyApi } from "../api.js";
 import { toFriendEntity } from "../helper/message/entities.js";
-import { resolveMediaUri } from "../helper/message/media-uri.js";
+import { resolveUriToPath } from "../helper/message/media-uri.js";
 import type {
     GetCookiesOutput,
     GetCSRFTokenOutput,
@@ -67,10 +67,11 @@ export function createProfileActions(api: MilkyApi): MilkyAction[] {
             name: "set_avatar",
             schema: z.object({ uri: z.string().min(1) }),
             handle: async (payload: { uri: string }) => {
-                const path = await resolveMediaUri(
+                const path = await resolveUriToPath(
                     payload.uri,
                     api.mediaDir,
                     api.getMediaOutboundPolicy?.(),
+                    api.getLocalMediaRoots?.(),
                 );
                 await api.profileApi.setHeader(path);
                 return {};

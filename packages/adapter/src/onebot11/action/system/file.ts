@@ -18,16 +18,15 @@
  * 依赖，当前未接（明确报错，不静默失败）。
  */
 
+import { basename } from "node:path";
 import { ChatType, kernelError, type Peer } from "@napuketto/kernel";
 import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
-import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
-import { downloadProtocolMedia, fileUriToPath } from "../../../internal/qq/media.js";
+import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
+import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
+import { downloadProtocolMedia } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
-
-/** 路径分隔符（取文件名用）。 */
-const PATH_SEPARATORS = /[\\/]/;
 
 const downloadFileSchema = z.object({
     url: z.string(),
@@ -52,27 +51,6 @@ const uploadPrivateFileSchema = z.object({
 /** 上传动作响应（闪传文件集 id）。 */
 interface UploadFileResult {
     file_id: string;
-}
-
-/** 本地路径 / file:// 展开；远程 URI 明确拒绝（未接下载缓存）。 */
-function resolveLocalFile(file: string): string {
-    if (file.startsWith("http://") || file.startsWith("https://") || file.startsWith("base64://")) {
-        throw kernelError(
-            "upload_group_file/upload_private_file 目前只支持本地路径与 file:// URI（远程 URI 需要下载缓存，未接入）",
-            "INVALID_PARAM",
-        );
-    }
-    if (file.startsWith("file://")) {
-        return fileUriToPath(file);
-    }
-    return file;
-}
-
-/** 取路径末段作为缺省文件集名（卡片标题）。 */
-function basename(path: string): string {
-    const parts = path.split(PATH_SEPARATORS);
-    const last = parts[parts.length - 1] ?? "";
-    return last === "" ? "文件" : last;
 }
 
 /** 文件收发域动作工厂（download_file / upload_group_file / upload_private_file）。 */
@@ -107,7 +85,7 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
             name: "upload_group_file",
             schema: uploadGroupFileSchema,
             handle: async (payload): Promise<UploadFileResult> => {
-                const path = await protectMediaPath(resolveLocalFile(payload.file));
+                const path = await resolveLocalMedia(payload.file, api.getLocalMediaRoots?.());
                 const peer: Peer = { chatType: ChatType.GROUP, peerUid: String(payload.group_id) };
                 const uploaded = await api.flashTransferApi.sendFile(peer, [path], {
                     name: payload.name ?? basename(path),
@@ -119,7 +97,7 @@ export function createSystemFileActions(api: OneBotApi): Ob11Action[] {
             name: "upload_private_file",
             schema: uploadPrivateFileSchema,
             handle: async (payload): Promise<UploadFileResult> => {
-                const path = await protectMediaPath(resolveLocalFile(payload.file));
+                const path = await resolveLocalMedia(payload.file, api.getLocalMediaRoots?.());
                 const peer = await resolveTargetPeer(
                     { user_id: payload.user_id },
                     api,

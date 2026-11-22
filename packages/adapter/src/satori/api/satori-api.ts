@@ -8,7 +8,7 @@
  * - cacheDir 供消息元素发方向资源下载（img/audio/video/file 的 http(s) src）。
  */
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type {
     FriendApi,
     GroupApi,
@@ -17,14 +17,17 @@ import type {
     MsgApi,
     ProfileApi,
 } from "@napuketto/kernel";
-import { ChatType, type Peer } from "@napuketto/kernel";
+import { ChatType, errorMessage, type Peer } from "@napuketto/kernel";
 import type { MediaOutboundPolicy } from "@napuketto/media";
+import { bindLocalMediaRoots, exportQqMedia } from "../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { SatoriToCanonicalDeps } from "../helper/element/media-convert.js";
 
 /** SatoriApi 构造参数。 */
 export interface SatoriApiOptions {
+    /** 相对 media.localMediaRoots 的可信基准目录，缺省为工作目录。 */
+    localMediaBaseDir?: string | undefined;
     msgApi: MsgApi;
     groupApi: GroupApi;
     groupNotifyApi: GroupNotifyApi;
@@ -34,6 +37,7 @@ export interface SatoriApiOptions {
     self: { uin: string; nickname: string };
     /** 媒体资源下载缓存目录（缺省 `os.tmpdir()/napuketto-satori-cache`）。 */
     cacheDir?: string | undefined;
+    mediaBaseDir?: string | undefined;
     /** 群/成员缓存（guild.member.get / user.get 读缓存用）。 */
     groupCache?: GroupCache | undefined;
     /** 媒体缓存清理失败的可观测出口。 */
@@ -43,6 +47,7 @@ export interface SatoriApiOptions {
 /** Satori 动作统一依赖聚合。 */
 export class SatoriApi {
     readonly mediaCache: MediaCache;
+    readonly getLocalMediaRoots?: (() => readonly string[]) | undefined;
     readonly msgApi: MsgApi;
     readonly groupApi: GroupApi;
     readonly groupNotifyApi: GroupNotifyApi;
@@ -51,6 +56,7 @@ export class SatoriApi {
     readonly self: { uin: string; nickname: string };
     readonly selfUin: string;
     readonly cacheDir: string;
+    readonly publishLocalAsset?: ((path: string) => Promise<string | undefined>) | undefined;
     readonly groupCache: GroupCache | undefined;
 
     /**
@@ -64,8 +70,10 @@ export class SatoriApi {
     constructor(
         opts: SatoriApiOptions,
         getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+        getLocalMediaRoots?: () => readonly string[] | undefined,
     ) {
         this.getMediaOutboundPolicy = getMediaOutboundPolicy;
+        this.getLocalMediaRoots = bindLocalMediaRoots(opts.localMediaBaseDir, getLocalMediaRoots);
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.groupNotifyApi = opts.groupNotifyApi;
@@ -74,7 +82,24 @@ export class SatoriApi {
         this.self = opts.self;
         this.selfUin = opts.self.uin;
         this.cacheDir = opts.cacheDir ?? join(tmpdir(), "napuketto-satori-cache");
-        this.mediaCache = new MediaCache({ root: this.cacheDir, logger: opts.logger });
+        this.mediaCache = new MediaCache({
+            root: this.cacheDir,
+            logger: opts.logger,
+            owner: { protocol: "satori", account: opts.self.uin },
+        });
+        const mediaBaseDir = opts.mediaBaseDir;
+        if (mediaBaseDir !== undefined) {
+            this.publishLocalAsset = async (source) => {
+                try {
+                    const file = await exportQqMedia(source, mediaBaseDir, this.cacheDir);
+                    if (file === undefined) return undefined;
+                    return `internal:qq/${this.selfUin}/_tmp/${basename(dirname(file))}/${basename(file)}`;
+                } catch (err) {
+                    opts.logger?.warn({ error: errorMessage(err) }, "satori: 媒体导出失败");
+                    return undefined;
+                }
+            };
+        }
         this.groupCache = opts.groupCache;
     }
 
@@ -130,6 +155,8 @@ export class SatoriApi {
             uinToUid: (uins) => this.groupApi.uinToUid(uins),
             cacheDir: this.cacheDir,
             outboundPolicy: this.getMediaOutboundPolicy?.(),
+            localMediaRoots: this.getLocalMediaRoots?.(),
+            account: this.selfUin,
         };
     }
 }

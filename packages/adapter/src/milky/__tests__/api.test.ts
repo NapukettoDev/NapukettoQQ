@@ -288,6 +288,7 @@ describe("findGroupNotify 屏序查找", () => {
         const getCalls: boolean[] = [];
         const api = new MilkyApi(
             stub<ConstructorParameters<typeof MilkyApi>[0]>({
+                self: { uin: "10001", nickname: "bot" },
                 msgApi: stub<MsgApi>({ fetchMessages: vi.fn(async () => []) }),
                 groupNotifyApi: stub<GroupNotifyApi>({
                     getSingleScreenNotifies: vi.fn(async (doubtFlag: boolean) => {

@@ -26,6 +26,7 @@ import type {
 } from "@napuketto/kernel";
 import { errorMessage, GroupApi, NTGroupMemberRole } from "@napuketto/kernel";
 import type { MediaOutboundPolicy } from "@napuketto/media";
+import { bindLocalMediaRoots } from "../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { GroupSenderRole } from "../helper/data.js";
@@ -65,6 +66,8 @@ export interface OneBotSystemOptions {
 
 /** OneBotApi 构造参数。 */
 export interface OneBotApiOptions {
+    /** 相对 media.localMediaRoots 的可信基准目录，缺省为工作目录。 */
+    localMediaBaseDir?: string | undefined;
     msgApi: MsgApi;
     groupApi: GroupApi;
     groupNotifyApi: GroupNotifyApi;
@@ -92,6 +95,7 @@ export interface OneBotApiOptions {
  */
 export class OneBotApi {
     readonly mediaCache: MediaCache;
+    readonly getLocalMediaRoots?: (() => readonly string[]) | undefined;
     readonly getMediaOutboundPolicy?: (() => MediaOutboundPolicy | undefined) | undefined;
     /** kernel 消息 API（send_msg 等消息类动作用）。 */
     readonly msgApi: MsgApi;
@@ -139,9 +143,15 @@ export class OneBotApi {
     constructor(
         opts: OneBotApiOptions,
         getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+        getLocalMediaRoots?: () => readonly string[] | undefined,
     ) {
         this.getMediaOutboundPolicy = getMediaOutboundPolicy;
-        this.mediaCache = new MediaCache({ root: opts.system?.cacheDir, logger: opts.logger });
+        this.getLocalMediaRoots = bindLocalMediaRoots(opts.localMediaBaseDir, getLocalMediaRoots);
+        this.mediaCache = new MediaCache({
+            root: opts.system?.cacheDir,
+            logger: opts.logger,
+            owner: { protocol: "onebot11", account: opts.self.uin },
+        });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
         this.groupNotifyApi = opts.groupNotifyApi;

@@ -33,6 +33,7 @@ export {
     ProtocolConfig,
     runAction,
 } from "./framework/index.js";
+export type { ProtocolMediaConfig } from "./internal/infra/media-config.js";
 export type { KurobotAdapterOptions, KurobotConfig } from "./kurobot/index.js";
 export { kurobotConfigSchema, NapukettoKurobotAdapter } from "./kurobot/index.js";
 export type { MilkyAdapterOptions, MilkyConfig } from "./milky/index.js";

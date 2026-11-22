@@ -17,12 +17,16 @@ import {
     type Peer,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { useLocalMediaFixture } from "../../../internal/__tests__/local-media-fixture.js";
 import { type ApiOverrides, actionOf, buildMilkyApi, registryOf } from "./test-support.js";
+
+const media = useLocalMediaFixture();
 
 /** 群文件类依赖桩（richMediaApi 全方法 vi.fn，可覆写）。 */
 function fileRegistry(overrides: ApiOverrides = {}): ReturnType<typeof registryOf> {
     return registryOf(
         buildMilkyApi({
+            getLocalMediaRoots: media.roots,
             richMediaApi: {
                 getGroupFileList: vi.fn(async () => []),
                 moveGroupFile: vi.fn(async () => undefined),
@@ -223,7 +227,7 @@ describe("upload_group_file（闪传通道）", () => {
         const registry = fileRegistry({ flashTransferApi: { sendFile } });
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,
-            file_uri: pathToFileURL(join("tmp", "up.bin")).href,
+            file_uri: pathToFileURL(media.file("up.bin")).href,
             file_name: "up.bin",
         });
         expect(res.data).toEqual({ file_id: "fs-9" });
@@ -231,11 +235,11 @@ describe("upload_group_file（闪传通道）", () => {
         expect(peer).toEqual({ chatType: ChatType.GROUP, peerUid: "10001" });
         // pathToFileURL 会把相对路径解析为绝对路径：断言「file:// 剥离 + 文件名保留」
         expect(paths).toHaveLength(1);
-        expect(paths?.[0]?.endsWith(join("tmp", "up.bin"))).toBe(true);
+        expect(paths?.[0]?.endsWith(join("input", "up.bin"))).toBe(true);
         expect(opts?.name).toBe("up.bin");
     });
 
-    it("裸路径原样传入闪传（不再走消息发送链）", async () => {
+    it("授权绝对路径送入闪传", async () => {
         const sendFile = vi.fn(
             async (_target: Peer, _paths: string[], _options: FlashTransferUploadOptions) => ({
                 fileSetId: "fs-raw",
@@ -246,11 +250,13 @@ describe("upload_group_file（闪传通道）", () => {
         const registry = fileRegistry({ flashTransferApi: { sendFile } });
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,
-            file_uri: "raw.bin",
+            file_uri: media.file("raw.bin"),
             file_name: "raw.bin",
         });
         expect(res.data).toEqual({ file_id: "fs-raw" });
-        expect((sendFile.mock.calls[0] ?? [])[1]).toEqual(["raw.bin"]);
+        expect((sendFile.mock.calls[0] ?? [])[1]).toEqual([
+            expect.stringContaining(join("input", "raw.bin")),
+        ]);
     });
 
     it("parent_folder_id 仅 schema 兼容（闪传没有目录概念）", async () => {
@@ -258,7 +264,7 @@ describe("upload_group_file（闪传通道）", () => {
         const res = await actionOf(registry, "upload_group_file").handle({
             group_id: 10001,
             parent_folder_id: "d1",
-            file_uri: "x.bin",
+            file_uri: media.file("x.bin"),
             file_name: "x.bin",
         });
         expect(res.status).toBe("ok");

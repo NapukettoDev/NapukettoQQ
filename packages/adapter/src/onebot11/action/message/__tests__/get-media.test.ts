@@ -3,9 +3,9 @@
  *
  * 覆盖：NT 相对路径本地解析（mediaBaseDir 命中/未命中）、图片 URL 主动下载
  * （fetch 桩 + cacheDir 落盘）、下载失败回退 url-only、语音本地命中 /
- * 原生 downloadPtt 落盘 / 下载失败回退原始路径。
+ * 原生 downloadPtt 落盘 / 下载失败回退元数据。
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MsgApi, RawMessage } from "@napuketto/kernel";
@@ -14,12 +14,7 @@ import { stub } from "../../../../internal/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
 import type { Ob11Action } from "../../base-action.js";
-import {
-    createMediaActions,
-    type GetMediaDeps,
-    type MediaInfoResult,
-    resolveLocalMediaFile,
-} from "../media.js";
+import { createMediaActions, type GetMediaDeps, type MediaInfoResult } from "../media.js";
 
 /** 取媒体域动作（TReturn 断言为 MediaInfoResult，保持 result.data 属性访问的编译期类型）。 */
 function mediaActionOf(
@@ -45,7 +40,7 @@ function makeDeps(
     messageUnique.alloc(msg?.msgId ?? "m1", { chatType: 1, peerUid: "u1" });
     return stub<GetMediaDeps>({
         messageUnique,
-        cacheDir: extra.cacheDir,
+        cacheDir: extra.cacheDir ?? extra.mediaBaseDir,
         getMediaOutboundPolicy: () => "compat",
         mediaBaseDir: extra.mediaBaseDir,
         msgApi: stub<MsgApi>({
@@ -94,28 +89,6 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe("resolveLocalMediaFile", () => {
-    it("绝对路径存在直接返回；相对路径按 mediaBaseDir 拼接（反斜杠归一化）", () => {
-        const base = tempDir("base");
-        const rel = join(base, "nt_data", "Pic", "a.jpg").replaceAll("\\", "/");
-        mkdirSync(join(base, "nt_data", "Pic"), { recursive: true });
-        writeFileSync(rel, "x");
-        expect(resolveLocalMediaFile(rel, { mediaBaseDir: base })).toBe(rel);
-        expect(resolveLocalMediaFile("nt_data\\Pic\\a.jpg", { mediaBaseDir: base })).toContain(
-            "a.jpg",
-        );
-    });
-
-    it("mediaBaseDir 未注入 → 相对路径直接 null（base 分支跳过）", () => {
-        expect(resolveLocalMediaFile("nt_data/a.jpg", {})).toBeNull();
-    });
-
-    it("未命中返回 null", () => {
-        expect(resolveLocalMediaFile("nt_data/nope.jpg", { mediaBaseDir: "C:/nope" })).toBeNull();
-        expect(resolveLocalMediaFile("", {})).toBeNull();
-    });
-});
-
 describe("GetImageAction", () => {
     it("本地命中（sourcePath 按 mediaBaseDir 解析）→ file 绝对路径", async () => {
         const base = tempDir("img");
@@ -127,7 +100,8 @@ describe("GetImageAction", () => {
             { mediaBaseDir: base },
         );
         const result = (await mediaActionOf(deps, "get_image").handle({ message_id: 1 })).data;
-        expect(result?.file?.replaceAll("\\", "/")).toBe(file);
+        expect(readFileSync(result?.file ?? "", "utf8")).toBe("x");
+        expect(result?.file).not.toBe(file);
         expect(result?.file_name).toBe("x.jpg");
     });
 
@@ -226,7 +200,8 @@ describe("GetImageAction", () => {
             mediaBaseDir: base,
         });
         const result = (await mediaActionOf(deps, "get_image").handle({ file: "1" })).data;
-        expect(result?.file?.replaceAll("\\", "/")).toBe(file);
+        expect(readFileSync(result?.file ?? "", "utf8")).toBe("x");
+        expect(result?.file).not.toBe(file);
     });
 });
 
@@ -249,7 +224,7 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(hit?.file).toContain("1.silk");
+        expect(readFileSync(hit?.file ?? "", "utf8")).toBe("silk");
     });
 
     it("本地未命中 + 原生下载落盘 → file 绝对路径", async () => {
@@ -278,11 +253,12 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file?.replaceAll("\\", "/")).toBe(downloaded);
+        expect(readFileSync(result?.file ?? "", "utf8")).toBe("silk");
+        expect(result?.file).not.toBe(downloaded);
         expect(result?.file_name).toBe("gone.silk");
     });
 
-    it("下载返回缺 fileSize/fileName → 省略元数据字段；无 filePath → 回退原始路径", async () => {
+    it("下载返回缺 fileSize/fileName → 省略元数据字段；无 filePath → 回退元数据", async () => {
         const base = tempDir("voice-bare");
         mkdirSync(join(base, "nt_data", "Ptt"), { recursive: true });
         const downloaded = join(base, "nt_data/Ptt/bare.silk").replaceAll("\\", "/");
@@ -297,7 +273,8 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(bare?.file?.replaceAll("\\", "/")).toBe(downloaded);
+        expect(readFileSync(bare?.file ?? "", "utf8")).toBe("silk");
+        expect(bare?.file).not.toBe(downloaded);
         expect("file_size" in (bare as object)).toBe(false);
         expect("file_name" in (bare as object)).toBe(false);
         // 连 filePath 都没有 → 走回退（原始路径）
@@ -314,7 +291,7 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(fallback?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(fallback?.file).toBeUndefined();
         expect(fallback?.file_name).toBe("gone.silk");
     });
 
@@ -332,12 +309,13 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file?.replaceAll("\\", "/")).toBe(landed);
+        expect(readFileSync(result?.file ?? "", "utf8")).toBe("silk");
+        expect(result?.file).not.toBe(landed);
         expect("file_size" in (result as object)).toBe(false);
         expect("file_name" in (result as object)).toBe(false);
     });
 
-    it("下载返回的 filePath 本地仍不可解析 → 回退原始 filePath（transferStatus=2 空转场景）", async () => {
+    it("下载返回的 filePath 本地仍不可解析 → 回退元数据（transferStatus=2 空转场景）", async () => {
         const result = (
             await mediaActionOf(
                 makeDeps(
@@ -358,12 +336,12 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(result?.file).toBeUndefined();
         expect(result?.file_name).toBe("gone.silk");
         expect(result?.file_size).toBe("10");
     });
 
-    it("本地未命中 + 下载失败/未落盘 → 回退原始 filePath + 元数据（不抛错）", async () => {
+    it("本地未命中 + 下载失败/未落盘 → 回退元数据 + 元数据（不抛错）", async () => {
         const result = (
             await mediaActionOf(
                 makeDeps(
@@ -382,7 +360,7 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(result?.file).toBeUndefined();
         expect(result?.file_name).toBe("gone.silk");
         expect(result?.file_size).toBe("10");
     });
@@ -394,7 +372,7 @@ describe("GetRecordAction", () => {
         expect(result.message).toContain("不存在或已被撤回");
     });
 
-    it("原生下载落到 mediaBaseDir 外的绝对路径 → 返回下载后路径（成功分支）", async () => {
+    it("原生下载落到 mediaBaseDir 外的绝对路径 → 省略未授权的路径", async () => {
         const base = tempDir("voice-dl-abs");
         const out = tempDir("voice-dl-abs-out");
         const downloaded = join(out, "gone.silk");
@@ -419,10 +397,10 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file?.replaceAll("\\", "/")).toBe(downloaded.replaceAll("\\", "/"));
+        expect(result?.file).toBeUndefined();
     });
 
-    it("原生下载成功但未落盘（无 filePath）→ 回退原始路径", async () => {
+    it("原生下载成功但未落盘（无 filePath）→ 回退元数据", async () => {
         const result = (
             await mediaActionOf(
                 makeDeps(
@@ -439,7 +417,7 @@ describe("GetRecordAction", () => {
                 "get_record",
             ).handle({ message_id: 1 })
         ).data;
-        expect(result?.file).toBe("nt_data/Ptt/gone.silk");
+        expect(result?.file).toBeUndefined();
     });
 
     it("消息无 ptt → NOT_FOUND", async () => {

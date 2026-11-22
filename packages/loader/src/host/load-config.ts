@@ -14,7 +14,7 @@
  * 拉起前完整校验（exit 78），走到这里的坏内联多见于绕过 cli 的直跑场景。
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { env } from "./env.js";
 import { isRecord } from "./type-guards.js";
 import type { KernelLike, ProtocolKey } from "./types.js";
@@ -44,6 +44,13 @@ type SectionFields = Pick<
 
 /** 内联来源时 cfgFile 的哨兵值（非文件路径；日志/错误标注里不出现真实路径）。 */
 const INLINE_CONFIG_SENTINEL = "<inline>";
+
+/** Relative local media roots in IPC and network mode have the same deployment base. */
+export function localMediaBaseDir(cfgFile: string, dataRoot: string | undefined): string {
+    return cfgFile === INLINE_CONFIG_SENTINEL
+        ? resolve(dataRoot ?? ".")
+        : dirname(resolve(cfgFile));
+}
 
 /** 用动态加载的协议 schema 校验内存配置，保留宿主配置错误的退出码。 */
 export function parseProtocolSeed(

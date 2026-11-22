@@ -7,10 +7,12 @@
  * get_resource_temp_url 链接形态判定、upload_private_file 闪传通道
  * （peer 为好友 uid、file_id = fileSetId、失败透传、file_uri 空串 -400）。
  */
-import { join } from "node:path";
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { useLocalMediaFixture } from "../../../internal/__tests__/local-media-fixture.js";
 import { actionOf, buildMilkyApi, indexableMsg, messageApi, registryOf } from "./test-support.js";
+
+const media = useLocalMediaFixture();
 
 /** 可索引的原始消息（群聊文本；msgSeq 可覆写）。 */
 function opIndexableMsg(seq: string, msgId = "m-idx") {
@@ -139,10 +141,13 @@ describe("upload_private_file（闪传通道）", () => {
             shareLink: "https://qfile.qq.com/q/ABC",
             fileCount: 1,
         }));
-        const registry = messageApi({ flashTransferApi: { sendFile } });
+        const registry = messageApi({
+            flashTransferApi: { sendFile },
+            getLocalMediaRoots: media.roots,
+        });
         const res = await actionOf(registry, "upload_private_file").handle({
             user_id: 20002,
-            file_uri: join("tmp", "a.bin"),
+            file_uri: media.file("a.bin"),
             file_name: "a.bin",
         });
         expect(res.data).toEqual({ file_id: "fs-abc" });
@@ -155,6 +160,7 @@ describe("upload_private_file（闪传通道）", () => {
 
     it("闪传抛错 → 动作失败（不静默假成功）", async () => {
         const registry = messageApi({
+            getLocalMediaRoots: media.roots,
             flashTransferApi: {
                 sendFile: vi.fn(async () => {
                     throw new Error("闪传上传超时");
@@ -163,7 +169,7 @@ describe("upload_private_file（闪传通道）", () => {
         });
         const res = await actionOf(registry, "upload_private_file").handle({
             user_id: 20002,
-            file_uri: "b.bin",
+            file_uri: media.file("b.bin"),
             file_name: "b.bin",
         });
         expect(res.status).not.toBe("ok");

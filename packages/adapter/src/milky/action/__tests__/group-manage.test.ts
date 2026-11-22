@@ -6,9 +6,13 @@
  * 头衔、群戳一戳（self.uid 缺失报错）。
  */
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ChatType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { useLocalMediaFixture } from "../../../internal/__tests__/local-media-fixture.js";
 import { actionOf, groupRegistry } from "./test-support.js";
+
+const media = useLocalMediaFixture();
 
 describe("群管动作（set_* / kick / quit）", () => {
     it("set_group_name：群号字符串化透传", async () => {
@@ -118,23 +122,32 @@ describe("群管动作（set_* / kick / quit）", () => {
 });
 
 describe("set_group_avatar / set_group_member_special_title", () => {
-    it("set_group_avatar：裸路径 image_uri 原样透传", async () => {
+    it("set_group_avatar：裸路径 image_uri 使用受控副本", async () => {
         const setGroupAvatar = vi.fn(async () => undefined);
-        const registry = groupRegistry({ groupApi: { setGroupAvatar } });
+        const registry = groupRegistry({
+            groupApi: { setGroupAvatar },
+            getLocalMediaRoots: media.roots,
+        });
         const res = await actionOf(registry, "set_group_avatar").handle({
             group_id: 10001,
-            image_uri: join("some", "avatar.png"),
+            image_uri: media.file("avatar.png"),
         });
         expect(res.status).toBe("ok");
-        expect(setGroupAvatar).toHaveBeenCalledWith("10001", join("some", "avatar.png"));
+        expect(setGroupAvatar).toHaveBeenCalledWith(
+            "10001",
+            expect.stringContaining(join("input", "avatar.png")),
+        );
     });
 
     it("set_group_avatar：image_uri 展开 + 群号字符串（补测）", async () => {
         const setGroupAvatar = vi.fn(async () => undefined);
-        const registry = groupRegistry({ groupApi: { setGroupAvatar } });
+        const registry = groupRegistry({
+            groupApi: { setGroupAvatar },
+            getLocalMediaRoots: media.roots,
+        });
         await actionOf(registry, "set_group_avatar").handle({
             group_id: 10001,
-            image_uri: "file:///C:/pic/g.png",
+            image_uri: pathToFileURL(media.file("g.png")).href,
         });
         expect(setGroupAvatar).toHaveBeenCalledWith("10001", expect.stringMatching(/g\.png$/));
     });
@@ -192,12 +205,14 @@ describe("send_group_announcement / delete_group_announcement", () => {
     });
 
     it("send_group_announcement：file:// image_uri 展开本地路径后透传", async () => {
-        const { pathToFileURL } = await import("node:url");
         const publishGroupAnnouncement = vi.fn(
             async (_groupCode: string, _content: string, _imagePath?: string) => undefined,
         );
-        const registry = groupRegistry({ groupApi: { publishGroupAnnouncement } });
-        const filePath = join("盘", "公告.png");
+        const registry = groupRegistry({
+            groupApi: { publishGroupAnnouncement },
+            getLocalMediaRoots: media.roots,
+        });
+        const filePath = media.file("公告.png");
         const res = await actionOf(registry, "send_group_announcement").handle({
             group_id: 10001,
             content: "带图公告",

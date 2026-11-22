@@ -13,7 +13,7 @@ import {
     runShutdownHook,
 } from "../../lifecycle/shutdown.js";
 import { env } from "../env.js";
-import { loadProtocolSections, parseProtocolSeed } from "../load-config.js";
+import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
 import type {
     AdapterCoreModuleLike,
     KernelLike,
@@ -48,6 +48,7 @@ function hasSection(section: Record<string, unknown>): boolean {
 
 /** 可选协议装配的公共依赖（广播器 / 配置框架 / seed 来源 / kernel 服务）。 */
 interface OptionalAssemblyDeps {
+    mediaBaseDir: string | undefined;
     kernel: KernelLike;
     network: NetworkModuleLike;
     adapterCore: AdapterCoreModuleLike;
@@ -100,6 +101,11 @@ function createSatori(input: SatoriAssemblyInput): AdapterHandle | null {
         profileApi: services.profileApi,
         self: services.self,
         cacheDir,
+        mediaBaseDir: input.mediaBaseDir,
+        localMediaBaseDir: localMediaBaseDir(
+            input.cfgFile,
+            env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR,
+        ),
         groupCache: services.groupCache,
     });
 }
@@ -182,6 +188,10 @@ function createMilky(input: MilkyAssemblyInput): AdapterHandle {
         qqVersion: env.NAPUTO_QQ_VERSION || "unknown",
         // 发送远程媒体 URI 的下载缓存目录（与 OB11 download_file 同目录）
         mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
+        localMediaBaseDir: localMediaBaseDir(
+            input.cfgFile,
+            env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR,
+        ),
         logger: services.calibLogger,
     });
 }
@@ -395,6 +405,7 @@ export async function assembleOb11AndSatori(
         const mediaBaseDir = qqRoot !== null ? kernel.resolveQqGlobalPath?.(qqRoot) : undefined;
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: ob11Config,
+            localMediaBaseDir: localMediaBaseDir(cfgFile, env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR),
             broadcaster: ob11Broadcaster,
             msgChannel: channel,
             // OB11 request 事件源（2026-09-08）：群通知 + 好友申请推送
@@ -447,7 +458,7 @@ export async function assembleOb11AndSatori(
         });
         await startAdapter(activeAdapters, ob11, "onebot11");
         await assembleOptionalProtocols(
-            { kernel, network, adapterCore, cfgFile, services },
+            { kernel, network, adapterCore, cfgFile, services, mediaBaseDir },
             {
                 satori: sections.satori,
                 kurobot: sections.kurobot,

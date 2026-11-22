@@ -177,7 +177,11 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   snake_case 与 kernel 点分命名不冲突），事件经 `sendEvent("ob11", post_type, [event])`
   透出。装配会等待 `subscribeOnly()` 完成（含媒体缓存首次清理），引导日志记录等待
   起点。装配失败时撤销 OB11 订阅和已挂载动作，降级为纯 kernel 动作面。注入的
-  adapter 必须支持 `media.outboundPolicy`，以免老版本动作桥忽略媒体策略。
+  adapter 必须支持媒体出站和本地目录配置，避免老版本动作桥忽略策略。
+
+OB11 IPC 桥和网络适配器共用账号协议段的 `media.localMediaRoots`，IPC 无配置时亦拒绝调用方本地路径。
+桥会通过 schema 确认注入的 adapter 识别本地策略，再挂载动作。相对根目录以主配置文件所在目录为基准，
+内联配置以宿主数据目录为基准。QQ 富媒体目录在 OB11 和 Satori 装配时单独注入，用于经当前账号查询得到的资源。
 
 ### 软重登相位机
 

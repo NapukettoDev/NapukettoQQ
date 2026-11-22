@@ -15,7 +15,13 @@ import { defineSatoriAction, type SatoriActionHandler } from "./base-action.js";
 /** 动作依赖（Pick<SatoriApi> 视图）。 */
 export type MessageActionDeps = Pick<
     SatoriApi,
-    "msgApi" | "selfUin" | "uidToUin" | "resolvePeer" | "setChannelType" | "toCanonicalDeps"
+    | "msgApi"
+    | "selfUin"
+    | "uidToUin"
+    | "resolvePeer"
+    | "setChannelType"
+    | "toCanonicalDeps"
+    | "publishLocalAsset"
 >;
 
 /** 消息列表默认条数（规范推荐 50）。 */
@@ -84,6 +90,7 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
                 return toSatoriMessage(first, {
                     selfUin: deps.selfUin,
                     uidToUin: (uids) => deps.uidToUin(uids),
+                    publishLocalAsset: deps.publishLocalAsset,
                 });
             },
         }),

@@ -12,8 +12,8 @@
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
+import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
-import { protectMediaPath } from "../../../internal/infra/media-cache.js";
 import { ensureSilk, prepareVideoElements } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
@@ -47,7 +47,10 @@ const sendPrivateMsgSchema = z.object({ user_id: z.number(), ...sendMsgBodyField
 const sendGroupMsgSchema = z.object({ group_id: z.number(), ...sendMsgBodyFields });
 
 /** send_msg 依赖（OneBotApi 视图，由装配方注入）。 */
-export type SendMsgDeps = Pick<OneBotApi, "msgApi" | "messageUnique" | "uinToUid" | "logger">;
+export type SendMsgDeps = Pick<
+    OneBotApi,
+    "msgApi" | "messageUnique" | "uinToUid" | "logger" | "getLocalMediaRoots"
+>;
 
 /** 共享发送核心：解析 Peer → canonical 翻译（含 auto_escape）→ sendMessage → 映射 message_id。 */
 async function sendOb11Message(
@@ -62,7 +65,7 @@ async function sendOb11Message(
     } else {
         canonical = cqMessageToCanonical(payload.message);
     }
-    await protectElements(canonical);
+    canonical = await prepareLocalElements(canonical, deps);
     // 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
     // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）
     const atUins: string[] = [];
@@ -109,11 +112,25 @@ async function sendOb11Message(
     }
 }
 
-async function protectElements(elements: readonly CanonicalElement[]): Promise<void> {
+async function prepareLocalElements(
+    elements: readonly CanonicalElement[],
+    deps: SendMsgDeps,
+): Promise<CanonicalElement[]> {
+    const roots = deps.getLocalMediaRoots?.();
+    const prepared: CanonicalElement[] = [];
     for (const el of elements) {
-        if ("path" in el) await protectMediaPath(el.path);
-        if (el.type === "video" && el.thumbPath) await protectMediaPath(el.thumbPath);
+        if (!("path" in el)) {
+            prepared.push(el);
+            continue;
+        }
+        const path = await resolveLocalMedia(el.path, roots);
+        if (el.type === "video" && el.thumbPath) {
+            prepared.push({ ...el, path, thumbPath: await resolveLocalMedia(el.thumbPath, roots) });
+        } else {
+            prepared.push({ ...el, path });
+        }
     }
+    return prepared;
 }
 
 /** CQ 特殊字符转义（auto_escape，&、[、]、, 前置 &amp;）。 */

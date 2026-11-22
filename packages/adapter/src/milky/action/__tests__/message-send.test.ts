@@ -28,6 +28,7 @@ import {
     type WebApi,
 } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
+import { useLocalMediaFixture } from "../../../internal/__tests__/local-media-fixture.js";
 import { stub } from "../../../internal/__tests__/stub.js";
 import { MilkyApi } from "../../api.js";
 import { MessageSeqIndex } from "../../helper/state/seq-index.js";
@@ -35,6 +36,8 @@ import type { MilkyLoggerLike } from "../../transport.js";
 import type { OutgoingSegment } from "../../types.js";
 import { sendMilkyMessage } from "../message-send.js";
 import { actionOf, indexableMsg, messageApi } from "./test-support.js";
+
+const media = useLocalMediaFixture();
 
 const PEER: Peer = { chatType: ChatType.GROUP, peerUid: "10001" };
 
@@ -442,15 +445,18 @@ describe("send_private_message / send_group_message（动作层）", () => {
         },
     );
 
-    it("file:// 媒体段：同步展开为平台路径（不触下载）", async () => {
+    it("file:// 媒体段：授权后交付受控副本（无下载）", async () => {
         const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
             msgId: "sent-1",
         }));
         const fetchMsgsByMsgId = vi.fn(async () => [indexableMsg("1300")]);
-        const registry = messageApi({ msgApi: { sendMessage, fetchMsgsByMsgId } });
+        const registry = messageApi({
+            msgApi: { sendMessage, fetchMsgsByMsgId },
+            getLocalMediaRoots: media.roots,
+        });
         const segments: OutgoingSegment[] = [
             { type: "text", data: { text: "看图" } },
-            { type: "image", data: { uri: pathToFileURL(join("tmp", "x.png")).href } },
+            { type: "image", data: { uri: pathToFileURL(media.file("x.png")).href } },
         ];
         const res = await actionOf(registry, "send_group_message").handle({
             group_id: 10001,

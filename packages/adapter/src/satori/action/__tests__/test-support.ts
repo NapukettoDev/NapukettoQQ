@@ -18,6 +18,7 @@ import type {
 import { vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
 import { MediaCache } from "../../../internal/infra/media-cache.js";
+import type { SatoriToCanonicalDeps } from "../../helper/element/element-convert.js";
 import type { SatoriActionHandler } from "../base-action.js";
 
 /**
@@ -90,10 +91,12 @@ export function stubSatoriApi() {
         groupCache: undefined as unknown,
         resolvePeer: vi.fn(async () => ({ chatType: 2, peerUid: "10001" }) as never),
         setChannelType: vi.fn((_channelId: string, _isGroup: boolean) => undefined),
-        toCanonicalDeps: vi.fn(() => ({
-            uinToUid: async (uins: string[]) => uinToUidMap(uins),
-            cacheDir: "/tmp/nk-cache",
-        })),
+        toCanonicalDeps: vi.fn(
+            (): SatoriToCanonicalDeps => ({
+                uinToUid: async (uins: string[]) => uinToUidMap(uins),
+                cacheDir: "/tmp/nk-cache",
+            }),
+        ),
         uinToUid: vi.fn(async (uins: string[]) => uinToUidMap(uins)),
         uidToUin: vi.fn(async (uids: string[]) => new Map(uids.map((u) => [u, u] as const))),
     };

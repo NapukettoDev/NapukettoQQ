@@ -323,3 +323,27 @@ seq 索引：接收链路双向登记 seq ↔ msgId（FIFO 4096）；反查未�
   返回 0，对非法值返回 78。
 - `pnpm check && pnpm test:quiet` 通过，239 个文件，3616 项通过，14 项跳过。
   `pnpm exec fallow audit --base origin/main` 退出 0，报告的存量项及复杂度增长为警告。
+
+## 任务 07 本地媒体隔离与资源引用
+
+| 审计项 | 源码与验收证据 |
+| --- | --- |
+| F-01 | [本地媒体授权](../src/internal/infra/local-media.ts) 在协议动作侧解析配置、真实路径和已打开的普通文件。[授权测试](../src/internal/infra/__tests__/local-media.test.ts) 覆盖缺省拒绝、授权裸路径和文件 URI、相邻目录、歧义、junction／符号链接与硬链接。以已获动作调用权限的调用方为边界，涉及 QQ 接收／实际上传的影响未在真实账号复现。 |
+| H-02 本地侧 | [OB11 发送](../src/onebot11/action/message/send.ts)、[Milky URI](../src/milky/helper/message/media-uri.ts) 和 [Satori 资源](../src/satori/helper/element/asset.ts) 先取得私有副本再进入处理链。普通文件夹具在打开时替换源路径，验证拒绝交付；另在交付后替换源路径并模拟原生重新打开，读取的仍是核验过的副本。Linux 用打开句柄对应的 `/proc/self/fd` 路径，Windows 核对前后的实际路径和卷／文件标识，并依赖配置目录的受信任 ACL。FFmpeg 协议与容器限制沿用 [#160](https://github.com/NapukettoDev/NapukettoQQ/pull/160)，合并提交 `37087d5`，media 0.2.2。 |
+| M-09 | [缓存所有权和租约](../src/internal/infra/media-cache.ts) 隔离账号及协议，引用校验所有权标记、文件名和 TTL。模拟发送失败与并发消费者，验证只移除该请求产物；[缓存测试](../src/internal/infra/__tests__/media-cache.test.ts) 覆盖到期、回收与消费者互斥和崩溃遗留的副本／输出清理。 |
+| L-03 | [OB11 媒体查询](../src/onebot11/action/message/media.ts) 在当前账号的 QQ 媒体根内查找并导出；语音未落盘只返回元数据。[Satori 消息测试](../src/satori/action/__tests__/message.test.ts) 验证 `message.get` 的 QQ 本地引用可由 `message.create` 复用，[解析测试](../src/satori/helper/element/__tests__/asset.test.ts) 覆盖错误账户／平台、目录结构和过期引用。 |
+| I-01 A 本地侧 | [IPC 动作桥](../../loader/src/host/ipc/ipc-ob11.ts) 以动态加载的 OB11 schema 校验实际登录账号的媒体配置。[IPC 测试](../../loader/src/host/ipc/__tests__/ipc-ob11.test.ts) 用真实 adapter 与文件消费桩验证缺省拒绝、相对导出目录授权、跨账号拒绝，并拒绝旧版丢弃字段的 schema。 |
+
+任务 06 的先决条件已由 [#178](https://github.com/NapukettoDev/NapukettoQQ/pull/178)
+合入（`5966a5e`），其发布提交为 `ad0e2a7`，经 npm registry 验证版本为 adapter 0.20.0、
+loader 0.12.0、media 0.3.0。任务 07 需要等待本 PR 合并和发布，随后下游同时升级 adapter 和
+loader，再消费公开的 `ProtocolMediaConfig` 与 `media.localMediaRoots`。任务 09 继续等待
+06 和 07 的发布版本。配置及迁移见 [配置指南](../../../docs/guides/configuration.md#本地媒体与缓存引用)。
+
+| 环境 | 命令与结果 |
+| --- | --- |
+| Windows，Node 24.16.0 / pnpm 12.4.1 | adapter、loader、CLI 单包构建通过。定向 `pnpm test:quiet packages/adapter packages/loader/src/host/ipc/__tests__/ipc-ob11.test.ts apps/cli/src/config` 通过 1,529，跳过 2；最终 `pnpm check && pnpm test:quiet` 通过 3,618，跳过 14。 |
+| Linux（WSL），Node 24.16.0 / pnpm 12.4.1 | 冻结锁文件安装与受影响包构建通过。同一组定向测试通过 1,531；最终 `pnpm check && pnpm test:quiet` 通过 3,628，跳过 5。 |
+
+以上使用临时目录、普通文件、测试账号标识和原生 API 桩。仍需专用 QQ 测试账号与 Windows／Linux
+自建宿主环境，补测原生头像、闪传和消息媒体消费，以及 QQ 实际数据目录与回调时机。未修改 QQ 安装目录。

@@ -8,9 +8,8 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
-import { protectMediaPath } from "../../internal/infra/media-cache.js";
 import type { MilkyApi } from "../api.js";
-import { resolveMediaUri } from "../helper/message/media-uri.js";
+import { resolveUriToPath } from "../helper/message/media-uri.js";
 import {
     isRawOutgoingSegment,
     outgoingSegmentsToCanonical,
@@ -220,26 +219,16 @@ async function resolveElement(
     if (el.type === "at" && el.target !== "all") {
         return { ...el, target: uinToUid?.get(el.target) ?? el.target };
     }
-    if (
-        (el.type === "image" || el.type === "voice" || el.type === "video") &&
-        isRemoteMediaUri(el)
-    ) {
+    if ("path" in el) {
         return {
             ...el,
-            path: await resolveMediaUri(el.path, api.mediaDir, api.getMediaOutboundPolicy?.()),
+            path: await resolveUriToPath(
+                el.path,
+                api.mediaDir,
+                api.getMediaOutboundPolicy?.(),
+                api.getLocalMediaRoots?.(),
+            ),
         };
     }
-    if ("path" in el) await protectMediaPath(el.path);
     return el;
-}
-
-/** 远程媒体元素（image/voice/video 且 path 为需落盘的 URI）。 */
-function isRemoteMediaUri(
-    el: Extract<CanonicalElement, { type: "image" | "voice" | "video" }>,
-): boolean {
-    return (
-        el.path.startsWith("http://") ||
-        el.path.startsWith("https://") ||
-        el.path.startsWith("base64://")
-    );
 }
