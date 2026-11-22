@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.21.1
+
+### Patch Changes
+
+- Updated dependencies [cde973b]
+  - @napuketto/kernel@0.17.0
+
 ## 0.21.0
 
 ### Minor Changes
