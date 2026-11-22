@@ -14,6 +14,8 @@
  */
 
 import { once } from "node:events";
+import { Server } from "node:http";
+import { createConnection } from "node:net";
 import {
     type FriendApi,
     type GroupApi,
@@ -22,7 +24,7 @@ import {
     NTEventChannel,
     type ProfileApi,
 } from "@napuketto/kernel";
-import { EventBroadcaster } from "@napuketto/network";
+import { EventBroadcaster, HttpServer } from "@napuketto/network";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { WebSocket as WsClient } from "ws";
 import { type ActionRegistry, ConfigBase } from "../../framework/index.js";
@@ -126,6 +128,21 @@ function post(
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
+
+async function openOnLoopback(set: ReturnType<typeof assemble>): Promise<number> {
+    const listen = vi.spyOn(Server.prototype, "listen");
+    try {
+        await set.adapters[0]?.open();
+        const server = listen.mock.contexts[0];
+        const address = server instanceof Server ? server.address() : null;
+        if (!address || typeof address === "string") {
+            throw new Error("Milky HTTP server 未监听 TCP");
+        }
+        return address.port;
+    } finally {
+        listen.mockRestore();
+    }
+}
 
 describe("Milky HTTP API", () => {
     it("POST /api/get_impl_info：200 信封 {status,retcode,data}", async () => {
@@ -329,17 +346,30 @@ describe("HTTP /api 分发分支", () => {
     });
 
     it("action.handle 抛错 → 200 信封 retcode=-500 internal error", async () => {
+        const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
         const boom = assemble({
-            port: 36402,
-            registry: fakeRegistry(() => ({
+            port: 0,
+            token: TOKEN,
+            logger,
+            registry: fakeRegistry((name) => ({
                 handle: async () => {
-                    throw new Error("boom");
+                    if (name === "ping") return { status: "ok", data: { pong: 1 } };
+                    throw new Error(
+                        "authorization=header-test-value & access_token=query-test-value",
+                    );
                 },
             })),
         });
         try {
-            await boom.adapters[0]?.open();
-            const res = await post(36402, "get_login_info", JSON_HEADERS);
+            const port = await openOnLoopback(boom);
+            const ok = await post(port, `ping?access_token=${TOKEN}`, JSON_HEADERS);
+            expect(ok.status).toBe(200);
+            expect(await ok.json()).toEqual({ status: "ok", retcode: 0, data: { pong: 1 } });
+            expect(logger.warn).not.toHaveBeenCalled();
+            const res = await post(port, "action_test_value?access_token=query-test-value", {
+                ...JSON_HEADERS,
+                authorization: `Bearer ${TOKEN}`,
+            });
             expect(res.status).toBe(200);
             expect(await res.json()).toEqual({
                 status: "failed",
@@ -347,6 +377,11 @@ describe("HTTP /api 分发分支", () => {
                 data: null,
                 message: "internal error",
             });
+            expect(logger.warn.mock.calls).toEqual([
+                [{ path: "/api/:api", category: "action_dispatch_failed" }, expect.any(String)],
+            ]);
+            expect(logger.debug).not.toHaveBeenCalled();
+            expect(logger.info).not.toHaveBeenCalled();
         } finally {
             await boom.close();
         }
@@ -417,23 +452,65 @@ describe("/event 模式开关与鉴权分支", () => {
         }
     });
 
-    it("ws 禁用（eventModes=[sse]）→ 升级请求 404 拒绝", async () => {
-        const set = assemble({ port: 36405, eventModes: ["sse"] });
+    const rejectionCases: {
+        eventModes: Array<"sse" | "ws">;
+        path: string;
+        status: number;
+    }[] = [
+        { eventModes: ["sse"], path: "/event", status: 404 },
+        { eventModes: ["ws"], path: "/event?access_token=wrong-test-token", status: 401 },
+        { eventModes: ["ws"], path: "/other", status: 404 },
+    ];
+
+    it.each(rejectionCases)("Upgrade $path 返回 $status 并主动关闭", async (fixture) => {
+        const set = assemble({ port: 0, eventModes: fixture.eventModes, token: TOKEN });
         try {
-            await set.adapters[0]?.open();
-            const outcome = await wsOutcome("ws://127.0.0.1:36405/event", 2000);
-            expect(outcome).toContain("404");
+            const port = await openOnLoopback(set);
+            const socket = createConnection({ host: "127.0.0.1", port });
+            socket.setEncoding("utf8");
+            let response = "";
+            socket.on("data", (chunk: string) => {
+                response += chunk;
+            });
+            try {
+                const closed = once(socket, "close", { signal: AbortSignal.timeout(1000) });
+                socket.write(
+                    `GET ${fixture.path} HTTP/1.1\r\nHost: localhost\r\n` +
+                        "Connection: Upgrade\r\nUpgrade: websocket\r\n" +
+                        "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+                );
+                await closed;
+                expect(response).toMatch(new RegExp(`^HTTP/1.1 ${fixture.status} `));
+                expect(response).toContain("\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+            } finally {
+                socket.destroy();
+            }
         } finally {
             await set.close();
         }
     });
 
-    it("ws token 错误 → 401 拒绝（Unexpected server response: 401）", async () => {
-        const set = assemble({ port: 36406, eventModes: ["ws"], token: "tok" });
+    it("Upgrade debug 仅记录固定类别", async () => {
+        const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
+        const set = assemble({ port: 0, token: TOKEN, logger });
+        const server = set.adapters[0];
         try {
-            await set.adapters[0]?.open();
-            const outcome = await wsOutcome("ws://127.0.0.1:36406/event?access_token=wrong", 2000);
-            expect(outcome).toContain("401");
+            if (!(server instanceof HttpServer)) throw new Error("缺少 Milky HTTP server");
+            const accept = vi.fn();
+            const reject = vi.fn();
+            server.onUpgrade?.(
+                {
+                    url: "http://[::1/?access_token=query-test-value",
+                    headers: { authorization: "Bearer header-test-value" },
+                },
+                accept,
+                reject,
+            );
+            expect(reject).toHaveBeenCalledExactlyOnceWith(400);
+            expect(accept).not.toHaveBeenCalled();
+            expect(logger.debug.mock.calls).toEqual([
+                [{ category: "invalid_upgrade_target" }, expect.any(String)],
+            ]);
         } finally {
             await set.close();
         }
@@ -476,84 +553,34 @@ describe("/event 模式开关与鉴权分支", () => {
             await set.close();
         }
     });
-
-    it("WS 升级到非 /event 路径 → hub 不承接（连接不建立）", async () => {
-        const set = assemble({ port: 36409, eventModes: ["ws"] });
-        const client = new WsClient("ws://127.0.0.1:36409/other");
-        try {
-            await set.adapters[0]?.open();
-            const outcome = await new Promise<string>((resolve) => {
-                client.on("error", (e: Error) => resolve(String(e)));
-                client.on("open", () => resolve("open"));
-                setTimeout(() => resolve("timeout"), 1500);
-            });
-            expect(outcome).not.toBe("open");
-        } finally {
-            client.terminate();
-            await set.close();
-        }
-    });
-
-    it("webhook 无 token → 不带 authorization 头装配", async () => {
-        const logger: MilkyLoggerLike = { debug: vi.fn(), warn: vi.fn(), info: vi.fn() };
-        const set = assemble({
-            port: 36410,
-            webhooks: ["http://127.0.0.1:9/noauth"],
-            logger,
-        });
-        try {
-            expect(set.adapters.length).toBe(3);
-            set.adapters[2]?.send({ ping: 1 });
-            await vi.waitFor(
-                () => {
-                    expect(logger.warn).toHaveBeenCalledWith(
-                        expect.objectContaining({ url: "http://127.0.0.1:9/noauth" }),
-                        expect.any(String),
-                    );
-                },
-                { timeout: 3000 },
-            );
-        } finally {
-            await set.close();
-        }
-    });
-
-    /** WS 连接结果短句（open / error 文本 / 超时）。 */
-    function wsOutcome(url: string, timeoutMs: number): Promise<string> {
-        return new Promise<string>((resolve) => {
-            const ws = new WsClient(url);
-            ws.on("error", (e: Error) => resolve(String(e)));
-            ws.on("open", () => resolve("open"));
-            setTimeout(() => resolve("timeout"), timeoutMs);
-        });
-    }
 });
 
 describe("WebHook 推送", () => {
-    it("不可达 webhook → onError → logger.warn（不影响其他 adapter）", async () => {
-        const logger: MilkyLoggerLike = { debug: vi.fn(), warn: vi.fn(), info: vi.fn() };
+    it("webhook 错误日志只含固定类别与配置索引", async () => {
+        const logger = { debug: vi.fn(), warn: vi.fn(), info: vi.fn() };
+        const url = "http://test-user:test-password@127.0.0.1/hook?access_token=query-test-value";
+        const fetchMock = vi
+            .spyOn(globalThis, "fetch")
+            .mockRejectedValueOnce(new Error(`request failed: ${url}; Bearer ${TOKEN}`));
         const set = assemble({
-            // 本用例只向 webhook 发请求，无需回连 HTTP server，由系统分配空闲端口。
             port: 0,
-            webhooks: ["http://127.0.0.1:9/hook"],
+            webhooks: [url],
             logger,
-            token: "t",
+            token: TOKEN,
         });
         try {
-            await set.adapters[0]?.open();
-            // adapters[0]=server, [1]=hub, [2..]=webhook clients
             expect(set.adapters.length).toBe(3);
             set.adapters[2]?.send({ ping: 1 });
-            await vi.waitFor(
-                () => {
-                    expect(logger.warn).toHaveBeenCalledWith(
-                        expect.objectContaining({ url: "http://127.0.0.1:9/hook" }),
+            await vi.waitFor(() =>
+                expect(logger.warn.mock.calls).toEqual([
+                    [
+                        { category: "webhook_delivery_failed", index: 0 },
                         expect.stringContaining("webhook"),
-                    );
-                },
-                { timeout: 3000 },
+                    ],
+                ]),
             );
         } finally {
+            fetchMock.mockRestore();
             await set.close();
         }
     });

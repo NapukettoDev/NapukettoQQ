@@ -5,8 +5,8 @@
 #      然后 docker compose up -d。
 # 完整字段说明见 docs/guides/configuration.md。
 #
-# 容器与原生部署的唯一区别在**监听地址**：容器内的 127.0.0.1 是容器自己的
-# 回环，宿主机连不上；要让 `-p 3000:3000` 真正可用，这里必须写 0.0.0.0。
+# 在容器内绑定 0.0.0.0 才能接收示例端口映射的流量。即使宿主机只发布到
+# 127.0.0.1，同网络容器仍可能直连，所以启用的服务必须配置真实 token。
 
 autoRestart = true
 restartDelayMs = 2000
@@ -16,8 +16,8 @@ restartDelayMs = 2000
 qq = "123456789"
 
 [accounts.onebot11]
-# 暴露到宿主机/局域网时务必设置；留空 = 不鉴权
-token = "change-me"
+# 必须替换成新生成的随机 token，并同步到 HTTP/WS 客户端。
+token = "REPLACE_WITH_RANDOM_TOKEN"
 
 [[accounts.onebot11.httpServers]]
 enabled = true
@@ -29,10 +29,11 @@ port = 3000
 enabled = true
 host = "0.0.0.0"
 port = 3001
-# token = "change-me"       # 可选：覆盖上面的全局 token
+# token = "REPLACE_WITH_RANDOM_TOKEN"  # 可选，替换为该实例独立的随机 token
 
 # ---- 其他协议按需启用（不写段 = 不启用） ----
-# [[accounts.satori]]
+# [accounts.satori]
+# token = "REPLACE_WITH_RANDOM_TOKEN"  # 启用以下服务前替换
 # [[accounts.satori.httpServers]]
 # enabled = true
 # host = "0.0.0.0"
@@ -42,10 +43,16 @@ port = 3001
 # host = "0.0.0.0"
 # port = 5501
 
+# [accounts.milky]
+# enabled = true
+# host = "0.0.0.0"
+# port = 3002
+# token = "REPLACE_WITH_RANDOM_TOKEN"  # 启用前替换，按需增加宿主机端口映射
+
 # ---- 正向 WS（机器人主动连出去，适合连 Koishi：无需映射端口） ----
 # Linux 原生 Docker 需 compose.yaml 的 extra_hosts 才能解析 host.docker.internal；
 # 对端暂时未启动时机器人会 warn 并在后台重连，不会退出。
 # [[accounts.onebot11.wsReverseUrls]]
 # enabled = true
 # url = "ws://host.docker.internal:5140/onebot"
-# token = "change-me"
+# token = "REPLACE_WITH_RANDOM_TOKEN"  # 对端要求鉴权时使用对端配置的 token

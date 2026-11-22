@@ -15,7 +15,6 @@
  * 的子进程重启退避同一思路；连接建立后的断线仍由 `WsClient` 自己的 reconnect
  * 策略处理，两者不重叠。
  */
-import { errorMessage } from "@napuketto/kernel";
 import type { TransportAdapter } from "@napuketto/network";
 import type { AdapterLoggerLike } from "./log.js";
 
@@ -24,7 +23,7 @@ const MAX_RETRY_DELAY_MS = 60_000;
 
 /** 首连容错参数。 */
 export interface OutboundOpenOptions {
-    /** 日志标识（协议名 + 地址，如 `onebot11 正向 WS ws://…`）。 */
+    /** 日志标识（协议名 + 配置位置）。 */
     label: string;
     /** 首次重连延迟（毫秒；后续按 2 倍指数退避）。 */
     delayMs: number;
@@ -76,13 +75,13 @@ export function openOutboundWithRetry(
         }
         try {
             await transport.open();
-        } catch (err) {
+        } catch {
             // 取消期间失败的 open：不再告警/排重试（避免 stop 后仍刷日志）
             if (stopped) {
                 return;
             }
             opts.logger?.warn(
-                { err: errorMessage(err), label: opts.label, retry: attempt + 1 },
+                { category: "outbound_open_failed", label: opts.label, retry: attempt + 1 },
                 "出向传输连接失败，后台按重连策略重试（不影响宿主运行）",
             );
             scheduleRetry();
@@ -93,10 +92,10 @@ export function openOutboundWithRetry(
         if (stopped) {
             try {
                 await transport.close();
-            } catch (err) {
+            } catch {
                 // 取消路径的清理失败不阻断 stopAll（记录后由下层 close 再兜底）
                 opts.logger?.warn(
-                    { err: errorMessage(err), label: opts.label },
+                    { category: "outbound_close_failed", label: opts.label },
                     "取消后关闭出向传输失败",
                 );
             }

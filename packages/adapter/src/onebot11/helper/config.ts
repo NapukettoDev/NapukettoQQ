@@ -7,7 +7,7 @@
  * wsReverse 废弃（zod strip 静默忽略，不兼容迁移）。
  */
 import { z } from "zod";
-import { createServerSchema } from "../../framework/index.js";
+import { createServerSchema, validateServerTokens } from "../../framework/transport-schema.js";
 
 /** HTTP 反向服务器默认端口。 */
 const DEFAULT_HTTP_PORT = 3000;
@@ -59,7 +59,7 @@ const wsReverseSchema = z.object({
 });
 
 /** OB11 配置 schema。 */
-export const ob11ConfigSchema = z.object({
+const configFields = z.object({
     /** 鉴权 token（全局默认，实例未指定时继承）。 */
     token: z.string().optional(),
     /** 心跳 meta 事件间隔（毫秒），0 关闭心跳。 */
@@ -83,6 +83,8 @@ export const ob11ConfigSchema = z.object({
     /** 正向 WS client 列表。 */
     wsReverseUrls: z.array(wsReverseSchema).default([]),
 });
+
+export const ob11ConfigSchema = configFields.superRefine(validateServerTokens);
 
 /** OB11 配置类型（由 schema 推导）。 */
 export type OB11Config = z.infer<typeof ob11ConfigSchema>;

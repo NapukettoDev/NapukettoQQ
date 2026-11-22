@@ -74,8 +74,10 @@ curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docke
 
 ## 端口与安全
 
-- **容器内监听地址必须写 `0.0.0.0`**：写 `127.0.0.1` 时端口映射看着正常，宿主机却连不上。
-- compose 默认只绑宿主机 `127.0.0.1`；局域网访问用 `HOST_BIND=0.0.0.0 docker compose up -d`，并设 `token`。
+- 示例在容器内绑定 `0.0.0.0`。每个已启用的入站 HTTP／WS 服务都需要有效 token，同网络容器可能直接访问这些端口。非回环绑定缺少 token、值为空白或仍为占位值时，协议配置校验失败（退出码 `78`）。
+- Compose 默认把端口发布到宿主机 `127.0.0.1`。Docker Engine 28.0.0 之前的版本无法依靠回环发布隔离同一二层网络。局域网确需直连时可设置 `HOST_BIND=0.0.0.0`，并限制防火墙来源。[Docker 端口发布说明](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)
+- 只用出站连接时可移除 `ports`。仅供同一容器内可信进程访问时，可将服务绑定到容器的 `127.0.0.1` 并移除发布映射。
+- 迁移时先生成随机 token，配置协议级或监听实例级 token，再同步客户端。重启前运行 `napuketto config validate`。经过外部鉴权代理的部署仍须保护容器监听。[配置指南](configuration.md#协议监听鉴权)
 - 暴露公网请走反向代理并上 HTTPS / `wss://`；OneBot 11 的 HTTP 与 WS 都是明文。
 - 正向 WS（`wsReverseUrls`）不需要映射端口，适合连 `host.docker.internal` 或同网络 Koishi。
   Docker Desktop 自带 `host.docker.internal`；**Linux 原生 Docker 需 compose 的

@@ -114,6 +114,29 @@ describe("cmdConfigValidate 显式形态", () => {
         );
     });
 
+    it("非回环监听使用空串覆盖协议 token → ConfigError 且不回显配置值", async () => {
+        const configJson = JSON.stringify({
+            accounts: [
+                {
+                    qq: "10001",
+                    onebot11: {
+                        token: "fixture-protocol-secret",
+                        wsServers: [{ enabled: true, host: "0.0.0.0", token: "" }],
+                    },
+                },
+            ],
+        });
+        try {
+            await cmdConfigValidate({ configJson, dataDir: tmp });
+            expect.unreachable("应拒绝非回环免鉴权监听");
+        } catch (err) {
+            expect(err).toBeInstanceOf(ConfigError);
+            expect(String(err)).toContain('"wsServers", 0, "token"');
+            expect(String(err)).toContain("非回环监听要求有效 token");
+            expect(String(err)).not.toContain("fixture-protocol-secret");
+        }
+    });
+
     it("协议段为空对象 → 通过（空段 = 不启用该协议，与 loader 装配一致）", async () => {
         const configJson = JSON.stringify({ accounts: [{ qq: "10001", kurobot: {} }] });
         await expect(cmdConfigValidate({ configJson, dataDir: tmp })).resolves.toEqual({

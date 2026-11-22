@@ -12,6 +12,9 @@
 import { timingSafeEqual } from "node:crypto";
 import type { RequestContext } from "@napuketto/network";
 import { describe, expect, it, vi } from "vitest";
+import { milkyConfigSchema } from "../../milky/config.js";
+import { ob11ConfigSchema } from "../../onebot11/helper/config.js";
+import { satoriConfigSchema } from "../../satori/helper/config.js";
 import { BEARER_PREFIX, createTokenAuthorize, matchTokenCredential, tokenEquals } from "../auth.js";
 
 // 调用真实 crypto 实现，验证比较原语的安全前置条件；不使用不稳定的耗时断言。
@@ -221,15 +224,17 @@ describe("matchTokenCredential：allowQueryToken 查询参数", () => {
 
 describe("matchTokenCredential：查询参数 URL 解析失败", () => {
     it("非法 URL → fail-closed 返回 false 且触发回调", () => {
-        const calls: { url: string; err: unknown }[] = [];
-        const result = matchTokenCredential(makeCtx("http://[::1"), TOKEN, {
-            allowQueryToken: true,
-            onQueryParseError: (url, err) => calls.push({ url, err }),
-        });
+        const onQueryParseError = vi.fn();
+        const result = matchTokenCredential(
+            makeCtx("http://[::1/?access_token=query-test"),
+            TOKEN,
+            {
+                allowQueryToken: true,
+                onQueryParseError,
+            },
+        );
         expect(result).toBe(false);
-        expect(calls).toHaveLength(1);
-        expect(calls[0]?.url).toBe("http://[::1");
-        expect(calls[0]?.err).toBeInstanceOf(TypeError);
+        expect(onQueryParseError.mock.calls).toEqual([[]]);
     });
 
     it("未提供回调时仍然 fail-closed 不抛错", () => {
@@ -239,13 +244,85 @@ describe("matchTokenCredential：查询参数 URL 解析失败", () => {
     });
 
     it("Bearer 头已命中时不解析 URL、不触发回调", () => {
-        const calls: string[] = [];
+        const onQueryParseError = vi.fn();
         const result = matchTokenCredential(
             makeCtx("http://[::1", { authorization: `${BEARER_PREFIX}${TOKEN}` }),
             TOKEN,
-            { allowQueryToken: true, onQueryParseError: (url) => calls.push(url) },
+            { allowQueryToken: true, onQueryParseError },
         );
         expect(result).toBe(true);
-        expect(calls).toHaveLength(0);
+        expect(onQueryParseError).not.toHaveBeenCalled();
+    });
+});
+
+describe.each([
+    { name: "OneBot 11", schema: ob11ConfigSchema },
+    { name: "Satori", schema: satoriConfigSchema },
+])("$name 服务端配置", ({ schema }) => {
+    for (const transport of ["httpServers", "wsServers"] as const) {
+        it.each([undefined, "", "  ", " change-me ", "REPLACE_WITH_RANDOM_TOKEN"])(
+            `${transport} 启用非回环时拒绝无效 token %j`,
+            (token) => {
+                const result = schema.safeParse({
+                    token,
+                    [transport]: [{ enabled: true, host: "0.0.0.0" }],
+                });
+                expect(result.error?.issues).toMatchObject([{ path: [transport, 0, "token"] }]);
+            },
+        );
+
+        it(`${transport} 校验实例覆盖后的 token，忽略禁用实例`, () => {
+            const server = { enabled: true, host: "::" };
+            expect(schema.safeParse({ token: TOKEN, [transport]: [server] }).success).toBe(true);
+            expect(
+                schema.safeParse({ token: TOKEN, [transport]: [{ ...server, token: "" }] }).success,
+            ).toBe(false);
+            expect(
+                schema.safeParse({
+                    token: "change-me",
+                    [transport]: [{ ...server, token: TOKEN }, { host: "::" }],
+                }).success,
+            ).toBe(true);
+            expect(schema.safeParse({ [transport]: [{ enabled: true }] }).success).toBe(true);
+        });
+    }
+});
+
+describe("Milky 共用监听配置", () => {
+    it.each(["", "  ", " cHanGe-Me ", "REPLACE_WITH_RANDOM_TOKEN"])(
+        "即使关闭事件模式，HTTP 非回环也拒绝无效 token %j",
+        (token) => {
+            const result = milkyConfigSchema.safeParse({
+                enabled: true,
+                host: "0.0.0.0",
+                eventModes: [],
+                token,
+            });
+            expect(result.error?.issues).toMatchObject([{ path: ["token"] }]);
+        },
+    );
+
+    it.each(["127.0.0.1", "127.1.2.3", "::1", "0:0:0:0:0:0:0:1", "::ffff:127.0.0.1"])(
+        "允许数值回环 %s 留空 token",
+        (host) => expect(milkyConfigSchema.safeParse({ enabled: true, host }).success).toBe(true),
+    );
+
+    it.each(["::", "localhost", "192.0.2.10", "::ffff:192.0.2.10"])(
+        "地址 %s 要求 token",
+        (host) => {
+            expect(milkyConfigSchema.safeParse({ enabled: true, host }).success).toBe(false);
+            expect(milkyConfigSchema.safeParse({ enabled: true, host, token: TOKEN }).success).toBe(
+                true,
+            );
+        },
+    );
+
+    it("忽略禁用的 Milky 和只含出站连接的 OneBot 11", () => {
+        expect(milkyConfigSchema.safeParse({ host: "0.0.0.0" }).success).toBe(true);
+        expect(
+            ob11ConfigSchema.safeParse({
+                wsReverseUrls: [{ enabled: true, url: "ws://127.0.0.1:5140/onebot" }],
+            }).success,
+        ).toBe(true);
     });
 });

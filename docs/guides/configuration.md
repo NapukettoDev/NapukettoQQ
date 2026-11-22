@@ -109,6 +109,13 @@ enabled = true        # 可选，默认 true；supervisor 只拉起启用的账�
 | KuroBot | 账号段非空且含 url | url、token、commandPrefix | [kurobot.md](../protocols/kurobot.md) / [schema](../../packages/adapter/src/kurobot/config.ts) |
 | Milky | 账号段非空且 enabled=true | enabled、host、port、token | [milky.md](../protocols/milky.md) / [schema](../../packages/adapter/src/milky/config.ts) |
 
+### 协议监听鉴权
+
+- 启用的 OneBot 11 和 Satori HTTP／WS 服务使用实例 token，省略实例 token 时继承协议级 token。显式空串会覆盖继承值。Milky 的 HTTP、SSE 与 WebSocket 共用该协议的监听地址和 token。
+- `127.0.0.0/8`、`::1` 及 IPv4 映射回环是数值回环地址。只有所有可直连的客户端可信时才适合省略 token。主机名（含 `localhost`）、监听全部网卡及其他非回环地址要求随机 token。空白和已知占位值（包括 `change-me`、`changeme`、`REPLACE_WITH_RANDOM_TOKEN`，忽略大小写和外围空白）会在协议配置校验时以退出码 `78` 拒绝。
+- 已有非回环部署可先生成随机 token，更新对应服务与客户端，再运行 `napuketto config validate`。可信同机集成可直接迁移到数值回环。Docker 发布到宿主机回环时，仍按容器实际监听地址校验。[Docker 部署](docker.md#端口与安全)
+- 使用外部鉴权时，代理须覆盖 HTTP、SSE 和 WS Upgrade，并确保客户端无法绕过代理直连上游。可信同机代理可转发到数值回环。跨容器或跨主机转发时，上游保留协议 token，并按协议传递凭据（Satori WS 使用 `IDENTIFY`）。当前服务配置使用 TCP，专用 Unix socket 或命名管道需由外部代理提供。
+
 全量字段、默认值与传输实例见各协议 schema；Milky 的 `enabled` 缺省 `false`，未开启不监听。
 
 ## 环境变量

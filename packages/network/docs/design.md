@@ -34,6 +34,8 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
   - `onRawRequest`：返回 `Response` 即短路，跳过 JSON 解析（SSE 等无 body 端点）
   - `onUpgrade`：同端口 WS 升级交接（Milky `/event`）
   - `authorize`：鉴权钩子，规则（token 来源等）由协议层决定
+- `onUpgrade` 同步选择 `accept` 或 `reject`，只采纳第一次选择，钩子返回后执行。无决定回 404，决策异常回 500，关停中的接入回 503。network 负责写完拒绝响应并关闭 TCP。未安装钩子的端口按 Node 默认行为回收 Upgrade socket。接受后由 `ws` 验证握手，交接回调异常则终止 WS。协议层负责路由和鉴权，network 保留 TCP／WS 的关停与超时回收职责。
+- 请求构造、路由或鉴权抛错时返回固定错误响应，避免框架默认异常日志输出请求输入。
 - **依赖方向**：`kernel` / `media` / `network` 三个底层包互不依赖；本包被
   `packages/adapter`（协议层容器）与 `apps/cli`（宿主装配）以 `workspace:*`
   消费；kernel 不依赖 network。

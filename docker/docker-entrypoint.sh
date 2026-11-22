@@ -28,8 +28,8 @@ if [ ! -f "$CONFIG" ]; then
 没有现成配置时，可从模板开始（仓库 docker/napuketto.toml.example）：
   cp napuketto.toml.example napuketto.toml
 
-注意：容器内协议监听地址要写 0.0.0.0，宿主机/其他容器才能访问；
-      模板默认的 127.0.0.1 只在容器内部可达。
+使用模板的容器监听地址 0.0.0.0 时，请替换 token 占位值。
+宿主机发布到 127.0.0.1 时，同网络容器仍可能直连。
 EOF
     exit 78
 fi

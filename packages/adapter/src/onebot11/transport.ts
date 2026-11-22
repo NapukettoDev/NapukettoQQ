@@ -24,8 +24,8 @@ import type { OB11Config } from "./helper/index.js";
 
 /** 正向 WS client 首连失败的后台重连参数（HTTP 上报无连接，不参与）。 */
 export interface Ob11OutboundWsReconnect {
-    /** 对端地址（日志标识 + 同配置内唯一）。 */
-    url: string;
+    /** 配置项序号，用于定位日志。 */
+    index: number;
     /** 首次重连延迟（毫秒；后续按 2 倍指数退避）。 */
     delayMs: number;
     /** 最大重连次数（不含首连）；缺省无限。 */
@@ -206,7 +206,7 @@ function assembleWsReverses(
     transports: TransportAdapter[],
     outbound: Ob11OutboundTransport[],
 ): void {
-    for (const item of config.wsReverseUrls) {
+    for (const [index, item] of config.wsReverseUrls.entries()) {
         if (item.enabled && item.url !== undefined) {
             // koishi 等第三方按 X-Self-ID / x-client-role 识别并校验连接（NapCat 同款头），
             // 与 authorization 合并后作为握手请求头
@@ -236,7 +236,7 @@ function assembleWsReverses(
             outbound.push({
                 transport: client,
                 wsReconnect: {
-                    url: item.url,
+                    index,
                     delayMs: item.reconnectDelayMs,
                     ...(item.maxReconnectAttempts !== undefined
                         ? { maxAttempts: item.maxReconnectAttempts }

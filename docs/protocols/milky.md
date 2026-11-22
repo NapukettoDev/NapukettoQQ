@@ -14,13 +14,14 @@
 enabled = true
 host = "127.0.0.1"
 port = 3001
-token = ""                  # 空 = 不校验（仅限内网）
+token = ""                  # 仅供可信本机直连时可留空
 eventModes = ["sse", "ws"]  # /event 允许的连接形态
 webhooks = []               # 额外推送地址，可多个
 # cacheDir = ".napuketto/cache"
 ```
 
 - `token` 非空时校验 `Authorization: Bearer <token>`；SSE / WS 允许 `?access_token=` 兜底。
+- 非回环监听要求有效 token。升级的未知路径或禁用 WS 返回 404，凭据不匹配返回 401，随后由服务端关闭连接。
 - `webhooks[]` 每个地址各发一份 POST，请求头带 Bearer token，body 与 WS / SSE 推送同构。
 - `cacheDir` 是发送 `http(s)://` / `base64://` 媒体时的下载缓存目录；缺省不下载，
   远程媒体发送报参数错误。

@@ -1223,7 +1223,7 @@ describe("传输装配（start + 真传输）", () => {
             wsReverseUrls: [
                 {
                     enabled: true,
-                    url: "ws://127.0.0.1:1/onebot",
+                    url: "ws://127.0.0.1:1/onebot?access_token=fixture-query-secret",
                     reconnectDelayMs: 20,
                     maxReconnectAttempts: 1,
                     heartbeatInterval: 0,
@@ -1242,7 +1242,8 @@ describe("传输装配（start + 真传输）", () => {
         await vi.waitFor(() => {
             expect(warn).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    label: expect.stringContaining("ws://127.0.0.1:1/onebot"),
+                    label: "onebot11 wsReverseUrls[0]",
+                    category: "outbound_open_failed",
                 }),
                 expect.stringContaining("后台按重连策略重试"),
             );
@@ -1254,6 +1255,7 @@ describe("传输装配（start + 真传输）", () => {
                 expect.stringContaining("已达最大重连次数"),
             );
         });
+        expect(JSON.stringify(warn.mock.calls)).not.toContain("fixture-query-secret");
         await adapter.stop();
     });
 });

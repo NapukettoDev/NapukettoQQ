@@ -25,7 +25,7 @@ services:
         extra_hosts:
             - "host.docker.internal:host-gateway"
         ports:
-            # 默认只绑定回环：公网/局域网访问请改成 HOST_BIND=0.0.0.0 并配好 token
+            # 发布到宿主机回环。容器监听 0.0.0.0 时仍须配置真实 token。
             - "${HOST_BIND:-127.0.0.1}:${ONEBOT_HTTP_PORT:-3000}:3000"
             - "${HOST_BIND:-127.0.0.1}:${ONEBOT_WS_PORT:-3001}:3001"
         environment:
