@@ -197,3 +197,47 @@ QQ 原生文件就绪：缓存版本 3.2.35-54395
 | 数据目录被占用 | exit 1 + IPC failed |
 | 配置校验失败 | exit 78（EX_CONFIG） |
 | 请求式关停 | exit 0 |
+
+
+## self-host 断管、统一关停与身份恢复（任务 03）
+
+基线 `5f6e166` 的工作区版本为 loader 0.10.9、kernel 0.16.4、adapter 0.19.0、network 0.5.0。
+Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter 0.18.22、network 0.4.5。
+
+| 审计编号 | 本次证据及既有上游修复 |
+| --- | --- |
+| H-04 | loader `bootstrap-core.ts` 在释放 kernel 缓存与监听器前调用 OB11 `unsubscribeOnly` 或协议 `stop`。#162 / `d7ede96` 的媒体缓存定时器与租约已在 adapter 0.18.18 发布。 |
+| M-01 上游 | `assemble-protocols.ts` 启动的协议在统一关停时都会尝试停止。匹配 pong、缓冲上限和重连仍由 #163 / `2169832` 的 network 0.4.5、adapter 0.18.19 提供。 |
+| M-02、M-05 上游 | `ipc-server.ts`、`ipc-sender.ts`、`self-host.ts`、`shutdown.ts` 验证 stdin EOF、stdout 写失败、stop/restart、发生在登录或在途动作时的断开、stdout 协议帧，以及按字节限行和在途动作拒绝。 |
+| M-03 上游 | 配置错误继续通过同一编排退出 78。`ConfigBase` 并发保存沿用 #161 / `893bbdd`（kernel 0.16.2），仅保证同一实例内顺序与原子替换。 |
+| L-02 上游 | `instance-lock.ts` 用同目录变更互斥和所有权令牌验证三进程争锁、空锁、强杀残留、旧记录、读不到命令行及同 PID 所有权变化。 |
+| I-01 B | `ipc-types.ts`、`ipc-sender.ts`、`bootstrap-core.ts`、`relogin.ts` 验证 ready 重播、自身身份补查、软重登，新一代装配前返回 `INVALID_STATE`。事件晚于 ready 的既有修复在 #168 / `9fbaee1`（loader 0.10.7）。 |
+| F-06 关停接线 | `shutdown.ts`、`protocols.ts`、`ipc-ob11.ts` 覆盖协议进程控制、限时阶段、桥和监听器释放。HTTP/SSE/WS 停服由 #158 / `2ff0da0`（network 0.4.4、adapter 0.18.14）提供。应用/守护退出和树杀保留 #149 / `147e1f9` 的 loader 0.10.5 契约。 |
+
+### 验证与剩余条件
+
+- Windows Node 24.16.0：`pnpm --filter @napuketto/loader build` 通过。
+  `pnpm test:quiet packages/loader` 525 通过、5 跳过。
+  `pnpm check && pnpm test:quiet` 通过，3591 通过、14 跳过。
+  `pnpm exec fallow audit --base origin/main` 通过，无新增门禁发现。
+- Linux x86_64 WSL Node 24.16.0：将 loader CJS 产物、锁定的 zod 和测试夹具复制到
+  Linux 本地文件系统执行 `node --test --test-reporter=tap self-host-process.integration.mjs`。
+  8 个子进程用例通过，覆盖双向断管、控制退出、应用退出、初期身份未知、软重登及并发锁回收。
+- 原生待验：需要 Windows/Linux 的真实 stub、受支持 QQ NT 及隔离测试账号，复核
+  动态加载后的 O3 时序、native 锁释放、立即重启和真实 stdout fd 1 的写入。
+  QQ 原生代码可绕过 Node 流直接写入 fd 1。IPC 消费方仍须兼容原生噪音并支持状态恢复；
+  本次标准 Node 测试验证宿主 JS 的 stdout 只有协议帧，未覆盖原生直写或阻塞。
+
+### 下游 02、04、20
+
+- **02**：已有 IPC v1 帧结构沿用，上游在途与行上限与 #46 的 256 和 16 MiB 对齐。
+  本次版本在超限时回同 ID 的 `IPC_BUSY`。帧上限计算包含 CR、排除 LF。EOF 的未完成尾帧
+  丢弃。stop/restart 无 ACK，以子进程退出作为完成信号，重启仍由父进程决定。
+- **04**：0.10.9 支持 ready 后发 `login.getSelf` 获取 `{uin, uid, nickname}`，并支持
+  `control status` 重播 status。当前 #47 可继续使用补查路径。新版本用一个
+  `status(ready).selfInfo` 原子携带 `{uin, uid, nick}`。旧解析器会忽略此新增字段，
+  依赖升级后使用 loader 导出的 schema，再按当前子进程及装配状态校验异步补查结果。
+- **20**：新行为随本次 loader minor changeset 发布，按当前基线预计为 0.11.0。
+  `^0.10.9` 不覆盖 0.11.0，发布后同步依赖范围与锁文件。原生引导原语自 kernel
+  0.12.3 提供，下游当前锁定 0.16.4 已满足。升级同一账号目录前先停止旧宿主；
+  原生模块同步卡死时保留父进程强杀兜底。

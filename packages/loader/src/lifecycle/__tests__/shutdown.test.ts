@@ -11,6 +11,12 @@ import { join } from "node:path";
 import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const log = vi.hoisted(() => vi.fn());
+vi.mock("../../host/util.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../host/util.js")>()),
+    log,
+}));
+
 type ShutdownModule = typeof import("../shutdown.js");
 
 async function freshShutdown(): Promise<ShutdownModule> {
@@ -23,7 +29,7 @@ afterEach(() => {
 });
 
 describe("registerShutdownHook / requestShutdown", () => {
-    it("钩子按注册逆序执行后 exit 0，stdout 播报原因", async () => {
+    it("钩子按注册逆序执行后 exit 0，诊断走安全日志", async () => {
         const mod = await freshShutdown();
         const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
         const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -37,13 +43,13 @@ describe("registerShutdownHook / requestShutdown", () => {
         await mod.requestShutdown("单测请求");
         expect(order).toEqual(["b", "a"]);
         expect(exitSpy).toHaveBeenCalledWith(0);
-        expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining("优雅关停：单测请求"));
+        expect(log).toHaveBeenCalledWith(expect.stringContaining("关停：单测请求"));
+        expect(writeSpy).not.toHaveBeenCalled();
     });
 
     it("单个钩子抛异常不阻断后续钩子", async () => {
         const mod = await freshShutdown();
         vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
-        const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
         const order: string[] = [];
         mod.registerShutdownHook(() => {
             order.push("a");
@@ -53,7 +59,7 @@ describe("registerShutdownHook / requestShutdown", () => {
         });
         await mod.requestShutdown("单测请求");
         expect(order).toEqual(["a"]);
-        expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining("钩子炸了"));
+        expect(log).toHaveBeenCalledWith(expect.stringContaining("钩子炸了"));
     });
 
     it("幂等：重复调用只编排一次；关停后注册的钩子不再执行", async () => {
@@ -68,6 +74,33 @@ describe("registerShutdownHook / requestShutdown", () => {
         expect(hook).toHaveBeenCalledOnce();
         expect(exitSpy).toHaveBeenCalledOnce();
         expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it("关停始终先停接收，挂起的协议停止超时后仍释放服务并保留首次退出码", async () => {
+        vi.useFakeTimers();
+        try {
+            const mod = await freshShutdown();
+            const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+            const steps: string[] = [];
+            mod.registerShutdownHook(() => {
+                steps.push("service");
+            });
+            mod.registerShutdownHook(() => {
+                steps.push("intake");
+            }, "intake");
+            mod.registerShutdownHook(() => {
+                steps.push("protocol");
+                return new Promise(() => undefined);
+            }, "protocols");
+            const first = mod.requestShutdown("first", 78);
+            expect(mod.requestShutdown("second")).toBe(first);
+            await vi.advanceTimersByTimeAsync(1500);
+            await first;
+            expect(steps).toEqual(["intake", "protocol", "service"]);
+            expect(exit).toHaveBeenCalledExactlyOnceWith(78);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("异步钩子（返回 Promise）被等待", async () => {

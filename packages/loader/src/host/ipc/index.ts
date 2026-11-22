@@ -18,7 +18,9 @@ export {
 } from "./ipc-ob11.js";
 export {
     enableIpc,
+    flushIpc,
     lastIpcStatusPhase,
+    readReadySelf,
     replayStatus,
     sendEvent,
     sendLog,
@@ -37,6 +39,8 @@ export {
     startIpcServer,
 } from "./ipc-server.js";
 export {
+    DEFAULT_MAX_IPC_LINE_BYTES,
+    DEFAULT_MAX_PENDING_REQUESTS,
     IPC_VERSION,
     type IpcActionMessage,
     type IpcActionPayload,

@@ -445,7 +445,7 @@ describe("bootstrapWithCore：引导失败分支", () => {
         expect(await mod.bootstrapWithCore(kernel, state, BOOT_ENV, 537376818)).toBe(true);
     });
 
-    it("关停钩子注册：requestShutdown 逆序触发 services.dispose → IPC 面 → stopAdapters", async () => {
+    it("关停钩子注册：requestShutdown 先停协议，再清理 IPC 和服务", async () => {
         stubBootEnv();
         vi.stubEnv("NAPUTO_IPC", "1");
         vi.stubEnv("NAPUTO_SELF_HOST", "1");
@@ -470,9 +470,9 @@ describe("bootstrapWithCore：引导失败分支", () => {
                 "startProtocols:10001",
                 "attach:ipc-services",
                 "attach:ob11-bridge",
+                "stop:ob11-bridge",
                 "stop:adapters",
                 "stop:ipc-services",
-                "stop:ob11-bridge",
                 "dispose:services",
             ]);
             expect(exitSpy).toHaveBeenCalledWith(0);

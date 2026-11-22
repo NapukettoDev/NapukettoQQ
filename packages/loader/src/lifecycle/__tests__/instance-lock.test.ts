@@ -3,7 +3,7 @@
  *
  * mock 策略：
  *   - readCmdlineForPid：vi.mock 替换（复用分支的查询返回值由用例控制）；
- *     normalizeCmdline / selfCmdline / CMDLINE_PROBE_SUPPORTED 保持真实现
+ *     normalizeCmdline / CMDLINE_PROBE_SUPPORTED 保持真实现
  *     （规范化比对规则在被测路径内真实执行）。
  *   - process.kill：vi.spyOn 控制探活结果（不依赖真实进程存在性）。
  *   - fs：真实临时目录（与 bootstrap.test.ts 同套路），锁文件真实读写。
@@ -20,7 +20,7 @@ import {
     INSTANCE_LOCK_FILE,
     releaseInstanceLock,
 } from "../instance-lock.js";
-import { CMDLINE_PROBE_SUPPORTED, selfCmdline } from "../pid-cmdline.js";
+import { CMDLINE_PROBE_SUPPORTED } from "../pid-cmdline.js";
 
 /** node:fs 写入失败注入（vi.hoisted：mock 工厂内可见；null = 透传真实实现）。 */
 const fsWrite = vi.hoisted(() => {
@@ -47,6 +47,7 @@ vi.mock("../pid-cmdline.js", async (importOriginal) => {
     return { ...actual, readCmdlineForPid: readCmdlineMock };
 });
 
+const MOCK_SELF_CMDLINE = "node fixture.mjs";
 let tmpRoot = "";
 let dataDir = "";
 let killSpy: ReturnType<typeof spyOnKill>;
@@ -86,6 +87,7 @@ beforeEach(() => {
     // 缺省探活成功（复用分支被测的前提）；个别用例覆盖为 throw
     killSpy = spyOnKill().mockImplementation(() => true);
     readCmdlineMock.mockReset();
+    readCmdlineMock.mockImplementation((pid) => (pid === process.pid ? MOCK_SELF_CMDLINE : null));
 });
 
 afterEach(() => {
@@ -113,7 +115,7 @@ describe("checkInstanceLock：基础判活", () => {
     it("pid 已死（探活失败）→ 崩溃残留，可接管", () => {
         writeLock({ pid: 4242, cmdline: "node self-host.cjs" });
         killSpy.mockImplementation(() => {
-            throw new Error("ESRCH");
+            throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
         });
         expect(checkInstanceLock(dataDir).occupied).toBe(false);
         expect(readCmdlineMock).not.toHaveBeenCalled();
@@ -130,10 +132,10 @@ describe("checkInstanceLock：pid 复用校验（2026-09-10 根治）", () => {
         expect(r.pid).toBeNull();
     });
 
-    it.skipIf(!CMDLINE_PROBE_SUPPORTED)("pid 存活但 cmdline 查询失败 → 视为死亡，可接管", () => {
+    it.skipIf(!CMDLINE_PROBE_SUPPORTED)("pid 存活但 cmdline 查询失败 → 保守维持占用", () => {
         writeLock({ pid: 4242, cmdline: "node.exe C:\\app\\self-host.cjs" });
         readCmdlineMock.mockReturnValue(null);
-        expect(checkInstanceLock(dataDir).occupied).toBe(false);
+        expect(checkInstanceLock(dataDir).occupied).toBe(true);
     });
 
     it.skipIf(!CMDLINE_PROBE_SUPPORTED)(
@@ -164,7 +166,7 @@ describe("acquireInstanceLock", () => {
         expect(acquireInstanceLock(dataDir)).toBe(true);
         const lock = readLockFile();
         expect(lock?.pid).toBe(process.pid);
-        expect(lock?.cmdline).toBe(selfCmdline());
+        expect(lock?.cmdline).toBe(MOCK_SELF_CMDLINE);
     });
 
     it("显式传入 cmdline → 优先使用", () => {
@@ -188,16 +190,41 @@ describe("acquireInstanceLock", () => {
     });
 
     it("占用者是本进程 → 幂等返回 true（不重写）", () => {
-        writeLock({ pid: process.pid, cmdline: "me" });
-        readCmdlineMock.mockReturnValue("me");
-        expect(acquireInstanceLock(dataDir)).toBe(true);
+        expect(acquireInstanceLock(dataDir, "me")).toBe(true);
+        expect(acquireInstanceLock(dataDir, "another")).toBe(true);
         expect(readLockFile()?.cmdline).toBe("me");
     });
 });
 
+it("回收崩溃留下的变更目录与临时文件", () => {
+    const guard = join(dataDir, `${INSTANCE_LOCK_FILE}.guard`);
+    const marker = "12345678-1234-1234-1234-123456789abc";
+    mkdirSync(guard);
+    writeFileSync(join(guard, marker), JSON.stringify({ pid: 4242, startedAt: Date.now() }));
+    writeFileSync(join(guard, `${marker}.lock`), "");
+    killSpy.mockImplementation((pid) => {
+        if (pid === 4242) {
+            throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
+        }
+        return true;
+    });
+    expect(acquireInstanceLock(dataDir)).toBe(true);
+    expect(readLockFile()?.pid).toBe(process.pid);
+    releaseInstanceLock(dataDir);
+});
+
 describe("releaseInstanceLock", () => {
+    it("同 PID 的外部记录不取得所有权，也不能被旧持有者删除", () => {
+        expect(acquireInstanceLock(dataDir, "me")).toBe(true);
+        writeLock({ pid: process.pid, cmdline: "replacement" });
+        readCmdlineMock.mockReturnValue("replacement");
+        expect(acquireInstanceLock(dataDir)).toBe(false);
+        releaseInstanceLock(dataDir);
+        expect(readLockFile()?.cmdline).toBe("replacement");
+    });
+
     it("持有者是本进程 → 删除锁", () => {
-        writeLock({ pid: process.pid, cmdline: "me" });
+        expect(acquireInstanceLock(dataDir, "me")).toBe(true);
         releaseInstanceLock(dataDir);
         expect(readLockFile()).toBeNull();
     });

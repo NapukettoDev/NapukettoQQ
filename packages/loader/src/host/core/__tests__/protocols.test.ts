@@ -29,7 +29,7 @@ vi.mock("../kernel-services.js", () => ({
         if (ctx.session === null) {
             return null;
         }
-        return { ctx } as unknown as KernelServices;
+        return { ctx, dispose: vi.fn() } as unknown as KernelServices;
     }),
 }));
 

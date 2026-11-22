@@ -17,10 +17,13 @@
  *  取到后 core.setSession 替换 → waitSessionReady 确认 getMsgService READY。
  */
 import { dirname, join } from "node:path";
-import { env } from "../env.js";
-import { hasCallableProp } from "../type-guards.js";
+import { pathToFileURL } from "node:url";
+import { isShuttingDown } from "../../lifecycle/shutdown.js";
+import { env, isEnvEnabled } from "../env.js";
+import { type IpcServerOptions, sendStatus } from "../ipc/index.js";
+import { getOwnProp, hasCallableProp } from "../type-guards.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
-import { convergeBootstrapFailure, log, type SharedState } from "../util.js";
+import { convergeBootstrapFailure, errMsg, log, type SharedState } from "../util.js";
 import { type BootstrapEnv, bootstrapWithCore, probeOnce } from "./bootstrap-core.js";
 import { isKernelModule } from "./module-guards.js";
 
@@ -166,7 +169,7 @@ async function importKernel(): Promise<KernelLike | undefined> {
         log("bootstrap: NAPUTO_KERNEL_ENTRY not set");
         return undefined;
     }
-    const rawKernel: unknown = await import(`file://${kernelEntry.replace(/\\/g, "/")}`);
+    const rawKernel: unknown = await import(pathToFileURL(kernelEntry).href);
     if (!isKernelModule(rawKernel)) {
         throw new Error(`Invalid @napuketto/kernel module exports at ${kernelEntry}`);
     }
@@ -194,17 +197,39 @@ async function dispatchAssembly(
     kernel: KernelLike,
     state: SharedState,
     bootEnv: BootstrapEnv,
+    ipc?: IpcServerOptions,
 ): Promise<boolean> {
     try {
         // resolveAppid 失败会抛错（major.node 缺失/解析失败）——显式报错，不再静默回退。
         const Appid = resolveAppid(kernel, bootEnv);
         log(`bootstrap: appid=${Appid}（wrapper=${bootEnv.wrapperPath}）`);
         if (kernel.NapukettoCore !== undefined) {
-            return await bootstrapWithCore(kernel, state, bootEnv, Appid);
+            return await bootstrapWithCore(kernel, state, bootEnv, Appid, ipc);
+        }
+        if (ipc !== undefined) {
+            log("bootstrap: IPC 要求 kernel NapukettoCore");
+            return false;
         }
         return await bootstrapFallback(kernel, state, bootEnv, Appid);
     } catch (e) {
         return convergeBootstrapFailure(e, "lifecycle error");
+    }
+}
+
+function loadHostWrapper(kernel: KernelLike, path: string): Record<string, unknown> {
+    if (typeof kernel.dlopenWrapper !== "function") {
+        throw new Error("kernel 缺少 dlopenWrapper，需要 @napuketto/kernel >= 0.12.3");
+    }
+    try {
+        const exports = kernel.dlopenWrapper(path);
+        kernel.activateO3MiscService?.(exports);
+        return exports;
+    } catch (err) {
+        const code = getOwnProp(err, "code") === "INVALID_STATE" ? "INVALID_STATE" : "UNKNOWN";
+        if (isEnvEnabled(env.NAPUTO_IPC)) {
+            sendStatus("failed", "原生引导失败", { code, message: errMsg(err) });
+        }
+        throw err;
     }
 }
 
@@ -215,14 +240,21 @@ async function dispatchAssembly(
  *   调用方 self-host 依此决定 ready/failed 与进程去留）。唯一例外：配置校验
  *   失败（ConfigError 契约）重抛，self-host 以 78 区分配置未就绪与运行时崩溃。
  */
-export async function bootstrap(state: SharedState): Promise<boolean> {
+export async function bootstrap(state: SharedState, ipc?: IpcServerOptions): Promise<boolean> {
     try {
         const kernel = await importKernel();
-        if (kernel === undefined) {
+        if (kernel === undefined || isShuttingDown()) {
             return false;
         }
-        return await dispatchAssembly(kernel, state, buildBootEnv());
+        const bootEnv = buildBootEnv();
+        if (state.wrapperExports === null) {
+            if (isEnvEnabled(env.NAPUTO_IPC)) {
+                sendStatus("dlopening");
+            }
+            state.wrapperExports = loadHostWrapper(kernel, bootEnv.wrapperPath);
+        }
+        return await dispatchAssembly(kernel, state, bootEnv, ipc);
     } catch (e) {
-        return convergeBootstrapFailure(e, "import kernel failed");
+        return convergeBootstrapFailure(e, "kernel 引导失败");
     }
 }

@@ -296,9 +296,10 @@ describe("attachOb11IpcBridge", () => {
         expect(cleared).toEqual([{ dataRoot: "C:/data", account: "10001" }]);
     });
 
-    it("system.exit / restart → process.exit(0)（driver 重启机制接管）", async () => {
+    it("system.exit / restart → 统一关停（driver 重启机制接管）", async () => {
         FakeOb11Adapter.constructOptions.length = 0;
-        const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+        const shutdown = await import("../../../lifecycle/shutdown.js");
+        const exitSpy = vi.spyOn(shutdown, "requestShutdown").mockResolvedValue();
         try {
             await attach();
             const system = FakeOb11Adapter.constructOptions[0]?.["system"] as {
@@ -307,7 +308,7 @@ describe("attachOb11IpcBridge", () => {
             };
             await system.exit();
             await system.restart();
-            expect(exitSpy).toHaveBeenCalledWith(0);
+            expect(exitSpy).toHaveBeenCalledWith("OB11 进程控制请求");
             expect(exitSpy).toHaveBeenCalledTimes(2);
         } finally {
             exitSpy.mockRestore();
