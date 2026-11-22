@@ -70,7 +70,7 @@ export class NapukettoSatoriAdapter extends BaseProtocolAdapter<SatoriConfig> {
             },
         });
         this.msgChannel = opts.msgChannel;
-        this.api = new SatoriApi(opts);
+        this.api = new SatoriApi(opts, () => config.get?.()?.media?.outboundPolicy);
         this.logger = opts.logger;
         // 动作注册表（HTTP RPC 分发）
         this.registry = createSatoriActionRegistry({ api: this.api });

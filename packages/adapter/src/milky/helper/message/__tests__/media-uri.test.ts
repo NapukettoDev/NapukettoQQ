@@ -1,7 +1,7 @@
 /**
  * 发送媒体 URI 解析测试（helper/message/media-uri.ts）
  *
- * downloadUrl 以 vi.mock 替身拦截（不触网）；base64:// 走真实落盘链
+ * downloadPublicUrl 以 vi.mock 替身拦截（不触网）；base64:// 走真实落盘链
  * （mkdtemp 临时目录 + 真实 detectFileType 探测/失败保留 .bin 两分支）。
  * 锁定：file:// 展开与畸形兜底、裸路径原样、http(s)/base64 需 mediaDir、
  * base64 空/空载荷报错、探测失败保留 .bin。
@@ -14,16 +14,16 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@napuketto/media", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    downloadUrl: vi.fn(async (_url: string, dest: string) => {
+    downloadPublicUrl: vi.fn(async (_url: string, dest: string) => {
         await writeFile(dest, "test");
         return 4;
     }),
 }));
 
-import { downloadUrl } from "@napuketto/media";
+import { downloadPublicUrl } from "@napuketto/media";
 import { resolveMediaUri, resolveUriToPath } from "../media-uri.js";
 
-const mockedDownload = vi.mocked(downloadUrl);
+const mockedDownload = vi.mocked(downloadPublicUrl);
 
 /** PNG 文件头（file-type 探测用最小样本）。 */
 const PNG_BYTES = Uint8Array.from([
@@ -87,7 +87,7 @@ describe("resolveMediaUri（远程媒体落盘）", () => {
         expect(mockedDownload).not.toHaveBeenCalled();
     });
 
-    it("http(s):// → downloadUrl 落盘 mediaDir（扩展名按 URL 推断）", async () => {
+    it("http(s):// → downloadPublicUrl 落盘 mediaDir（扩展名按 URL 推断）", async () => {
         const dest = await resolveMediaUri("http://127.0.0.1:9/a.png", mediaDir);
         expect(mockedDownload).toHaveBeenCalledWith("http://127.0.0.1:9/a.png", dest);
         expect(dest).toContain(mediaDir);

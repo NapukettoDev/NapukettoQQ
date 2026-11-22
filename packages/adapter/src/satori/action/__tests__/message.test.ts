@@ -29,7 +29,7 @@ const { transcodeMock, downloadMock } = vi.hoisted(() => ({
 vi.mock("@napuketto/media", async (original) => ({
     ...(await original<typeof import("@napuketto/media")>()),
     transcodeVideo: transcodeMock,
-    downloadUrl: downloadMock,
+    downloadPublicUrl: downloadMock,
 }));
 
 /** 从桩 api 构造 MessageActionDeps。 */

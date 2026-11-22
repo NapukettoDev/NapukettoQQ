@@ -23,6 +23,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
+import type { MediaOutboundPolicy } from "@napuketto/media";
 import { MediaCache } from "../internal/infra/media-cache.js";
 import { toUnixSeconds } from "../internal/qq/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
@@ -88,12 +89,18 @@ export class MilkyApi {
     readonly qqVersion: string;
     readonly implVersion: string;
     readonly mediaDir: string | undefined;
+    readonly getMediaOutboundPolicy?: (() => MediaOutboundPolicy | undefined) | undefined;
     /** 动作层可观测出口（缺省静默）。 */
     readonly logger: MilkyLoggerLike | undefined;
     /** message_seq ↔ msgId 双向映射（接收链路 record，动作侧反查）。 */
     readonly seqIndex: MessageSeqIndex;
 
-    constructor(opts: MilkyApiOptions, seqIndex: MessageSeqIndex) {
+    constructor(
+        opts: MilkyApiOptions,
+        seqIndex: MessageSeqIndex,
+        getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+    ) {
+        this.getMediaOutboundPolicy = getMediaOutboundPolicy;
         this.mediaCache = new MediaCache({ root: opts.mediaDir, logger: opts.logger });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;

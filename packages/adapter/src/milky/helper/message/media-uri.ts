@@ -4,20 +4,24 @@
  * 规范支持 file:// / http(s):// / base64:// 三种（image/record/video 共用）：
  *  - file:// → 平台路径（segments.ts 的同步面已处理）
  *  - base64:// → 解码落盘 cacheDir/milky/，file-type 探测扩展名后改名
- *  - http(s):// → @napuketto/media downloadUrl 落盘 cacheDir/milky/
+ *  - http(s):// → 按媒体出站策略下载落盘 cacheDir/milky/
  * 未配置 mediaDir 时远程 URI 报错（不发静默空消息）。
  */
 
 import { rename, writeFile } from "node:fs/promises";
 import { kernelError } from "@napuketto/kernel";
-import { detectFileType, downloadUrl, inferExtension } from "@napuketto/media";
+import { detectFileType, inferExtension, type MediaOutboundPolicy } from "@napuketto/media";
 import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
-import { fileUriToPath } from "../../../internal/qq/media.js";
+import { fileUriToPath, mediaDownloader } from "../../../internal/qq/media.js";
 
 const DETECTED_EXTENSION_RE = /^[a-zA-Z0-9]+$/;
 
 /** 解析远程媒体 URI 为本地绝对路径（base64:// / http(s)://；file:// 走同步面）。 */
-export async function resolveMediaUri(uri: string, mediaDir: string | undefined): Promise<string> {
+export async function resolveMediaUri(
+    uri: string,
+    mediaDir: string | undefined,
+    outboundPolicy?: MediaOutboundPolicy,
+): Promise<string> {
     if (mediaDir === undefined || mediaDir === "") {
         throw kernelError(
             "远程媒体发送需要配置 [accounts.milky] cacheDir（下载缓存目录）",
@@ -28,7 +32,7 @@ export async function resolveMediaUri(uri: string, mediaDir: string | undefined)
         return await writeBase64(uri.slice("base64://".length), mediaDir);
     }
     return await cacheMediaFile(mediaDir, inferExtension(null, uri), async (dest) => {
-        await downloadUrl(uri, dest);
+        await mediaDownloader(outboundPolicy)(uri, dest);
     });
 }
 
@@ -37,12 +41,16 @@ export async function resolveMediaUri(uri: string, mediaDir: string | undefined)
  * 失败裸剥离兜底，与 segments.ts 同步面同规则）；http(s):// / base64:// 复用
  * resolveMediaUri 落盘；裸路径（go-cqhttp 惯例）原样。
  */
-export async function resolveUriToPath(uri: string, mediaDir: string | undefined): Promise<string> {
+export async function resolveUriToPath(
+    uri: string,
+    mediaDir: string | undefined,
+    outboundPolicy?: MediaOutboundPolicy,
+): Promise<string> {
     if (uri.startsWith("file://")) {
         return await protectMediaPath(fileUriToPath(uri));
     }
     if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("base64://")) {
-        return await resolveMediaUri(uri, mediaDir);
+        return await resolveMediaUri(uri, mediaDir, outboundPolicy);
     }
     return await protectMediaPath(uri);
 }

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../core/module-guards.js";
 import { env } from "../env.js";
+import { loadProtocolSections, parseProtocolSeed } from "../load-config.js";
 import { isRecord } from "../type-guards.js";
 import type {
     AdapterCoreModuleLike,
@@ -26,7 +27,7 @@ import type {
     Ob11ModuleLike,
 } from "../types.js";
 import { BACKSLASH_RE, INDEX_MJS_RE } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { ConfigError, errMsg, log } from "../util.js";
 import type { IpcActionHandler } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
 
@@ -96,6 +97,37 @@ async function loadOb11BridgeModules(
     return { network: rawNetwork, adapter: rawAdapter, adapterCore: rawAdapterCore };
 }
 
+/** 确认动态载入的 adapter 认识该字段，再从主配置注入账号策略。 */
+function resolveBridgeConfig(schema: Ob11ModuleLike["ob11ConfigSchema"], services: KernelServices) {
+    const defaults = parseProtocolSeed("onebot11", schema, {
+        media: { outboundPolicy: "public-only" },
+    });
+    if (
+        !isRecord(defaults) ||
+        !isRecord(defaults["media"]) ||
+        defaults["media"]["outboundPolicy"] !== "public-only"
+    ) {
+        throw new Error("注入的 OB11 adapter 不支持 media.outboundPolicy");
+    }
+    const { ob11Section } = loadProtocolSections(services.kernel, services.self.uin);
+    const media = ob11Section["media"];
+    const seed = media === undefined ? defaults : parseProtocolSeed("onebot11", schema, { media });
+    return { defaults, seed };
+}
+
+function mountOb11Actions(
+    registry: InstanceType<Ob11ModuleLike["NapukettoOneBot11Adapter"]>["registry"],
+    actions: Map<string, IpcActionHandler>,
+    mounted: string[],
+): void {
+    for (const name of registry.names) {
+        const action = registry.get(name);
+        if (action === undefined) continue;
+        actions.set(name, (params) => action.handle(params));
+        mounted.push(name);
+    }
+}
+
 /**
  * OB11 动作桥装配（bootstrap 登录成功、attachIpcServices 之后调用）。
  * 返回停止函数（broadcaster 注销 + adapter 退订；进程级清理用）。
@@ -131,13 +163,12 @@ export async function attachOb11IpcBridge(
             networkEntry,
         });
 
+        const schema = adapter.ob11ConfigSchema;
         const broadcaster = new network.EventBroadcaster();
-        // seed 模式：load() 返回内存初值（parse({}) 缺省段），不读不写任何配置文件
         const protocolConfig = new adapterCore.ProtocolConfig({
             path: join(e.cfgDir ?? ".", "ob11-ipc.toml"),
-            schema: adapter.ob11ConfigSchema,
-            defaults: adapter.ob11ConfigSchema.parse({}),
-            seed: adapter.ob11ConfigSchema.parse({}),
+            schema,
+            ...resolveBridgeConfig(schema, services),
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）
         const mediaBaseDir = resolveMediaBaseDir(services.kernel, services.ctx);
@@ -209,14 +240,7 @@ export async function attachOb11IpcBridge(
         // 仅接收链路，含媒体缓存首次清理；IPC 出口等 ready 写出后才转发。
         log("ipc-ob11: 等待 OB11 接收链路初始化");
         await ob11.subscribeOnly();
-        for (const name of ob11.registry.names) {
-            const act = ob11.registry.get(name);
-            if (act === undefined) {
-                continue;
-            }
-            actions.set(name, (params) => act.handle(params));
-            mounted.push(name);
-        }
+        mountOb11Actions(ob11.registry, actions, mounted);
         broadcaster.register(bridgeAdapter);
         log(`ipc-ob11: OB11 动作桥已挂载（${mounted.length} 动作，事件经 ob11 通道透出）`);
         return stop;
@@ -226,6 +250,7 @@ export async function attachOb11IpcBridge(
         } catch (cleanupError) {
             log(`ipc-ob11: OB11 动作桥回滚失败: ${errMsg(cleanupError)}`);
         }
+        if (err instanceof ConfigError) throw err;
         log(`ipc-ob11: OB11 动作桥装配失败（降级纯 kernel 动作面）: ${errMsg(err)}`);
         return noop;
     }

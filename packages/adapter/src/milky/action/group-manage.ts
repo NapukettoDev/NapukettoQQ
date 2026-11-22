@@ -136,7 +136,11 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
             schema: z.object({ ...groupIdField, image_uri: z.string().min(1) }),
             // image_uri → 本地路径
             handle: async (payload: { group_id: number; image_uri: string }) => {
-                const imagePath = await resolveUriToPath(payload.image_uri, api.mediaDir);
+                const imagePath = await resolveUriToPath(
+                    payload.image_uri,
+                    api.mediaDir,
+                    api.getMediaOutboundPolicy?.(),
+                );
                 await api.groupApi.setGroupAvatar(String(payload.group_id), imagePath);
                 return {};
             },
@@ -179,7 +183,11 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
                     payload.image_uri !== null &&
                     payload.image_uri !== ""
                 ) {
-                    imagePath = await resolveUriToPath(payload.image_uri, api.mediaDir);
+                    imagePath = await resolveUriToPath(
+                        payload.image_uri,
+                        api.mediaDir,
+                        api.getMediaOutboundPolicy?.(),
+                    );
                 }
                 await api.groupApi.publishGroupAnnouncement(groupCode, payload.content, imagePath);
                 return {};

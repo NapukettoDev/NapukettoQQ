@@ -153,6 +153,9 @@ Kurobot 是纯出向协议，无第三方接入门面，不需要广播器）。
 才装配」：未配置的不实例化、不订阅、不占端口。IPC 模式的 OB11 出口是独立链路
 （`ipc-ob11.ts` 自己的广播器 → `sendEvent("ob11", ...)`）。
 
+OB11、Satori 与 Milky 从各账号协议段读取 `media.outboundPolicy`。IPC 动作桥将当前登录账号
+的 OB11 媒体段注入动态加载的 adapter，协议下载默认执行公网策略。
+
 **缓存层**：`GroupCache` 订阅群列表/详情/成员事件主动更新，未命中经 `GroupApi` 惰性回填并
 对并发回填去重；`BuddyCache` 把 `Buddy/onBuddyListChange` 全量快照与上一帧对比，产出
 `onBuddyAdded` / `onBuddyRemoved`（首帧只建 baseline）。协议翻译层只读缓存，不在翻译函数里

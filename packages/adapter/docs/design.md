@@ -6,6 +6,16 @@
 
 ## 核心机制
 
+### 媒体出站
+
+OB11、Satori、Milky 各自的账号协议段共享 `media.outboundPolicy`，取值为
+`public-only`（默认）或 `compat`（受信任的调用方需要 LAN/本机 HTTP 服务时显式启用）。
+传输认证不改变媒体出站策略。适配器在下载开始时读取当前已校验配置，并复用
+`@napuketto/media` 的 `downloadPublicUrl` 或 `downloadUrl`。
+OB11 `download_file` 的请求头遵循下载器的同源规则，HTTP、WS 和 IPC 使用同一动作注册表。
+该设置约束适配器发起的 HTTP(S) 媒体下载。本地路径、`file:`、`internal:`、`base64:`、
+QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。KuroBot 的入向处理只发送文本。
+
 ### 目录分层与可见性
 
 | 目录 | 可见性 | 装什么 | 依赖约束 |
@@ -188,8 +198,8 @@
   目录（含失败路径），转换阶段不得提前删除。独立调用转换器时由调用方接管返回路径的
   清理。失败仍透传源路径，media 负责清理失败的部分产物；后续发送
   准备的 ffprobe/抽帧也受相同本地输入与超时限制，拒绝播放列表等不支持输入。
-- 远程媒体下载统一走 `@napuketto/media` 的 `downloadUrl`（adapter 侧唯一入口是
-  `internal/qq/media.ts` 的 `downloadBufferToFile`）：超时、大小上限、流式落盘与
+- 远程媒体下载经 `internal/qq/media.ts` 的 `downloadProtocolMedia`，按媒体策略选择
+  `@napuketto/media` 的下载入口：超时、大小上限、流式落盘与
   出站地址策略都在那里，协议侧不再直接 `fetch` 或 `arrayBuffer()`。
 - WS 鉴权（`SatoriEventHub`）：Satori 是连接后带内鉴权，握手期无凭据，因此不复用
   `WsServer.authorize`。hub 接管 wsServers 的 `send`/`open`/`close`，只向完成
@@ -299,7 +309,7 @@
   `HttpClient`、`WsClient`、`createSseResponse`、`isWsOpen`、鉴权钩子；network 不 import
   任何协议包（ADR-002）。
 - media（只消费）：`encodePcmToSilk` / `transcodeVideo` / `extractVideoFrame` /
-  `getVideoInfo` / `downloadUrl` / `inferExtension` / `detectFileType`；只有 adapter
+  `getVideoInfo` / `downloadPublicUrl` / `downloadUrl` / `inferExtension` / `detectFileType`；只有 adapter
   依赖 media，kernel 不背媒体依赖（ADR-011）。
 - 原生边界：adapter 不 `dlopen`、不 import `wrapper.node`、不注册原生 listener；所有
   原生交互经 kernel（红线）。装配注入全部走构造参数（api / channel / cache / logger），

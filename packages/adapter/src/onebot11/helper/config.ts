@@ -8,6 +8,7 @@
  */
 import { z } from "zod";
 import { createServerSchema, validateServerTokens } from "../../framework/transport-schema.js";
+import { protocolMediaSchema } from "../../internal/infra/media-config.js";
 
 /** HTTP 反向服务器默认端口。 */
 const DEFAULT_HTTP_PORT = 3000;
@@ -60,6 +61,7 @@ const wsReverseSchema = z.object({
 
 /** OB11 配置 schema。 */
 const configFields = z.object({
+    media: protocolMediaSchema.optional(),
     /** 鉴权 token（全局默认，实例未指定时继承）。 */
     token: z.string().optional(),
     /** 心跳 meta 事件间隔（毫秒），0 关闭心跳。 */

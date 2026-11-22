@@ -5,7 +5,7 @@
  * 锁定：get_login_info/get_impl_info 版本协商面、get_user_profile 字段映射
  * （无源字段空兜底）、get_friend_info 命中与 NOT_FOUND、set_nickname/set_bio
  * 透传、get_cookies k=v 拼接、get_csrf_token bkn 派生、set_avatar 远程 URI
- * 下载链（@napuketto/media downloadUrl mock，不触网）。
+ * 下载链（@napuketto/media downloadPublicUrl mock，不触网）。
  */
 import { realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,7 +16,7 @@ import { type ApiOverrides, actionOf, buildMilkyApi, registryOf } from "./test-s
 
 vi.mock("@napuketto/media", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    downloadUrl: vi.fn(async (_url: string, dest: string) => {
+    downloadPublicUrl: vi.fn(async (_url: string, dest: string) => {
         await writeFile(dest, "test");
         return 4;
     }),
@@ -203,18 +203,17 @@ describe("set_avatar（远程 URI 下载链）", () => {
         mediaDir = await mkdtempUnique();
     });
 
-    it("http(s) URI：downloadUrl 落盘 mediaDir，setHeader 收到落盘路径", async () => {
+    it("http(s) URI：downloadPublicUrl 落盘 mediaDir，setHeader 收到落盘路径", async () => {
         const setHeader = vi.fn(async () => undefined);
         const registry = profileApi({ profileApi: { setHeader }, mediaDir });
         const res = await actionOf(registry, "set_avatar").handle({
             uri: "http://127.0.0.1:1/a.png",
         });
         expect(res.status).toBe("ok");
-        const downloadUrl = (await import("@napuketto/media")).downloadUrl as ReturnType<
-            typeof vi.fn
-        >;
-        expect(downloadUrl).toHaveBeenCalledTimes(1);
-        const [url, dest] = downloadUrl.mock.calls[0] ?? [];
+        const downloadPublicUrl = (await import("@napuketto/media"))
+            .downloadPublicUrl as ReturnType<typeof vi.fn>;
+        expect(downloadPublicUrl).toHaveBeenCalledTimes(1);
+        const [url, dest] = downloadPublicUrl.mock.calls[0] ?? [];
         expect(url).toBe("http://127.0.0.1:1/a.png");
         expect(dest.startsWith(mediaDir)).toBe(true);
         expect(setHeader).toHaveBeenCalledWith(dest);

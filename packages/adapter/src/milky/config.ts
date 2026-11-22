@@ -6,9 +6,11 @@
  */
 import { z } from "zod";
 import { validateListenerToken } from "../framework/transport-schema.js";
+import { protocolMediaSchema } from "../internal/infra/media-config.js";
 
 /** Milky 配置 schema。 */
 const configFields = z.object({
+    media: protocolMediaSchema.optional(),
     /** 启用开关（缺省 false：账号段存在但 enabled 未开 = 装配为空转）。 */
     enabled: z.boolean().default(false),
     /** HTTP 监听地址。 */

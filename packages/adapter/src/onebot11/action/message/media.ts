@@ -5,7 +5,7 @@
  *   downloadRichMedia）。message_id 反查 → fetchMsgsByMsgId → 找 PIC/PTT 元素：
  *     - 本地文件解析：NT 相对路径（sourcePath/filePath）按 mediaBaseDir（QQ NT
  *       global 目录）解析为绝对路径，命中磁盘即返回 file
- *     - 图片主动下载：本地未命中且有 picUrl → @napuketto/media downloadUrl 落
+ *     - 图片主动下载：本地未命中且有 picUrl → 按媒体出站策略下载落
  *       cacheDir/media/，返回 file（绝对路径）+ url + file_size/file_name
  *     - 语音主动下载：本地未命中 → kernel MsgApi.downloadPtt（原生
  *       downloadRichMedia + 轮询元素回查）→ filePath 落盘后返回绝对路径；
@@ -17,9 +17,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { errorMessage, kernelError, type Peer, type RawElement } from "@napuketto/kernel";
-import { downloadUrl, inferExtension } from "@napuketto/media";
+import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
 import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
+import { mediaDownloader } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
@@ -48,7 +49,7 @@ export interface MediaInfoResult {
 /** 媒体动作依赖（OneBotApi 视图）。 */
 export type GetMediaDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "cacheDir" | "mediaBaseDir" | "logger"
+    "msgApi" | "messageUnique" | "cacheDir" | "mediaBaseDir" | "logger" | "getMediaOutboundPolicy"
 >;
 
 /**
@@ -78,7 +79,7 @@ export function resolveLocalMediaFile(
 /** 图片主动下载（picUrl → cacheDir/media/<uuid>.<ext>；无 cacheDir/url 返回 null）。 */
 async function downloadImageToCache(
     url: string,
-    deps: Pick<GetMediaDeps, "cacheDir" | "logger">,
+    deps: Pick<GetMediaDeps, "cacheDir" | "logger" | "getMediaOutboundPolicy">,
 ): Promise<string | null> {
     const cacheDir = deps.cacheDir;
     if (cacheDir === undefined || cacheDir === "") {
@@ -89,14 +90,14 @@ async function downloadImageToCache(
             cacheDir,
             inferExtension(null, url),
             async (dest) => {
-                await downloadUrl(url, dest);
+                await mediaDownloader(deps.getMediaOutboundPolicy?.())(url, dest);
             },
             "reference",
         );
     } catch (err) {
         // 下载失败退原始 url（QQ 端自行拉取；warn 留痕）
         deps.logger?.warn(
-            { url, error: errorMessage(err) },
+            { error: errorMessage(err) },
             "ob11: 图片主动下载失败，get_image 退原始 url",
         );
         return null;

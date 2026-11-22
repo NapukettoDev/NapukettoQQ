@@ -2,7 +2,6 @@ import { lookup } from "node:dns/promises";
 import { get as httpGet } from "node:http";
 import { get as httpsGet, type RequestOptions } from "node:https";
 import { BlockList, isIP, type LookupFunction, type TcpNetConnectOpts } from "node:net";
-import { Readable } from "node:stream";
 import type { DownloadRequest, DownloadResponse } from "./downloader.js";
 import { MediaError } from "./types.js";
 
@@ -84,7 +83,7 @@ function publicLookup(checkLiteral: (url: string) => URL, signal: AbortSignal): 
 }
 
 export function createPublicRequest(checkLiteral: (url: string) => URL): DownloadRequest {
-    return async (url, signal) => {
+    return async (url, signal, headers) => {
         if (url.username !== "" || url.password !== "") {
             throw new MediaError("公网下载策略拒绝 URL 凭据");
         }
@@ -98,22 +97,29 @@ export function createPublicRequest(checkLiteral: (url: string) => URL): Downloa
             rejectUnauthorized: true,
             signal,
             autoSelectFamily: true,
-            headers: { "accept-encoding": "identity" },
+            headers: { ...headers, "accept-encoding": "identity" },
             lookup: publicLookup(checkLiteral, signal),
         };
         return new Promise<DownloadResponse>((resolve, reject) => {
             const request = get(url, options, (response) => {
                 const status = response.statusCode ?? 0;
                 const encoding = response.headers["content-encoding"];
-                if (status >= 200 && status < 300 && encoding && encoding !== "identity") {
+                if (
+                    status >= 200 &&
+                    status < 300 &&
+                    encoding &&
+                    encoding.toLowerCase() !== "identity"
+                ) {
                     response.destroy();
                     reject(new MediaError("公网下载响应使用了不支持的内容编码"));
                     return;
                 }
                 resolve({
                     status,
-                    headers: { get: (name) => response.headers[name]?.toString() ?? null },
-                    body: Readable.toWeb(response),
+                    headers: {
+                        get: (name) => response.headers[name.toLowerCase()]?.toString() ?? null,
+                    },
+                    body: response,
                 });
             });
             request.once("error", reject);

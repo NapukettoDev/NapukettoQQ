@@ -27,13 +27,16 @@ import { pipeline } from "node:stream/promises";
 import { createPublicRequest } from "./public-download.js";
 import { MediaError } from "./types.js";
 
+/** 按协议调用方的信任边界选择远程媒体出站模式。 */
+export type MediaOutboundPolicy = "public-only" | "compat";
+
 /** 下载选项。 */
 export interface DownloadUrlOptions {
     /** 超时毫秒（缺省 15s，覆盖整个下载过程）。 */
     timeoutMs?: number | undefined;
     /** 大小上限字节（缺省 30MB）。 */
     maxBytes?: number | undefined;
-    /** 附加请求头（如 OneBot11 download_file 的 headers 透传）。 */
+    /** 初始源的附加请求头。传输/路由头忽略，跨源重定向清空所有调用者头。 */
     headers?: Record<string, string> | undefined;
 }
 
@@ -54,6 +57,52 @@ const ALLOWED_PROTOCOLS: ReadonlySet<string> = new Set(["http:", "https:"]);
 
 /** 扩展名字符合法性（URL pathname 提取校验）。 */
 const EXT_RE = /^\.[a-z0-9]+$/i;
+
+const MEDIA_EXTENSIONS = new Map([
+    ["image/avif", ".avif"],
+    ["image/bmp", ".bmp"],
+    ["image/gif", ".gif"],
+    ["image/heic", ".heic"],
+    ["image/heif", ".heif"],
+    ["image/jpeg", ".jpeg"],
+    ["image/png", ".png"],
+    ["image/svg+xml", ".svg"],
+    ["image/tiff", ".tiff"],
+    ["image/vnd.microsoft.icon", ".ico"],
+    ["image/webp", ".webp"],
+    ["image/x-icon", ".ico"],
+    ["audio/aac", ".aac"],
+    ["audio/amr", ".amr"],
+    ["audio/flac", ".flac"],
+    ["audio/mp4", ".m4a"],
+    ["audio/mpeg", ".mpeg"],
+    ["audio/ogg", ".ogg"],
+    ["audio/opus", ".opus"],
+    ["audio/silk", ".silk"],
+    ["audio/wav", ".wav"],
+    ["audio/webm", ".webm"],
+    ["audio/x-wav", ".wav"],
+    ["video/mpeg", ".mpeg"],
+    ["video/mp4", ".mp4"],
+    ["video/ogg", ".ogv"],
+    ["video/quicktime", ".mov"],
+    ["video/webm", ".webm"],
+    ["video/x-matroska", ".mkv"],
+]);
+
+const MANAGED_REQUEST_HEADERS = new Set([
+    "accept-encoding",
+    "connection",
+    "content-length",
+    "expect",
+    "forwarded",
+    "host",
+    "keep-alive",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+]);
 
 /** WHATWG URL 归一化后的 IPv4-mapped IPv6（::ffff:h:h，低 32 位为 IPv4）。 */
 const IPV4_MAPPED_RE = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/;
@@ -152,11 +201,43 @@ function isRedirect(status: number): boolean {
 
 export interface DownloadResponse {
     status: number;
+    /** HTTP 头名不区分大小写。 */
     headers: Pick<Headers, "get">;
-    body: ReadableStream<Uint8Array> | null;
+    body: Readable | ReadableStream<Uint8Array> | null;
 }
 
-export type DownloadRequest = (url: URL, signal: AbortSignal) => Promise<DownloadResponse>;
+export type DownloadRequest = (
+    url: URL,
+    signal: AbortSignal,
+    headers: Record<string, string> | undefined,
+) => Promise<DownloadResponse>;
+
+function initialRequestHeaders(
+    input: DownloadUrlOptions["headers"],
+): Record<string, string> | undefined {
+    if (input === undefined) return undefined;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(input)) {
+        const key = name.toLowerCase();
+        if (
+            !MANAGED_REQUEST_HEADERS.has(key) &&
+            !key.startsWith("proxy-") &&
+            !key.startsWith("sec-") &&
+            !key.startsWith("x-forwarded-")
+        ) {
+            headers.append(key, value);
+        }
+    }
+    return Object.fromEntries(headers);
+}
+
+async function closeBody(body: DownloadResponse["body"]): Promise<void> {
+    if (body instanceof Readable) {
+        body.destroy();
+    } else {
+        await body?.cancel().catch(() => undefined);
+    }
+}
 
 /**
  * 发起请求并手动跟随重定向：每一跳都先过 assertDownloadUrlSafe。
@@ -166,28 +247,33 @@ async function requestFollowingRedirects(
     url: string,
     request: DownloadRequest,
     signal: AbortSignal,
+    callerHeaders: DownloadUrlOptions["headers"],
 ): Promise<DownloadResponse> {
-    let current = url;
+    let current = assertDownloadUrlSafe(url);
+    let headers = initialRequestHeaders(callerHeaders);
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-        const parsed = assertDownloadUrlSafe(current);
-        const response = await request(parsed, signal);
+        signal.throwIfAborted();
+        const response = await request(current, signal, headers);
         if (!isRedirect(response.status)) {
             return response;
         }
-        const location = response.headers.get("location");
         // 释放跳转响应 body（未消费的 body 会占住连接）
-        await response.body?.cancel().catch(() => undefined);
+        await closeBody(response.body);
+        if (hop === MAX_REDIRECTS) break;
+        const location = response.headers.get("Location");
         if (location === null || location === "") {
             throw new MediaError(`重定向缺少 Location（HTTP ${response.status}）`);
         }
-        current = new URL(location, parsed).href;
+        const next = assertDownloadUrlSafe(new URL(location, current).href);
+        if (next.origin !== current.origin) headers = undefined;
+        current = next;
     }
     throw new MediaError(`重定向次数超过上限（${MAX_REDIRECTS}）`);
 }
 
 /** 流式写盘并累计字节数；超过上限时中断并清理。 */
 async function writeCapped(
-    body: ReadableStream<Uint8Array>,
+    body: NonNullable<DownloadResponse["body"]>,
     temp: string,
     maxBytes: number,
     signal: AbortSignal,
@@ -203,18 +289,22 @@ async function writeCapped(
             callback(null, chunk);
         },
     });
-    await pipeline(Readable.fromWeb(body), counter, createWriteStream(temp, { flags: "wx" }), {
+    const source = body instanceof Readable ? body : Readable.fromWeb(body);
+    await pipeline(source, counter, createWriteStream(temp, { flags: "wx" }), {
         signal,
     });
     return total;
 }
 
 /** 下载失败的统一错误类型（保留超时语义，其余包成 MediaError）。 */
-function toMediaError(err: unknown, timeoutMs: number): MediaError {
+function toMediaError(err: unknown, timeoutMs: number, aborted: boolean): MediaError {
     if (err instanceof MediaError) {
         return err;
     }
-    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    if (
+        aborted ||
+        (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError"))
+    ) {
         return new MediaError(`下载超时（${timeoutMs}ms）`, { cause: err });
     }
     return new MediaError(err instanceof Error ? err.message : "下载失败", { cause: err });
@@ -230,9 +320,9 @@ export async function downloadUrl(
     dest: string,
     options: DownloadUrlOptions = {},
 ): Promise<number> {
-    return download(url, dest, options, (target, signal) =>
+    return download(url, dest, options, (target, signal, headers) =>
         fetch(target.href, {
-            ...(options.headers === undefined ? {} : { headers: options.headers }),
+            ...(headers === undefined ? {} : { headers }),
             redirect: "manual",
             signal,
         }),
@@ -243,7 +333,7 @@ export async function downloadUrl(
 export async function downloadPublicUrl(
     url: string,
     dest: string,
-    options: Omit<DownloadUrlOptions, "headers"> = {},
+    options: DownloadUrlOptions = {},
 ): Promise<number> {
     return download(url, dest, options, createPublicRequest(assertDownloadUrlSafe));
 }
@@ -263,12 +353,17 @@ async function download(
     const temp = `${dest}.part-${process.pid}-${randomUUID()}`;
     let body: DownloadResponse["body"] = null;
     try {
-        const response = await requestFollowingRedirects(url, request, controller.signal);
+        const response = await requestFollowingRedirects(
+            url,
+            request,
+            controller.signal,
+            options.headers,
+        );
         body = response.body;
         if (response.status < 200 || response.status >= 300) {
             throw new MediaError(`HTTP ${response.status}`);
         }
-        const declared = Number(response.headers.get("content-length") ?? "0");
+        const declared = Number(response.headers.get("Content-Length") ?? "0");
         if (declared > maxBytes) {
             throw new MediaError(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
         }
@@ -283,11 +378,12 @@ async function download(
         await rename(temp, dest);
         return written;
     } catch (err) {
+        const error = toMediaError(err, timeoutMs, controller.signal.aborted);
         await rm(temp, { force: true }).catch(() => undefined);
-        throw toMediaError(err, timeoutMs);
+        throw error;
     } finally {
         clearTimeout(timer);
-        await body?.cancel().catch(() => undefined);
+        await closeBody(body);
     }
 }
 
@@ -295,18 +391,15 @@ async function download(
 export function inferExtension(contentType: string | null, url: string): string {
     if (contentType !== null) {
         const base = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-        const sub = base.split("/")[1]?.split("+")[0];
-        if (base.startsWith("image/") || base.startsWith("audio/") || base.startsWith("video/")) {
-            if (sub !== undefined && sub !== "") {
-                return `.${sub}`;
-            }
-        }
+        const ext = MEDIA_EXTENSIONS.get(base);
+        if (ext !== undefined) return ext;
     }
     try {
         const pathname = new URL(url).pathname;
-        const ext = pathname.substring(pathname.lastIndexOf("."));
-        if (ext.length > 1 && ext.length <= 6 && EXT_RE.test(ext)) {
-            return ext.toLowerCase();
+        const dot = pathname.lastIndexOf(".");
+        if (dot > pathname.lastIndexOf("/")) {
+            const ext = pathname.slice(dot);
+            if (ext.length <= 6 && EXT_RE.test(ext)) return ext.toLowerCase();
         }
     } catch {
         // URL 解析失败（理论不可达，fetch 已成功）：落 .bin

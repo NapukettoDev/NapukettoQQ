@@ -12,7 +12,7 @@ export {
     getSilkInfo,
     SILK_SAMPLE_RATE,
 } from "./audio.js";
-export type { DownloadUrlOptions } from "./downloader.js";
+export type { DownloadUrlOptions, MediaOutboundPolicy } from "./downloader.js";
 export { downloadPublicUrl, downloadUrl, inferExtension } from "./downloader.js";
 export { detectFileType, getImageSize } from "./image.js";
 export type {

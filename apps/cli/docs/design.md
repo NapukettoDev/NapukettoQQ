@@ -70,6 +70,10 @@ roundtrip 断言，替代此前无法测试的第三方渲染路径。
 
 ## 配置来源口径（刻意不合并）
 
+OneBot 11、Satori 与 Milky 的 `media.outboundPolicy` 由各协议 schema 校验。
+模板标注默认 `public-only`，受信任的 LAN 媒体服务可在对应账号协议段显式设为 `compat`。
+内联配置使用相同的 `accounts[].<protocol>.media.outboundPolicy` 结构。
+
 cli 内部的读取分两档，调用方必须按场景选择：
 
 | 入口 | 严格度 | 使用方 |

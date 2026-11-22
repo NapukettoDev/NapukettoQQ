@@ -171,11 +171,13 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
 - 编码统一 `encodeIpcMessage`：先 `toJsonSafe`（Map→对象、Set→数组、环引用丢分支）再
   stringify，否则 Map/Set 跨进程即丢。
 - OB11 容器可选：IPC 模式且 `NAPUTO_ADAPTER_ENTRY` + `NAPUTO_NETWORK_ENTRY` 已注入时，
-  `attachOb11IpcBridge` 动态 import adapter 子路径；`ProtocolConfig` 用 `parse({})` 作
-  seed（不读写配置文件），`subscribeOnly()` 只订阅不启传输，动作名平铺进共享表（OB11
+  `attachOb11IpcBridge` 动态 import adapter 子路径；按实际登录账号从主配置提取
+  `onebot11.media`，交给动态载入的 OB11 schema，默认 `public-only`。仅将媒体配置
+  注入内存 seed，其他字段取协议缺省值。`subscribeOnly()` 只订阅不启传输，动作名平铺进共享表（OB11
   snake_case 与 kernel 点分命名不冲突），事件经 `sendEvent("ob11", post_type, [event])`
   透出。装配会等待 `subscribeOnly()` 完成（含媒体缓存首次清理），引导日志记录等待
-  起点。装配失败时撤销 OB11 订阅和已挂载动作，降级为纯 kernel 动作面。
+  起点。装配失败时撤销 OB11 订阅和已挂载动作，降级为纯 kernel 动作面。注入的
+  adapter 必须支持 `media.outboundPolicy`，以免老版本动作桥忽略媒体策略。
 
 ### 软重登相位机
 

@@ -2,12 +2,11 @@
  * Satori 发方向资源处理（从 element-convert.ts 拆分，FTA 优化）
  *
  * - resolveAsset：internal: 路径 / http(s) 下载 / 本地路径原样
- * - ensureSilk 已上移到 adapter core（core/media.ts，onebot11/satori 共用）
- * - 下载落盘统一走 shared/media.ts 的 downloadBufferToFile（异步 I/O 单一入口）
+ * - HTTP(S) 下载遵循当前协议配置的媒体出站策略。
  */
-import { inferExtension } from "@napuketto/media";
+import { inferExtension, type MediaOutboundPolicy } from "@napuketto/media";
 import { cacheMediaFile, protectMediaPath } from "../../../internal/infra/media-cache.js";
-import { downloadBufferToFile } from "../../../internal/qq/media.js";
+import { downloadProtocolMedia } from "../../../internal/qq/media.js";
 
 /** internal:{platform}/{user.id}/{path} → 本地路径（取 _tmp 之后的路径，回落 cacheDir）。 */
 function resolveInternalPath(src: string): string {
@@ -39,19 +38,18 @@ export function assetFileName(src: string): string | undefined {
  * - http(s):// → 下载到 cacheDir
  * - 其他 → 视为本地路径原样返回
  */
-export async function resolveAsset(src: string, cacheDir: string): Promise<string> {
+export async function resolveAsset(
+    src: string,
+    cacheDir: string,
+    outboundPolicy?: MediaOutboundPolicy,
+): Promise<string> {
     if (src.startsWith("internal:")) {
         return await protectMediaPath(resolveInternalPath(src));
     }
     if (HTTP_URL_RE.test(src)) {
-        return downloadAsset(src, cacheDir);
+        return await cacheMediaFile(cacheDir, inferExtension(null, src), async (path) => {
+            await downloadProtocolMedia(src, path, { outboundPolicy, errorLabel: "下载资源失败" });
+        });
     }
     return await protectMediaPath(src);
-}
-
-/** 下载 URL 资源到缓存目录（返回本地路径）。 */
-async function downloadAsset(url: string, cacheDir: string): Promise<string> {
-    return await cacheMediaFile(cacheDir, inferExtension(null, url), async (path) => {
-        await downloadBufferToFile(url, path, undefined, "下载资源失败");
-    });
 }

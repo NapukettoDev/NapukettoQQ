@@ -25,6 +25,7 @@ import type {
     WebApi,
 } from "@napuketto/kernel";
 import { errorMessage, GroupApi, NTGroupMemberRole } from "@napuketto/kernel";
+import type { MediaOutboundPolicy } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import { MediaCache } from "../../internal/infra/media-cache.js";
 import type { GroupSenderRole } from "../helper/data.js";
@@ -91,6 +92,7 @@ export interface OneBotApiOptions {
  */
 export class OneBotApi {
     readonly mediaCache: MediaCache;
+    readonly getMediaOutboundPolicy?: (() => MediaOutboundPolicy | undefined) | undefined;
     /** kernel 消息 API（send_msg 等消息类动作用）。 */
     readonly msgApi: MsgApi;
     /** kernel 群 API。 */
@@ -134,7 +136,11 @@ export class OneBotApi {
     /** 降级分支可观测出口（缺省静默）。 */
     readonly logger?: AdapterLoggerLike | undefined;
 
-    constructor(opts: OneBotApiOptions) {
+    constructor(
+        opts: OneBotApiOptions,
+        getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
+    ) {
+        this.getMediaOutboundPolicy = getMediaOutboundPolicy;
         this.mediaCache = new MediaCache({ root: opts.system?.cacheDir, logger: opts.logger });
         this.msgApi = opts.msgApi;
         this.groupApi = opts.groupApi;
