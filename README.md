@@ -82,8 +82,8 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 
 ### 配置
 
-打开生成的 `napuketto.toml`：修改 `qq` 为机器人账号；设置 `token` 访问密钥（公网部署务必
-配置）。模板注释含完整字段示例；进阶配置见 [配置文档](./docs/guides/configuration.md)。
+打开生成的 `napuketto.toml`：修改 `qq` 为机器人账号；设置 `token` 访问密钥（公网部署务必配置）\
+模板注释含完整字段示例；进阶配置见 [配置文档](./docs/guides/configuration.md)。
 
 ## 结构
 
