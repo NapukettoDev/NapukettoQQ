@@ -5,12 +5,18 @@ export {
     callIpcAction,
     createIpcActions,
     type IpcActionHandler,
+    type IpcActionOptions,
     type IpcApiContext,
     type IpcPeer,
     registerLoginRefreshAction,
 } from "./ipc-actions.js";
 export { attachIpcServices, createIpcActionsForCore } from "./ipc-bootstrap.js";
 export { decodeIpcMessage, encodeIpcMessage } from "./ipc-codec.js";
+export {
+    DIAGNOSTIC_ACTION_NAMES,
+    type IpcDiagnosticContext,
+    registerDiagnosticActions,
+} from "./ipc-diagnostics.js";
 export {
     attachOb11IpcBridge,
     type Ob11BridgeDeps,

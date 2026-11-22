@@ -61,7 +61,7 @@ npm 发布任务成功后，`release.yml` 的 `notify-koishi` job 通知 Adapter
 | `<账号目录>/napuketto-boot.log` | 引导阶段纯文本日志（失败根因常在此） |
 | `<账号目录>/runtime.json` | 进程 pid、self-host pid、启动时间、运行形态、重启数、退出码、命令行指纹 |
 | `<数据根>/supervisor.json` | supervisor pid、启动时间、账号列表、命令行指纹 |
-| `<账号目录>/cache/qrcode.png` | 扫码登录二维码图片 |
+| `<账号目录>/cache/qr/qrcode.png` | 扫码登录二维码图片（登录结束自动删除；显式 `qrCodePath` 除外） |
 
 `status` 读状态文件后再用 pid 存活探测修正，不只看文件记录；CLI 逐行转发子进程
 stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout 只承载 JSON 行协议，pino console 关闭。
@@ -73,10 +73,13 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 | `NAPUTO_SMOKE=1` | 登录后真发/收一条消息自检 |
 | `NAPUTO_PROBE=1` | 启动时探测 session/service 方法面 |
 | `NAPUTO_IPC=1` | 以 IPC 模式运行（Koishi 适配器等外部驱动） |
+| `NAPUKETTO_DIAG=1` | 启用 IPC `diag.*` 诊断动作（默认关闭；仅本地调试，按方法 allowlist） |
 | `NAPUKETTO_LOG_LEVEL=debug` | 调高日志级别（控制台与缺省文件级别） |
 
 `NAPUTO_SMOKE_PEER` 指定冒烟目标（`c2c:<uin>` / `group:<uin>`）。日志级别优先级：
 `NAPUKETTO_LOG_LEVEL` > 旧拼写 `NAPKETTO_LOG_LEVEL` > `[log].level`；显式 `[log.file].level` 不跟随。
+诊断动作不进入常规动作表；未设置 `NAPUKETTO_DIAG` 时调用方收到 `NOT_FOUND`。启用后也只
+接受固定方法名与有限参数，破坏性实验改用 kernel 探测原语。启动日志不会打印环境变量值。
 
 ### 实例锁占用
 
@@ -87,7 +90,8 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 - 先看 `<账号目录>/napuketto-boot.log` 的最后一段。
 - 快速登录可能被风控挂起：用 `-q <uin>` 指定账号，或改扫码登录。
-- 扫码登录：CLI 在终端渲染二维码，PNG 落在 `<账号目录>/cache/qrcode.png`，IPC 模式由前端展示。
+- 扫码登录：CLI 在终端渲染二维码，PNG 落在 `<账号目录>/cache/qr/qrcode.png`（`0o600`，
+  登录结束删除），IPC 模式由前端展示。日志只记图片路径，不打印二维码 URL 或票据。
 - 登录失败不留驻：引导进程退出，supervisor 按 `autoRestart` 决定是否重启。
 
 ### stub 或 dlopen 失败

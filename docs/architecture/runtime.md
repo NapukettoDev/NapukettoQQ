@@ -53,7 +53,8 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
    （`--stub-dir` / `NAPUTO_STUB_DIR` 可覆盖），Linux 校验 `libnapuketto_stub.so`
    （`NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
 2. 按平台准备 Node：Windows 用本机 Node（非 Node 宿主时解析真 `node.exe`），Linux 直接用
-   系统 `node`；构造 `NAPUTO_*` 入口/路径/账号变量，Windows 前置 stub 目录到 `PATH`，
+   系统 `node`；按显式白名单构造子进程环境（平台变量 + 代理/证书 + 主配置 + `NAPUKETTO_LOG_*`
+   + 控制标记，不展开父进程 `process.env`），Windows 前置 stub 目录到 `PATH`，
    Linux 注入 `LD_PRELOAD` 与受管 `HOME`/`XDG_*`。
 3. spawn 宿主；捕获 spawn `error`，避免命令缺失把父进程带崩。
 

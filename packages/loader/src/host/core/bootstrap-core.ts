@@ -7,7 +7,7 @@
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
-import { env, isEnvEnabled } from "../env.js";
+import { consumeQrOnlyMarker, env, isEnvEnabled } from "../env.js";
 import {
     attachIpcServices,
     attachOb11IpcBridge,
@@ -533,7 +533,8 @@ export async function bootstrapWithCore(
     // koishi 面板「扫码登录」的重启路径（qrOnly 一次性，登录后 env 不再生效）。
     // 打印可用快速登录账号（启动横幅）
     const forcedUin = env.NAPUTO_QUICK_UIN;
-    const qrOnly = isEnvEnabled(env.NAPUTO_QR_ONLY);
+    // 一次性扫码标记：读取即消费（删除新旧拼写），软重登/重试不被残留标记强制扫码。
+    const qrOnly = consumeQrOnlyMarker();
     const ref: LoginTargetRef = { targetUin: undefined };
     await pickLoginAccount(kernel, ctx, ref, forcedUin);
     if (isShuttingDown()) {

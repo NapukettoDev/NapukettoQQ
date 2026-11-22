@@ -33,8 +33,10 @@ const env = {
     NAPUTO_STUB_DIR: process.env["NAPUKETTO_STUB_DIR"] ?? process.env["NAPUTO_STUB_DIR"],
     /** 强制指定快速登录账号（防风控账号挂起）。 */
     NAPUTO_QUICK_UIN: process.env["NAPUKETTO_QUICK_UIN"] ?? process.env["NAPUTO_QUICK_UIN"],
-    /** 强制扫码登录（=1：跳过快速登录直接 QR；koishi 面板「扫码登录」重启路径）。 */
+    /** 强制扫码登录（=1：跳过快速登录直接 QR；koishi 面板「扫码登录」重启路径，一次性）。 */
     NAPUTO_QR_ONLY: process.env["NAPUKETTO_QR_ONLY"] ?? process.env["NAPUTO_QR_ONLY"],
+    /** 显式 IPC 诊断动作开关（=1/true；默认关闭，仅本地调试）。 */
+    NAPUTO_DIAG: process.env["NAPUKETTO_DIAG"] ?? process.env["NAPUTO_DIAG"],
     /** 收发消息冒烟自检开关（=1 触发）。 */
     NAPUTO_SMOKE: process.env["NAPUKETTO_SMOKE"] ?? process.env["NAPUTO_SMOKE"],
     /** IPC 子进程模式（=1：koishi 插件驱动——stdout 走 JSON 行协议，stdin 收 action/control）。 */
@@ -70,6 +72,19 @@ const env = {
  */
 export function isEnvEnabled(val: string | undefined): boolean {
     return val === "1" || val === "true";
+}
+
+/**
+ * 读取并消费一次性扫码标记（`NAPUTO_QR_ONLY` / `NAPUKETTO_QR_ONLY`）。
+ *
+ * 该标记只对本次登录生效：读取后立即从 `process.env` 删除新旧拼写，避免后续软重登、
+ * 重试或同一宿主内其他代码再次读到，也减少该标记在原生子进程环境中的停留时间。
+ */
+export function consumeQrOnlyMarker(): boolean {
+    const enabled = isEnvEnabled(env.NAPUTO_QR_ONLY);
+    delete process.env["NAPUTO_QR_ONLY"];
+    delete process.env["NAPUKETTO_QR_ONLY"];
+    return enabled;
 }
 
 export { env };

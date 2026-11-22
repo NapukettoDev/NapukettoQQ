@@ -495,6 +495,9 @@ describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅�
         const opts = h.loginCalls[0];
         expect(opts?.["qrOnly"]).toBe(true);
         expect("quickUin" in (opts as Record<string, unknown>)).toBe(false);
+        // 一次性标记：读取后删除，软重登/后续重试不再被残留标记强制扫码
+        expect(process.env["NAPUTO_QR_ONLY"]).toBeUndefined();
+        expect(process.env["NAPUKETTO_QR_ONLY"]).toBeUndefined();
     });
 
     it("登录回调 QR 阶段：非 IPC 模式 → stdout NAPUTO_QR 标记行（cli 终端渲染）", async () => {

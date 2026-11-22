@@ -23,6 +23,8 @@ const SENSITIVE_KEYS = [
     "p_skey",
     "csrf_token",
     "bkn",
+    "qrcodeUrl",
+    "qr_code_url",
 ];
 
 /** 全部使用虚构凭据；不同位置给不同值，避免一次替换掩盖其他泄漏。 */

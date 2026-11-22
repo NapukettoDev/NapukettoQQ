@@ -26,12 +26,35 @@ import process from "node:process";
 export const CMDLINE_PROBE_SUPPORTED = process.platform === "win32" || process.platform === "linux";
 
 /**
+ * PID 上限（跨平台保守值）：Windows PID 是 32 位无符号，但 `process.kill` / POSIX
+ * signal API 只接受 32 位有符号正整数；Linux 默认 pid_max 远小于此值。
+ */
+export const MAX_PID = 0x7fffffff;
+
+/**
+ * PID 类型与范围校验（唯一口径）：安全整数、`1..MAX_PID`。
+ *
+ * 拒绝 0 / 负数 / 小数 / NaN / Infinity / 超范围值。调用方在把外部状态文件、
+ * IPC 参数或环境值当作 PID 使用前必须先过此守卫；合法 PID 的 signal 0 存活探测
+ * 不受影响。
+ */
+export function isValidPid(value: unknown): value is number {
+    return (
+        typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= MAX_PID
+    );
+}
+
+/**
  * 查询指定 pid 的当前命令行。
  *
- * @returns 命令行原文；进程不存在 / 命令行不可得（权限、系统进程 null）/
+ * @returns 命令行原文；pid 非法 / 进程不存在 / 命令行不可得（权限、系统进程 null）/
  *          查询机制失败（超时、PowerShell 缺失）均返回 null
  */
 export function readCmdlineForPid(pid: number): string | null {
+    // 先校验再拼命令 / 路径：非法值不得进入 PowerShell 字符串或 /proc/<pid>。
+    if (!isValidPid(pid)) {
+        return null;
+    }
     if (process.platform === "win32") {
         return readWindowsCmdline(pid);
     }

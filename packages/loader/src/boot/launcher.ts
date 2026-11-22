@@ -14,11 +14,18 @@
  */
 import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import process from "node:process";
 import { getErrorCode, getErrorMessage } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
 import type { QqInstallInfo } from "../qq/locate-qq.js";
+import {
+    applyPathEnv,
+    buildLaunchEnv,
+    ENV,
+    type LaunchLogOptions,
+    windowsSandboxProfile,
+} from "./launch-env.js";
 import {
     defaultLinuxStubPath,
     LINE_SPLIT,
@@ -29,6 +36,9 @@ import {
     resolveLinuxNode,
 } from "./linux-native.js";
 import { ensureWinNode } from "./win-node.js";
+
+export type { LaunchLogOptions } from "./launch-env.js";
+export { ENV } from "./launch-env.js";
 
 export interface LaunchOptions {
     /** QQ 安装信息（qqPath/version/wrapperPath）。 */
@@ -53,6 +63,13 @@ export interface LaunchOptions {
     quickUin?: string;
     /** 强制扫码登录（注入 NAPUTO_QR_ONLY；跳过快速登录直接 QR，koishi 面板「扫码登录」用）。 */
     qrOnly?: boolean;
+    /**
+     * IPC 诊断动作（`diag.*`）开关：true = 显式启用（仅本地调试），false = 强制关闭，
+     * undefined = 沿用父进程 `NAPUKETTO_DIAG` / `NAPUTO_DIAG`。默认关闭。
+     */
+    diagnostics?: boolean;
+    /** 子进程日志配置（可选公开契约；映射到 NAPUKETTO_LOG_*，值不写日志）。 */
+    log?: LaunchLogOptions;
     /** IPC 子进程模式（=1：stdout 走 JSON 行协议 + stdin 收 action/control，koishi 插件驱动）。 */
     ipc?: boolean;
     /**
@@ -80,7 +97,7 @@ export interface LaunchOptions {
      */
     stdio?: StdioOptions;
     /**
-     * 追加注入子进程的环境变量（覆盖同名继承值；值按原样传递）。
+     * 追加注入子进程的环境变量（在继承白名单之后合并；同键以本对象的强类型字段为准）。
      * cli 用：传播有效控制台渲染决策（NAPUKETTO_LOG_FORMAT/COLORIZE——子进程
      * stdout 恒为 pipe，TTY 判定失真）与数据根（NAPUTO_DATA_ROOT，停止哨兵用）。
      */
@@ -143,8 +160,14 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
     // 平台分支：win32 解析宿主 node（非 node 宿主如 Bun 需真 node.exe）
     const hostNode = await resolveHostNodePath(options);
 
-    const env = { ...buildLaunchEnv(options), ...windowsSandboxProfile() };
-    applyPathEnv(env, { stub, wrapperPath: options.qq.wrapperPath });
+    // 账号数据目录（实例锁 / boot 日志 / 配置兜底）在 spawn 前存在
+    mkdirSync(resolve(options.cfgDir), { recursive: true });
+    const env = buildLaunchEnv(options, "win32");
+    Object.assign(env, windowsSandboxProfile(process.env, "win32"));
+    applyPathEnv(env, { stub, wrapperPath: options.qq.wrapperPath }, "win32");
+    if (options.diagnostics === true) {
+        options.onStage?.("诊断动作已启用（仅本地调试；diag.* 按方法 allowlist 执行）");
+    }
 
     // 标准 node 直接跑入口（不拉起 QQ，不注入）
     // cwd 显式指向数据根（cli 传入）：QQ 原生层 fallback 落盘（guild1.db 等）
@@ -207,9 +230,13 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
             "Linux 原生宿主需要可执行的 node（当前宿主不是 node，且 PATH 中找不到 node）",
         );
     }
-    const env = buildLaunchEnv(options);
+    const env = buildLaunchEnv(options, "linux");
     env["LD_PRELOAD"] = linuxPreload(stub, gnutls);
     env[ENV.STUB_DIR] = stub;
+    if (options.diagnostics === true) {
+        options.onStage?.("诊断动作已启用（仅本地调试；diag.* 按方法 allowlist 执行）");
+    }
+    mkdirSync(resolve(options.cfgDir), { recursive: true });
     // HOME/XDG 收敛（Stage 3c）：Bugly 的崩溃处理器只认 $HOME，改它才能把
     // `.config/QQ/crash_files/` 收进数据根（strace 实测，2026-11-09）。
     const home = resolveLinuxHome({
@@ -343,18 +370,6 @@ export async function resolveWinHostNode(
     return winNode.exePath;
 }
 
-/** 注入 PATH（stub 目录 + wrapper.node 目录前置）与 STUB_DIR（win32 分支）。 */
-function applyPathEnv(
-    env: Record<string, string>,
-    opts: { stub: string; wrapperPath: string },
-): void {
-    const pathEntries = [opts.stub, dirname(opts.wrapperPath), process.env["PATH"] ?? ""]
-        .filter((entry) => entry !== "")
-        .join(";");
-    env["PATH"] = pathEntries;
-    env[ENV.STUB_DIR] = opts.stub;
-}
-
 /**
  * 默认 stub QQNT.dll 目录（loader 包内闭源 native/prebuilt/win32-x64）。
  * src 与 native 同层，构建后 dist 与 native 同层——`../native` 恒正确。
@@ -362,97 +377,3 @@ function applyPathEnv(
 export function defaultStubDir(): string {
     return join(packageRoot(), "native", "prebuilt", "win32-x64");
 }
-
-/** Keep native profile fallbacks local while the CLI can still locate an installed QQ. */
-function windowsSandboxProfile(): Record<string, string> {
-    const root = process.env["NAPUKETTO_SANDBOX_ROOT"];
-    if (!root) {
-        return {};
-    }
-    const profile = join(root, "home");
-    const roaming = join(profile, "AppData", "Roaming");
-    const local = join(profile, "AppData", "Local");
-    mkdirSync(roaming, { recursive: true });
-    mkdirSync(local, { recursive: true });
-    return { HOME: profile, USERPROFILE: profile, APPDATA: roaming, LOCALAPPDATA: local };
-}
-
-/** 装配自建宿主环境变量。 */
-function buildLaunchEnv(options: LaunchOptions): Record<string, string> {
-    // 配置目录兜底
-    const cfg = resolve(options.cfgDir);
-    mkdirSync(cfg, { recursive: true });
-
-    const env: Record<string, string> = {
-        ...process.env,
-        [ENV.QQ_PATH]: options.qq.qqPath,
-        [ENV.KERNEL_ENTRY]: resolve(options.kernelEntry),
-        [ENV.CFG_DIR]: cfg,
-        [ENV.QQ_VERSION]: options.qq.version,
-        [ENV.WRAPPER_PATH]: options.qq.wrapperPath,
-    };
-    // 可选注入（对象展开，保持低复杂度）
-    const optional: Record<string, string> = {
-        ...(options.selfHost === true ? { [ENV.SELF_HOST]: "1" } : {}),
-        ...(options.adapterEntry !== undefined
-            ? { [ENV.ADAPTER_ENTRY]: resolve(options.adapterEntry) }
-            : {}),
-        ...(options.networkEntry !== undefined
-            ? { [ENV.NETWORK_ENTRY]: resolve(options.networkEntry) }
-            : {}),
-        ...(options.configPath !== undefined
-            ? { [ENV.CONFIG_PATH]: resolve(options.configPath) }
-            : {}),
-        ...(options.quickUin !== undefined ? { [ENV.QUICK_UIN]: options.quickUin } : {}),
-        ...(options.qrOnly === true ? { [ENV.QR_ONLY]: "1" } : {}),
-        ...(options.ipc === true ? { [ENV.IPC]: "1" } : {}),
-        // 入站图片自动下载补丁（issue #105）：状态文件恒注入（观测面）；显式
-        // false 追加 killswitch（stub 跳过全部内存操作并写 disabled_by_env）。
-        [ENV.MEDIA_PATCH_STATUS]: join(cfg, "media-patch-status.json"),
-        ...(options.nativeMediaPatch === false ? { [ENV.MEDIA_PATCH_DISABLE]: "1" } : {}),
-        ...(options.extraEnv !== undefined ? options.extraEnv : {}),
-    };
-    const merged = { ...env, ...optional };
-    if (options.nativeMediaPatch === true) {
-        // 显式 true：清除继承的 killswitch（显式配置优先于环境变量）
-        delete merged[ENV.MEDIA_PATCH_DISABLE];
-    }
-    return merged;
-}
-
-/** 环境变量名（self-host.cjs 与 kernel 引导读取）。前缀统一 `NAPUKETTO_*`。 */
-export const ENV = {
-    QQ_PATH: "NAPUKETTO_QQ_PATH",
-    KERNEL_ENTRY: "NAPUKETTO_KERNEL_ENTRY",
-    CFG_DIR: "NAPUKETTO_CFG_DIR",
-    QQ_VERSION: "NAPUKETTO_QQ_VERSION",
-    WRAPPER_PATH: "NAPUKETTO_WRAPPER_PATH",
-    /** 自建宿主：标准 node + stub QQNT.dll 引导（self-host.cjs 分支）。 */
-    SELF_HOST: "NAPUKETTO_SELF_HOST",
-    /** stub QQNT.dll 目录（launchSelfHost 注入，self-host.cjs 诊断用）。 */
-    STUB_DIR: "NAPUKETTO_STUB_DIR",
-    /** adapter 包入口（协议装配用）。 */
-    ADAPTER_ENTRY: "NAPUKETTO_ADAPTER_ENTRY",
-    /** network 包入口（协议装配用）。 */
-    NETWORK_ENTRY: "NAPUKETTO_NETWORK_ENTRY",
-    /** 全局配置文件路径（项目根 napuketto.toml，boot-protocols 读取）。 */
-    CONFIG_PATH: "NAPUKETTO_CONFIG",
-    /** 强制指定快速登录账号（cli `-q <uin>` 透传，bootstrap 登录用）。 */
-    QUICK_UIN: "NAPUKETTO_QUICK_UIN",
-    /** 强制扫码登录（跳过快速登录直接 QR；koishi 面板「扫码登录」重启路径用）。 */
-    QR_ONLY: "NAPUKETTO_QR_ONLY",
-    /** IPC 子进程模式（koishi 插件驱动：stdout JSON 行 + stdin action/control）。 */
-    IPC: "NAPUKETTO_IPC",
-    /** 数据根（cli 注入：停止哨兵目录解析用，self-host 不再从 CFG_DIR 反推）。 */
-    DATA_ROOT: "NAPUKETTO_DATA_ROOT",
-    /**
-     * 入站图片自动下载补丁 killswitch（=1 时 stub 跳过全部内存操作）。
-     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_DISABLE_MEDIA_PATCH`，禁止改名。
-     */
-    MEDIA_PATCH_DISABLE: "NAPUTO_DISABLE_MEDIA_PATCH",
-    /**
-     * 入站图片自动下载补丁状态文件路径（stub 后台线程写 JSON，self-host 读后记日志）。
-     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_MEDIA_PATCH_STATUS`，禁止改名。
-     */
-    MEDIA_PATCH_STATUS: "NAPUTO_MEDIA_PATCH_STATUS",
-} as const;

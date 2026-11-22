@@ -60,7 +60,9 @@ Windows：
 
 - stub 校验：`native/prebuilt/win32-x64/QQNT.dll`（`--stub-dir` 或 `NAPUTO_STUB_DIR`
   覆盖），缺失在 spawn 前抛错。
-- 环境：PATH 前置 stub 目录 + `wrapper.node` 目录，并注入 `NAPUTO_STUB_DIR`。
+- 环境：PATH 前置 stub 目录 + `wrapper.node` 目录（按 Windows 大小写不敏感的键名
+  规范化，只保留一个 `PATH`），并注入 `NAPUTO_STUB_DIR`。其余父进程变量按环境契约白名单
+  透传。
 - 入站图片自动下载补丁（issue #105）：stub 私有组件在 wrapper 加载后
   运行期放行 QQ 原生收图管线（零磁盘篡改；版本特征失配自动降级，绝不盲写内存）。
   `LaunchOptions.nativeMediaPatch`（缺省 true）控制；状态 JSON 落
@@ -73,8 +75,9 @@ Windows：
 Linux：
 
 - stub：`native/prebuilt/linux-x64/libnapuketto_stub.so`（`NAPUTO_LINUX_STUB` 覆盖），
-  预加载 `LD_PRELOAD=<stub>:<libgnutls.so.30>`；gnutls 是 `libbugly` 的无 `DT_NEEDED`
-  隐藏依赖。
+  预加载 `LD_PRELOAD=<stub>:<libgnutls.so.30>`；`LD_PRELOAD` 由本模块独占写入，父进程的
+  `LD_PRELOAD` / `LD_LIBRARY_PATH` / `LD_AUDIT` 不会进入子进程。gnutls 是 `libbugly` 的
+  无 `DT_NEEDED` 隐藏依赖。
 - 宿主 node：`process.execPath` 是 node 直接用，否则 `which node`。
 - HOME/XDG 收敛：`<数据根>/home`（`NAPUTO_LINUX_HOME` 覆盖；无数据根退到
   `<账号目录>/home`），`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` /
@@ -84,6 +87,24 @@ Linux：
 - `NAPUTO_LINUX_NATIVE` 已退役：Linux 恒走原生分支，设 `0` 只播报一句提示。
 
 ### launchSelfHost 环境变量契约
+
+自建宿主不再展开父进程 `process.env`。`boot/launch-env.ts` 是唯一构造入口，按下述顺序
+合并（后者覆盖前者，删除语义同样显式）：
+
+1. **平台基础白名单**：`PATH` / `TEMP` / `TMP` / `TMPDIR` / `HOME` / `USERPROFILE` /
+   `LANG` / `LC_*` / `TZ`，Windows 另含 `SystemRoot` / `WINDIR` / `COMSPEC` / `PATHEXT` /
+   `APPDATA` / `LOCALAPPDATA` / `PROGRAMFILES*` / `USERDOMAIN` 等系统解析所需值；Linux 另含
+   `XDG_RUNTIME_DIR` / `USER` / `LOGNAME` / `SHELL`。不继承 `NODE_OPTIONS`、`LD_PRELOAD`、
+   `LD_LIBRARY_PATH`、`LD_AUDIT` 等加载器注入面。
+2. **显式透传**：代理（`HTTP(S)_PROXY` / `NO_PROXY` / `ALL_PROXY` 及小写拼写、
+   `NODE_USE_ENV_PROXY`）、证书（`NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE` /
+   `SSL_CERT_DIR`）、配置（`NAPKETTO_CONFIG_JSON` / `NAPKETTO_CONFIG` / `NAPKETTO_DATA` /
+   `NAPUKETTO_SANDBOX_ROOT`）、子进程日志覆盖（`NAPUKETTO_LOG_LEVEL` /
+   `NAPKETTO_LOG_LEVEL` / `NAPUKETTO_LOG_FORMAT` / `NAPUKETTO_NO_BANNER` /
+   `NAPUKETTO_LOG_COLORIZE`）与用户控制标记。
+3. **调用方 `extraEnv`**：显式逃生口，按原样合并；调用方不应把凭据放进来。
+4. **强类型 `LaunchOptions` 字段**：`quickUin` / `qrOnly` / `ipc` / `selfHost` /
+   `diagnostics` / `nativeMediaPatch` / `log` 最终生效，`false` 会删除对应继承标记。
 
 | 变量 | 必填 | 含义 |
 |---|---|---|
@@ -98,16 +119,29 @@ Linux：
 | `NAPUTO_NETWORK_ENTRY` | 否 | network 入口 `.mjs`（协议装配） |
 | `NAPKETTO_CONFIG` | 否 | 全局配置路径（`napuketto.toml`） |
 | `NAPUTO_QUICK_UIN` | 否 | 强制快速登录账号（cli `-q`） |
-| `NAPUTO_QR_ONLY` | 否 | `1` = 跳过快速登录强制扫码 |
+| `NAPUTO_QR_ONLY` | 否 | `1` = 跳过快速登录强制扫码（一次性：子进程读取后删除） |
 | `NAPUTO_IPC` | 否 | `1` = IPC 子进程模式 |
+| `NAPUTO_DIAG` | 否 | `1` = 显式启用 IPC 诊断动作（默认关闭，仅本地调试） |
 | `NAPUTO_DATA_ROOT` | 否 | 数据根（停止哨兵；调用方 `extraEnv` 注入） |
 | `NAPUTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，issue #105） |
 | `NAPUTO_MEDIA_PATCH_STATUS` | 否 | 补丁状态文件路径（恒注入 `<账号数据目录>/media-patch-status.json`；stub 写 JSON，self-host 读后记日志） |
 
+- 新前缀优先：`NAPUKETTO_QUICK_UIN` / `NAPUKETTO_QR_ONLY` / `NAPUKETTO_SMOKE` /
+  `NAPUKETTO_PROBE` / `NAPUKETTO_LISTENER_RECORD` / `NAPUKETTO_DIAG` 存在时，旧 `NAPUTO_*`
+  拼写不会再进入子进程；仅有旧拼写时才按新前缀规范化后透传。
+- `NAPUTO_QR_ONLY` 只对本次登录生效：`bootstrap-core` 读取后从 `process.env` 删除新旧拼写，
+  软重登与后续重试不再被残留标记强制扫码。
+- 子进程日志配置是可选公开契约：调用方可用 `LaunchOptions.log`（level / format /
+  noBanner / colorize）表达，或经上述 `NAPUKETTO_LOG_*` 环境变量透传；两条路径都不会把
+  环境变量值写入日志，只记录阶段与路径。
 - 子进程 `cwd` 缺省由调用方指向数据根：QQ 原生层在账号上下文就绪前会 fallback 到进程
   cwd 落盘。
 - `stdio` 缺省 `inherit`；cli 接管 pipe 后逐行过滤 wrapper 原生噪音。
-- `onStage` 回调覆盖 stub 校验 / node 解析 / 下载 / 解包 / 提取 / spawn 各阶段提示。
+- `onStage` 回调覆盖 stub 校验 / node 解析 / 下载 / 解包 / 提取 / spawn 各阶段提示，不打印
+  环境变量值。
+
+Bugly（QQ 内置崩溃上报）是否外传环境或崩溃材料目前只是报告主张，本仓未验证，也不以环境
+收窄宣称已阻断外传；收窄仅减少子进程可见的父进程环境面。
 
 ### 外部调试沙箱
 
@@ -124,7 +158,11 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   原子发布。同目录短时变更目录串行化检查、回收、发布和释放，变更目录先装入唯一标记再发布。
   清理残留变更目录时只删除观察到的标记，只移除空目录。
 - PID 死亡或已确认命令行不同可回收；存活但命令行无法查询时保留占用。无锁、空或损坏
-  记录可以重建。释放必须匹配本进程取得的所有权标记。退出时释放，强杀后下次启动回收。
+  记录可以重建。锁内 `pid` 与运行时状态文件中的 `pid` / `selfHostPid` 统一按
+  `isValidPid` 校验（安全整数、`1..0x7fffffff`）：类型/范围非法直接拒绝，既不用于
+  `process.kill` 探活，也不拼进 PowerShell / `/proc` 查询，避免把任意值当进程号；
+  合法 PID 的 signal 0 存活探测保持不变（`EPERM` 仍视为存活）。
+  释放必须匹配本进程取得的所有权标记。退出时释放，强杀后下次启动回收。
   升级同一账号目录的宿主时先停止旧宿主，旧代码写锁没有参与变更互斥。
 - 信号、全局与单账号停止哨兵、IPC stop/restart、父进程断开 stdin/stdout、OB11
   进程控制和引导失败都进入同一关停。首次触发决定退出码，后续请求共享完成结果。
@@ -155,6 +193,12 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   表态，独立于 OB11 映射。成功返回 `{ ok: true }`，失败返回带 `code` 和 `message` 的
   IPC 错误（包括 `INVALID_PARAM`、`NOT_FOUND`、`INVALID_STATE` 及平台权限错误）。调用
   需要支持 `MsgApi.setMsgEmojiLikeById` 的 kernel，旧 kernel 下该动作返回 `INVALID_STATE`。
+- **诊断动作默认关闭**：`diag.*`（6 个反射调用 + `diag.richMediaTmpPaths` 枚举）只在
+  `NAPUKETTO_DIAG=1`（或 `LaunchOptions.diagnostics: true`）时注册；常规动作表不含诊断名，
+  调用方得到 `NOT_FOUND`，不会误触原生反射面。显式启用后仍按目标限定的方法 allowlist 执行：
+  `__methods` 只返回有长度上限的方法名，`args` 数量有上限，未知/危险方法直接拒绝；枚举动作
+  只读，不再触发 `setFlashTransferDir` 等副作用。需要更激进的实验时使用 kernel 自己的探测
+  原语，不扩大 IPC 反射面。诊断启停不改变业务动作表。
 - 初次引导与软重登都先完成动作挂载，再写出 `status(ready)`，随后才允许写出
   `event`（含 OB11）。装配期间到达 IPC 出口的事件直接丢弃。软重登在清理旧装配前
   发 `status(sessioning)`，暂停事件转发。如果写入 ready 同步失败，成功重播后才放行。

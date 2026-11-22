@@ -107,7 +107,8 @@ profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
   child / setBindings、错误自有字段及 serializer / `toJSON` 产物，不修改调用方对象。
 - 字段名大小写不敏感：`token`、`access_token`、`authorization`、`cookie` / `cookies`、
   `set-cookie`、`password`、`secret`、`ticket`，以及 QQ 票据 `clientKey`、`skey`、
-  `p_skey`、`csrf_token`、`bkn`，命中后整个值替换为 `[Redacted]`。
+  `p_skey`、`csrf_token`、`bkn`，登录二维码 URL 的 `qrcodeUrl` / `qr_code_url` /
+  `qrcode_url`，命中后整个值替换为 `[Redacted]`。
   `LoggerOptions.redact` 继续作为 pino 附加路径规则，不能关闭内置字段保护。
 - `err` 使用 pino `errWithCause`，保留类型、message、stack、code 和结构化 cause，
   脱敏仅替换敏感字段，账号标识、端口、状态和重试等诊断字段保留。
@@ -141,6 +142,18 @@ Linux 3.2.x 原生对象把**未命中的变体字段显式置 `null`**（Window
 - `QrLoginSession.start` 的 quickUin 路径在 `quickLoginWithUin` **之前**先 `restartTimeout()`，
   保证挂起时 120s 兜底计时存在；超时 failed 后迟到结果不得复活会话或重复出码。
 - loader 软重登显式传 `quickLoginTimeoutMs: 20000`，固化口径。
+
+### 二维码交付与生命周期
+
+- 二维码数据只经两条预期路径交付：`CoreLoginOptions.onLoginProgress`（loader 再转 IPC
+  `qr` 帧或 `NAPUTO_QR` 标记行）与终端渲染；日志、事件与诊断动作不承载二维码 URL。
+- 默认落盘位置是账号目录下独占的 `cache/qr/qrcode.png`，目录按 `0o700` 创建、文件按
+  `0o600` 写入，并在写入前拒绝符号链接。该文件是本次登录尝试的临时材料：登录成功、
+  失败、超时或 `stop()` 时删除。
+- 调用方显式传 `qrCodePath` 视为自行接管生命周期：仍按 `0o600` 写入并拒绝符号链接，
+  但登录结束时保留，由调用方清理。
+- 日志只记录二维码图片路径与状态，不记录 `qrcodeUrl`、登录 URL 或票据原文；结构化脱敏
+  同时覆盖 `qrcodeUrl` / `qr_code_url` / `qrcode_url` 字段，防止调用方绕过。
 
 ### 视频发送
 

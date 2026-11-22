@@ -11,7 +11,7 @@
  *    \0 转空格 / 空 / 抛错）、其他平台 null（不发起查询）
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { normalizeCmdline, readCmdlineForPid } from "../pid-cmdline.js";
+import { isValidPid, MAX_PID, normalizeCmdline, readCmdlineForPid } from "../pid-cmdline.js";
 
 /** execFileSync / readFileSync mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -78,6 +78,51 @@ async function fresh(): Promise<typeof import("../pid-cmdline.js")> {
     vi.resetModules();
     return await import("../pid-cmdline.js");
 }
+
+describe("isValidPid：PID 类型与范围", () => {
+    it.each([
+        [1, true],
+        [4242, true],
+        [MAX_PID, true],
+        [0, false],
+        [-1, false],
+        [1.5, false],
+        [Number.NaN, false],
+        [Number.POSITIVE_INFINITY, false],
+        [MAX_PID + 1, false],
+        [Number.MAX_SAFE_INTEGER, false],
+        ["4242", false],
+        [null, false],
+        [undefined, false],
+        [{ pid: 4242 }, false],
+    ])("%j → %s", (value, expected) => {
+        expect(isValidPid(value)).toBe(expected);
+    });
+});
+
+describe("readCmdlineForPid：非法 PID 直接拒绝（不拼命令 / 不读 /proc）", () => {
+    it.each([0, -1, 1.5, Number.NaN, MAX_PID + 1, Number.MAX_SAFE_INTEGER])(
+        "%j → null 且不发起平台查询",
+        async (pid) => {
+            await withPlatform("win32", async () => {
+                expect(readCmdlineForPid(pid)).toBeNull();
+                expect(h.execCalls).toHaveLength(0);
+            });
+            await withPlatform("linux", async () => {
+                expect(readCmdlineForPid(pid)).toBeNull();
+            });
+            expect(h.procFiles.size).toBe(0);
+        },
+    );
+
+    it("合法 PID 仍保留存活探测（win32 查询一次）", async () => {
+        await withPlatform("win32", async () => {
+            h.execResult = "C:\\node.exe self-host.cjs";
+            expect(readCmdlineForPid(4242)).toBe("C:\\node.exe self-host.cjs");
+            expect(h.execCalls).toHaveLength(1);
+        });
+    });
+});
 
 describe("normalizeCmdline", () => {
     it("大小写归一（Windows 路径大小写不敏感）+ 反斜杠转正斜杠", () => {

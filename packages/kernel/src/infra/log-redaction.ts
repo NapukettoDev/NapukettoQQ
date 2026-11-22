@@ -16,6 +16,9 @@ const SENSITIVE_FIELDS: ReadonlySet<string> = new Set([
     "p_skey",
     "csrf_token",
     "bkn",
+    "qrcodeurl",
+    "qr_code_url",
+    "qrcode_url",
 ]);
 
 /** 只遍历刚解析的 JSON 树；不会触碰业务对象、getter、toJSON 或循环引用。 */
