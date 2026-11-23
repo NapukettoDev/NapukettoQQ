@@ -65,6 +65,41 @@ interface ProbedVideo {
     format: unknown;
 }
 
+function displayDimensions(stream: Record<string, unknown>): [number, number] {
+    const width = positiveNumber(stream["width"]);
+    const height = positiveNumber(stream["height"]);
+    assertDimensions(width, height);
+    const sideData = stream["side_data_list"];
+    const rotated =
+        Array.isArray(sideData) &&
+        sideData.some((item) => Math.abs(Number(record(item)?.["rotation"])) % 180 === 90);
+    return rotated ? [height, width] : [width, height];
+}
+
+function parseVideoProbe(output: string, source: string): ProbedVideo {
+    const parsed = record(JSON.parse(output));
+    const streams = parsed?.["streams"];
+    // V:0 already selects the first real video stream, excluding attached covers.
+    const stream = Array.isArray(streams) ? record(streams[0]) : undefined;
+    if (stream === undefined) throw new MediaError(`ffprobe 未取到视频信息: ${source}`);
+    const [width, height] = displayDimensions(stream);
+    const format = record(parsed?.["format"]);
+    const seconds = positiveNumber(format?.["duration"]);
+    const fps = frameRate(stream["avg_frame_rate"]) || frameRate(stream["r_frame_rate"]);
+    if (seconds === 0 || seconds > MAX_SECONDS || fps === 0 || fps > MAX_FPS) {
+        throw new MediaError("视频时长或帧率无效或超出限制");
+    }
+    return {
+        width,
+        height,
+        seconds,
+        fps,
+        packets: positiveNumber(stream["nb_read_packets"]),
+        codec: stream["codec_name"],
+        format: format?.["format_name"],
+    };
+}
+
 async function probeVideo(
     source: string,
     signal?: AbortSignal,
@@ -97,34 +132,7 @@ async function probeVideo(
                 cause: result,
             });
         }
-        const parsed = record(JSON.parse(result.stdout));
-        const streams = parsed?.["streams"];
-        // V:0 already selects the first real video stream, excluding attached covers.
-        const stream = Array.isArray(streams) ? record(streams[0]) : undefined;
-        if (stream === undefined) throw new MediaError(`ffprobe 未取到视频信息: ${source}`);
-        const width = positiveNumber(stream["width"]);
-        const height = positiveNumber(stream["height"]);
-        const format = record(parsed?.["format"]);
-        const seconds = positiveNumber(format?.["duration"]);
-        const nominalFps = frameRate(stream["r_frame_rate"]);
-        const fps = frameRate(stream["avg_frame_rate"]) || nominalFps;
-        assertDimensions(width, height);
-        if (seconds === 0 || seconds > MAX_SECONDS || fps === 0 || fps > MAX_FPS) {
-            throw new MediaError("视频时长或帧率无效或超出限制");
-        }
-        const sideData = stream["side_data_list"];
-        const rotated =
-            Array.isArray(sideData) &&
-            sideData.some((item) => Math.abs(Number(record(item)?.["rotation"])) % 180 === 90);
-        return {
-            width: rotated ? height : width,
-            height: rotated ? width : height,
-            seconds,
-            fps,
-            packets: positiveNumber(stream["nb_read_packets"]),
-            codec: stream["codec_name"],
-            format: format?.["format_name"],
-        };
+        return parseVideoProbe(result.stdout, source);
     } catch (error) {
         checkMediaSignal(signal);
         if (error instanceof MediaError) throw error;
@@ -132,17 +140,17 @@ async function probeVideo(
     }
 }
 
-function assertTranscodeOptions({ width, height, fps }: TranscodeOptions): void {
-    for (const dimension of [width, height]) {
-        if (
-            dimension !== undefined &&
-            (!Number.isSafeInteger(dimension) ||
-                dimension < 2 ||
-                dimension > MAX_EDGE ||
-                dimension % 2 !== 0)
-        ) {
-            throw new MediaError("转码宽高须为 2–4096 的偶整数");
-        }
+function validOutputEdge(edge: number | undefined): boolean {
+    return (
+        edge === undefined ||
+        (Number.isSafeInteger(edge) && edge >= 2 && edge <= MAX_EDGE && edge % 2 === 0)
+    );
+}
+
+function assertTranscodeOptions(opts: TranscodeOptions): void {
+    const { width, height, fps } = opts;
+    if (!validOutputEdge(width) || !validOutputEdge(height)) {
+        throw new MediaError("转码宽高须为 2–4096 的偶整数");
     }
     if (width !== undefined && height !== undefined) assertDimensions(width, height);
     if (fps !== undefined && (!Number.isFinite(fps) || fps < 1 || fps > MAX_FPS)) {

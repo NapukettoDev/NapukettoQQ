@@ -90,10 +90,7 @@ export async function localMediaPath(
     }
 }
 
-export async function assertMediaOutput(
-    path: string,
-    maxBytes: number = Number.MAX_SAFE_INTEGER,
-): Promise<void> {
+async function assertMediaOutput(path: string, maxBytes: number): Promise<void> {
     const info = await stat(path);
     if (!info.isFile() || info.size === 0 || info.size > maxBytes) {
         throw new MediaError(`媒体输出缺失、为空或超出大小限制: ${path}`);
@@ -113,28 +110,7 @@ export async function readBoundedMediaFile(
     maxBytes: number,
     signal?: AbortSignal,
 ): Promise<Buffer> {
-    checkMediaSignal(signal);
-    const handle = await openMediaInput(path);
-    try {
-        const info = await handle.stat();
-        if (!info.isFile() || info.size === 0 || info.size > maxBytes) {
-            throw new MediaError(`媒体文件为空或超出大小限制: ${path}`);
-        }
-        const buffer = Buffer.alloc(info.size + 1);
-        let offset = 0;
-        while (offset < buffer.byteLength) {
-            const { bytesRead } = await handle.read(buffer, offset, buffer.byteLength - offset);
-            checkMediaSignal(signal);
-            if (bytesRead === 0) {
-                if (offset === info.size) return buffer.subarray(0, offset);
-                break;
-            }
-            offset += bytesRead;
-        }
-        throw new MediaError(`读取期间媒体文件大小发生变化: ${path}`);
-    } finally {
-        await handle.close();
-    }
+    return await readMediaBytes(path, maxBytes, "file", signal);
 }
 
 export async function readMediaPrefix(
@@ -142,18 +118,35 @@ export async function readMediaPrefix(
     maxBytes: number,
     signal?: AbortSignal,
 ): Promise<Buffer> {
+    return await readMediaBytes(path, maxBytes, "prefix", signal);
+}
+
+async function readMediaBytes(
+    path: string,
+    maxBytes: number,
+    mode: "file" | "prefix",
+    signal?: AbortSignal,
+): Promise<Buffer> {
     checkMediaSignal(signal);
     const handle = await openMediaInput(path);
     try {
         const info = await handle.stat();
-        if (!info.isFile() || info.size === 0) throw new MediaError(`无效的媒体文件: ${path}`);
-        const buffer = Buffer.alloc(Math.min(maxBytes, info.size));
+        if (!info.isFile() || info.size === 0 || (mode === "file" && info.size > maxBytes)) {
+            throw new MediaError(`媒体文件为空或超出大小限制: ${path}`);
+        }
+        // The full read has a sentinel byte to detect growth after opening.
+        const buffer = Buffer.alloc(
+            mode === "file" ? info.size + 1 : Math.min(maxBytes, info.size),
+        );
         let offset = 0;
         while (offset < buffer.length) {
             const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset);
             checkMediaSignal(signal);
             if (bytesRead === 0) break;
             offset += bytesRead;
+        }
+        if (mode === "file" && offset !== info.size) {
+            throw new MediaError(`读取期间媒体文件大小发生变化: ${path}`);
         }
         return buffer.subarray(0, offset);
     } finally {

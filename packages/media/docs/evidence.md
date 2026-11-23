@@ -19,9 +19,11 @@ pnpm --filter @napuketto/kernel build
 pnpm --filter @napuketto/adapter build
 pnpm test:quiet packages/media packages/adapter/src/milky/helper/message/__tests__/media-uri.test.ts packages/kernel/src/apis/__tests__/msg-api-more.test.ts
 pnpm check && pnpm test:quiet
+pnpm exec fallow audit --base origin/main
 ```
 
-三个单包构建通过。定向测试 361 项通过；完整门禁 240 个测试文件通过，3,685 项通过、14 项跳过。
+三个单包构建、Fallow 增量门禁均通过。定向测试 361 项通过。完整门禁 240 个测试文件通过，
+3,685 项通过、14 项跳过。
 
 Windows Node 24.16.0、pnpm 12.4.1 与 FFmpeg/FFprobe 9.0。锁定 `silk-wasm@3.7.1`、
 `image-size@2.1.0`、`file-type@22.3.0` 和 `execa@10.2.1`。

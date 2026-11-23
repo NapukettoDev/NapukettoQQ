@@ -269,32 +269,38 @@ interface WavPcm {
     sampleRate: number;
 }
 
-/** Locate common PCM WAV chunks without walking the audio payload. Other WAVs use ffmpeg. */
-function monoWavPcm(header: Buffer, fileSize: number): WavPcm | undefined {
+function isRiffWave(header: Buffer): boolean {
+    return (
+        header.toString("latin1", 0, 4) === "RIFF" && header.toString("latin1", 8, 12) === "WAVE"
+    );
+}
+
+function readMonoWavRate(header: Buffer, offset: number, bytes: number): number | undefined {
     if (
-        header.length < 12 ||
-        header.toString("latin1", 0, 4) !== "RIFF" ||
-        header.toString("latin1", 8, 12) !== "WAVE" ||
-        header.readUInt32LE(4) + 8 !== fileSize
+        bytes < 16 ||
+        offset + 16 > header.length ||
+        header.readUInt16LE(offset) !== 1 ||
+        header.readUInt16LE(offset + 2) !== 1 ||
+        header.readUInt16LE(offset + 12) !== 2 ||
+        header.readUInt16LE(offset + 14) !== 16
     ) {
         return undefined;
     }
+    return header.readUInt32LE(offset + 4);
+}
+
+/** Locate common PCM WAV chunks without walking the audio payload. Other WAVs use ffmpeg. */
+function monoWavPcm(header: Buffer, fileSize: number): WavPcm | undefined {
+    if (!isRiffWave(header) || header.readUInt32LE(4) + 8 !== fileSize) return undefined;
     let sampleRate: number | undefined;
     for (let offset = 12; offset + 8 <= header.length; ) {
         const name = header.toString("latin1", offset, offset + 4);
         const bytes = header.readUInt32LE(offset + 4);
         const data = offset + 8;
         if (data + bytes > fileSize) return undefined;
-        if (name === "fmt " && bytes >= 16 && data + 16 <= header.length) {
-            if (
-                header.readUInt16LE(data) !== 1 ||
-                header.readUInt16LE(data + 2) !== 1 ||
-                header.readUInt16LE(data + 12) !== 2 ||
-                header.readUInt16LE(data + 14) !== 16
-            ) {
-                return undefined;
-            }
-            sampleRate = header.readUInt32LE(data + 4);
+        if (name === "fmt ") {
+            sampleRate = readMonoWavRate(header, data, bytes);
+            if (sampleRate === undefined) return undefined;
         }
         if (name === "data" && sampleRate !== undefined && bytes % 2 === 0) {
             return { offset: data, bytes, sampleRate };
@@ -317,8 +323,7 @@ export async function encodePcmToSilk(
         await getSilkInfo(source, SILK_SAMPLE_RATE, { signal });
         return input;
     }
-    const wav =
-        prefix.toString("latin1", 0, 4) === "RIFF" && prefix.toString("latin1", 8, 12) === "WAVE";
+    const wav = isRiffWave(prefix);
     const pcm = wav
         ? monoWavPcm(await readMediaPrefix(source, 512 * 1024, signal), (await stat(source)).size)
         : undefined;
