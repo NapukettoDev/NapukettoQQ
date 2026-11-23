@@ -19,7 +19,7 @@ import {
     SILK_SAMPLE_RATE,
 } from "../audio.js";
 import { MediaError } from "../types.js";
-import { cleanupTempDir, makePcm, makeTempDir, makeWav } from "./test-support.js";
+import { cleanupTempDir, makePcm, makeTempDir, makeWav, mockFfmpegChild } from "./test-support.js";
 
 const { execaMock } = vi.hoisted(() => ({ execaMock: vi.fn() }));
 vi.mock("execa", () => ({ execa: execaMock }));
@@ -32,16 +32,9 @@ async function makeSilk(dir: string, name: string, seconds: number): Promise<str
     return path;
 }
 
-/** ffmpeg 归一化 mock：exit 0 并在输出路径（最后一个参数）写入 2s PCM。 */
+/** ffmpeg 归一化 mock：exit 0 并输出 2s PCM。 */
 function mockFfmpegPcmOut(): void {
-    execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
-        const out = args.at(-1);
-        if (out === undefined) {
-            throw new Error("ffmpeg mock：缺输出路径参数");
-        }
-        writeFileSync(out, makePcm(2, SILK_SAMPLE_RATE));
-        return { exitCode: 0, stdout: "" };
-    });
+    execaMock.mockImplementation(() => mockFfmpegChild([makePcm(2, SILK_SAMPLE_RATE)]));
 }
 
 /** silk 时长按 20ms 帧量化（2s 正弦 ≈ 2040ms）：断言落在 [seconds, seconds+0.2s)。 */

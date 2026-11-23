@@ -9,6 +9,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+
+export function mockFfmpegChild(chunks: Iterable<Buffer>, result: object = { exitCode: 0 }) {
+    return Object.assign(Promise.resolve(result), { stdout: Readable.from(chunks) });
+}
 
 /** 生成正弦波 pcm_s16le（避免全零被编码器特殊处理）。 */
 export function makePcm(seconds: number, rate: number): Buffer {

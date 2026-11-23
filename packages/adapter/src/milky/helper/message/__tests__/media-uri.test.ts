@@ -6,21 +6,34 @@
  * 锁定：file:// 与裸路径授权、畸形 URI 拒绝、http(s)/base64 需 mediaDir、
  * base64 空/空载荷报错、探测失败保留 .bin。
  */
-import { access, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+    access,
+    mkdtemp,
+    readdir,
+    readFile,
+    realpath,
+    rm,
+    stat,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@napuketto/media", async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    downloadPublicUrl: vi.fn(async (_url: string, dest: string) => {
-        await writeFile(dest, "test");
-        return 4;
-    }),
-}));
+vi.mock("@napuketto/media", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@napuketto/media")>();
+    return {
+        ...actual,
+        detectFileType: vi.fn(actual.detectFileType),
+        downloadPublicUrl: vi.fn(async (_url: string, dest: string) => {
+            await writeFile(dest, "test");
+            return 4;
+        }),
+    };
+});
 
-import { downloadPublicUrl } from "@napuketto/media";
+import { detectFileType, downloadPublicUrl } from "@napuketto/media";
 import { withMediaScope } from "../../../../internal/infra/media-cache.js";
 import { resolveMediaUri, resolveUriToPath } from "../media-uri.js";
 
@@ -127,5 +140,54 @@ describe("resolveMediaUri（远程媒体落盘）", () => {
         await expect(resolveMediaUri("base64://%%%%", mediaDir)).rejects.toMatchObject({
             code: "INVALID_PARAM",
         });
+    });
+
+    it("30 MiB 解码边界可消费，超出编码上限时不分配条目", async () => {
+        const uri = `base64://${"A".repeat(40 * 1024 * 1024)}`;
+        await expect(resolveMediaUri(`${uri}AAAA`, mediaDir)).rejects.toMatchObject({
+            code: "INVALID_PARAM",
+        });
+        expect(await readdir(mediaDir)).toEqual([]);
+        let path = "";
+        await withMediaScope(async () => {
+            path = await resolveMediaUri(uri, mediaDir);
+            expect((await stat(path)).size).toBe(30 * 1024 * 1024);
+        });
+        await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readdir(dirname(dirname(path)))).toEqual([]);
+    });
+
+    it("URL-safe 省略填充可消费，动作失败后释放", async () => {
+        let path = "";
+        await expect(
+            withMediaScope(async () => {
+                path = await resolveMediaUri("base64://-_8", mediaDir);
+                expect(await readFile(path)).toEqual(Buffer.from([0xfb, 0xff]));
+                throw new Error("native test failure");
+            }),
+        ).rejects.toThrow("native test failure");
+        await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("无效尾块和探测期间取消都清理已经写出的文件", async () => {
+        const cacheRoot = join(mediaDir, ".napuketto-media-v1");
+        await expect(
+            resolveMediaUri(`base64://${"A".repeat(64 * 1024)}!AAA`, mediaDir),
+        ).rejects.toMatchObject({
+            code: "INVALID_PARAM",
+        });
+        expect(await readdir(cacheRoot)).toEqual([]);
+        const controller = new AbortController();
+        vi.mocked(detectFileType).mockImplementationOnce(async (file) => {
+            expect((await stat(file)).size).toBe(5);
+            controller.abort();
+            return { ext: "png", mime: "image/png" };
+        });
+        await expect(
+            withMediaScope(() =>
+                resolveMediaUri("base64://aGVsbG8=", mediaDir, undefined, controller.signal),
+            ),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(await readdir(cacheRoot)).toEqual([]);
     });
 });

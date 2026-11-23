@@ -4,7 +4,7 @@
  * getImageSize：PNG / GIF / WebP 魔数解析宽高、非图片文件报错；
  * detectFileType：file-type 魔数识别（png / gif / webp）、无法识别 → MediaError。
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -82,6 +82,14 @@ describe("getImageSize", () => {
         writeFileSync(file, PNG_1X1);
 
         expect(await getImageSize(file)).toEqual({ width: 1, height: 1 });
+    });
+
+    it("大文件只探测有效头部", async () => {
+        const file = join(dir, "large.png");
+        writeFileSync(file, PNG_1X1);
+        truncateSync(file, 32 * 1024 * 1024);
+        await expect(getImageSize(file)).resolves.toEqual({ width: 1, height: 1 });
+        await expect(detectFileType(file)).resolves.toEqual({ ext: "png", mime: "image/png" });
     });
 
     it("GIF → 宽高 1x1", async () => {

@@ -7,7 +7,8 @@
  * 方法面（P2-1）：发送 / 撤回 / 拉历史 / 标记已读。group/friend 等后续 apis 同构。
  */
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import type { MsgEventChannel } from "../bridge/index.js";
 import { errorMessage, isKernelError, kernelError, sleep } from "../infra/index.js";
@@ -133,8 +134,32 @@ async function statFile(path: string, label = "图片"): Promise<{ size: number 
 /** 计算文件 md5（十六进制小写）。 */
 async function hashFile(path: string, label = "图片"): Promise<string> {
     try {
-        const buf = await readFile(path);
-        return createHash("md5").update(buf).digest("hex");
+        const flags =
+            constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NONBLOCK);
+        const handle = await open(path, flags);
+        try {
+            const info = await handle.stat();
+            if (!info.isFile()) throw new Error("摘要输入必须是普通文件");
+            const hash = createHash("md5");
+            const chunk = Buffer.alloc(64 * 1024);
+            let remaining = info.size;
+            while (remaining > 0) {
+                const { bytesRead } = await handle.read(
+                    chunk,
+                    0,
+                    Math.min(remaining, chunk.length),
+                );
+                if (bytesRead === 0) throw new Error("摘要读取期间文件缩短");
+                hash.update(chunk.subarray(0, bytesRead));
+                remaining -= bytesRead;
+            }
+            if ((await handle.read(chunk, 0, 1)).bytesRead !== 0) {
+                throw new Error("摘要读取期间文件增长");
+            }
+            return hash.digest("hex");
+        } finally {
+            await handle.close();
+        }
     } catch {
         throw kernelError(`${label}文件读取失败: ${path}`, "INVALID_PARAM");
     }

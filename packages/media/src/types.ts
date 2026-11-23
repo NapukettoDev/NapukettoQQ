@@ -34,10 +34,17 @@ export interface VideoInfo {
     durationMs: number;
 }
 
+export interface MediaOperationOptions {
+    signal?: AbortSignal | undefined;
+}
+
 /** 视频转码选项。 */
-export interface TranscodeOptions {
+export interface TranscodeOptions extends MediaOperationOptions {
+    /** 偶整数，2–4096。只指定一边时保持比例。 */
     width?: number | undefined;
+    /** 偶整数，2–4096。 */
     height?: number | undefined;
+    /** 有限数，1–60。 */
     fps?: number | undefined;
 }
 

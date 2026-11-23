@@ -10,6 +10,8 @@ export {
     decodeSilkToWav,
     encodePcmToSilk,
     getSilkInfo,
+    MAX_AUDIO_INPUT_BYTES,
+    MAX_AUDIO_SECONDS,
     SILK_SAMPLE_RATE,
 } from "./audio.js";
 export type { DownloadUrlOptions, MediaOutboundPolicy } from "./downloader.js";
@@ -20,6 +22,7 @@ export type {
     DecodedAudio,
     FileTypeResult,
     ImageSize,
+    MediaOperationOptions,
     TranscodeOptions,
     VideoInfo,
 } from "./types.js";
