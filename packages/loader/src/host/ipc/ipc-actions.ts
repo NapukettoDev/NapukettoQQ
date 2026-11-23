@@ -10,9 +10,10 @@
  */
 import { z } from "zod";
 import { getErrorCode, isRecord } from "../type-guards.js";
-import type { MsgApiLike } from "../types.js";
+import type { GroupNotifyApiLike, MsgApiLike } from "../types.js";
 import { errorMessage, log } from "../util.js";
 import { type IpcDiagnosticContext, registerDiagnosticActions } from "./ipc-diagnostics.js";
+import { IpcRespondToGroupRequestParamsSchema } from "./ipc-types.js";
 
 export { DIAGNOSTIC_ACTION_NAMES } from "./ipc-diagnostics.js";
 
@@ -44,6 +45,7 @@ export interface IpcApiContext extends IpcDiagnosticContext {
     friendApi: {
         getFriendList(): Promise<unknown[]>;
     };
+    groupNotifyApi?: GroupNotifyApiLike;
     /** 登录账号自身信息。 */
     self: { uin: string; nickname: string };
     /** uin → uid 转换（Peer 目标解析；注入 groupApi.uinToUid）。 */
@@ -315,6 +317,26 @@ export function createIpcActions(
     });
 
     actions.set("friend.getFriendList", async () => ctx.friendApi.getFriendList());
+
+    actions.set("group.respondToRequest", async (params) => {
+        const parsed = IpcRespondToGroupRequestParamsSchema.safeParse(params);
+        if (!parsed.success) {
+            throw Object.assign(new Error(z.prettifyError(parsed.error)), {
+                code: "INVALID_PARAM",
+            });
+        }
+        const { selfUin, request, approve, reason } = parsed.data;
+        if (selfUin !== ctx.self.uin) {
+            throw Object.assign(new Error("群请求与当前登录账号不匹配"), { code: "INVALID_PARAM" });
+        }
+        const api = ctx.groupNotifyApi;
+        if (api?.respondToRequest === undefined) {
+            throw Object.assign(new Error("当前 kernel 版本不支持群请求审批"), {
+                code: "INVALID_STATE",
+            });
+        }
+        await api.respondToRequest(request, approve, reason);
+    });
 
     // 诊断动作默认不注册：常规动作表只含业务动作，避免外部驱动触达原生反射面。
     // 显式调试（NAPUKETTO_DIAG=1 / LaunchOptions.diagnostics）才挂 diag.*，且内部仍按

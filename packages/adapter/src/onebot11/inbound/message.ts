@@ -96,6 +96,7 @@ export class Ob11InboundMessage {
         const notice = toOb11NoticeEvent(msg, {
             selfUin: this.deps.selfUin,
             uidToUin,
+            messageUnique: this.deps.api.messageUnique,
             ...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}),
         });
         if (notice !== null) {

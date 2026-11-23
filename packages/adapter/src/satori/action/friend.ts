@@ -19,13 +19,16 @@ export function createFriendActions(deps: FriendActionDeps): SatoriActionHandler
             schema: z.object({ next: z.string().optional() }),
             handle: async (): Promise<List<Friend>> => {
                 const friends = await deps.friendApi.getFriendList();
-                const data: Friend[] = friends.map((f) => {
+                const data: Friend[] = friends.flatMap((f) => {
+                    if (f.uin === null) {
+                        return [];
+                    }
                     const user = toUser(f.uin, f.nickname);
                     const out: Friend = { user };
                     if (f.remark !== "" && f.remark !== f.nickname) {
                         out.nick = f.remark;
                     }
-                    return out;
+                    return [out];
                 });
                 return { data };
             },

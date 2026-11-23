@@ -89,6 +89,7 @@ export function toOb11MessageEvent(
         sub_type: subType,
         user_id: userId,
         sender,
+        ...(subType === "group" ? { temp_source: 0 } : {}),
     };
     return event;
 }

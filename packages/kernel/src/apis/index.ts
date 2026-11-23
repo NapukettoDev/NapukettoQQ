@@ -17,7 +17,14 @@ export type {
 } from "./friend.js";
 export { FriendApi } from "./friend.js";
 export { GroupApi } from "./group.js";
-export { GroupNotifyApi } from "./group-notify.js";
+export {
+    findPendingGroupRequest,
+    GroupNotifyApi,
+    type GroupRequestKind,
+    type GroupRequestRef,
+    type PendingGroupRequest,
+    toPendingGroupRequest,
+} from "./group-notify.js";
 export { MsgApi } from "./msg.js";
 export { ProfileApi } from "./profile.js";
 export { ProfileLikeApi } from "./profile-like.js";

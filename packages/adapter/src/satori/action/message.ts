@@ -4,7 +4,7 @@
  */
 import { rm, rmdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { kernelError } from "@napuketto/kernel";
+import { kernelError, type Peer, type RawMessage } from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { parseContentToCanonical } from "../helper/element/element-convert.js";
@@ -26,6 +26,7 @@ export type MessageActionDeps = Pick<
 
 /** 消息列表默认条数（规范推荐 50）。 */
 const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 100;
 
 /** message.create 参数。 */
 const messageCreateSchema = z.object({
@@ -99,30 +100,26 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
             schema: z.object({
                 channel_id: z.string(),
                 /** 分页令牌（缺省从最新开始）。 */
-                next: z.string().optional(),
+                next: z.string().min(1).nullish(),
                 /** 查询方向（缺省 before）。 */
                 direction: z.enum(["before", "after", "around"]).optional(),
                 /** 消息数量限制（缺省平台默认，推荐 50）。 */
-                limit: z.number().int().optional(),
+                limit: z.int().positive().optional(),
                 /** 排序（缺省 asc）。 */
                 order: z.enum(["asc", "desc"]).optional(),
             }),
-            // 双向分页；第一版仅支持 before 方向
             handle: async (payload): Promise<BidiList<Message>> => {
                 const { channel_id: channelId, next, direction, limit, order } = payload;
-                if (direction === "around") {
-                    throw kernelError("暂不支持 around 方向", "INVALID_PARAM");
+                if (direction !== undefined && direction !== "before") {
+                    throw kernelError(`暂不支持 ${direction} 方向`, "INVALID_PARAM");
                 }
                 const peer = await deps.resolvePeer(channelId);
-                const count = limit ?? DEFAULT_LIST_LIMIT;
-                const raw = await deps.msgApi.fetchMessages(peer, {
-                    count,
-                    msgId: next ?? "",
-                });
+                const count = Math.min(limit ?? DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+                const page = await fetchBefore(deps.msgApi, peer, next ?? "", count);
                 deps.setChannelType(channelId, peer.chatType === 2);
-                // QQ getMsgs 返回时间倒序（最新在前）；Satori 默认 asc（旧在前）
-                const asc = order !== "desc";
-                const ordered = asc ? [...raw].reverse() : raw;
+                const delivered = page.slice(0, count);
+                const cursor = page.length > count ? delivered.at(-1)?.msgId : undefined;
+                const ordered = order === "desc" ? delivered : delivered.reverse();
                 const messages: Message[] = [];
                 for (const msg of ordered) {
                     messages.push(
@@ -132,13 +129,9 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
                         }),
                     );
                 }
-                // 分页令牌：asc 时下一页为更早消息 → 首条（最早）的 msgId；desc 时下一批更新 → 末条 msgId
-                const last = messages[messages.length - 1];
-                const out: BidiList<Message> = { data: messages };
-                if (last !== undefined && raw.length >= count) {
-                    out.next = last.id;
-                }
-                return out;
+                return cursor === undefined
+                    ? { data: messages }
+                    : { data: messages, prev: cursor, next: cursor };
             },
         }),
         defineSatoriAction({
@@ -154,4 +147,38 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
             },
         }),
     ];
+}
+
+/** 原生历史按新到旧读取，允许原生把起始消息也放进响应。 */
+async function fetchBefore(
+    api: MessageActionDeps["msgApi"],
+    peer: Peer,
+    start: string,
+    count: number,
+): Promise<RawMessage[]> {
+    const seen = new Set(["", start]);
+    const messages: RawMessage[] = [];
+    let cursor = start;
+    while (messages.length <= count) {
+        const remaining = count + 1 - messages.length;
+        const raw = await api.fetchMessages(peer, {
+            count: remaining + (cursor === "" ? 0 : 1),
+            msgId: cursor,
+        });
+        const anchor = raw.findIndex(({ msgId }) => msgId === cursor);
+        const older = raw.slice(anchor + 1).filter(({ msgId }) => {
+            if (seen.has(msgId)) {
+                return false;
+            }
+            seen.add(msgId);
+            return true;
+        });
+        const oldest = older.at(-1);
+        if (oldest === undefined) {
+            break;
+        }
+        messages.push(...older);
+        cursor = oldest.msgId;
+    }
+    return messages;
 }

@@ -515,7 +515,8 @@ describe("grayTip notice 广播链（broadcastNotice）", () => {
         expect(events.find((e) => e["notice_type"] === "group_recall")).toMatchObject({
             group_id: 808,
             user_id: 90009,
-            message_id: 42,
+            message_id: 0,
+            tip_message_seq: "42",
         });
         adapter.unsubscribeOnly();
     });

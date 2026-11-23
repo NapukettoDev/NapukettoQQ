@@ -84,14 +84,14 @@ describe("toCanonicalElements", () => {
         ).toEqual([{ type: "at", target: "u1", display: "小明" }]);
     });
 
-    it("TEXT at 单人无 atUid → target 兜底 content", () => {
+    it("TEXT at 单人无 atUid → 原始文本", () => {
         expect(
             toCanonicalElements(
                 makeMsg([
                     { elementType: ElementType.TEXT, textElement: { content: "@x", atType: 2 } },
                 ]),
             ),
-        ).toEqual([{ type: "at", target: "@x", display: "x" }]);
+        ).toEqual([{ type: "text", text: "@x" }]);
     });
 
     it("TEXT at 我（atType=4）→ at + display", () => {
@@ -310,9 +310,18 @@ describe("toCanonicalElements", () => {
     it("REPLY → reply", () => {
         expect(
             toCanonicalElements(
-                makeMsg([{ elementType: ElementType.REPLY, replyElement: { replayMsgId: "m1" } }]),
+                makeMsg([
+                    {
+                        elementType: ElementType.REPLY,
+                        replyElement: {
+                            replayMsgId: "m1",
+                            senderUid: "u_reply",
+                            senderUin: "90001",
+                        },
+                    },
+                ]),
             ),
-        ).toEqual([{ type: "reply", messageId: "m1" }]);
+        ).toEqual([{ type: "reply", messageId: "m1", senderUid: "u_reply", senderUin: "90001" }]);
         expect(toCanonicalElements(makeMsg([{ elementType: ElementType.REPLY }]))).toEqual([
             { type: "reply", messageId: "" },
         ]);

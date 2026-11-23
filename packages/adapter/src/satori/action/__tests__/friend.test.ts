@@ -33,6 +33,7 @@ describe("friend.list", () => {
             { uid: "uid_1", uin: "101", nickname: "好友A", remark: "" },
             { uid: "uid_2", uin: "102", nickname: "好友B", remark: "备注B" },
             { uid: "uid_3", uin: "103", nickname: "同名", remark: "同名" },
+            { uid: "104", uin: null, nickname: "未知 QQ 号", remark: "有备注" },
         ] as never);
         const action = actionOf<List<Friend>>(api, "friend.list");
         await expect(action.run({})).resolves.toEqual({

@@ -41,20 +41,20 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
                     seq: "88001",
                     type: 7,
                     status: GroupNotifyMsgStatus.KUNHANDLE,
-                    // 本动作 user_id 取 Number(user1.uid)（不经 uidToUin 转换）——
-                    // 数字串 uid 直接成 user_id；非数字 uid 会得 NaN（现状锁定）
-                    user1: { uid: "90002", nickName: "申请人" },
+                    user1: { uid: "u90002", nickName: "申请人" },
                 }),
             ]),
         };
         const result = await ob11ActionOf(
-            createGroupNotifyActions({ groupNotifyApi } as never),
+            createGroupNotifyActions({ groupNotifyApi, uidToUin: stubUidToUin() } as never),
             "get_group_add_request",
         ).handle({});
         expect(result.status).toBe("ok");
         expect(result.data).toEqual([
             {
                 flag: "88001",
+                doubt: false,
+                request_kind: "join_request",
                 group_id: 808,
                 group_name: "测试群",
                 user_id: 90002,
@@ -116,17 +116,17 @@ describe("get_group_add_request / get_group_ignored_notifies", () => {
         });
     });
 
-    it("user1.uid 为非数字 uid 形态 → user_id=NaN（现状锁定，容忍不抛错）", async () => {
+    it("用户 UID 转换未命中 → user_id=0，保留审批引用", async () => {
         const groupNotifyApi = {
             getSingleScreenNotifies: vi.fn(async () => [
                 makeNotify({ seq: "3", user1: { uid: "u_abc", nickName: "甲" } }),
             ]),
         };
         const result = await ob11ActionOf<GroupAddRequestItem[]>(
-            createGroupNotifyActions({ groupNotifyApi } as never),
-            "get_group_add_request",
+            createGroupNotifyActions({ groupNotifyApi, uidToUin: async () => new Map() } as never),
+            "get_group_ignored_notifies",
         ).handle({});
-        expect(result.data?.[0]?.user_id).toBeNaN();
+        expect(result.data?.[0]).toMatchObject({ user_id: 0, flag: "3", doubt: true });
     });
 });
 
@@ -189,7 +189,39 @@ describe("set_group_add_request", () => {
         ).handle({ flag: "88002" });
         expect(result.retcode).toBe(0);
         expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledTimes(2);
-        expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledTimes(1);
+        expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledExactlyOnceWith(
+            true,
+            doubtNotify,
+            1,
+            " ",
+        );
+    });
+
+    it("显式可疑邀请只查可疑屏，拒绝时不误审批同 flag 的普通请求", async () => {
+        const notify = makeNotify({ seq: "88002", type: 1 });
+        const groupNotifyApi = {
+            getSingleScreenNotifies: vi.fn(async () => [notify]),
+            handleGroupRequest: vi.fn(async () => undefined),
+        };
+        const action = ob11ActionOf(
+            createGroupNotifyActions({ groupNotifyApi } as never),
+            "set_group_add_request",
+        );
+        await expect(
+            action.handle({ flag: "88002", approve: false, sub_type: "invite" }),
+        ).resolves.toMatchObject({ status: "failed" });
+        expect(groupNotifyApi.handleGroupRequest).not.toHaveBeenCalled();
+        groupNotifyApi.getSingleScreenNotifies.mockClear();
+        await expect(
+            action.handle({ flag: "88002", approve: false, sub_type: "invite", doubt: true }),
+        ).resolves.toMatchObject({ status: "ok" });
+        expect(groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledExactlyOnceWith(true, 100);
+        expect(groupNotifyApi.handleGroupRequest).toHaveBeenCalledExactlyOnceWith(
+            true,
+            notify,
+            2,
+            " ",
+        );
     });
 
     it("两屏都未命中 → retcode 102 NOT_FOUND（不调 handleGroupRequest）", async () => {

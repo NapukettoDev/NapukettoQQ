@@ -74,7 +74,7 @@ describe("text 元素", () => {
         ).toEqual([{ type: "at", target: "u1", display: "小明" }]);
     });
 
-    it("atType=ONE：display 空串不产出；atUid 缺失回退 content", () => {
+    it("atType=ONE：display 空串不产出；atUid 缺失保留为文本", () => {
         expect(
             toCanonicalElements(
                 msgOf({
@@ -87,7 +87,7 @@ describe("text 元素", () => {
             toCanonicalElements(
                 msgOf({ elementType: 1, textElement: { atType: 4, content: "@me" } as never }),
             ),
-        ).toEqual([{ type: "at", target: "@me", display: "me" }]);
+        ).toEqual([{ type: "text", text: "@me" }]);
     });
 });
 

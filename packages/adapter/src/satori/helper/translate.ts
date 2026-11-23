@@ -39,6 +39,20 @@ async function renderMessageContent(raw: RawMessage, deps: SatoriTranslateDeps):
     return renderElements(elements);
 }
 
+function directMessageResources(
+    raw: RawMessage,
+    selfUin: string,
+): Pick<Message, "channel" | "user"> {
+    const senderUin = raw.senderUin ?? "";
+    const peerUin = raw.peerUin ?? "";
+    const peerId = peerUin !== "" && peerUin !== selfUin ? peerUin : senderUin || peerUin;
+    const nickname = raw.sendNickName ?? "";
+    return {
+        channel: toDirectChannel(peerId, peerId === senderUin ? nickname : raw.peerName),
+        ...(senderUin === "" ? {} : { user: toUser(senderUin, nickname) }),
+    };
+}
+
 /** RawMessage → Satori Message（资源提升：message 不嵌套 user/member/channel）。 */
 export async function toSatoriMessage(
     raw: RawMessage,
@@ -64,9 +78,7 @@ export async function toSatoriMessage(
             message.member.nick = memberName;
         }
     } else {
-        const peerId = senderUin !== "" ? senderUin : peerUin;
-        message.channel = toDirectChannel(peerId, nickname);
-        message.user = toUser(peerId, nickname);
+        Object.assign(message, directMessageResources(raw, deps.selfUin));
     }
     // Satori 规范 created_at 为毫秒级时间戳；msgTime 单位随平台不一致，
     // 先归一成 Unix 秒再换算毫秒（Windows 毫秒 / Linux 秒）

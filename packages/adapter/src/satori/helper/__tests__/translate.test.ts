@@ -64,7 +64,7 @@ describe("toSatoriMessage", () => {
 
     it("私聊：channel(DIRECT) + user（对端=senderUin）", async () => {
         const msg = await toSatoriMessage(
-            makeMsg({ chatType: ChatType.C2C, peerUin: "10001", senderUin: "90001" }),
+            makeMsg({ chatType: ChatType.C2C, peerUin: deps.selfUin, senderUin: "90001" }),
             deps,
         );
         expect(msg.guild).toBeUndefined();
@@ -73,13 +73,27 @@ describe("toSatoriMessage", () => {
         expect(msg.user).toEqual({ id: "90001", name: "小明" });
     });
 
-    it("私聊 senderUin 空 → 对端兜底 peerUin", async () => {
+    it("私聊 senderUin 空时仍保留会话对端", async () => {
         const msg = await toSatoriMessage(
             makeMsg({ chatType: ChatType.C2C, peerUin: "10001", senderUin: "" }),
             deps,
         );
         expect(msg.channel?.id).toBe("10001");
-        expect(msg.user?.id).toBe("10001");
+        expect(msg.user).toBeUndefined();
+    });
+
+    it("机器人发送的私聊记录区分会话对端和发送者", async () => {
+        const msg = await toSatoriMessage(
+            makeMsg({
+                chatType: ChatType.C2C,
+                peerUin: "90001",
+                senderUin: deps.selfUin,
+                peerName: "对端",
+            }),
+            deps,
+        );
+        expect(msg.channel).toMatchObject({ id: "90001", name: "对端" });
+        expect(msg.user?.id).toBe(deps.selfUin);
     });
 
     it("content 为空（无元素）→ 不写 content", async () => {

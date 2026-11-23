@@ -28,7 +28,8 @@ import {
     TipGroupElementType,
 } from "@napuketto/kernel";
 import { toUnixSeconds } from "../../internal/qq/raw-message.js";
-import { MS_TO_SEC, toUin } from "../../internal/qq/uid-uin.js";
+import { MS_TO_SEC, numericUin, toUin } from "../../internal/qq/uid-uin.js";
+import type { MessageUnique } from "./message-unique.js";
 
 export { collectGrayTipUids, hasGrayTip } from "../../internal/qq/gray-tip.js";
 
@@ -67,6 +68,7 @@ export function hasFileElement(msg: RawMessage): boolean {
 export interface NoticeTranslateContext {
     selfUin: string;
     uidToUin: Map<string, string>;
+    messageUnique?: MessageUnique;
     /** 校准日志（可选：未知 grayTip 子类型/poke raw JSON；缺省静默）。 */
     logger?: { warn(obj: unknown, msg?: string): void };
 }
@@ -100,23 +102,42 @@ function toRecall(
         return null;
     }
     const revoke = g.revokeElement;
+    const peer = ctx.messageUnique?.getPeer(msg.msgId);
+    const messageId =
+        peer?.chatType === msg.chatType && peer.peerUid === msg.peerUid
+            ? ctx.messageUnique?.getMessageId(msg.msgId)
+            : undefined;
+    const identity = {
+        message_id: messageId ?? 0,
+        tip_message_id: msg.msgId,
+        tip_message_seq: msg.msgSeq,
+    };
     if (msg.chatType === ChatType.C2C) {
-        // 好友撤回：user_id = 撤回者，message_id = msgSeq
         return {
             time: toUnixSeconds(msg.msgTime),
             self_id: Number(ctx.selfUin),
             post_type: "notice",
             notice_type: "friend_recall",
-            user_id: toUin(revoke.operatorUid, ctx),
-            message_id: Number(msg.msgSeq),
+            user_id: numericUin(msg.peerUin ?? null) ?? toUin(msg.peerUid, ctx),
+            ...identity,
         };
+    }
+    if (msg.chatType !== ChatType.GROUP) {
+        return null;
+    }
+    const sender = numericUin(msg.senderUin ?? null) ?? toUin(msg.senderUid, ctx);
+    let operator = toUin(revoke.operatorUid, ctx);
+    if (revoke.isSelfOperate === true) {
+        operator = Number(ctx.selfUin);
+    } else if (revoke.operatorUid && revoke.operatorUid === msg.senderUid) {
+        operator = sender;
     }
     return {
         ...base(msg, ctx),
         notice_type: "group_recall",
-        user_id: toUin(revoke.operatorUid, ctx),
-        operator_id: toUin(revoke.operatorUid, ctx),
-        message_id: Number(msg.msgSeq),
+        user_id: sender,
+        operator_id: operator,
+        ...identity,
     };
 }
 
@@ -139,6 +160,8 @@ function toPoke(
         "ob11: poke grayTip raw（待真实事件校准）",
     );
     const isGroup = msg.chatType === ChatType.GROUP;
+    const tempSource =
+        msg.chatType === ChatType.C2C_TEMP ? numericUin(aioOp?.fromGrpCodeOfTmpChat ?? null) : null;
     return {
         time: toUnixSeconds(msg.msgTime),
         self_id: Number(ctx.selfUin),
@@ -148,6 +171,7 @@ function toPoke(
         group_id: isGroup ? Number(msg.peerUid) : 0,
         user_id: toUin(msg.senderUid, ctx),
         target_id: toUin(aioOp?.peerUid ?? "", ctx),
+        ...(tempSource !== null && tempSource > 0 ? { temp_source: tempSource } : {}),
     };
 }
 
@@ -275,9 +299,12 @@ function toBan(
     common: GroupChangeCommon,
     grp: TipGroupElement,
     ctx: NoticeTranslateContext,
-): OB11GroupBanNoticeEvent {
+): OB11GroupBanNoticeEvent | null {
     const shutUp = grp.shutUp;
-    const duration = Number(shutUp?.duration ?? 0);
+    const duration = numericUin(shutUp?.duration ?? null);
+    if (duration === null || !Number.isSafeInteger(duration)) {
+        return null;
+    }
     return {
         time: common.time,
         self_id: common.selfId,

@@ -5,6 +5,7 @@
  * 动作应答（flag 透传）。
  */
 
+import type { GroupRequestKind } from "@napuketto/kernel";
 import type { OB11BaseEvent } from "./base.js";
 
 /** 加好友请求。 */
@@ -28,6 +29,10 @@ export interface OB11GroupRequestEvent extends OB11BaseEvent {
     user_id: number;
     comment: string;
     flag: string;
+    /** 通知队列。审批时随 flag 一并回传。 */
+    doubt: boolean;
+    /** 区分邀请本账号、邀请他人待审批与入群申请。 */
+    request_kind: GroupRequestKind;
 }
 
 /** OB11 请求事件联合。 */

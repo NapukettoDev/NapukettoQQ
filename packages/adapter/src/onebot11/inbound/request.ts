@@ -41,13 +41,12 @@ export class Ob11InboundRequest {
 
     /** 群系统通知 → group request 事件（批量 uidToUin 后翻译，纯函数）。 */
     async groupNotifies(doubt: boolean, notifies: readonly GroupNotify[]): Promise<void> {
-        // doubt = 可疑通知整批跳过；载荷形状兜底（防御非数组）
-        if (doubt || !Array.isArray(notifies)) {
+        if (typeof doubt !== "boolean" || !Array.isArray(notifies)) {
             return;
         }
         const ctx = await this.requestCtx(collectGroupNotifyUids(notifies));
         for (const notify of notifies) {
-            const event = toOb11GroupRequestEvent(notify, ctx);
+            const event = toOb11GroupRequestEvent(notify, ctx, doubt);
             if (event !== null) {
                 this.deps.broadcast(event);
             }

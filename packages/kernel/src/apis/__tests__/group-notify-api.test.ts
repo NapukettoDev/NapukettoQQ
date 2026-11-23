@@ -6,7 +6,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { KernelError } from "../../infra/index.js";
-import { GroupNotifyApi } from "../group-notify.js";
+import { GroupNotifyMsgType } from "../../types/index.js";
+import { findPendingGroupRequest, GroupNotifyApi } from "../group-notify.js";
 import { makeSession } from "./test-support.js";
 
 function makeApi(overrides: Record<string, unknown> = {}) {
@@ -108,5 +109,77 @@ describe("handleGroupRequest", () => {
             operateType: 1,
             targetMsg: { seq: "3", type: 1, groupCode: "", postscript: "ok" },
         });
+    });
+});
+
+describe("群请求引用", () => {
+    const pending = {
+        seq: "9007199254740993",
+        group: { groupCode: "808", groupName: "测试群" },
+        user1: { uid: "u_inviter", nickName: "邀请人" },
+        status: 1,
+    } as const;
+
+    it.each([
+        [GroupNotifyMsgType.INVITED_BY_MEMBER, "invitation"],
+        [GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS, "invited_join_request"],
+        [GroupNotifyMsgType.REQUEST_JOIN_NEED_ADMINI_STRATOR_PASS, "join_request"],
+    ])("type %s 的公开引用保留队列、群号和完整序号", async (type, kind) => {
+        const { api, service } = makeApi();
+        for (const doubt of [false, true]) {
+            const [notice] = api.getPendingGroupRequests(doubt, [
+                null,
+                { ...pending, type, group: null },
+                { ...pending, type, status: 2 },
+                { ...pending, type },
+            ]);
+            expect(notice).toEqual({
+                request: { seq: pending.seq, groupCode: "808", kind, doubt },
+                initiatorUid: "u_inviter",
+            });
+            expect(notice).toBeDefined();
+            if (notice !== undefined) {
+                await api.respondToRequest(notice.request, !doubt);
+            }
+            expect(service.operateSysNotify).toHaveBeenLastCalledWith(doubt, {
+                operateType: doubt ? 2 : 1,
+                targetMsg: { seq: pending.seq, groupCode: "808", type, postscript: " " },
+            });
+        }
+    });
+
+    it("旧序号有多队列匹配时报错；显式指定队列只查该队列", async () => {
+        const notify = { ...pending, type: GroupNotifyMsgType.INVITED_BY_MEMBER };
+        const getSingleScreenNotifies = vi.fn(async () => [notify]);
+        const { api } = makeApi({ getSingleScreenNotifies });
+        await expect(findPendingGroupRequest(api, { seq: notify.seq }, 50)).rejects.toMatchObject({
+            code: "INVALID_PARAM",
+        });
+        getSingleScreenNotifies.mockClear();
+        await expect(
+            findPendingGroupRequest(api, { seq: notify.seq, doubt: true }, 50),
+        ).resolves.toMatchObject({
+            request: { doubt: true, seq: notify.seq },
+        });
+        expect(getSingleScreenNotifies).toHaveBeenCalledExactlyOnceWith(true, "", 50);
+    });
+
+    it("队列查询和审批的原生失败均传播", async () => {
+        const { api } = makeApi({
+            getSingleScreenNotifies: async () => ({ result: 7, errMsg: "查询失败" }),
+            operateSysNotify: async () => ({ result: 9, errMsg: "拒绝访问" }),
+        });
+        await expect(api.getSingleScreenNotifies(true, 50)).rejects.toThrow("查询失败");
+        await expect(
+            api.respondToRequest(
+                {
+                    seq: pending.seq,
+                    groupCode: "808",
+                    kind: "invitation",
+                    doubt: true,
+                },
+                false,
+            ),
+        ).rejects.toThrow("拒绝访问");
     });
 });

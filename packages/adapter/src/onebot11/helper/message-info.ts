@@ -56,6 +56,9 @@ export function toOb11MessageInfo(
         // 修复：user_id 应为发送者（senderUin），与消息事件一致。
         // 此前用 peerUin（会话对端）——机器人自己发的消息 user_id 会错成对端。
         info.user_id = Number(msg.senderUin);
+        if (msg.chatType === ChatType.C2C_TEMP) {
+            info.temp_source = 0;
+        }
     }
     return info;
 }

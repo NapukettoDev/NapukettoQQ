@@ -71,16 +71,16 @@ describe("constructor", () => {
 });
 
 describe("getFriendList", () => {
-    it("缓存命中：buddyList 拍平 + 昵称备注读取；无 uidToUin 时 uin 回退 uid", async () => {
+    it("缓存命中：buddyList 拍平并保留昵称备注；缺失的 UIN 为空", async () => {
         const { api, service } = makeApi();
         await expect(api.getFriendList()).resolves.toEqual([
-            { uid: "u1", uin: "u1", nickname: "昵称", remark: "备注" },
-            { uid: "u2", uin: "u2", nickname: "昵称", remark: "备注" },
+            { uid: "u1", uin: null, nickname: "昵称", remark: "备注" },
+            { uid: "u2", uin: null, nickname: "昵称", remark: "备注" },
         ]);
         expect(service.getBuddyListV2).not.toHaveBeenCalled();
     });
 
-    it("uidToUin 注入：命中映射 / 缺失回退 uid", async () => {
+    it("uidToUin 注入：命中映射，未命中保留 null", async () => {
         const { api } = makeApi(
             {},
             {
@@ -89,7 +89,40 @@ describe("getFriendList", () => {
         );
         const list = await api.getFriendList();
         expect(list[0]).toEqual({ uid: "u1", uin: "10001", nickname: "昵称", remark: "备注" });
-        expect(list[1]?.uin).toBe("u2");
+        expect(list[1]?.uin).toBeNull();
+    });
+
+    it("好友明细优先；只转换缺失的 UIN，数字形态的 UID 也独立保留", async () => {
+        const uidToUin = vi.fn(async () => new Map([["20001", "u_bad_value"]]));
+        const { api, service } = makeApi(
+            {
+                getBuddyListFromCache: async () => [
+                    {
+                        buddyList: [
+                            {
+                                uid: "u_friend",
+                                uin: "",
+                                coreInfo: { uin: "10001", nick: "明细昵称", remark: "" },
+                            },
+                            { uid: "20001" },
+                        ],
+                    },
+                ],
+            },
+            { uidToUin },
+        );
+        await expect(api.getFriendList()).resolves.toEqual([
+            { uid: "u_friend", uin: "10001", nickname: "明细昵称", remark: "" },
+            { uid: "20001", uin: null, nickname: "昵称", remark: "备注" },
+        ]);
+        expect(uidToUin).toHaveBeenCalledExactlyOnceWith(["20001"]);
+        expect(service.getBuddyRemark).toHaveBeenCalledExactlyOnceWith("20001");
+    });
+
+    it("批量转换失败时传播原错误", async () => {
+        const failure = new Error("转换不可用");
+        const { api } = makeApi({}, { uidToUin: vi.fn().mockRejectedValue(failure) });
+        await expect(api.getFriendList()).rejects.toBe(failure);
     });
 
     it("缓存抛错回退 getBuddyListV2；V2 失败抛 UNKNOWN", async () => {
@@ -123,7 +156,7 @@ describe("getFriendList", () => {
             ]),
         });
         await expect(api.getFriendList()).resolves.toEqual([
-            { uid: "u9", uin: "u9", nickname: "昵称", remark: "备注" },
+            { uid: "u9", uin: null, nickname: "昵称", remark: "备注" },
         ]);
     });
 
@@ -169,7 +202,7 @@ describe("getFriendCategories", () => {
         expect(cats[0]?.buddyList.map((f) => f.uid)).toEqual(["u3"]);
     });
 
-    it("分类中的 uid 不在好友列表 → 该项跳过（分类与好友列表两次独立拉取）", async () => {
+    it("分类与好友列表来自同一次快照", async () => {
         const categories = [
             {
                 categoryId: 1,
@@ -180,15 +213,15 @@ describe("getFriendCategories", () => {
                 buddyList: [{ uid: "ghost" }],
             },
         ];
-        const { api } = makeApi({
-            // 第 1 次：getFriendCategories 的分类源；第 2 次：getFriendList 的数据源（空）
+        const { api, service } = makeApi({
             getBuddyListFromCache: vi
                 .fn()
                 .mockResolvedValueOnce(categories)
                 .mockResolvedValueOnce([]),
         });
         const cats = await api.getFriendCategories();
-        expect(cats[0]?.buddyList).toEqual([]);
+        expect(cats[0]?.buddyList.map(({ uid }) => uid)).toEqual(["ghost"]);
+        expect(service.getBuddyListFromCache).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -232,7 +265,7 @@ describe("其余方法", () => {
         await expect(api2.deleteFriend("u1")).rejects.toMatchObject({ message: /delBuddy 失败/ });
     });
 
-    it("getDoubtFriendRequest：uidToUin 转换 + 无转换回退 Number(uid)；空列表不调 uidToUin", async () => {
+    it("getDoubtFriendRequest：映射缺失则省略 UIN；空列表不调用转换", async () => {
         const uidToUin = vi.fn(async () => new Map([["u1", "10001"]]));
         const { api } = makeApi(
             {
@@ -262,7 +295,7 @@ describe("其余方法", () => {
             })),
         });
         const out2 = await api2.getDoubtFriendRequest(5);
-        expect(out2).toEqual([{ flag: "12345", uin: 12345, type: "doubt" }]);
+        expect(out2).toEqual([{ flag: "12345", type: "doubt" }]);
         const uidToUin2 = vi.fn(async () => new Map<string, string>());
         const { api: api3 } = makeApi({}, { uidToUin: uidToUin2 });
         await expect(api3.getDoubtFriendRequest(5)).resolves.toEqual([]);

@@ -374,7 +374,10 @@ describe("toPeer / 动作边界分支", () => {
         const ctx = mockIpcCtx();
         const actions = createIpcActions(ctx);
         const result = await callIpcAction(actions, "friend.getFriendList", {});
-        expect(result).toEqual({ ok: true, value: [{ uid: "u1" }] });
+        expect(result).toEqual({
+            ok: true,
+            value: [{ uid: "u1", uin: null, nickname: "好友昵称", remark: "备注" }],
+        });
         expect(ctx.friendApi.getFriendList).toHaveBeenCalledOnce();
     });
 

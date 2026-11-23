@@ -16,12 +16,14 @@ import {
     type IpcActionOptions,
     registerLoginRefreshAction,
 } from "./ipc-actions.js";
-import { sendEvent } from "./ipc-sender.js";
+import { readReadySelf, sendEvent } from "./ipc-sender.js";
+import { IpcGroupRequestSchema } from "./ipc-types.js";
 
 /** 订阅事件通道 → event 消息转发（事件名 "Service/method" 拆分）。 */
 function forwardChannel(
     channel: KernelServices["channel"] | undefined,
     stops: Array<() => void>,
+    onEvent?: (event: string, args: unknown[]) => void,
 ): void {
     if (channel === undefined || channel === null) {
         return;
@@ -34,6 +36,7 @@ function forwardChannel(
         const service = slash >= 0 ? event.slice(0, slash) : event;
         const name = slash >= 0 ? event.slice(slash + 1) : "";
         sendEvent(service, name, args);
+        onEvent?.(event, args);
     });
     // 宽松返回面（EventChannelLike.onAny 返回 unknown）：是函数才收进停止列表
     if (isCallable(off)) {
@@ -85,6 +88,9 @@ export function attachIpcServices(
             groupApi: services.groupApi,
             groupCache: services.groupCache,
             friendApi: services.friendApi,
+            ...(services.groupNotifyApi !== undefined
+                ? { groupNotifyApi: services.groupNotifyApi }
+                : {}),
             self: services.self,
             session: services.session,
             engine: services.engine,
@@ -98,7 +104,9 @@ export function attachIpcServices(
     }
 
     const stops: Array<() => void> = [];
+    let active = true;
     const stopForwarding = (): void => {
+        active = false;
         for (const stop of stops) {
             try {
                 stop();
@@ -114,7 +122,21 @@ export function attachIpcServices(
     };
     try {
         forwardChannel(services.channel, stops);
-        forwardChannel(services.groupChannel, stops);
+        forwardChannel(services.groupChannel, stops, (event, [doubt, notifies]) => {
+            if (event !== "Group/onGroupNotifiesUpdated" || typeof doubt !== "boolean") {
+                return;
+            }
+            const self = readReadySelf();
+            if (self?.uin !== services.self.uin) {
+                return;
+            }
+            publishGroupRequests(
+                services,
+                doubt,
+                notifies,
+                () => active && readReadySelf() === self,
+            ).catch((err: unknown) => log(`ipc: 群请求转发失败: ${errMsg(err)}`));
+        });
         forwardChannel(services.friendChannel, stops);
         forwardChannel(services.recentContactChannel, stops);
         forwardChannel(services.loginChannel, stops);
@@ -123,4 +145,40 @@ export function attachIpcServices(
         throw err;
     }
     return stopForwarding;
+}
+
+async function publishGroupRequests(
+    services: KernelServices,
+    doubt: boolean,
+    notifies: unknown,
+    canSend: () => boolean,
+): Promise<void> {
+    const requests = services.groupNotifyApi?.getPendingGroupRequests?.(doubt, notifies) ?? [];
+    const uids = new Set(
+        requests.flatMap(({ initiatorUid }) => (initiatorUid === undefined ? [] : [initiatorUid])),
+    );
+    let uinMap = new Map<string, string>();
+    if (uids.size > 0) {
+        try {
+            uinMap = await services.groupApi.uidToUin([...uids]);
+        } catch (err) {
+            log(`ipc: 群请求发起人 UID 转换失败: ${errMsg(err)}`);
+        }
+    }
+    if (!canSend()) {
+        return;
+    }
+    for (const pending of requests) {
+        const initiatorUin = IpcGroupRequestSchema.shape.initiatorUin.safeParse(
+            uinMap.get(pending.initiatorUid ?? ""),
+        ).data;
+        const parsed = IpcGroupRequestSchema.safeParse({
+            selfUin: services.self.uin,
+            ...pending,
+            ...(initiatorUin !== undefined ? { initiatorUin } : {}),
+        });
+        if (parsed.success) {
+            sendEvent("Group", "onRequest", [parsed.data]);
+        }
+    }
 }

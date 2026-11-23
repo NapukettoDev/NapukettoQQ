@@ -103,7 +103,9 @@ audio 非 silk 转码，video 非 mp4 用 ffmpeg 归一化（失败原样透传�
 ## 已知限制
 
 - 会话恢复（`sn`）未实现；`/v1/meta` 不可达（路径解析要求 `resource.method`）。
-- `message.list` 的 `around` 不支持，分页是近似实现。
+- `message.list` 支持 `before`。省略 `next` 或传 `null` 从最新处开始，返回的消息不含锚点。
+  `order` 只改变页内顺序。继续读取更早消息时，原样回传 `next`。末页省略 `next` 和 `prev`。
+  适配器每页默认 50 条，上限 100 条。当前 `after` 和 `around` 返回 HTTP 400。
 - `file` 元素可接收/解析，但通用发送路径不支持 file，Satori 也没有群文件发送动作。
 - 频道管理、角色管理、消息编辑等返回 501；好友/群申请事件未广播。
 - `message-created` 未过滤机器人自己发送的消息（与 OB11 的 `reportSelfMessage` 不同）。

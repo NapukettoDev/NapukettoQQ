@@ -68,6 +68,8 @@ export interface OB11MessageInfo {
     raw_message: string;
     group_id?: number;
     user_id?: number;
+    /** 群临时会话的来源群号，0 表示未知。 */
+    temp_source?: number;
 }
 
 /** 性别枚举。 */

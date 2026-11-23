@@ -26,7 +26,7 @@ export type CanonicalElement =
           durationSec?: number;
       }
     | { type: "file"; path: string; name?: string; size?: number }
-    | { type: "reply"; messageId: string }
+    | { type: "reply"; messageId: string; senderUid?: string; senderUin?: string }
     | { type: "forward"; messageIds: string[] }
     | { type: "json"; raw: unknown }
     | { type: "xml"; raw: unknown }

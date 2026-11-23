@@ -200,6 +200,9 @@ export class GroupApi {
         if (members.length === 0) {
             throw kernelError("setMemberShutUp 需要至少一个成员", "INVALID_PARAM");
         }
+        if (members.some(({ duration }) => !Number.isSafeInteger(duration) || duration < 0)) {
+            throw kernelError("禁言时长必须是非负整数秒，0 表示解除", "INVALID_PARAM");
+        }
         const raw = await this.service.setMemberShutUp(
             groupCode,
             members.map((m) => ({ uid: m.uid, timeStamp: m.duration })),

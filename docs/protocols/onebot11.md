@@ -115,10 +115,19 @@ port = 3001
   方向 at uin→uid、reply OB11 id→NT msgId；失败时原样传递。
 - 群聊 `Peer` 为 `{chatType: GROUP, peerUid: 群号}`；私聊为 `{chatType: C2C, peerUid: uid}`。
 
+## 请求、撤回和临时会话
+
+- 群邀请及申请事件含 `flag`、`doubt`、`group_id` 和 `request_kind`。调用
+  `set_group_add_request` 时可原样回传。旧调用可只传 `flag`，必须唯一匹配一条待审通知。
+  `get_group_system_msg`
+  继续提供数值 `request_id`，并提供完整字符串 `flag` 供审批。
+- `group_recall` / `friend_recall` 的 `message_id` 只有在灰条 ID 与同会话的已登记消息
+  一致时才会关联，其他情况为 0。排查时保留 `tip_message_id` 与 `tip_message_seq`。
+- 群临时消息的 `sub_type` 是 `group`，`temp_source: 0` 表示来源群未知。临时会话的
+  poke 在原生 `fromGrpCodeOfTmpChat` 可用时携带实际 `temp_source`。
+
 ## 已知缺口
 
-- `group_recall` / `friend_recall` 的 `message_id` 取自 grayTip `msgSeq`，与消息事件的
-  `MessageUnique` 不是同一空间，不能直接反查原消息。
 - `offline_file`、poke、好友申请的部分 payload 仍是防御性收窄 + 校准日志状态。
 - 通用 `send_msg` 覆盖 text / at / face / image / voice / reply / json（ARK 透传）与
   预处理 video；`file` / `forward` / `xml` 不走通用发送。

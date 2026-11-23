@@ -46,12 +46,21 @@ describe("guild.member.mute", () => {
         expect(setMemberShutUp).toHaveBeenCalledWith("10001", [{ uid: "uid_123", duration: 0 }]);
     });
 
-    it("不足 1 秒 → 向下取整为 0（解除禁言）", async () => {
+    it("正时长不足 1 秒时传 1 秒，保留 0 的解除语义", async () => {
         const setMemberShutUp = vi.fn(async () => undefined);
         const action = actionOf(setMemberShutUp);
 
         await action.run({ guild_id: "10001", user_id: "123", duration: 999 });
 
-        expect(setMemberShutUp).toHaveBeenCalledWith("10001", [{ uid: "uid_123", duration: 0 }]);
+        expect(setMemberShutUp).toHaveBeenCalledWith("10001", [{ uid: "uid_123", duration: 1 }]);
+    });
+
+    it("负时长不进入禁言调用", async () => {
+        const setMemberShutUp = vi.fn(async () => undefined);
+        const action = actionOf(setMemberShutUp);
+        await expect(
+            action.run({ guild_id: "10001", user_id: "123", duration: -1 }),
+        ).rejects.toMatchObject({ status: 400 });
+        expect(setMemberShutUp).not.toHaveBeenCalled();
     });
 });

@@ -9,6 +9,7 @@
 import { kernelError } from "../infra/index.js";
 import type {
     BuddyCategory,
+    BuddyListEntry,
     BuddyReq,
     DoubtBuddyReq,
     NodeIKernelBuddyService,
@@ -17,10 +18,13 @@ import type {
 import { requireKernelService } from "../utils/type-guards.js";
 import { checkLooseResult, unwrap } from "./result.js";
 
+const QQ_NUMBER = /^[1-9]\d*$/;
+
 /** 好友条目（uid + 昵称/备注，昵称由 buddy service 缓存补全）。 */
 export interface Friend {
     uid: string;
-    uin: string;
+    /** QQ 号。无法解析时为空，uid 始终单独保留。 */
+    uin: string | null;
     nickname: string;
     remark: string;
 }
@@ -55,7 +59,7 @@ export interface DoubtFriendRequestInfo {
 
 /** FriendApi 构造选项。 */
 export interface FriendApiOptions {
-    /** uid→uin 转换器（通常注入 GroupApi.uidToUin）；缺省 uin 退化为 uid。 */
+    /** uid→uin 转换器（通常注入 GroupApi.uidToUin）；只补缺少 UIN 的项。 */
     uidToUin?: ((uids: string[]) => Promise<Map<string, string>>) | undefined;
 }
 
@@ -74,46 +78,36 @@ export class FriendApi {
 
     /** 好友列表（分类拍平为 Friend[]；昵称/备注从 service 缓存读取）。 */
     async getFriendList(): Promise<Friend[]> {
-        let categories: BuddyCategory[];
-        try {
-            categories = await this.service.getBuddyListFromCache(0);
-        } catch {
-            const raw = await this.service.getBuddyListV2("cli", true, 0);
-            if (raw.result !== 0) {
-                throw kernelError(`getBuddyListV2 失败: ${raw.errMsg}`, "UNKNOWN");
-            }
-            categories = raw.data;
-        }
-        // buddyList（明细,T10 实证）优先,buddyUids（旧描述字段）兜底
-        const uids = categories.flatMap(
-            (cat) => cat.buddyList?.map((b) => b.uid) ?? cat.buddyUids ?? [],
+        return this.friendsFromCategories(await this.getBuddyCategories());
+    }
+
+    private async friendsFromCategories(categories: BuddyCategory[]): Promise<Friend[]> {
+        const entries = categories.flatMap(buddyEntries);
+        const unresolved = new Set(
+            entries.filter((entry) => buddyUin(entry) === null).map(({ uid }) => uid),
         );
-        let uinMap = new Map<string, string>();
-        if (this.uidToUin !== undefined) {
-            uinMap = await this.uidToUin(uids);
-        }
-        const out: Friend[] = [];
-        for (const uid of uids) {
-            out.push({
+        const uinMap = unresolved.size > 0 ? await this.uidToUin?.([...unresolved]) : undefined;
+        return entries.map((entry) => {
+            const { uid, coreInfo } = entry;
+            return {
                 uid,
-                uin: uinMap.get(uid) ?? uid,
-                nickname: this.service.getBuddyNick(uid),
-                remark: this.service.getBuddyRemark(uid),
-            });
-        }
-        return out;
+                uin: buddyUin(entry) ?? validUin(uinMap?.get(uid)),
+                nickname: coreInfo?.nick ?? this.service.getBuddyNick(uid),
+                remark: coreInfo?.remark ?? this.service.getBuddyRemark(uid),
+            };
+        });
     }
 
     /** 带分类的好友列表（get_friends_with_category，分类保留）。 */
     async getFriendCategories(): Promise<FriendCategory[]> {
         const categories = await this.getBuddyCategories();
         const friendMap = new Map<string, Friend>();
-        for (const friend of await this.getFriendList()) {
+        for (const friend of await this.friendsFromCategories(categories)) {
             friendMap.set(friend.uid, friend);
         }
         return categories.map((cat) => {
             const buddies: Friend[] = [];
-            for (const uid of cat.buddyList?.map((b) => b.uid) ?? cat.buddyUids ?? []) {
+            for (const { uid } of buddyEntries(cat)) {
                 const friend = friendMap.get(uid);
                 if (friend !== undefined) {
                     buddies.push(friend);
@@ -189,25 +183,25 @@ export class FriendApi {
         if (this.uidToUin !== undefined && list.length > 0) {
             uinMap = await this.uidToUin(list.map((item) => item.uid));
         }
-        const out: DoubtFriendRequestInfo[] = [];
-        for (const item of list) {
-            out.push(this.toDoubtFriendRequestInfo(item, uinMap));
-        }
-        return out;
-    }
-
-    /** 单项转换：DoubtBuddyReq → OB11 结构（可选字段条件赋值，exactOptionalPropertyTypes）。 */
-    private toDoubtFriendRequestInfo(
-        item: DoubtBuddyReq,
-        uinMap: Map<string, string>,
-    ): DoubtFriendRequestInfo {
-        return toDoubtFriendRequestInfo(item, uinMap);
+        return list.map((item) => toDoubtFriendRequestInfo(item, uinMap));
     }
 
     /** 处理可疑好友申请（set_doubt_friends_add_request；uid=flag）。 */
     handleDoubtFriendRequest(uid: string): void {
         this.service.approvalDoubtBuddyReq(uid, "", "");
     }
+}
+
+function buddyEntries(category: BuddyCategory): BuddyListEntry[] {
+    return category.buddyList ?? category.buddyUids?.map((uid) => ({ uid })) ?? [];
+}
+
+function buddyUin(entry: BuddyListEntry): string | null {
+    return validUin(entry.uin) ?? validUin(entry.coreInfo?.uin);
+}
+
+function validUin(value: string | undefined): string | null {
+    return typeof value === "string" && QQ_NUMBER.test(value) ? value : null;
 }
 
 /** 可选字段条件赋值（undefined 跳过，兼容 exactOptionalPropertyTypes）。 */
@@ -228,7 +222,7 @@ function assignOptional<K extends keyof DoubtFriendRequestInfo>(
  * 经 JSON.stringify 变 null。这里只接受正安全整数（QQ 号），其余交给调用方省略字段。
  */
 function resolveDoubtUin(uid: string, uinMap: Map<string, string>): number | undefined {
-    const value = Number(uinMap.get(uid) ?? uid);
+    const value = Number(validUin(uinMap.get(uid)));
     return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 

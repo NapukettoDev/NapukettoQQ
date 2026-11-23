@@ -347,3 +347,53 @@ loader，再消费公开的 `ProtocolMediaConfig` 与 `media.localMediaRoots`。
 
 以上使用临时目录、普通文件、测试账号标识和原生 API 桩。仍需专用 QQ 测试账号与 Windows／Linux
 自建宿主环境，补测原生头像、闪传和消息媒体消费，以及 QQ 实际数据目录与回调时机。未修改 QQ 安装目录。
+
+## 任务 10 群请求、消息身份与事件
+
+以 main `89392c1` 为基线。沿用 [#128](https://github.com/NapukettoDev/NapukettoQQ/pull/128)
+的历史好友申请过滤、[#168](https://github.com/NapukettoDev/NapukettoQQ/pull/168) 的 IPC ready
+门，以及 [#174](https://github.com/NapukettoDev/NapukettoQQ/pull/174) 的原生消息 ID 业务动作。
+编号按任务 10 的实施范围追踪。
+
+| 编号 | 当前验证及改动 |
+| --- | --- |
+| H-08 | [kernel 群请求](../../kernel/src/apis/group-notify.ts) 将序号、群号、类型和队列作为审批引用。[OB11 动作](../src/onebot11/action/group/notify.ts)、[Milky 动作](../src/milky/action/group-notice.ts) 和 [Satori 动作](../src/satori/action/guild.ts) 以命中的队列实际审批。测试覆盖两队列内的邀请和申请、旧 seq 重名、无匹配及原生报错。 |
+| H-09 | [Canonical 转换](../../kernel/src/codec/message-element.ts) 区分引用的 UID、UIN 与原生消息 ID。缺目标的提及保留为文本。Satori 私聊消息将会话对端与发送者分别投影。 |
+| H-10 | [Satori 分页](../src/satori/action/message.ts) 排除锚点并独立处理页内顺序与续页方向，确认还有历史才发令牌。相同数据以 asc/desc、包含/排除锚点的原生桩连续翻三页。 |
+| M-10 上游 | [IPC 公开接口与邀请样例](../../loader/docs/design.md#ipc-群请求与好友身份) 供任务 11 使用。邀请当前登录账号、管理员待审的邀请和主动申请各有独立类型。审批回传账号及完整引用。 |
+| M-11 上游 | [OB11 notice](../src/onebot11/helper/notice.ts) 区分消息作者与撤回操作者，仅在同会话原生 ID 已登记时关联 OB11 ID。灰条 ID 和 seq 以字符串保留。群临时消息保留子类型，临时会话 poke 可保留载荷中现有字段提供的来源群号。 |
+| L-03 禁言 | [kernel 群管理](../../kernel/src/apis/group.ts) 采用非负整数秒，0 解除；[OB11](https://github.com/botuniverse/onebot-11/blob/master/api/public.md#set_group_ban-群组单人禁言) 省略时为 1,800 秒，[Milky](https://milky.ntqqrev.org/api/group#set_group_member_mute-设置群成员禁言) 为非负 int32 秒，省略时解除。[Satori](https://satori.chat/zh-CN/resources/member.html) 使用毫秒，正时长转为至少 1 秒。接口数据类型的上限与 QQ 实际执行时长是两项独立约束。 |
+| L-04 好友 | [好友列表](../../kernel/src/apis/friend.ts) 优先使用好友明细与其昵称、备注，缺失 UIN 才批量转换。部分转换未命中时保留 UID 和资料，UIN 为 null；整个查询失败时返回错误。[IPC schema](../../loader/src/host/ipc/ipc-types.ts) 和兼容迁移同步公开。 |
+
+### Satori 分页影响
+
+此前默认 asc 页的令牌来自页中最新消息，导致下一页重叠并可能原地重复。带锚点的
+`after` 会读取更早消息。现在 `before` 始终使用最早的已交付 ID 续页，末页同时省略
+`prev` 和 `next`，两种不支持的方向返回 HTTP 400。短页和重复行可能触发额外原生读取
+以确认是否还有一条更早消息。每页上限由适配器设为 100。已持有旧令牌的客户端应从
+`next: null` 重新开始遍历。方向和令牌对照 [Satori 消息](https://satori.chat/zh-CN/resources/message.html)
+及 [双向分页](https://satori.chat/zh-CN/protocol/api.html)。
+
+### 发布与真机验收
+
+Windows（Node 24.16.0，pnpm 12.4.1）单包构建分别执行
+`pnpm --filter @napuketto/kernel build`、`pnpm --filter @napuketto/adapter build` 和
+`pnpm --filter @napuketto/loader build`。定向测试使用 `pnpm test:quiet` 分别覆盖
+kernel 的 `src/apis` 与 `src/types`（374 通过）、adapter 的
+`src/onebot11`、`src/satori`、`src/milky`（1,159 通过）以及 loader 的
+`src/host/ipc`（133 通过）。`pnpm check && pnpm test:quiet` 全量验证通过
+240 个文件、3,671 个测试，跳过 14 个。
+
+任务 11 需要等待本 PR 合并与发布，再同时使用 kernel 0.18.0、adapter 0.22.0 和 loader
+0.15.0 或包含本改动的后续版本。版本来自 `changeset status`。OB11 旧群审批可回传
+序号，存在歧义时补齐事件所带队列、群号和类型。IPC 好友消费方先判断 UIN 是否为 null，
+并继续用 UID 表达原生身份。撤回的 OB11 ID 为 0 时，调用方只能记录灰条字段。
+
+任务 17 需要 Windows/Linux 支持版本、获准使用的 QQ 测试账号和独立群，对照以下样本：
+
+- 普通／可疑队列分别触发三种未审通知，核对 `user1`、`user2`、查询直返与回调顺序、
+  `operateSysNotify` 的返回对象及审批结果。
+- 用管理员撤回另一成员的消息、好友撤回和机器人自撤回，配对原消息和灰条，验证 ID、
+  seq、作者、操作者及临时会话来源。在拿到样本前，普通临时消息的来源字段按未知处理。
+- 用足够历史验证 `getMsgs` 的实际顺序、锚点包含性、容量与方向。用 0、1 秒和 QQ 客户端
+  允许的最大时长对照禁言事件与实际截止时间，并测试超出该时长时 QQ 的行为。

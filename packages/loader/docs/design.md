@@ -227,6 +227,27 @@ OB11 IPC 桥和网络适配器共用账号协议段的 `media.localMediaRoots`�
 桥会通过 schema 确认注入的 adapter 识别本地策略，再挂载动作。相对根目录以主配置文件所在目录为基准，
 内联配置以宿主数据目录为基准。QQ 富媒体目录在 OB11 和 Satori 装配时单独注入，用于经当前账号查询得到的资源。
 
+### IPC 群请求与好友身份
+
+- `Group/onRequest` 的唯一参数是 `IpcGroupRequestSchema` 定义的对象，包含登录账号、请求引用、
+  发起人 UID 及可解析的 UIN。邀请账号本人、受管理员审批的邀请入群与主动申请各有独立 kind。
+- `group.respondToRequest` 接收原样回传的请求引用、明确的 `approve` 和可选理由。动作绑定
+  当前登录账号并保留原队列，由 kernel 语义 API 完成审批。既有事件转发和 IPC v1 帧兼容。
+- `friend.getFriendList` 返回 `IpcFriendSchema[]`。每项提供 UID、可空 UIN、昵称和备注。
+  下游只有在 UIN 非空时才能将其作为 QQ 号使用。
+
+合成邀请事件及审批请求示例（每行一帧）：
+
+```jsonl
+{"v":1,"type":"event","payload":{"service":"Group","name":"onRequest","args":[{"selfUin":"10001","request":{"seq":"9007199254740993","groupCode":"808","kind":"invitation","doubt":true},"initiatorUid":"u_inviter","initiatorUin":"90001"}]}}
+{"v":1,"type":"action","id":42,"payload":{"action":"group.respondToRequest","params":{"selfUin":"10001","request":{"seq":"9007199254740993","groupCode":"808","kind":"invitation","doubt":true},"approve":true}}}
+{"v":1,"type":"result","id":42,"payload":{"ok":true}}
+```
+
+`initiatorUin` 只在 UID 转换成功且所得号码有效时出现。`invitation` 的受邀者是当前
+登录账号，另两种请求记录的 `targetUid` 以原生通知提供的值为准。跨账号引用或参数
+校验失败返回 `INVALID_PARAM`，旧 kernel 缺少语义 API 时返回 `INVALID_STATE`。
+
 ### 软重登相位机
 
 ```text

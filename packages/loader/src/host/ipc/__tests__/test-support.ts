@@ -23,7 +23,9 @@ export function mockIpcCtx(): IpcApiContext {
             listGroupsRefreshed: vi.fn(async () => [{ groupCode: "10001", groupName: "测试群" }]),
         },
         friendApi: {
-            getFriendList: vi.fn(async () => [{ uid: "u1" }]),
+            getFriendList: vi.fn(async () => [
+                { uid: "u1", uin: null, nickname: "好友昵称", remark: "备注" },
+            ]),
         },
         self: { uin: "10001", nickname: "测试号" },
         uinToUid: vi.fn(async (uins: string[]) => {

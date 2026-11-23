@@ -14,12 +14,7 @@
  * narrowBuddyReqs 防御性收窄，未知形状返回 null 由调用方打 raw 日志积累校准数据。
  */
 
-import {
-    type BuddyReq,
-    type GroupNotify,
-    GroupNotifyMsgStatus,
-    GroupNotifyMsgType,
-} from "@napuketto/kernel";
+import { type BuddyReq, type GroupNotify, toPendingGroupRequest } from "@napuketto/kernel";
 import { firstNonEmptyString, stringOrUndefined } from "../../internal/qq/text.js";
 import { MS_TO_SEC, type RequestTranslateContext, toUin } from "../../internal/qq/uid-uin.js";
 
@@ -37,33 +32,26 @@ import type { OB11FriendRequestEvent, OB11GroupRequestEvent } from "../event/ind
 export function toOb11GroupRequestEvent(
     notify: GroupNotify,
     ctx: RequestTranslateContext,
+    doubt = false,
 ): OB11GroupRequestEvent | null {
-    if (notify.status !== GroupNotifyMsgStatus.KUNHANDLE) {
+    const pending = toPendingGroupRequest(notify, doubt);
+    if (pending === undefined) {
         return null;
     }
-    let subType: "add" | "invite";
-    switch (notify.type) {
-        case GroupNotifyMsgType.INVITED_BY_MEMBER:
-        case GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS:
-            subType = "invite";
-            break;
-        case GroupNotifyMsgType.REQUEST_JOIN_NEED_ADMINI_STRATOR_PASS:
-            subType = "add";
-            break;
-        default:
-            return null;
-    }
+    const { request, initiatorUid, comment } = pending;
     // user1 语义：invite=邀请人 / add=申请人（与 get_group_system_msg 的 invitor 口径一致）
     return {
         time: Math.floor(Date.now() / MS_TO_SEC),
         self_id: Number(ctx.selfUin),
         post_type: "request",
         request_type: "group",
-        sub_type: subType,
-        group_id: Number(notify.group?.groupCode ?? 0),
-        user_id: toUin(notify.user1?.uid, ctx),
-        comment: notify.postscript ?? "",
-        flag: String(notify.seq),
+        sub_type: request.kind === "join_request" ? "add" : "invite",
+        group_id: Number(request.groupCode),
+        user_id: toUin(initiatorUid, ctx),
+        comment: comment ?? "",
+        flag: request.seq,
+        doubt,
+        request_kind: request.kind,
     };
 }
 

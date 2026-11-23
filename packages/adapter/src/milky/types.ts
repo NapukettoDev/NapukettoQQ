@@ -492,6 +492,7 @@ export interface GroupJoinRequestData {
 export interface GroupInvitedJoinRequestData {
     group_id: number;
     notification_seq: number;
+    is_filtered: boolean;
     initiator_id: number;
     target_user_id: number;
 }
@@ -500,6 +501,7 @@ export interface GroupInvitedJoinRequestData {
 export interface GroupInvitationData {
     group_id: number;
     invitation_seq: number;
+    is_filtered: boolean;
     initiator_id: number;
     source_group_id: number | null;
 }

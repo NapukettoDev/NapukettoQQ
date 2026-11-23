@@ -51,18 +51,17 @@ describe("toOb11GroupRequestEvent", () => {
             GroupNotifyMsgType.INVITED_BY_MEMBER,
             GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS,
         ]) {
-            const event = toOb11GroupRequestEvent(makeNotify({ type }), CTX);
-            expect(event?.sub_type).toBe("invite");
+            const event = toOb11GroupRequestEvent(makeNotify({ type }), CTX, true);
+            expect(event).toMatchObject({ sub_type: "invite", doubt: true, flag: "1024" });
         }
     });
 
-    it("group / postscript 缺失 → group_id=0、comment 空串兜底", () => {
+    it("缺群号时没有可审批事件，缺留言仍保留请求", () => {
         const notify = makeNotify({ status: GroupNotifyMsgStatus.KUNHANDLE });
-        // delete 模拟字段缺失（exactOptionalPropertyTypes 下不能显式 undefined）
-        delete (notify as { group?: unknown }).group;
-        delete (notify as { postscript?: unknown }).postscript;
-        const event = toOb11GroupRequestEvent(notify, CTX);
-        expect(event).toMatchObject({ request_type: "group", group_id: 0, comment: "" });
+        delete notify.postscript;
+        expect(toOb11GroupRequestEvent(notify, CTX)).toMatchObject({ comment: "" });
+        delete notify.group;
+        expect(toOb11GroupRequestEvent(notify, CTX)).toBeNull();
     });
 
     it("已处理状态（非 KUNHANDLE）不产生事件", () => {
