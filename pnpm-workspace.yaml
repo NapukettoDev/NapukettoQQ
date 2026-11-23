@@ -19,8 +19,8 @@ catalog:
   "@types/ws": ^8.18.2
   "@types/node": ^24.13.4
   tsdown: ^0.23.7
-  vitest: ^5.1.0
-  "@vitest/coverage-v8": ^5.1.0
+  vitest: ^5.1.1
+  "@vitest/coverage-v8": ^5.1.1
 
 overrides:
   # @changesets/cli@3.0.2 传递的 launch-editor@2.14.1 带 1 high + 2 moderate
