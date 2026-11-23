@@ -63,7 +63,7 @@
         "vitest": "catalog:",
         "@biomejs/biome": "^2.6.8",
         "@changesets/cli": "^3.0.3",
-        "fallow": "^3.43.2",
+        "fallow": "^3.44.0",
         "typescript": "^7.0.2"
     }
 }
