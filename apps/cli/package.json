@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "@napuketto/cli",
-    "version": "0.7.2",
+    "version": "0.7.3",
     "type": "module",
     "description": "Command line interface for NapukettoQQ",
     "keywords": [
