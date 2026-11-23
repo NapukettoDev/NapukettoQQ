@@ -147,6 +147,7 @@ describe("toOb11MessageEvent 私聊 sub_type", () => {
         expect(
             temp.post_type === "message" && temp.message_type === "private" ? temp.sub_type : "",
         ).toBe("group");
+        expect(temp).toMatchObject({ temp_source: 0 });
         const friend = toOb11MessageEvent(
             makeMsg({ chatType: ChatType.C2C, peerUid: "u2" }),
             "10000",

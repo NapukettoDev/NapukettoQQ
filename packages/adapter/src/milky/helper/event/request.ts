@@ -75,6 +75,7 @@ export function toGroupRequestEvent(
             const data: GroupInvitedJoinRequestData = {
                 group_id: groupId,
                 notification_seq: seq,
+                is_filtered: doubt,
                 initiator_id: toUin(notify.user1?.uid, ctx),
                 target_user_id: toUin(notify.user2?.uid, ctx),
             };
@@ -84,6 +85,7 @@ export function toGroupRequestEvent(
             const data: GroupInvitationData = {
                 group_id: groupId,
                 invitation_seq: seq,
+                is_filtered: doubt,
                 initiator_id: toUin(notify.user1?.uid, ctx),
                 source_group_id: null,
             };

@@ -83,6 +83,16 @@ profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
   `getUserDetailInfo(uid).detail.uin` 反查。查不到 `detail.uin` 返回 `null` 而不抛错——
   这是"可能没有值"的读操作，调用方 fail-soft（adapter 退化为 0 并打校准日志）。
 
+### 群请求与消息身份
+
+- 待审批群请求的引用由 `seq`、`groupCode`、`kind` 与 `doubt` 组成。类型区分机器人收到的
+  邀请、管理员待审的邀请入群和主动申请。同一账号的请求事件、查询和审批保留队列来源。
+  兼容按 seq 查找的调用方对多重匹配报错。审批只提交同意或拒绝，并传播原生调用失败。
+- Canonical 提及保留已知的目标标识。缺目标时按文本保留显示内容。引用消息独立保留已知的
+  `senderUid` 和 `senderUin`。禁言采用非负整数秒，0 解除，QQ 接受的最大时长待真机验证。
+- 好友列表优先使用已观察到的明细 UIN，按需批量补齐旧形态。未解析的 UIN 返回 `null`，
+  UID、昵称和备注仍保留。批量调用本身失败时传播错误。分类与明细基于同一快照。
+
 ### 配置原子保存与并发边界
 
 - `ConfigBase` 的 `load()` / `save()` 共用实例内 FIFO 队列，按调用顺序执行；

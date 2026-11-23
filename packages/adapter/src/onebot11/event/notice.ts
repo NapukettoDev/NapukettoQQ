@@ -94,6 +94,8 @@ export interface OB11GroupRecallNoticeEvent extends OB11BaseEvent {
     user_id: number;
     operator_id: number;
     message_id: number;
+    tip_message_id?: string;
+    tip_message_seq?: string;
 }
 
 /** 好友消息撤回。 */
@@ -102,6 +104,8 @@ export interface OB11FriendRecallNoticeEvent extends OB11BaseEvent {
     notice_type: "friend_recall";
     user_id: number;
     message_id: number;
+    tip_message_id?: string;
+    tip_message_seq?: string;
 }
 
 /** 群成员名片变更（go-cqhttp 扩展）。 */
@@ -137,6 +141,8 @@ export interface OB11NotifyNoticeEvent extends OB11BaseEvent {
     group_id: number;
     user_id: number;
     target_id: number;
+    /** 群临时会话戳一戳的来源群号（原生字段存在时）。 */
+    temp_source?: number;
     /** honor 子类型时的荣誉类型（talkative 龙王 / performer 群聊之火 / emotion 快乐源泉）。 */
     honor_type?: "talkative" | "performer" | "emotion";
 }

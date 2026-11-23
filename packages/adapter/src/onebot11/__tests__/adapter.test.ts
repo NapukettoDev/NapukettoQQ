@@ -352,14 +352,31 @@ describe("NapukettoOneBot11Adapter（request 事件链）", () => {
         });
     });
 
-    it("doubt 可疑群通知跳过不广播", async () => {
+    it("可疑队列的邀请事件保留登录号、队列和审批标识", async () => {
         const { adapter, group, events } = makeWithRequestChannels();
         await adapter.subscribeOnly();
         group.handlers.get("Group/onGroupNotifiesUpdated")?.(true, [
-            { seq: "1", type: 7, status: 1 },
+            {
+                seq: "9007199254740993",
+                type: 1,
+                status: 1,
+                group: { groupCode: "808", groupName: "测试群" },
+                user1: { uid: "u1", nickName: "邀请人" },
+            },
         ]);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        expect(events).toHaveLength(0);
+        await vi.waitFor(() => {
+            expect(events).toContainEqual(
+                expect.objectContaining({
+                    request_type: "group",
+                    sub_type: "invite",
+                    request_kind: "invitation",
+                    group_id: 808,
+                    flag: "9007199254740993",
+                    doubt: true,
+                }),
+            );
+        });
+        adapter.unsubscribeOnly();
     });
 });
 

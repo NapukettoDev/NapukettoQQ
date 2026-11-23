@@ -74,7 +74,7 @@ export function createGroupManageActions(api: MilkyApi): MilkyAction[] {
             schema: z.object({
                 ...groupIdField,
                 ...userIdField,
-                duration: z.number().int().min(0).nullable().optional(),
+                duration: z.int32().nonnegative().nullable().optional(),
             }),
             // duration 秒，0 解除
             handle: async (payload: {

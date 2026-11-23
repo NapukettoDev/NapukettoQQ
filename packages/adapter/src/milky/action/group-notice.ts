@@ -4,12 +4,17 @@
  * - 通知列表：kernel getSingleScreenNotifies 为单屏快照（无翻页）——
  *   start_notification_seq 作客户端过滤；实体类型 7=入群申请 / 5=成员邀请他人 /
  *   8,12,13=管理员变更 / 9,10=踢出 / 11=退群（1=邀请自身无实体变体，不产出）。
- * - 应答：seq → getSingleScreenNotifies 匹配（先非可疑后可疑）→ handleGroupRequest。
+ * - 应答：在指定队列匹配群号、序号与请求类型，再携带队列审批。
  */
-import type { GroupNotify } from "@napuketto/kernel";
-import { errorMessage, NTGroupRequestOperateTypes } from "@napuketto/kernel";
+import {
+    errorMessage,
+    findPendingGroupRequest,
+    type GroupNotify,
+    type GroupRequestKind,
+    NTGroupRequestOperateTypes,
+} from "@napuketto/kernel";
 import { z } from "zod";
-import { findGroupNotify, type MilkyApi, NOTIFY_SEARCH_COUNT } from "../api.js";
+import { type MilkyApi, NOTIFY_SEARCH_COUNT } from "../api.js";
 import { collectNotifyUids } from "../helper/event/request.js";
 import type { GetGroupNotificationsOutput, GroupNotificationEntity } from "../types.js";
 import { defineMilkyAction, type MilkyAction } from "./base-action.js";
@@ -65,50 +70,61 @@ export function createGroupNoticeActions(api: MilkyApi): MilkyAction[] {
         defineMilkyAction({
             name: "accept_group_request",
             schema: respondRequestSchema,
-            // notification_type/group_id 仅 schema 校验
-            handle: async (payload: {
-                notification_seq: number;
-                is_filtered?: boolean | null | undefined;
-            }) =>
+            handle: (payload) =>
                 respondGroupNotify(
                     api,
                     payload.notification_seq,
-                    payload.is_filtered === true,
+                    payload.group_id,
+                    payload.notification_type,
+                    payload.is_filtered,
                     true,
                 ),
         }),
         defineMilkyAction({
             name: "reject_group_request",
             schema: rejectRequestSchema,
-            // reason 无源，kernel postscript 占位空格
-            handle: async (payload: {
-                notification_seq: number;
-                is_filtered?: boolean | null | undefined;
-            }) =>
+            handle: (payload) =>
                 respondGroupNotify(
                     api,
                     payload.notification_seq,
-                    payload.is_filtered === true,
+                    payload.group_id,
+                    payload.notification_type,
+                    payload.is_filtered,
                     false,
+                    payload.reason ?? "",
                 ),
         }),
         defineMilkyAction({
             name: "accept_group_invitation",
             schema: invitationSchema,
             // 按 invitation_seq 匹配
-            handle: async (payload: { invitation_seq: number }) =>
-                respondGroupNotify(api, payload.invitation_seq, false, true),
+            handle: (payload) =>
+                respondGroupNotify(
+                    api,
+                    payload.invitation_seq,
+                    payload.group_id,
+                    "invitation",
+                    payload.is_filtered,
+                    true,
+                ),
         }),
         defineMilkyAction({
             name: "reject_group_invitation",
             schema: invitationSchema,
-            handle: async (payload: { invitation_seq: number }) =>
-                respondGroupNotify(api, payload.invitation_seq, false, false),
+            handle: (payload) =>
+                respondGroupNotify(
+                    api,
+                    payload.invitation_seq,
+                    payload.group_id,
+                    "invitation",
+                    payload.is_filtered,
+                    false,
+                ),
         }),
     ];
 }
 
-/** accept_group_request 入参（notification_type 仅 schema 校验）。 */
+/** accept_group_request 入参。 */
 const respondRequestSchema = z.object({
     notification_seq: z.number().int().min(0),
     notification_type: z.enum(["join_request", "invited_join_request"]),
@@ -116,7 +132,7 @@ const respondRequestSchema = z.object({
     is_filtered: optBool,
 });
 
-/** reject_group_request 入参（reason 无源）。 */
+/** reject_group_request 入参。 */
 const rejectRequestSchema = z.object({
     notification_seq: z.number().int().min(0),
     notification_type: z.enum(["join_request", "invited_join_request"]),
@@ -129,21 +145,29 @@ const rejectRequestSchema = z.object({
 const invitationSchema = z.object({
     ...groupIdField,
     invitation_seq: z.number().int().min(0),
+    is_filtered: optBool,
 });
 
 /** 应答公共路径：seq → 通知匹配 → handleGroupRequest。 */
 async function respondGroupNotify(
     api: MilkyApi,
     seq: number,
-    doubt: boolean,
+    groupId: number,
+    kind: GroupRequestKind,
+    doubt: boolean | null | undefined,
     approve: boolean,
+    reason = "",
 ): Promise<Record<string, never>> {
-    const notify = await findGroupNotify(api, String(seq));
+    const { request, notify } = await findPendingGroupRequest(
+        api.groupNotifyApi,
+        { seq: String(seq), groupCode: String(groupId), kind, doubt: doubt ?? undefined },
+        NOTIFY_SEARCH_COUNT,
+    );
     await api.groupNotifyApi.handleGroupRequest(
-        doubt,
+        request.doubt,
         notify,
         approve ? NTGroupRequestOperateTypes.KAGREE : NTGroupRequestOperateTypes.KREFUSE,
-        " ",
+        reason || " ",
     );
     return {};
 }

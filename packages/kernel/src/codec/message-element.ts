@@ -67,10 +67,10 @@ function textToCanonical(textEl: TextElement | null | undefined): CanonicalEleme
     if (atType === AtType.ALL) {
         return { type: "at", target: "all" };
     }
-    if (atType === AtType.ONE || atType === AtType.ME) {
+    if ((atType === AtType.ONE || atType === AtType.ME) && atUid != null && atUid.trim() !== "") {
         // 2026-08-07：at 段补 display（显示名）——QQ 的 content 通常是 "@昵称"，
         // 剥掉 @ 作 display，供 OB11 at 段 name / 日志渲染使用（此前只有 target=uid）。
-        const base = { type: "at" as const, target: atUid ?? content };
+        const base = { type: "at" as const, target: atUid };
         const display = content.startsWith("@") ? content.slice(1) : content;
         if (display === "") {
             return base;
@@ -222,7 +222,14 @@ function replyToCanonical(reply: ReplyElement | null | undefined): CanonicalElem
     if (reply == null) {
         return { type: "reply", messageId: "" };
     }
-    return { type: "reply", messageId: reply.replayMsgId ?? "" };
+    const senderUid = emptyToUndefined(reply.senderUid);
+    const senderUin = emptyToUndefined(reply.senderUin);
+    return {
+        type: "reply",
+        messageId: reply.replayMsgId ?? "",
+        ...(senderUid !== undefined ? { senderUid } : {}),
+        ...(senderUin !== undefined ? { senderUin } : {}),
+    };
 }
 
 /**

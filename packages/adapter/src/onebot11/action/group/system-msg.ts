@@ -1,12 +1,13 @@
 /**
  * get_group_system_msg 动作：获取群系统消息（接 kernel GroupNotifyApi）
  *
- * getSingleScreenNotifies(false, count) → type 1=进群邀请 / 7=入群申请。
+ * 普通队列：type 1/5=进群邀请，type 7=入群申请。
  * 返回 OB11 结构：invited_requests / InvitedRequest（兼容别名）/ join_requests。
  */
 import type { GroupNotify } from "@napuketto/kernel";
 import { GroupNotifyMsgType } from "@napuketto/kernel";
 import { z } from "zod";
+import { collectGroupNotifyUids, resolveUin } from "../../../internal/qq/uid-uin.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 
@@ -19,6 +20,8 @@ const INVITED_REQUEST_ALIAS = "InvitedRequest";
 /** 群系统消息返回结构。 */
 interface GroupSystemMessageInfo {
     request_id: number;
+    flag: string;
+    doubt: boolean;
     invitor_uin: number;
     invitor_nick: string;
     group_id: number;
@@ -41,22 +44,7 @@ async function collectUinMap(
     api: OneBotApi,
     notifies: GroupNotify[],
 ): Promise<Map<string, string>> {
-    const uids: string[] = [];
-    for (const notify of notifies) {
-        const { user1, user2 } = notify;
-        if (user1 !== undefined) {
-            const { uid } = user1;
-            if (uid !== "") {
-                uids.push(uid);
-            }
-        }
-        if (user2 !== undefined) {
-            const { uid } = user2;
-            if (uid !== "") {
-                uids.push(uid);
-            }
-        }
-    }
+    const uids = collectGroupNotifyUids(notifies);
     if (uids.length === 0) {
         return new Map();
     }
@@ -66,47 +54,18 @@ async function collectUinMap(
 /** GroupNotify → OB11 群系统消息结构（纯函数，uin 已批量转换）。 */
 function toMessageInfo(notify: GroupNotify, uinMap: Map<string, string>): GroupSystemMessageInfo {
     const { seq, status, postscript, user1, user2, group } = notify;
-    let user1Uid = "";
-    if (user1 !== undefined) {
-        const { uid } = user1;
-        user1Uid = uid;
-    }
-    let user2Uid = "";
-    if (user2 !== undefined) {
-        const { uid } = user2;
-        user2Uid = uid;
-    }
-    let groupCode = 0;
-    let groupName = "";
-    if (group !== undefined) {
-        const { groupCode: code, groupName: name } = group;
-        groupCode = Number(code);
-        groupName = name;
-    }
-    let invitorUin = Number(user1Uid);
-    const mapped1 = uinMap.get(user1Uid);
-    if (mapped1 !== undefined) {
-        invitorUin = Number(mapped1);
-    }
-    let actor = Number(user2Uid);
-    const mapped2 = uinMap.get(user2Uid);
-    if (mapped2 !== undefined) {
-        actor = Number(mapped2);
-    }
-    let invitorNick = "";
-    if (user1 !== undefined) {
-        const { nickName } = user1;
-        invitorNick = nickName;
-    }
+    const invitorNick = user1?.nickName ?? "";
     return {
         request_id: Number(seq),
-        invitor_uin: invitorUin,
+        flag: seq,
+        doubt: false,
+        invitor_uin: resolveUin(user1?.uid, uinMap),
         invitor_nick: invitorNick,
-        group_id: groupCode,
+        group_id: Number(group?.groupCode ?? 0),
         message: postscript ?? "",
-        group_name: groupName,
+        group_name: group?.groupName ?? "",
         checked: status !== 1,
-        actor,
+        actor: resolveUin(user2?.uid, uinMap),
         requester_nick: invitorNick,
     };
 }
@@ -125,7 +84,10 @@ export function createGroupSystemMsgActions(api: OneBotApi): Ob11Action[] {
                 const joined: GroupSystemMessageInfo[] = [];
                 for (const notify of notifies) {
                     const info = toMessageInfo(notify, uinMap);
-                    if (notify.type === GroupNotifyMsgType.INVITED_BY_MEMBER) {
+                    if (
+                        notify.type === GroupNotifyMsgType.INVITED_BY_MEMBER ||
+                        notify.type === GroupNotifyMsgType.INVITED_NEED_ADMINI_STRATOR_PASS
+                    ) {
                         invited.push(info);
                     } else if (
                         notify.type === GroupNotifyMsgType.REQUEST_JOIN_NEED_ADMINI_STRATOR_PASS

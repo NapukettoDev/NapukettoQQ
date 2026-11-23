@@ -7,6 +7,8 @@
  * 由运行时行为实证维护，勿臆造成员）。
  */
 
+import type { IpcGroupRequest } from "./ipc/ipc-types.js";
+
 /** Windows 反斜杠（file:// URL 化时替换）。 */
 export const BACKSLASH_RE = /\\/g;
 
@@ -146,6 +148,19 @@ export interface GroupCacheLike {
 /** 好友 API 最小面。 */
 export interface FriendApiLike {
     getFriendList(): Promise<unknown[]>;
+}
+
+/** 群请求语义 API。可选方法允许宿主用旧 kernel 装配其他业务。 */
+export interface GroupNotifyApiLike {
+    getPendingGroupRequests?(
+        doubt: boolean,
+        notifies: unknown,
+    ): Omit<IpcGroupRequest, "selfUin" | "initiatorUin">[];
+    respondToRequest?(
+        request: IpcGroupRequest["request"],
+        approve: boolean,
+        reason?: string,
+    ): Promise<void>;
 }
 
 /** 消息 API 最小面（IPC 动作表 + 协议适配共用）。 */
@@ -399,7 +414,7 @@ export interface KernelLike {
         register(): void;
         unregister(): void;
     };
-    GroupNotifyApi: new (session: unknown) => unknown;
+    GroupNotifyApi: new (session: unknown) => GroupNotifyApiLike;
     TicketApi: new (
         session: unknown,
     ) => {
@@ -448,7 +463,7 @@ export interface KernelServices {
     groupApi: GroupApiLike;
     friendApi: FriendApiLike;
     groupCache: GroupCacheLike;
-    groupNotifyApi: unknown;
+    groupNotifyApi: GroupNotifyApiLike;
     ticketApi: unknown;
     richMediaApi: unknown;
     /** 闪传（upload_group_file / upload_private_file 的投递通道，见 kernel design §15）。 */

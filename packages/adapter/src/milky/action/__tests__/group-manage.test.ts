@@ -71,6 +71,19 @@ describe("群管动作（set_* / kick / quit）", () => {
         ]);
     });
 
+    it("Milky 禁言时长超出 int32 时拒绝请求", async () => {
+        const setMemberShutUp = vi.fn(async () => undefined);
+        const registry = groupRegistry({ groupApi: { setMemberShutUp } });
+        await expect(
+            actionOf(registry, "set_group_member_mute").handle({
+                group_id: 10001,
+                user_id: 20002,
+                duration: 2 ** 31,
+            }),
+        ).resolves.toMatchObject({ retcode: -400 });
+        expect(setMemberShutUp).not.toHaveBeenCalled();
+    });
+
     it("set_group_whole_mute：is_mute 缺省 true；false → 解除", async () => {
         const setGroupShutUp = vi.fn(async () => undefined);
         const registry = groupRegistry({ groupApi: { setGroupShutUp } });

@@ -27,7 +27,9 @@ export function createSocialActions(api: MilkyApi): MilkyAction[] {
             handle: async (): Promise<GetFriendListOutput> => {
                 const friends = await api.friendApi.getFriendList();
                 return {
-                    friends: friends.map((f) => toFriendEntity(f, f.uin, f.nickname)),
+                    friends: friends.flatMap((f) =>
+                        f.uin === null ? [] : [toFriendEntity(f, f.uin, f.nickname)],
+                    ),
                 };
             },
         }),
@@ -197,7 +199,7 @@ async function pinnedFriendEntities(
     const byUid = new Map(all.map((f) => [f.uid, f]));
     return uids.flatMap((uid) => {
         const f = byUid.get(uid);
-        return f !== undefined ? [toFriendEntity(f, f.uin, f.nickname)] : [];
+        return f?.uin != null ? [toFriendEntity(f, f.uin, f.nickname)] : [];
     });
 }
 

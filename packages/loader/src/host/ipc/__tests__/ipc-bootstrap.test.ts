@@ -15,13 +15,18 @@ import type { KernelServices } from "../../types.js";
 import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../ipc-actions.js";
 import { attachIpcServices, createIpcActionsForCore } from "../ipc-bootstrap.js";
 import { DIAGNOSTIC_ACTION_NAMES } from "../ipc-diagnostics.js";
+import { IpcGroupRequestSchema } from "../ipc-types.js";
 
 /** sendEvent 捕获（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
-    return { events: [] as Array<{ service: string; name: string; args: unknown[] }> };
+    return {
+        events: [] as Array<{ service: string; name: string; args: unknown[] }>,
+        readReadySelf: vi.fn<() => { uin: string } | undefined>(),
+    };
 });
 
 vi.mock("../ipc-sender.js", () => ({
+    readReadySelf: h.readReadySelf,
     sendEvent: vi.fn((service: string, name: string, args: unknown[]) => {
         h.events.push({ service, name, args });
     }),
@@ -70,6 +75,7 @@ function mockServices(): { services: KernelServices; sent: IpcPeer[] } {
 describe("attachIpcServices", () => {
     beforeEach(() => {
         h.events.length = 0;
+        h.readReadySelf.mockReset();
     });
 
     it("私聊 peerUin → uid：注入的 uinToUid 保留 this（不再 undefined.service）", async () => {
@@ -111,6 +117,94 @@ describe("attachIpcServices", () => {
 
         expect(result).toEqual({ ok: true, value: { uin: "10001", nickname: "测试号" } });
         expect(() => stop()).not.toThrow();
+    });
+
+    it("公开群邀请事件可直接审批，回传账号和可疑队列", async () => {
+        const { services } = mockServices();
+        const groupChannel = {
+            onAny: vi.fn<NonNullable<KernelServices["groupChannel"]["onAny"]>>(),
+        };
+        const request = {
+            seq: "9007199254740993",
+            groupCode: "808",
+            kind: "invitation",
+            doubt: true,
+        } as const;
+        const respondToRequest = vi.fn(async () => undefined);
+        const getPendingGroupRequests = vi.fn(() => [{ request, initiatorUid: "u_inviter" }]);
+        services.groupChannel = { ...groupChannel, on: vi.fn() };
+        services.groupNotifyApi = { getPendingGroupRequests, respondToRequest };
+        services.groupApi.uidToUin = vi.fn(async () => new Map([["u_inviter", "90001"]]));
+        const actions = new Map<string, IpcActionHandler>();
+        const stop = attachIpcServices(actions, services, { diagnostics: false });
+        const native = [{ seq: request.seq }];
+        const callback = groupChannel.onAny.mock.calls[0]?.[0];
+        callback?.("Group/onGroupNotifiesUpdated", true, native);
+        expect(getPendingGroupRequests).not.toHaveBeenCalled();
+        h.readReadySelf.mockReturnValue({ uin: "10001" });
+        callback?.("Group/onGroupNotifiesUpdated", true, native);
+
+        await vi.waitFor(() =>
+            expect(h.events.some(({ name }) => name === "onRequest")).toBe(true),
+        );
+        expect(getPendingGroupRequests).toHaveBeenCalledExactlyOnceWith(true, native);
+        const payload = IpcGroupRequestSchema.parse(
+            h.events.find(({ name }) => name === "onRequest")?.args[0],
+        );
+        expect(payload).toEqual({
+            selfUin: "10001",
+            request,
+            initiatorUid: "u_inviter",
+            initiatorUin: "90001",
+        });
+        const params = {
+            selfUin: payload.selfUin,
+            request: payload.request,
+            approve: false,
+            reason: "拒绝邀请",
+        };
+        await expect(
+            callIpcAction(actions, "group.respondToRequest", { ...params, selfUin: "10002" }),
+        ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_PARAM" } });
+        await expect(
+            callIpcAction(actions, "group.respondToRequest", {
+                ...params,
+                request: { ...request, doubt: undefined },
+            }),
+        ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_PARAM" } });
+        expect(respondToRequest).not.toHaveBeenCalled();
+        await expect(
+            callIpcAction(actions, "group.respondToRequest", params),
+        ).resolves.toMatchObject({ ok: true });
+        expect(respondToRequest).toHaveBeenCalledExactlyOnceWith(request, false, "拒绝邀请");
+        stop();
+        expect(actions.has("group.respondToRequest")).toBe(false);
+    });
+
+    it("UID 转换在退订后完成时丢弃上一代群请求", async () => {
+        const { services } = mockServices();
+        const groupChannel = {
+            onAny: vi.fn<NonNullable<KernelServices["groupChannel"]["onAny"]>>(),
+        };
+        services.groupChannel = { ...groupChannel, on: vi.fn() };
+        services.groupNotifyApi = {
+            getPendingGroupRequests: () => [
+                {
+                    request: { groupCode: "808", seq: "1", kind: "join_request", doubt: false },
+                    initiatorUid: "u_applicant",
+                },
+            ],
+        };
+        const conversion = Promise.withResolvers<Map<string, string>>();
+        services.groupApi.uidToUin = vi.fn(() => conversion.promise);
+        h.readReadySelf.mockReturnValue({ uin: "10001" });
+        const stop = attachIpcServices(new Map(), services, { diagnostics: false });
+        groupChannel.onAny.mock.calls[0]?.[0]("Group/onGroupNotifiesUpdated", false, []);
+        expect(services.groupApi.uidToUin).toHaveBeenCalledWith(["u_applicant"]);
+        stop();
+        conversion.resolve(new Map());
+        await conversion.promise;
+        expect(h.events.some(({ name }) => name === "onRequest")).toBe(false);
     });
 
     it("groupApi 无 uinToUid → 不注入（私聊 peerUin 报缺 peerUid，群聊不受影响）", async () => {

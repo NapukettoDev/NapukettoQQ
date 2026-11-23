@@ -315,6 +315,17 @@ describe("群管操作", () => {
         ]);
     });
 
+    it.each([-1, 0.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+        "无效的禁言秒数 %s 在原生调用前拒绝",
+        async (duration) => {
+            const { api, service } = makeApi();
+            await expect(
+                api.setMemberShutUp("10001", [{ uid: "u1", duration }]),
+            ).rejects.toMatchObject({ code: "INVALID_PARAM" });
+            expect(service.setMemberShutUp).not.toHaveBeenCalled();
+        },
+    );
+
     it("setGroupShutUp：原生失败抛 KernelError", async () => {
         const { api } = makeApi({
             setGroupShutUp: vi.fn(async () => ({ result: 3, errMsg: "x" })),

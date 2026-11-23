@@ -74,7 +74,7 @@ export function collectGroupNotifyUids(notifies: readonly GroupNotify[]): string
     const uids: string[] = [];
     for (const notify of notifies) {
         for (const user of [notify.user1, notify.user2]) {
-            if (user !== undefined && user.uid !== "") {
+            if (typeof user?.uid === "string" && user.uid !== "") {
                 uids.push(user.uid);
             }
         }

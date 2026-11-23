@@ -10,7 +10,6 @@ import type {
     FriendApi,
     GroupApi,
     GroupCache,
-    GroupNotify,
     GroupNotifyApi,
     MsgApi,
     Peer,
@@ -248,26 +247,6 @@ export function requireSelfUid(api: MilkyApi): string {
         throw kernelError("登录身份缺 uid（无法发起戳一戳）", "INVALID_PARAM");
     }
     return uid;
-}
-
-/**
- * 按通知 seq 查找群通知（先非可疑后可疑两屏依序，OB11 set_group_add_request
- * 同路径）。屏序惰性拉取：前一屏命中则不拉后续屏（群通知规范序）。
- * 未找到抛 NOT_FOUND（应答动作的 seq 无效或已过期）。
- * 模块级函数（非类成员）：应答动作的公共入口，OB11 同路径。
- */
-export async function findGroupNotify(api: MilkyApi, seq: string): Promise<GroupNotify> {
-    const screens = [
-        () => api.groupNotifyApi.getSingleScreenNotifies(false, NOTIFY_SEARCH_COUNT),
-        () => api.groupNotifyApi.getSingleScreenNotifies(true, NOTIFY_SEARCH_COUNT),
-    ];
-    for (const fetchScreen of screens) {
-        const hit = (await fetchScreen()).find((item) => item.seq === seq);
-        if (hit !== undefined) {
-            return hit;
-        }
-    }
-    throw kernelError(`未找到通知 ${seq}（无效或已过期）`, "NOT_FOUND");
 }
 
 /** 按发起者 uid 查找好友申请（getBuddyReqList 匹配 friendUid）；未找到抛 NOT_FOUND。 */

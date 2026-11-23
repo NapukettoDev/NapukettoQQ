@@ -173,6 +173,7 @@ describe("群通知应答（accept/reject request + invitation）", () => {
             notification_seq: 88001,
             notification_type: "join_request",
             group_id: 10001,
+            is_filtered: false,
         });
         expect(res.status).toBe("ok");
         expect(handleGroupRequest).toHaveBeenCalledWith(
@@ -205,11 +206,15 @@ describe("群通知应答（accept/reject request + invitation）", () => {
         );
     });
 
-    it("accept/reject_group_invitation：invitation_seq 匹配 + doubt=false", async () => {
+    it("accept/reject_group_invitation 按实际队列与邀请类型审批", async () => {
         const handleGroupRequest = vi.fn(async () => undefined);
         const registry = groupRegistry({
             groupNotifyApi: {
-                getSingleScreenNotifies: vi.fn(async () => [notify()]),
+                getSingleScreenNotifies: vi.fn(async (doubt: boolean) =>
+                    doubt
+                        ? [{ ...notify(), type: GroupNotifyMsgType.INVITED_BY_MEMBER }]
+                        : [notify()],
+                ),
                 handleGroupRequest,
             },
         });
@@ -218,7 +223,7 @@ describe("群通知应答（accept/reject request + invitation）", () => {
             invitation_seq: 88001,
         });
         expect(handleGroupRequest).toHaveBeenCalledWith(
-            false,
+            true,
             expect.anything(),
             NTGroupRequestOperateTypes.KAGREE,
             " ",
@@ -228,7 +233,7 @@ describe("群通知应答（accept/reject request + invitation）", () => {
             invitation_seq: 88001,
         });
         expect(handleGroupRequest).toHaveBeenLastCalledWith(
-            false,
+            true,
             expect.anything(),
             NTGroupRequestOperateTypes.KREFUSE,
             " ",

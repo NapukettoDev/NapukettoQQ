@@ -47,7 +47,7 @@ export function createGroupManageActions(api: OneBotApi): Ob11Action[] {
                 group_id: z.number(),
                 user_id: z.number(),
                 /** 禁言时长（秒），0 解除。 */
-                duration: z.number().default(DEFAULT_BAN_DURATION),
+                duration: z.int().nonnegative().default(DEFAULT_BAN_DURATION),
             }),
             handle: async (payload) => {
                 const uid = await memberUidOf(api, payload.user_id);

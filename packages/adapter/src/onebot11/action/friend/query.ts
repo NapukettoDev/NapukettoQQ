@@ -26,12 +26,15 @@ export function createFriendQueryActions(api: OneBotApi): Ob11Action[] {
             }),
             handle: async () => {
                 const friends = await api.friendApi.getFriendList();
-                return friends.map((f) => {
+                return friends.flatMap((f) => {
+                    if (f.uin === null || !Number.isSafeInteger(Number(f.uin))) {
+                        return [];
+                    }
                     const info: FriendInfo = { user_id: Number(f.uin), nickname: f.nickname };
                     if (f.remark !== "") {
                         info.remark = f.remark;
                     }
-                    return info;
+                    return [info];
                 });
             },
         }),

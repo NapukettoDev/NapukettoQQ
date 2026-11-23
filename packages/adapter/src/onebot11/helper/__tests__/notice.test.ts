@@ -9,6 +9,7 @@
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
 import { describe, expect, it, vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
+import { MessageUnique } from "../message-unique.js";
 import {
     hasFileElement,
     hasGrayTip,
@@ -40,35 +41,55 @@ function groupMsg(grayTip: Record<string, unknown>): RawMessage {
 }
 
 describe("toOb11NoticeEvent：撤回", () => {
-    it("群撤回 → group_recall（既有口径不变）", () => {
+    it("群撤回按同会话原生 ID 复用 OB11 ID，分别保留发送者和管理员", () => {
+        const messageUnique = new MessageUnique();
+        const messageId = messageUnique.alloc("6800", { chatType: ChatType.GROUP, peerUid: "808" });
         const event = toOb11NoticeEvent(
             groupMsg({
                 subElementType: GrayTipSubType.REVOKE,
-                revokeElement: { operatorUid: "u9" },
+                revokeElement: { operatorUid: "u_admin" },
             }),
-            CTX,
+            { ...CTX, messageUnique, uidToUin: new Map([["u_admin", "90008"]]) },
         );
         expect(event).toMatchObject({
             post_type: "notice",
             notice_type: "group_recall",
             group_id: 808,
             user_id: 90009,
-            message_id: 42,
+            operator_id: 90008,
+            message_id: messageId,
+            tip_message_id: "6800",
+            tip_message_seq: "42",
         });
     });
 
-    it("好友撤回（C2C REVOKE）→ friend_recall（新增）", () => {
+    it("好友撤回保留好友号；缺映射时灰条序号不进入 OB11 ID 空间", () => {
         const msg = groupMsg({
             subElementType: GrayTipSubType.REVOKE,
             revokeElement: { operatorUid: "u9" },
         });
         msg.chatType = ChatType.C2C;
+        msg.peerUin = "90007";
         const event = toOb11NoticeEvent(msg, CTX);
         expect(event).toMatchObject({
             post_type: "notice",
             notice_type: "friend_recall",
-            user_id: 90009,
-            message_id: 42,
+            user_id: 90007,
+            message_id: 0,
+            tip_message_seq: "42",
+        });
+    });
+
+    it("已登记的原生 ID 来自其他会话时不关联；自己的操作保留登录号", () => {
+        const messageUnique = new MessageUnique();
+        messageUnique.alloc("6800", { chatType: ChatType.GROUP, peerUid: "809" });
+        const msg = groupMsg({
+            subElementType: GrayTipSubType.REVOKE,
+            revokeElement: { operatorUid: "", isSelfOperate: true },
+        });
+        expect(toOb11NoticeEvent(msg, { ...CTX, messageUnique })).toMatchObject({
+            message_id: 0,
+            operator_id: 10001,
         });
     });
 });
@@ -110,6 +131,14 @@ describe("toOb11NoticeEvent：poke（aioOp，待真实事件验证）", () => {
         msg.chatType = ChatType.C2C;
         const event = toOb11NoticeEvent(msg, CTX);
         expect(event).toMatchObject({ notice_type: "notify", sub_type: "poke", group_id: 0 });
+    });
+
+    it("群临时会话的 poke 保留原生来源群号", () => {
+        const msg = groupMsg({
+            aioOpGrayTipElement: { peerUid: "u9", fromGrpCodeOfTmpChat: "808" },
+        });
+        msg.chatType = ChatType.C2C_TEMP;
+        expect(toOb11NoticeEvent(msg, CTX)).toMatchObject({ group_id: 0, temp_source: 808 });
     });
 });
 
@@ -243,6 +272,7 @@ describe("toOb11NoticeEvent：群成员变动（既有口径回归）", () => {
                     type: TipGroupElementType.SHUT_UP,
                     memberUid: "u9",
                     adminUid: "u1",
+                    shutUp: { duration: "0" },
                 },
             }),
             wideCtx,
@@ -254,6 +284,15 @@ describe("toOb11NoticeEvent：群成员变动（既有口径回归）", () => {
             operator_id: 90001,
             user_id: 90009,
         });
+        expect(
+            toOb11NoticeEvent(
+                groupMsg({
+                    subElementType: GrayTipSubType.GROUP,
+                    groupElement: { type: TipGroupElementType.SHUT_UP, shutUp: { duration: null } },
+                }),
+                wideCtx,
+            ),
+        ).toBeNull();
     });
 
     it("GROUP 子类型但 groupElement 缺失 → null；type 无映射器（DISBANDED 等）→ null", () => {

@@ -60,7 +60,7 @@ export function createProfileActions(api: MilkyApi): MilkyAction[] {
                 if (friend === undefined) {
                     throw kernelError(`好友 ${uin} 不存在`, "NOT_FOUND");
                 }
-                return { friend: toFriendEntity(friend, friend.uin, friend.nickname) };
+                return { friend: toFriendEntity(friend, uin, friend.nickname) };
             },
         }),
         defineMilkyAction({

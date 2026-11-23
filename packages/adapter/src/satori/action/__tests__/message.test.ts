@@ -287,29 +287,52 @@ describe("message.get", () => {
 });
 
 describe("message.list", () => {
-    it("缺省（asc）：QQ 时间倒序结果反转；next = 输出末条 id（实现现状，锁注释与代码的差异）", async () => {
-        const api = stubSatoriApi();
-        const older = makeRawMsg({ msgId: "older", msgTime: "1700000000" });
-        const newer = makeRawMsg({ msgId: "newer", msgTime: "1700000001" });
-        // 原生返回新→旧
-        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([newer, older] as never);
-        const action = actionOf<BidiList<Message>>(api, "message.list");
-        // limit=2 与 raw 数量相等 → 触发 next 令牌
-        const result = await action.run({ channel_id: "10001", limit: 2 });
-        expect(result.data.map((m) => m.id)).toEqual(["older", "newer"]);
-        expect(result.next).toBe("newer");
-    });
-
-    it("order=desc：保持原生新→旧顺序，next = 末条（更早）id", async () => {
-        const api = stubSatoriApi();
-        const older = makeRawMsg({ msgId: "older" });
-        const newer = makeRawMsg({ msgId: "newer" });
-        vi.mocked(api.msgApi.fetchMessages).mockResolvedValueOnce([newer, older] as never);
-        const action = actionOf<BidiList<Message>>(api, "message.list");
-        const result = await action.run({ channel_id: "10001", order: "desc", limit: 2 });
-        expect(result.data.map((m) => m.id)).toEqual(["newer", "older"]);
-        expect(result.next).toBe("older");
-    });
+    it.each([
+        { order: "asc", inclusive: true },
+        { order: "desc", inclusive: true },
+        { order: "asc", inclusive: false },
+        { order: "desc", inclusive: false },
+    ] as const)(
+        "按 $order 翻三页（含锚点=$inclusive），游标始终向较早消息推进",
+        async ({ order, inclusive }) => {
+            const api = stubSatoriApi();
+            const ids = ["m6", "m6", "m5", "m4", "m3", "m2", "m1"];
+            const records = ids.map((msgId) => makeRawMsg({ msgId }));
+            vi.mocked(api.msgApi.fetchMessages).mockImplementation(
+                async (_peer, { msgId, count }) => {
+                    const anchor = ids.indexOf(msgId ?? "");
+                    const start = anchor === -1 ? 0 : anchor + (inclusive ? 0 : 1);
+                    return records.slice(start, start + Math.min(count, 3));
+                },
+            );
+            const action = actionOf<BidiList<Message>>(api, "message.list");
+            const options = {
+                channel_id: "10001",
+                ...(order === "desc" ? { order } : {}),
+                limit: 2,
+            };
+            const first = await action.run({ ...options, next: null });
+            const second = await action.run({ ...options, next: first.next });
+            const last = await action.run({ ...options, next: second.next });
+            expect(first).toMatchObject({ prev: "m5", next: "m5" });
+            expect(second).toMatchObject({ prev: "m3", next: "m3" });
+            expect(last).not.toHaveProperty("prev");
+            expect(last).not.toHaveProperty("next");
+            expect([first, second, last].map(({ data }) => data.map(({ id }) => id))).toEqual(
+                order === "asc"
+                    ? [
+                          ["m5", "m6"],
+                          ["m3", "m4"],
+                          ["m1", "m2"],
+                      ]
+                    : [
+                          ["m6", "m5"],
+                          ["m4", "m3"],
+                          ["m2", "m1"],
+                      ],
+            );
+        },
+    );
 
     it("next 透传为游标 msgId；limit 透传", async () => {
         const api = stubSatoriApi();
@@ -320,7 +343,7 @@ describe("message.list", () => {
         await action.run({ channel_id: "10001", next: "cursor-1", limit: 10 });
         expect(api.msgApi.fetchMessages).toHaveBeenCalledWith(
             { chatType: ChatType.GROUP, peerUid: "10001" },
-            { count: 10, msgId: "cursor-1" },
+            { count: 12, msgId: "cursor-1" },
         );
     });
 
@@ -340,6 +363,26 @@ describe("message.list", () => {
         await expect(
             action.run({ channel_id: "10001", direction: "around" }),
         ).rejects.toMatchObject({ status: 400, message: "暂不支持 around 方向" });
+    });
+
+    it("direction=after 不会静默查询较早消息", async () => {
+        const api = stubSatoriApi();
+        const action = actionOf<BidiList<Message>>(api, "message.list");
+        await expect(
+            action.run({ channel_id: "10001", next: "m1", direction: "after" }),
+        ).rejects.toMatchObject({ status: 400 });
+        expect(api.msgApi.fetchMessages).not.toHaveBeenCalled();
+    });
+
+    it("原生只重复锚点时返回空页并停止", async () => {
+        const api = stubSatoriApi();
+        const action = actionOf<BidiList<Message>>(api, "message.list");
+        const raw = makeRawMsg({ msgId: "anchor" });
+        vi.mocked(api.msgApi.fetchMessages).mockResolvedValue([raw, raw]);
+        await expect(
+            action.run({ channel_id: "10001", next: "anchor", limit: 1 }),
+        ).resolves.toEqual({ data: [] });
+        expect(api.msgApi.fetchMessages).toHaveBeenCalledTimes(1);
     });
 
     it("direction=before：合法方向", async () => {

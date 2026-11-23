@@ -3,8 +3,13 @@
  * + guild.member.get / list / kick / mute / approve
  * （role.set / role.unset / guild.role.*：501，见 registry）
  */
-import type { GroupMember, GroupNotify } from "@napuketto/kernel";
-import { kernelError, NTGroupRequestOperateTypes } from "@napuketto/kernel";
+import {
+    findPendingGroupRequest,
+    type GroupMember,
+    type GroupRequestKind,
+    kernelError,
+    NTGroupRequestOperateTypes,
+} from "@napuketto/kernel";
 import { z } from "zod";
 import type { SatoriApi } from "../api/satori-api.js";
 import { toGuild, toUser } from "../helper/index.js";
@@ -25,6 +30,7 @@ const groupApproveSchema = z.object({
     message_id: z.string(),
     approve: z.boolean(),
     comment: z.string().optional(),
+    doubt: z.boolean().optional(),
 });
 
 /** 群组动作工厂（guild.get / list / approve + member 五动作）。 */
@@ -59,7 +65,14 @@ export function createGuildActions(deps: GuildActionDeps): SatoriActionHandler[]
             // 处理群邀请（message_id = 群通知 seq）
             handle: async (payload): Promise<void> => {
                 const { message_id: messageId, approve, comment } = payload;
-                await respondGroupRequest(deps, messageId, approve, comment);
+                await respondGroupRequest(
+                    deps,
+                    messageId,
+                    approve,
+                    comment,
+                    payload.doubt,
+                    "invitation",
+                );
             },
         }),
         defineSatoriAction({
@@ -135,7 +148,7 @@ export function createGuildActions(deps: GuildActionDeps): SatoriActionHandler[]
                 guild_id: z.string(),
                 user_id: z.string(),
                 /** 禁言时长（毫秒，Satori 规范）；0 解除禁言。 */
-                duration: z.number(),
+                duration: z.int().nonnegative(),
             }),
             // Satori duration 毫秒 → kernel setMemberShutUp 秒
             handle: async (payload): Promise<void> => {
@@ -153,7 +166,10 @@ export function createGuildActions(deps: GuildActionDeps): SatoriActionHandler[]
             // 处理加群申请（message_id = 群通知 seq）
             handle: async (payload): Promise<void> => {
                 const { message_id: messageId, approve, comment } = payload;
-                await respondGroupRequest(deps, messageId, approve, comment);
+                await respondGroupRequest(deps, messageId, approve, comment, payload.doubt, [
+                    "join_request",
+                    "invited_join_request",
+                ]);
             },
         }),
     ];
@@ -165,28 +181,23 @@ async function respondGroupRequest(
     messageId: string,
     approve: boolean,
     comment: string | undefined,
+    doubt: boolean | undefined,
+    kind: GroupRequestKind | readonly GroupRequestKind[],
 ): Promise<void> {
-    const notify = await findGroupNotify(deps, messageId);
+    const { request, notify } = await findPendingGroupRequest(
+        deps.groupNotifyApi,
+        { seq: messageId, doubt, kind },
+        50,
+    );
     const operateType = approve
         ? NTGroupRequestOperateTypes.KAGREE
         : NTGroupRequestOperateTypes.KREFUSE;
-    await deps.groupNotifyApi.handleGroupRequest(false, notify, operateType, comment ?? "");
+    await deps.groupNotifyApi.handleGroupRequest(request.doubt, notify, operateType, comment ?? "");
 }
 
-/** 毫秒 → 秒（QQ setMemberShutUp 单位；向下取整，0 解除禁言）。 */
+/** 毫秒 → 秒（QQ setMemberShutUp 单位；正时长至少 1 秒，0 解除禁言）。 */
 function msToSeconds(ms: number): number {
-    return Math.max(0, Math.floor(ms / 1000));
-}
-
-/** 按 message_id（通知 seq）查找群通知（单屏非可疑快照）。 */
-async function findGroupNotify(deps: GuildActionDeps, messageId: string): Promise<GroupNotify> {
-    const found = (await deps.groupNotifyApi.getSingleScreenNotifies(false, 50)).find(
-        (item) => item.seq === messageId,
-    );
-    if (found === undefined) {
-        throw kernelError("群通知不存在", "NOT_FOUND");
-    }
-    return found;
+    return ms === 0 ? 0 : Math.max(1, Math.floor(ms / 1000));
 }
 
 /** GroupMember → Satori GuildMember（user.id = uin；nick = 群名片优先）。 */

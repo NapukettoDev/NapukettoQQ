@@ -108,7 +108,12 @@ describe("guild.approve / guild.member.approve（共用应答实现）", () => {
         "approve=true → KAGREE（$name）",
         async ({ name }) => {
             const api = stubSatoriApi();
-            const notify: GroupNotify = { seq: "9527", type: 7, status: 1 };
+            const notify: GroupNotify = {
+                seq: "9527",
+                type: name === "guild.approve" ? 1 : 7,
+                status: 1,
+                group: { groupCode: "808", groupName: "测试群" },
+            };
             vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
                 notify,
             ] as never);
@@ -126,26 +131,35 @@ describe("guild.approve / guild.member.approve（共用应答实现）", () => {
 
     it("approve=false → KREFUSE；comment 透传", async () => {
         const api = stubSatoriApi();
-        const notify: GroupNotify = { seq: "42", type: 7, status: 1 };
+        const notify: GroupNotify = {
+            seq: "42",
+            type: 1,
+            status: 1,
+            group: { groupCode: "808", groupName: "测试群" },
+        };
         vi.mocked(api.groupNotifyApi.getSingleScreenNotifies).mockResolvedValueOnce([
             notify,
         ] as never);
         const action = actionOf<void>(api, "guild.approve");
-        await action.run({ message_id: "42", approve: false, comment: "不通过" });
+        await action.run({ message_id: "42", approve: false, comment: "不通过", doubt: true });
+        expect(api.groupNotifyApi.getSingleScreenNotifies).toHaveBeenCalledExactlyOnceWith(
+            true,
+            50,
+        );
         expect(api.groupNotifyApi.handleGroupRequest).toHaveBeenCalledWith(
-            false,
+            true,
             notify,
             NTGroupRequestOperateTypes.KREFUSE,
             "不通过",
         );
     });
 
-    it("seq 未匹配任何通知：抛「群通知不存在」（404）", async () => {
+    it("seq 未匹配任何待处理通知（404）", async () => {
         const api = stubSatoriApi();
         const action = actionOf<void>(api, "guild.approve");
         await expect(action.run({ message_id: "missing", approve: true })).rejects.toMatchObject({
             status: 404,
-            message: "群通知不存在",
+            message: "未找到待处理群请求",
         });
     });
 });

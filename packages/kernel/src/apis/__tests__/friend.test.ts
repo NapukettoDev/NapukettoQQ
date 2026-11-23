@@ -4,17 +4,16 @@
  * 覆盖可疑好友申请转换：
  *  - flag/type 必填；uin 仅在能解析为正整数时出现（绝不产出 NaN）
  *  - 可选字段条件赋值（exactOptionalPropertyTypes）
- *  - uid→uin 转换缺失时回退 uid 数字转换
+ *  - uid→uin 转换缺失时省略 uin
  */
 import { describe, expect, it } from "vitest";
 import { toDoubtFriendRequestInfo } from "../friend.js";
 
 describe("toDoubtFriendRequestInfo", () => {
-    it("仅必填字段（uinMap 无命中时回退 uid 数字转换）", () => {
+    it("uinMap 无命中时数字形态的 UID 仍只用作 flag", () => {
         const item = { uid: "10001" } as never;
         expect(toDoubtFriendRequestInfo(item, new Map())).toEqual({
             flag: "10001",
-            uin: 10001,
             type: "doubt",
         });
     });

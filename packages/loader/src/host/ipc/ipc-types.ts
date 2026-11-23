@@ -63,6 +63,46 @@ const ipcEventPayloadSchema = z.object({
     args: z.array(z.unknown()),
 });
 
+const qqNumberSchema = z.string().regex(/^[1-9]\d*$/);
+
+const groupRequestRefSchema = z.strictObject({
+    seq: z
+        .string()
+        .min(1)
+        .refine((seq) => seq.trim() !== ""),
+    groupCode: qqNumberSchema,
+    kind: z.enum(["invitation", "invited_join_request", "join_request"]),
+    doubt: z.boolean(),
+});
+
+/** `Group/onRequest` 的唯一参数。 */
+export const IpcGroupRequestSchema = z.object({
+    selfUin: qqNumberSchema,
+    request: groupRequestRefSchema,
+    initiatorUid: z.string().min(1).optional(),
+    initiatorUin: qqNumberSchema.optional(),
+    targetUid: z.string().min(1).optional(),
+    comment: z.string().optional(),
+});
+export type IpcGroupRequest = z.infer<typeof IpcGroupRequestSchema>;
+
+export const IpcRespondToGroupRequestParamsSchema = z.strictObject({
+    selfUin: qqNumberSchema,
+    request: groupRequestRefSchema,
+    approve: z.boolean(),
+    reason: z.string().optional(),
+});
+export type IpcRespondToGroupRequestParams = z.infer<typeof IpcRespondToGroupRequestParamsSchema>;
+
+/** `friend.getFriendList` 的单项。 */
+export const IpcFriendSchema = z.object({
+    uid: z.string().min(1),
+    uin: qqNumberSchema.nullable(),
+    nickname: z.string(),
+    remark: z.string(),
+});
+export type IpcFriend = z.infer<typeof IpcFriendSchema>;
+
 /** log 消息 payload。 */
 const ipcLogPayloadSchema = z.object({
     level: ipcLogLevelSchema,
