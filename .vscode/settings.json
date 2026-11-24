@@ -18,6 +18,7 @@
     },
     // TS
     "js/ts.experimental.useTsgo": true,
+    "js/ts.tsdk.path": "node_modules\\typescript",
     // C++
     "cmake.sourceDirectory": "${workspaceFolder}/packages/loader/native",
     "cmake.buildDirectory": "${sourceDir}/build",
@@ -42,5 +43,5 @@
         // tooling
         "git-hooks": "hook",
         "qq-releases": "tasks"
-    }
+    },
 }
