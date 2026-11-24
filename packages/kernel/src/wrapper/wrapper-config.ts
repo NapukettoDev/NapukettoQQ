@@ -16,13 +16,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { hostname, type as osType, version as osVersionString, platform, release } from "node:os";
 import { kernelError } from "../infra/index.js";
+import { hasCallableProp } from "../infra/type-guards.js";
 import type {
     DeviceInfo,
     EnginInitDesktopConfig,
     WrapperSessionInitConfig,
 } from "../types/index.js";
 import { PlatformType as PlatformTypeValue, VendorType } from "../types/index.js";
-import { hasCallableProp } from "../utils/type-guards.js";
 
 /** app_type=4：桌面端应用类型（engine.initWithDeskTopConfig 契约；移动端为其它值）。 */
 const APP_TYPE_DESKTOP = 4;

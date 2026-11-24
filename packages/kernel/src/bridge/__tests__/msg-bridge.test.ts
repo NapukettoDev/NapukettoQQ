@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
-import { NTEventChannel } from "../../event-channel.js";
+import { NTEventChannel } from "../../infra/event-channel.js";
 import type { MsgListener, RawMessage } from "../../types/index.js";
 import { MsgBridge } from "../msg-bridge.js";
 import { makeCapturedService, makeSession } from "./test-support.js";

@@ -6,11 +6,6 @@
  * 全部类型为运行时探测产物（packages/kernel/scripts/probe/），非拍脑袋定义。
  */
 
-export {
-    picLocalCandidates,
-    toCanonicalElements,
-    toSendElements,
-} from "../codec/message-element.js";
 export type {
     FaceElement,
     FileElement,

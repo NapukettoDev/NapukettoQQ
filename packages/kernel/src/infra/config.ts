@@ -14,8 +14,8 @@ import { open, readFile, rename, rm } from "node:fs/promises";
 import { dirname, extname } from "node:path";
 import process from "node:process";
 import { parse as parseTomlText, stringify as stringifyTomlText } from "smol-toml";
-import { getErrorCode, isRecord } from "../utils/type-guards.js";
 import { configError } from "./errors.js";
+import { getErrorCode, isRecord } from "./type-guards.js";
 
 /** 配置文本格式。 */
 export type ConfigFormat = "json" | "toml";

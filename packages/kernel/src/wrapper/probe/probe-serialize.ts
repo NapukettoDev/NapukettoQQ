@@ -9,7 +9,7 @@
  * 与字节形态普通数组转 base64 全量保留（截断上限放宽），数字数组/深对象不再
  * 20 项 / 4 层截断（上限提至 64 / 8）。
  */
-import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../utils/type-guards.js";
+import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../infra/type-guards.js";
 
 /** 序列化深度上限（循环引用/深层对象防护）。 */
 const MAX_SERIALIZE_DEPTH = 8;

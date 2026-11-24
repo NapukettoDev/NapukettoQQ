@@ -15,13 +15,13 @@
  *   bridge.unregister(); // 停止时清理
  */
 
-import type { NTEventChannel } from "../event-channel.js";
+import type { NTEventChannel } from "../infra/event-channel.js";
+import { requireKernelService } from "../infra/type-guards.js";
 import type {
     BuddyListener,
     NodeIKernelBuddyService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
 
 /** 好友事件通道的固定类型（事件名前缀 "Buddy"）。 */
 export type BuddyEventChannel = NTEventChannel<BuddyListener, "Buddy">;

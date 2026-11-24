@@ -13,7 +13,7 @@ import type {
     NodeIQQNTWrapperSession,
     WrapperSessionInitConfig,
 } from "../../types/index.js";
-import type { WrapperContext } from "../../wrapper/wrapper-loader.js";
+import type { WrapperContext } from "../../wrapper/lifecycle.js";
 import { initAndStartSession, waitSessionReady } from "../lifecycle.js";
 
 /** 构造 ctx（session / startupSession 可覆写）。 */

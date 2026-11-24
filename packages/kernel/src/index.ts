@@ -73,12 +73,11 @@ export {
     narrowBuddyCategories,
     narrowEssenceGroupArg,
 } from "./cache/index.js";
+export { toCanonicalElements, toSendElements } from "./codec/index.js";
 export type { CoreContext, CoreContextOptions } from "./context.js";
 export { createCoreContext } from "./context.js";
 export type { CoreLoginOptions, LoginProgress, NapukettoCoreOptions } from "./core.js";
 export { NapukettoCore } from "./core.js";
-export type { ListenerEvents } from "./event-channel.js";
-export { NTEventChannel } from "./event-channel.js";
 export type {
     ConfigFormat,
     ConfigOptions,
@@ -86,6 +85,7 @@ export type {
     ConfigSchema,
     ConsoleFormatStreamOptions,
     KernelErrorCode,
+    ListenerEvents,
     LogConfig,
     LogEnvSource,
     LogFileConfig,
@@ -106,14 +106,31 @@ export {
     DEFAULT_DATA_ROOT_NAME,
     EXIT_CONFIG_INVALID,
     errorMessage,
+    getErrorCode,
+    getErrorMessage,
+    getOwnProp,
+    hasBooleanProp,
+    hasCallableProp,
+    hasFunctionProp,
+    hasMethodSurface,
+    hasNumberProp,
+    hasStaticCreator,
+    hasStaticGetter,
+    hasStringProp,
+    isCallable,
     isKernelError,
+    isPromiseLike,
+    isRecord,
     KERNEL_ERROR_CODES,
     KernelError,
     kernelError,
     MAIN_CONFIG_FILE,
+    NTEventChannel,
     PathWrapper,
+    parseJsonWithGuard,
     parseLogConfig,
     parseToml,
+    requireKernelService,
     resolveConfigPath,
     resolveDataRoot,
     resolveSandboxWritePath,
@@ -236,81 +253,54 @@ export {
     NTGroupMemberRole,
     NTGroupRequestOperateTypes,
     TipGroupElementType,
-    toCanonicalElements,
-    toSendElements,
     VIDEO_THUMB_KEY,
 } from "./types/index.js";
+export type {
+    BootEnv,
+    ListenerRecordEvent,
+    ListenerRecordingResult,
+    QQVersionContext,
+    QQVersionInfo,
+    QqDataRootOptions,
+    QqVersionContext,
+    QqVersionInfo,
+    SessionConfigOptions,
+    SessionListenerOptions,
+    StartNapukettoOptions,
+    WrapperContext,
+} from "./wrapper/index.js";
 export {
-    getErrorCode,
-    getErrorMessage,
-    getOwnProp,
-    hasBooleanProp,
-    hasCallableProp,
-    hasFunctionProp,
-    hasMethodSurface,
-    hasNumberProp,
-    hasStaticCreator,
-    hasStaticGetter,
-    hasStringProp,
-    isCallable,
-    isPromiseLike,
-    isRecord,
-    parseJsonWithGuard,
-    requireKernelService,
-} from "./utils/type-guards.js";
-export {
-    createRecordingListener,
-    type ListenerRecordEvent,
-    type ListenerRecordingResult,
-    /** @internal 运行时反射探测工具 */
-    probeRuntime,
-    /** @internal 运行时反射探测工具 */
-    startListenerRecording,
-} from "./wrapper/probe/index.js";
-export { resolveQqGlobalPath } from "./wrapper/qq-data-path.js";
-export {
-    /** @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用 */
-    getExistingSession,
-    /** @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用 */
-    getMainSession,
-} from "./wrapper/session-resolver.js";
-export type { SessionListenerOptions } from "./wrapper/wrapper-adapters.js";
-export {
-    createLoginListener,
-    createSessionListener,
-    createSessionListener as createLifecycleSessionListener,
-    DependsAdapter,
-    DispatcherAdapter,
-    GlobalAdapter,
-} from "./wrapper/wrapper-adapters.js";
-export type { SessionConfigOptions } from "./wrapper/wrapper-config.js";
-export {
+    activateO3MiscService,
     buildEngineConfig,
     buildLoginConfig,
     buildSessionConfig,
-    parseAppidFromMajor,
-    readMachineGuid,
-    resolveAppidQua,
-} from "./wrapper/wrapper-config.js";
-export type {
-    BootEnv,
-    QQVersionContext,
-    QqDataRootOptions,
-    QqVersionContext,
-    StartNapukettoOptions,
-    WrapperContext,
-} from "./wrapper/wrapper-loader.js";
-export {
-    activateO3MiscService,
+    createLifecycleSessionListener,
+    createLoginListener,
+    createRecordingListener,
     createSession,
+    createSessionListener,
     createWrapper,
+    DependsAdapter,
+    DispatcherAdapter,
     dlopenWrapper,
     electronProcessType,
+    GlobalAdapter,
+    getExistingSession,
+    getMainSession,
     initEngine,
     initSession,
+    listQQVersions,
+    parseAppidFromMajor,
+    /** @internal 运行时反射探测工具 */
+    probeRuntime,
+    readMachineGuid,
+    resolveAppidQua,
+    resolveQQVersion,
+    resolveQqGlobalPath,
     resolveQqUserDataRoot,
+    resolveWrapperPath,
+    /** @internal 运行时反射探测工具 */
+    startListenerRecording,
     startNapuketto,
     startSession,
-} from "./wrapper/wrapper-loader.js";
-export type { QQVersionInfo, QqVersionInfo } from "./wrapper/wrapper-version.js";
-export { listQQVersions, resolveQQVersion, resolveWrapperPath } from "./wrapper/wrapper-version.js";
+} from "./wrapper/index.js";

@@ -18,8 +18,8 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { errorMessage } from "../../infra/index.js";
-import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../utils/type-guards.js";
-import type { WrapperContext } from "../wrapper-loader.js";
+import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../infra/type-guards.js";
+import type { WrapperContext } from "../lifecycle.js";
 import { serialize } from "./probe-serialize.js";
 import { listMethods } from "./probe-utils.js";
 

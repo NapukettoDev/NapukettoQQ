@@ -121,8 +121,8 @@
         },
         {
             "includes": [
-                "packages/kernel/src/apis/webapi.ts",
-                "packages/kernel/src/apis/ticket.ts"
+                "packages/kernel/src/apis/media-web/webapi.ts",
+                "packages/kernel/src/apis/media-web/ticket.ts"
             ],
             "linter": {
                 "rules": {
@@ -135,7 +135,7 @@
         {
             "includes": [
                 "packages/kernel/src/login/__tests__/login.test.ts",
-                "packages/kernel/src/login/__tests__/login-connect.test.ts"
+                "packages/kernel/src/login/__tests__/quick-login.test.ts"
             ],
             "linter": {
                 "rules": {

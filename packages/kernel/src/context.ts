@@ -10,7 +10,7 @@
 import type pino from "pino";
 import type { PathWrapper } from "./infra/index.js";
 import type { LoginResult } from "./login/index.js";
-import type { WrapperContext } from "./wrapper/wrapper-loader.js";
+import type { WrapperContext } from "./wrapper/lifecycle.js";
 
 export interface CoreContextOptions {
     /** pino logger（console + 可选文件，由装配层创建）。 */

@@ -6,7 +6,7 @@
  * QrLoginSession 并存——多监听各自独立 id（录制器实测同服务可多挂）。
  *
  * ⚠️ 与其他桥的差异：login service 不在 session 上（登录先于 session init），
- * 由装配方注入 `ctx.wrapper.loginService`（wrapper-loader 拦截 new 捕获 /
+ * 由装配方注入 `ctx.wrapper.loginService`（wrapper 生命周期装载拦截 new 捕获 /
  * 单例 get() 兜底的既有实例，与 QrLoginSession 同源，见 core.ts loginByQr）。
  *
  * 方法名证据：wrapper.node 二进制字符串提取（types/wrapper.ts
@@ -20,10 +20,10 @@
  *   bridge.unregister();
  */
 
-import type { NTEventChannel } from "../event-channel.js";
+import type { NTEventChannel } from "../infra/event-channel.js";
 import { kernelError } from "../infra/index.js";
+import { hasCallableProp } from "../infra/type-guards.js";
 import type { LoginListener } from "../types/index.js";
-import { hasCallableProp } from "../utils/type-guards.js";
 
 /** 登录事件通道的固定类型（事件名前缀 "Login"）。 */
 export type LoginEventChannel = NTEventChannel<LoginListener, "Login">;

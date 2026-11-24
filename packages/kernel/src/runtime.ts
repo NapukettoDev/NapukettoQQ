@@ -12,17 +12,10 @@
  *    实时消息推送，与 loader 引导链同款调用）。
  */
 
-import { FlashTransferApi } from "./apis/flash-transfer.js";
-import { FriendApi } from "./apis/friend.js";
-import { GroupApi } from "./apis/group.js";
-import { GroupNotifyApi } from "./apis/group-notify.js";
-import { MsgApi } from "./apis/msg.js";
-import { ProfileApi } from "./apis/profile.js";
-import { ProfileLikeApi } from "./apis/profile-like.js";
-import { RecentContactApi } from "./apis/recent-contact.js";
-import { RichMediaApi } from "./apis/richmedia.js";
-import { TicketApi } from "./apis/ticket.js";
-import { WebApi } from "./apis/webapi.js";
+import { GroupApi, GroupNotifyApi } from "./apis/group/index.js";
+import { FlashTransferApi, RichMediaApi, TicketApi, WebApi } from "./apis/media-web/index.js";
+import { MsgApi } from "./apis/msg/index.js";
+import { FriendApi, ProfileApi, ProfileLikeApi, RecentContactApi } from "./apis/social/index.js";
 import type { BuddyEventChannel } from "./bridge/friend-bridge.js";
 import { FriendBridge } from "./bridge/friend-bridge.js";
 import type { GroupEventChannel } from "./bridge/group-bridge.js";
@@ -35,8 +28,9 @@ import type { RecentContactEventChannel } from "./bridge/recent-contact-bridge.j
 import { RecentContactBridge } from "./bridge/recent-contact-bridge.js";
 import { BuddyCache } from "./cache/buddy-cache.js";
 import { GroupCache } from "./cache/group-cache.js";
-import { NTEventChannel } from "./event-channel.js";
+import { NTEventChannel } from "./infra/event-channel.js";
 import { errorMessage } from "./infra/index.js";
+import { getOwnProp } from "./infra/type-guards.js";
 import type { LoginResult } from "./login/index.js";
 import type {
     BuddyListener,
@@ -47,7 +41,6 @@ import type {
     RecentContactListener,
     WrapperNodeApi,
 } from "./types/index.js";
-import { getOwnProp } from "./utils/type-guards.js";
 
 /** 运行时装配参数。 */
 export interface KernelRuntimeOptions {

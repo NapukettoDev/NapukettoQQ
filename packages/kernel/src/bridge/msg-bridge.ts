@@ -13,14 +13,14 @@
  *   bridge.unregister(); // 停止时清理
  */
 
-import type { NTEventChannel } from "../event-channel.js";
+import type { NTEventChannel } from "../infra/event-channel.js";
+import { requireKernelService } from "../infra/type-guards.js";
 import type {
     MsgListener,
     NodeIKernelMsgService,
     NodeIQQNTWrapperSession,
     RawMessage,
 } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
 import { awaitPicLocalPaths, hasPendingPicPaths } from "./pic-path-grace.js";
 
 /** 消息事件通道的固定类型（事件名前缀 "Msg"）。 */

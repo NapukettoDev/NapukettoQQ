@@ -2,7 +2,7 @@
 
 > 唯一原生交互层：负责 `process.dlopen`、`wrapper.node` 会话与原生 listener、事件桥、语义化
 > API、类型层、登录与平台参数；不含协议映射（adapter）、媒体处理（media）、宿主引导（loader）。
-> 源码入口：`src/wrapper/`、`src/bridge/`、`src/event-channel.ts`、`src/apis/`、`src/types/`。
+> 源码入口：`src/wrapper/`、`src/bridge/`、`src/infra/`、`src/apis/`、`src/types/`、`src/codec/`。
 
 ## 核心机制
 
@@ -23,8 +23,8 @@ NapukettoCore ──▶ CoreContext     Msg/Group/Buddy/…Bridge（每 service 
 
 - 装配入口 `NapukettoCore.create` → `attachWrapper` → `login`，状态集中在 `CoreContext`
   （paths / logger / wrapper / login），不引入全局单例。
-- `wrapper-loader` 负责 dlopen 后的 engine/session 初始化与平台配置；`session-resolver`
-  提供主 session 读取，并防止探测写回毒化。
+- `wrapper/loader.ts` 负责原生 dlopen 与 QQ 数据目录定位，`wrapper/lifecycle.ts` 负责
+  engine/session 初始化与平台配置；`session-resolver` 提供主 session 读取，并防止探测写回毒化。
 - 登录状态机在 kernel（ADR-010），终端渲染在 cli；登录成功后由 loader 装配业务服务。
 
 ### 事件桥
@@ -66,8 +66,9 @@ payload 不改写；缓存维护与协议翻译各自订阅通道。
 
 ### 业务 API 与错误语义
 
-`src/apis/` 共 12 个业务模块：11 个 Api 类（msg / group / friend / group-notify / richmedia /
-profile / profile-like / recent-contact / ticket / webapi / flash-transfer）+
+`src/apis/` 按子域分组（`msg/`、`group/`、`social/`、`media-web/`），顶层仅 `index.ts` 与
+`result.ts`：11 个 Api 类（msg / group / friend / group-notify / richmedia / profile（含
+profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / webapi / flash-transfer）+
 `stranger-info` 纯映射。统一错误语义（ADR-009 / ADR-017）：
 
 - 成功返回业务值；失败抛 `KernelError`，`code` 取 8 个枚举之一：`SEND_FAILED`、
@@ -191,7 +192,7 @@ canonical `image`（`path`、可选 `size` / `mime`）经 `MsgApi.prepareImageEl
 `picElement`：
 
 1. `picWidth` / `picHeight` 优先取 canonical `size`；任一维度或 `mime` 缺失时，
-   `apis/image-meta.ts` 零依赖读取文件头（最多前 64 KiB）解析 PNG / GIF / BMP /
+   `apis/msg/image-meta.ts` 零依赖读取文件头（最多前 64 KiB）解析 PNG / GIF / BMP /
    WebP（VP8/VP8L/VP8X）/ JPEG（SOF0/SOF1/SOF2）补齐，仍无有效正整数则写 0。
 2. `picType` 由 `resolvePicType` 按 MIME（优先）/ 扩展名映射：PNG 1001、WebP 1002、
    BMP 1005、GIF 2000、JPG/未知 1000。硬编码 0/0/1000（JPG）会让手机端 QQ 显示空白。

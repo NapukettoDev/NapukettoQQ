@@ -17,7 +17,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { ElementType, picLocalCandidates, type RawMessage } from "../types/index.js";
+import { picLocalCandidates } from "../codec/index.js";
+import { ElementType, type RawMessage } from "../types/index.js";
 
 /** 默认宽限上限（毫秒）：覆盖典型原图下载时长，坏路径最多拖慢发射 2s。 */
 const DEFAULT_TIMEOUT_MS = 2000;
