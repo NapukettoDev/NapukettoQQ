@@ -9,8 +9,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { NodeIQQNTWrapperSession } from "../../types/index.js";
+import type { WrapperContext } from "../lifecycle.js";
 import { getExistingSession, getMainSession } from "../session-resolver.js";
-import type { WrapperContext } from "../wrapper-loader.js";
 
 /** 构造 ctx（session ctor 与 startup ctor 由测试注入）。 */
 function makeCtx(exports: WrapperContext["exports"]): WrapperContext {

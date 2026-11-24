@@ -16,21 +16,22 @@
  * 模块边界（2026-08-05 解耦；2026-08-08 FTA 优化再拆）：
  *  - 配置装配（buildEngineConfig / buildLoginConfig / buildSessionConfig）→ wrapper-config.ts
  *  - NAPI 回调适配器（GlobalAdapter / DependsAdapter / DispatcherAdapter / listener 工厂）→ wrapper-adapters.ts
- *  - 登录连接 + 快速登录（waitForNetworkConnection / quickLogin 等）→ login-connect.ts
+ *  - 登录连接 + 快速登录（waitForNetworkConnection / quickLogin 等）→ msf-connection.ts / quick-login.ts
  *  - 本文件只保留 session 流程编排：就绪等待（waitSessionReady）+ session 初始化（initAndStartSession）。
  */
 
 import { kernelError, waitFor } from "../infra/index.js";
 import type { NodeIKernelSessionListener, WrapperSessionInitConfig } from "../types/index.js";
+import type { WrapperContext } from "../wrapper/lifecycle.js";
 import {
     createSessionListener,
     DependsAdapter,
     DispatcherAdapter,
 } from "../wrapper/wrapper-adapters.js";
-import type { WrapperContext } from "../wrapper/wrapper-loader.js";
 
-export type { LoginAccountInfo, LoginResult, QuickLoginOptions } from "./login-connect.js";
-export { listLoginAccounts, quickLogin, waitForNetworkConnection } from "./login-connect.js";
+export { waitForNetworkConnection } from "./msf-connection.js";
+export type { LoginAccountInfo, LoginResult, QuickLoginOptions } from "./quick-login.js";
+export { listLoginAccounts, quickLogin } from "./quick-login.js";
 
 /** session init 默认超时（毫秒）。 */
 const DEFAULT_INIT_TIMEOUT_MS = 15_000;
@@ -74,7 +75,7 @@ export async function waitSessionReady(
     }
 }
 
-/** 登录连接 + 快速登录（quickLogin 等）已拆到 login-connect.ts（见文件头 re-export）。 */
+/** 登录连接 + 快速登录（quickLogin 等）已拆到 msf-connection.ts / quick-login.ts（见文件头 re-export）。 */
 
 /** session 初始化（4 参全为普通 JS 对象，等 init 完成信号）。 */
 export async function initAndStartSession(

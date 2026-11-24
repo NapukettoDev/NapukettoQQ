@@ -68,7 +68,7 @@ vi.mock("../login/index.js", async (importOriginal) => {
     return { ...actual, QrLoginSession: FakeQrSession, quickLogin: vi.fn() };
 });
 
-vi.mock("../wrapper/wrapper-loader.js", async (importOriginal) => {
+vi.mock("../wrapper/lifecycle.js", async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return { ...actual, startNapuketto: vi.fn() };
 });
@@ -76,8 +76,8 @@ vi.mock("../wrapper/wrapper-loader.js", async (importOriginal) => {
 import { type LoginProgress, NapukettoCore } from "../core.js";
 import type { LoginResult } from "../login/index.js";
 import { quickLogin } from "../login/index.js";
-import type { WrapperContext } from "../wrapper/wrapper-loader.js";
-import { startNapuketto } from "../wrapper/wrapper-loader.js";
+import type { WrapperContext } from "../wrapper/lifecycle.js";
+import { startNapuketto } from "../wrapper/lifecycle.js";
 
 const quickLoginMock = vi.mocked(quickLogin);
 const startNapukettoMock = vi.mocked(startNapuketto);

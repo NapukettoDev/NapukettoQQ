@@ -154,10 +154,10 @@
         // 边界（整仓模式 72 个同类误报）；任一改动文件的行位移还会把存量成员翻成
         // 「本次引入」卡死增量门禁。与上方 barrel 豁免同根因：包公共面。复杂度/重复
         // 检查不受影响（ignoreFindings 只压 dead-code）。
-        "packages/kernel/src/apis/msg.ts",
-        "packages/kernel/src/apis/group.ts",
-        "packages/kernel/src/apis/richmedia.ts",
-        "packages/kernel/src/apis/recent-contact.ts",
+        "packages/kernel/src/apis/msg/**",
+        "packages/kernel/src/apis/group/**",
+        "packages/kernel/src/apis/social/**",
+        "packages/kernel/src/apis/media-web/**",
         // 事件桥（2026-11-01 批次三新增两桥同根因）：register/unregister 被
         // loader KernelLike 跨包调用（动态 import 装配），fallow 静态图跨不过
         // 包边界。存量三桥（Msg/Group/Buddy）为基线继承不报。

@@ -6,7 +6,7 @@
  * 快照数组）、register/unregister 幂等、session 未 init 抛 INVALID_STATE。
  */
 import { describe, expect, it, vi } from "vitest";
-import { NTEventChannel } from "../../event-channel.js";
+import { NTEventChannel } from "../../infra/event-channel.js";
 import type { RecentContactListener } from "../../types/index.js";
 import { RecentContactBridge } from "../recent-contact-bridge.js";
 import { makeCapturedService, makeSession } from "./test-support.js";

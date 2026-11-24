@@ -9,8 +9,8 @@
  */
 
 import { type KernelErrorCode, kernelError } from "../infra/index.js";
+import { isRecord } from "../infra/type-guards.js";
 import type { GeneralCallResult } from "../types/index.js";
-import { isRecord } from "../utils/type-guards.js";
 
 /** errMsg 关键词 → 错误码规则（顺序即优先级，命中任一组关键词即映射）。 */
 const RESULT_CODE_RULES: ReadonlyArray<{ code: KernelErrorCode; keywords: readonly string[] }> = [

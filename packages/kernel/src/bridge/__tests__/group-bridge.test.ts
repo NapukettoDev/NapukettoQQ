@@ -6,7 +6,7 @@
  * 透传（表驱动冒烟，逐个回调一个用例）。
  */
 import { describe, expect, it } from "vitest";
-import { NTEventChannel } from "../../event-channel.js";
+import { NTEventChannel } from "../../infra/event-channel.js";
 import type { GroupListener } from "../../types/index.js";
 import { GroupBridge } from "../group-bridge.js";
 import { makeCapturedService, makeSession } from "./test-support.js";

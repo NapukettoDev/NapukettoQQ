@@ -18,13 +18,13 @@
  *   bridge.unregister(); // 停止时清理
  */
 
-import type { NTEventChannel } from "../event-channel.js";
+import type { NTEventChannel } from "../infra/event-channel.js";
+import { requireKernelService } from "../infra/type-guards.js";
 import type {
     NodeIKernelRecentContactService,
     NodeIQQNTWrapperSession,
     RecentContactListener,
 } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
 
 /** 会话列表事件通道的固定类型（事件名前缀 "RecentContact"）。 */
 export type RecentContactEventChannel = NTEventChannel<RecentContactListener, "RecentContact">;

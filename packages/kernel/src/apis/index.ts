@@ -1,38 +1,47 @@
 /**
  * kernel 业务 API 层公共出口（ADR-009 统一错误语义）
  *
- * 各原生 service 的语义化封装。result.ts 为域内解包工具（同目录直接引用），
- * 不对外暴露。
+ * 顶层只保留本 barrel 与 result.ts（域内解包工具）；子域：
+ * msg / group / social / media-web。
  */
-export type {
-    FlashTransferUploadOptions,
-    FlashTransferUploadResult,
-} from "./flash-transfer.js";
-export { FlashTransferApi } from "./flash-transfer.js";
-export type {
-    DoubtFriendRequestInfo,
-    Friend,
-    FriendApiOptions,
-    FriendCategory,
-} from "./friend.js";
-export { FriendApi } from "./friend.js";
-export { GroupApi } from "./group.js";
+
 export {
     findPendingGroupRequest,
+    GroupApi,
     GroupNotifyApi,
     type GroupRequestKind,
     type GroupRequestRef,
     type PendingGroupRequest,
     toPendingGroupRequest,
-} from "./group-notify.js";
-export { MsgApi } from "./msg.js";
-export { ProfileApi } from "./profile.js";
-export { ProfileLikeApi } from "./profile-like.js";
-export type { PinnedContact } from "./recent-contact.js";
-export { RecentContactApi } from "./recent-contact.js";
-export type { GroupFileListItem, GroupFileSystemInfo } from "./richmedia.js";
-export { RichMediaApi } from "./richmedia.js";
-export type { StrangerInfo } from "./stranger-info.js";
-export { TicketApi } from "./ticket.js";
-export type { EssenceMsgItem, GroupHonorWebInfo, HonorListItem } from "./webapi.js";
-export { WebApi, WebHonorType } from "./webapi.js";
+} from "./group/index.js";
+export type {
+    EssenceMsgItem,
+    FlashTransferUploadOptions,
+    FlashTransferUploadResult,
+    GroupFileListItem,
+    GroupFileSystemInfo,
+    GroupHonorWebInfo,
+    HonorListItem,
+} from "./media-web/index.js";
+export {
+    FlashTransferApi,
+    RichMediaApi,
+    TicketApi,
+    WebApi,
+    WebHonorType,
+} from "./media-web/index.js";
+export { MsgApi } from "./msg/index.js";
+export type {
+    DoubtFriendRequestInfo,
+    Friend,
+    FriendApiOptions,
+    FriendCategory,
+    PinnedContact,
+    StrangerInfo,
+} from "./social/index.js";
+export {
+    FriendApi,
+    ProfileApi,
+    ProfileLikeApi,
+    RecentContactApi,
+} from "./social/index.js";

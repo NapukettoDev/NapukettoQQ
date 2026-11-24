@@ -17,19 +17,20 @@ export {
     KernelError,
     kernelError,
 } from "./errors.js";
+export type { ListenerEvents } from "./event-channel.js";
+export { NTEventChannel } from "./event-channel.js";
 export type {
+    ConsoleFormatStreamOptions,
     LogConfig,
     LogEnvSource,
     LogFileConfig,
     LogFormat,
+    LoggerOptions,
+    LogLevel,
     LogModuleName,
     TimestampMode,
-} from "./log-config.js";
-export { parseLogConfig } from "./log-config.js";
-export type { ConsoleFormatStreamOptions } from "./log-format.js";
-export { createConsoleFormatStream } from "./log-format.js";
-export type { LoggerOptions, LogLevel } from "./logger.js";
-export { createLogger } from "./logger.js";
+} from "./logging/index.js";
+export { createConsoleFormatStream, createLogger, parseLogConfig } from "./logging/index.js";
 export type { ConfigPathOptions, PathOptions } from "./paths.js";
 export {
     DEFAULT_DATA_ROOT_NAME,
@@ -39,4 +40,22 @@ export {
     resolveDataRoot,
     resolveSandboxWritePath,
 } from "./paths.js";
-export { sleep, waitFor } from "./wait.js";
+export {
+    getErrorCode,
+    getErrorMessage,
+    getOwnProp,
+    hasBooleanProp,
+    hasCallableProp,
+    hasFunctionProp,
+    hasMethodSurface,
+    hasNumberProp,
+    hasStaticCreator,
+    hasStaticGetter,
+    hasStringProp,
+    isCallable,
+    isPromiseLike,
+    isRecord,
+    parseJsonWithGuard,
+    requireKernelService,
+} from "./type-guards.js";
+export { raceWithTimeout, sleep, waitFor } from "./wait.js";

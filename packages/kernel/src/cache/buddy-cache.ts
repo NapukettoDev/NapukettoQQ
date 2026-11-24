@@ -12,9 +12,9 @@
  */
 
 import type { BuddyEventChannel } from "../bridge/index.js";
-import { NTEventChannel } from "../event-channel.js";
+import { NTEventChannel } from "../infra/event-channel.js";
+import { isRecord } from "../infra/type-guards.js";
 import type { BuddyCategory, BuddyCoreInfo, BuddyListEntry } from "../types/index.js";
-import { isRecord } from "../utils/type-guards.js";
 
 /** BuddyCache diff 事件 listener（归一化「新增/删除」事件）。 */
 export type BuddyCacheListener = {

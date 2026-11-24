@@ -3,11 +3,13 @@
  *
  * QQ 的 wrapper.node 通过 NAPI 暴露 C++ 包装实例：方法可能挂在原型链、实例自身
  * 甚至构造器函数上，形状随 QQ 版本漂移。本模块把「探测 → 收窄」集中到一处，
- * 让 wrapper-loader / session-resolver / probe/** 不再出现 `as unknown as`。
+ * 让 wrapper/loader + lifecycle / session-resolver / probe/** 不再出现 `as unknown as`。
  *
  * 约定：守卫只验证**调用点真正依赖的方法面**——完整方法面探测属于 probe 子系统，
  * 业务装配不应因某个可选方法缺失而拒绝一个可用实例。
  */
+
+import { getOwnProp, hasCallableProp, hasMethodSurface, isRecord } from "../infra/type-guards.js";
 import type {
     NodeIKernelLoginService,
     NodeIQQNTStartupSessionWrapper,
@@ -15,7 +17,6 @@ import type {
     NodeIQQNTWrapperSession,
     WrapperNodeApi,
 } from "../types/wrapper.js";
-import { getOwnProp, hasCallableProp, hasMethodSurface, isRecord } from "../utils/type-guards.js";
 
 /** wrapper.node 顶层导出至少含一个已知符号（dlopen 后立即校验，细节由下游守卫补足）。 */
 export function isWrapperNodeApi(val: unknown): val is WrapperNodeApi {

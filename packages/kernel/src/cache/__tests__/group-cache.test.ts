@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { GroupApi } from "../../apis/index.js";
-import { NTEventChannel } from "../../event-channel.js";
+import { NTEventChannel } from "../../infra/event-channel.js";
 import type {
     Group,
     GroupDetailInfo,

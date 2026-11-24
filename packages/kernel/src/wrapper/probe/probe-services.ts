@@ -6,8 +6,8 @@
  * - probeLoginService：LoginService 实例（QQ 已登录凭据入口）
  */
 
-import { getOwnProp, hasCallableProp } from "../../utils/type-guards.js";
-import type { WrapperContext } from "../wrapper-loader.js";
+import { getOwnProp, hasCallableProp } from "../../infra/type-guards.js";
+import type { WrapperContext } from "../lifecycle.js";
 import { serialize, tryShape } from "./probe-serialize.js";
 import { listMethods, tryCall } from "./probe-utils.js";
 

@@ -11,7 +11,7 @@
  */
 
 import type { EssenceMsgItem } from "../apis/index.js";
-import { isRecord } from "../utils/type-guards.js";
+import { isRecord } from "../infra/type-guards.js";
 
 /** 单个候选值 → 群号字符串（非空字符串 / 正整数）。 */
 function toGroupCode(value: unknown): string | null {

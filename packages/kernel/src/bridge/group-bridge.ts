@@ -14,13 +14,13 @@
  *   bridge.unregister(); // 停止时清理
  */
 
-import type { NTEventChannel } from "../event-channel.js";
+import type { NTEventChannel } from "../infra/event-channel.js";
+import { requireKernelService } from "../infra/type-guards.js";
 import type {
     GroupListener,
     NodeIKernelGroupService,
     NodeIQQNTWrapperSession,
 } from "../types/index.js";
-import { requireKernelService } from "../utils/type-guards.js";
 
 /** 群事件通道的固定类型（事件名前缀 "Group"）。 */
 export type GroupEventChannel = NTEventChannel<GroupListener, "Group">;

@@ -1,7 +1,7 @@
 /**
  * kernel 登录域公共出口
  *
- * 登录生命周期（lifecycle / login-connect）+ 扫码登录器（login）。
+ * 登录生命周期（lifecycle / msf-connection / quick-login）+ 扫码登录器（login / qr-flow）。
  * wait.ts 为域内私有工具，不对外暴露。
  */
 export type { LoginAccountInfo, LoginResult, QuickLoginOptions } from "./lifecycle.js";

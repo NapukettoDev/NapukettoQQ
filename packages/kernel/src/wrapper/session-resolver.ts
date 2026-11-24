@@ -8,10 +8,10 @@
  * Step 2：所有 exports / 实例均经 wrapper-guards 运行时守卫收窄，零 `as` 断言。
  */
 
+import { hasCallableProp } from "../infra/type-guards.js";
 import type { NodeIQQNTWrapperSession } from "../types/index.js";
-import { hasCallableProp } from "../utils/type-guards.js";
+import type { WrapperContext } from "./lifecycle.js";
 import { isWrapperSession } from "./wrapper-guards.js";
-import type { WrapperContext } from "./wrapper-loader.js";
 
 /** 从 getSessionIdList 的 Map 提取主 sessionId（nt_ 前缀优先）。 */
 function findMainSessionId(ids: Map<unknown, unknown>): string | null {

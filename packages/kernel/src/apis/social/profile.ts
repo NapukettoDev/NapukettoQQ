@@ -1,0 +1,103 @@
+/**
+ * 资料语义化 API（ADR-009 统一错误语义，P2-14/P2-15）
+ *
+ * - ProfileApi：setLongNick / setNickName / setHeader / getStrangerInfo / getUinByUid
+ * - ProfileLikeApi：sendLike（send_like，sourceId=71 赞来源，doLikeCount 次数）
+ *
+ * 2026-11 结构重构：原 `profile-like.ts` 仅 34 行、同属资料域，合并入本文件
+ * （`ProfileLikeApi` 导出名与签名不变）。
+ */
+import { kernelError } from "../../infra/index.js";
+import { requireKernelService } from "../../infra/type-guards.js";
+import type {
+    NodeIKernelProfileLikeService,
+    NodeIKernelProfileService,
+    NodeIQQNTWrapperSession,
+} from "../../types/index.js";
+import { checkLooseResult } from "../result.js";
+import type { StrangerInfo } from "./stranger-info.js";
+import { flattenStrangerInfo } from "./stranger-info.js";
+
+/** 资料 API：从 session 拿 profile service，包装成语义化方法。 */
+export class ProfileApi {
+    private readonly service: NodeIKernelProfileService;
+
+    constructor(session: NodeIQQNTWrapperSession) {
+        this.service = requireKernelService(session.getProfileService(), "getProfileService", [
+            "getUserDetailInfo",
+            "getUserDetailInfoByUin",
+        ]);
+    }
+
+    /** 设置个性签名（set_self_longnick）。 */
+    async setLongNick(longNick: string): Promise<void> {
+        const res = await this.service.setLongNick(longNick);
+        checkLooseResult("setLongNick", res);
+    }
+
+    /** 设置昵称（set_qq_profile）。 */
+    async setNickName(nickName: string): Promise<void> {
+        const res = await this.service.setNickName(nickName);
+        checkLooseResult("setNickName", res);
+    }
+
+    /** 设置头像（set_qq_avatar；filePath 为本地路径）。 */
+    async setHeader(filePath: string): Promise<void> {
+        const raw = await this.service.setHeader(filePath);
+        if (raw.result !== 0) {
+            throw kernelError(`setHeader 失败: ${raw.errMsg}`, "UNKNOWN");
+        }
+    }
+
+    /** 获取陌生人信息（get_stranger_info；uin 为用户 QQ 号）。 */
+    async getStrangerInfo(uin: string): Promise<StrangerInfo> {
+        const byUin = await this.service.getUserDetailInfoByUin(uin);
+        const detailUid = byUin.detail?.uid;
+        let uid = uin;
+        if (detailUid !== undefined && detailUid !== "") {
+            uid = detailUid;
+        }
+        const info = await this.service.getUserDetailInfo(uid);
+        return flattenStrangerInfo(uin, uid, byUin, info);
+    }
+
+    /**
+     * uid → uin（弱身份兜底；issue #122）。
+     *
+     * `GroupApi.uidToUin` 走群成员口径（getUinByUids），好友申请 / 陌生人这类不在任何群
+     * 的 uid 必然解析失败，此处用资料详情反查 `detail.uin`。查不到返回 `null`（不抛错：
+     * 「可能没有值」的读操作，调用方 fail-soft）；`detail.uin` 未经真实样本确认，见
+     * docs/design.md「已知边界」。
+     */
+    async getUinByUid(uid: string): Promise<string | null> {
+        const info = await this.service.getUserDetailInfo(uid);
+        const uin = info.detail?.uin;
+        return typeof uin === "string" && uin !== "" ? uin : null;
+    }
+}
+
+/** 点赞 API：从 session 拿 profile like service，包装成语义化方法。 */
+export class ProfileLikeApi {
+    private readonly service: NodeIKernelProfileLikeService;
+
+    constructor(session: NodeIQQNTWrapperSession) {
+        this.service = requireKernelService(
+            session.getProfileLikeService(),
+            "getProfileLikeService",
+            ["setBuddyProfileLike"],
+        );
+    }
+
+    /** 点赞（send_like；uid 为目标 uid，count 次数）。 */
+    async sendLike(uid: string, count = 1): Promise<void> {
+        const raw = await this.service.setBuddyProfileLike({
+            friendUid: uid,
+            sourceId: 71,
+            doLikeCount: count,
+            doLikeTollCount: 0,
+        });
+        if (raw.result !== 0) {
+            throw kernelError(`点赞失败: ${raw.errMsg}`, "UNKNOWN");
+        }
+    }
+}
