@@ -9,8 +9,8 @@
  *  - `HOME`/`XDG_*` 收敛到数据根（Stage 3c）：Bugly 的 NativeCrashHandler 不受
  *    `desktopGlobalPath` 控制，总是写 `$HOME/.config/QQ/crash_files/`
  *
- * 平台判定一律用 `process.platform === "linux"`；旧的 `NAPUTO_LINUX_NATIVE` 开关已退役
- * （ADR-027），设成 0 只在 launcher 里播报一句、不再改变行为。
+ * 平台判定一律用 `process.platform === "linux"`（ADR-027 起 Linux 只有原生 ELF 分支，
+ * 不再有宿主开关环境变量）。
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -26,7 +26,7 @@ export const LINUX_HOME_DIRNAME = "home";
 
 /**
  * loader 包内 Linux stub 路径（native/prebuilt/linux-x64/libnapuketto_stub.so）。
- * 只入库 x64（经真机验证）；arm64 等其他架构用 `NAPUTO_LINUX_STUB` 显式指定。
+ * 只入库 x64（经真机验证）；arm64 等其他架构用 `NAPUKETTO_LINUX_STUB` 显式指定。
  */
 export function defaultLinuxStubPath(): string {
     return join(packageRoot(), "native", "prebuilt", "linux-x64", "libnapuketto_stub.so");
@@ -85,7 +85,7 @@ export function resolveLinuxNode(): string | null {
 /**
  * Linux 原生宿主的受管 HOME 目录（Stage 3c：把原生层对 `$HOME` 的写入收进数据根）。
  *
- * 优先级：显式覆盖（`NAPUTO_LINUX_HOME`）> `<数据根>/home` > `<账号目录>/home`。
+ * 优先级：显式覆盖（`NAPUKETTO_LINUX_HOME`）> `<数据根>/home` > `<账号目录>/home`。
  * 数据根缺省时退到账号目录而非继承用户 `$HOME`——宁可路径不一致，也不污染用户目录。
  */
 export function resolveLinuxHome(options: {

@@ -1,7 +1,7 @@
 /**
  * state.ts：账号运行时状态文件 + 进程控制原语（2026-09-08 T8）。
  *
- * 跨进程通信选型（决策记录）：现有 IPC 为 stdio JSON 行协议（NAPUTO_IPC=1，
+ * 跨进程通信选型（决策记录）：现有 IPC 为 stdio JSON 行协议（NAPUKETTO_IPC=1，
  * koishi 插件专用），supervisor 子进程不在此模式；引入独立通道（socket/pipe）
  * 复杂度高。采用 **PID 状态文件**：supervisor/单账号 boot 启动时把进程信息写
  * `<数据根>/<uin>/runtime.json`，supervisor 自身写 `<数据根>/supervisor.json`；
@@ -62,7 +62,7 @@ export interface SupervisorRuntime {
  * `kind`/`restartCount`/启动时间与 boot pid，受管 boot 只补充 `selfHost*`。
  * boot 读到该标记即走合并写入（`patchAccountRuntime`），不再整文件覆盖。
  */
-export const SUPERVISOR_CHILD_ENV = "NAPUTO_SUPERVISOR_CHILD";
+export const SUPERVISOR_CHILD_ENV = "NAPUKETTO_SUPERVISOR_CHILD";
 
 /** POSIX 强杀升级宽限（毫秒）：SIGTERM 后仍未退出则补 SIGKILL。 */
 const FORCE_KILL_GRACE_MS = 1500;

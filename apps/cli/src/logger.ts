@@ -7,8 +7,7 @@
  * 缓存配置构造；未初始化时兜底用缺省数据根解析（-d 生效前的极早期日志）。
  *
  * 环境变量（优先级高于 toml，见 kernel parseLogConfig）：NAPUKETTO_LOG_LEVEL /
- * NAPUKETTO_LOG_FORMAT / NAPUKETTO_NO_BANNER / NAPUKETTO_LOG_COLORIZE，
- * 兼容旧拼写 NAPKETTO_LOG_LEVEL。
+ * NAPUKETTO_LOG_FORMAT / NAPUKETTO_NO_BANNER / NAPUKETTO_LOG_COLORIZE。
  */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";

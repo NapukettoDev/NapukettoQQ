@@ -25,7 +25,7 @@
  *   enabled = true
  *   port = 5500
  *
- * 配置文件路径解析见 kernel `resolveConfigPath`（NAPKETTO_CONFIG 显式 > 项目根探测 > 数据根兜底）；
+ * 配置文件路径解析见 kernel `resolveConfigPath`（NAPUKETTO_CONFIG 显式 > 项目根探测 > 数据根兜底）；
  * 校验器为手写 parse（适配 kernel ConfigBase 的 ConfigSchema 形状）；
  * 协议段由对应协议包的 zod schema 校验（boot 装配时按登录账号 uin 从 accounts 取段作 seed）。
  *

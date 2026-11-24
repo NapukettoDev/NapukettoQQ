@@ -19,10 +19,10 @@ const tmpDirs: string[] = [];
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
-    savedEnv["NAPKETTO_DATA"] = process.env["NAPKETTO_DATA"];
-    savedEnv["NAPKETTO_CONFIG"] = process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
-    delete process.env["NAPKETTO_CONFIG"];
+    savedEnv["NAPUKETTO_DATA"] = process.env["NAPUKETTO_DATA"];
+    savedEnv["NAPUKETTO_CONFIG"] = process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG"];
 });
 
 afterEach(() => {
@@ -49,14 +49,14 @@ function tmpDir(): string {
 
 describe("resolveDataRoot", () => {
     it("显式参数优先于环境变量", () => {
-        process.env["NAPKETTO_DATA"] = "/from-env";
+        process.env["NAPUKETTO_DATA"] = "/from-env";
         const root = resolveDataRoot("/from-arg");
         expect(root.endsWith("from-arg")).toBe(true);
     });
 
-    it("NAPKETTO_DATA 环境变量生效", () => {
+    it("NAPUKETTO_DATA 环境变量生效", () => {
         const dir = tmpDir();
-        process.env["NAPKETTO_DATA"] = join(dir, "env-root");
+        process.env["NAPUKETTO_DATA"] = join(dir, "env-root");
         expect(resolveDataRoot()).toBe(join(dir, "env-root"));
     });
 
@@ -79,7 +79,7 @@ describe("resolveDataRoot", () => {
     });
 
     it("空字符串环境变量 / 空参数 → 走默认项目根", () => {
-        process.env["NAPKETTO_DATA"] = "";
+        process.env["NAPUKETTO_DATA"] = "";
         const root = resolveDataRoot("");
         expect(root.endsWith(DEFAULT_DATA_ROOT_NAME)).toBe(true);
         // 本仓为 monorepo：项目根 = 含 pnpm-workspace.yaml 的目录
@@ -93,13 +93,13 @@ describe("resolveDataRoot", () => {
 });
 
 describe("resolveConfigPath", () => {
-    it("NAPKETTO_CONFIG 显式路径优先（相对路径也解析为绝对）", () => {
-        process.env["NAPKETTO_CONFIG"] = "explicit.toml";
+    it("NAPUKETTO_CONFIG 显式路径优先（相对路径也解析为绝对）", () => {
+        process.env["NAPUKETTO_CONFIG"] = "explicit.toml";
         const p = resolveConfigPath({ dataRoot: "/tmp/dr" });
         expect(p.includes("explicit.toml")).toBe(true);
     });
 
-    it("无 NAPKETTO_CONFIG → 项目根/napuketto.toml", () => {
+    it("无 NAPUKETTO_CONFIG → 项目根/napuketto.toml", () => {
         const p = resolveConfigPath({ dataRoot: "/tmp/dr" });
         expect(p.endsWith(MAIN_CONFIG_FILE)).toBe(true);
         expect(p.includes(DEFAULT_DATA_ROOT_NAME)).toBe(false);

@@ -35,12 +35,12 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 单账号入口 `runSingleAccount`：
 
-1. 解析数据根（`--data-dir` > `NAPKETTO_DATA` > `<项目根>/.napuketto`），得到账号目录
+1. 解析数据根（`--data-dir` > `NAPUKETTO_DATA` > `<项目根>/.napuketto`），得到账号目录
    `<数据根>/<uin>`（未指定 `-q` 时为 `<数据根>/default`）。
 2. 定位 QQ 原生文件（见下文），得到 `wrapperPath` 与版本；预检实例锁，已被存活实例占用则
    快速失败并提示 PID。
 3. 解析 kernel / adapter / network 的 dist 入口，调 `launchSelfHost`；子进程 `cwd` 指向
-   数据根（QQ 原生层就绪前可能向 cwd 落盘），`NAPKETTO_CONFIG` 指向全局配置。
+   数据根（QQ 原生层就绪前可能向 cwd 落盘），`NAPUKETTO_CONFIG` 指向全局配置。
 
 多账号 `runSupervisor` 读 `accounts`（或显式 `-q A -q B`），为每个启用账号 spawn 一个 boot
 进程；boot 退出且 `autoRestart=true` 时延迟重启。
@@ -50,8 +50,8 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 `launchSelfHost`：
 
 1. 检查 `dist/host/self-host.cjs` 存在；Windows 校验 stub 目录下的 `QQNT.dll`
-   （`--stub-dir` / `NAPUTO_STUB_DIR` 可覆盖），Linux 校验 `libnapuketto_stub.so`
-   （`NAPUTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
+   （`--stub-dir` / `NAPUKETTO_STUB_DIR` 可覆盖），Linux 校验 `libnapuketto_stub.so`
+   （`NAPUKETTO_LINUX_STUB` 可覆盖）与系统 `libgnutls.so.30`。
 2. 按平台准备 Node：Windows 用本机 Node（非 Node 宿主时解析真 `node.exe`），Linux 直接用
    系统 `node`；按显式白名单构造子进程环境（平台变量 + 代理/证书 + 主配置 + `NAPUKETTO_LOG_*`
    + 控制标记，不展开父进程 `process.env`），Windows 前置 stub 目录到 `PATH`，
@@ -62,8 +62,8 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 `self-host.cjs`（`src/host/core/self-host.ts` 打成单文件 CJS bundle）：
 
-1. `NAPUTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后原子获取账号目录实例锁，失败即退出。
-2. 校验 `NAPUTO_WRAPPER_PATH`，动态 import kernel 后调用其 `dlopenWrapper` 加载并校验原生导出。
+1. `NAPUKETTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后原子获取账号目录实例锁，失败即退出。
+2. 校验 `NAPUKETTO_WRAPPER_PATH`，动态 import kernel 后调用其 `dlopenWrapper` 加载并校验原生导出。
    分发监听由 kernel 的 `activateO3MiscService` 激活。此步骤是 `getLoginList` 的前置条件。
 3. 从 `major.node` 解析 appid（失败即报错）；`NapukettoCore.create` →
    `attachWrapper`：在 `engine.initWithDeskTopConfig` **之前**创建 session
@@ -82,8 +82,8 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 | 级别 | 来源 | 说明 |
 |---|---|---|
-| L0 | `NAPUTO_QQ_FILES` / `qqFilesDir` | 显式文件根，结构 `<root>/versions/<版本>/resources/app/wrapper.node` |
-| L1 | 本机 QQ 安装 | `--qq-path` / `NAPUTO_QQ_PATH` > 注册表 > 常见安装路径 |
+| L0 | `NAPUKETTO_QQ_FILES` / `qqFilesDir` | 显式文件根，结构 `<root>/versions/<版本>/resources/app/wrapper.node` |
+| L1 | 本机 QQ 安装 | `--qq-path` / `NAPUKETTO_QQ_PATH` > 注册表 > 常见安装路径 |
 | L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物） |
 | 兜底 | 自动下载 | `packages/loader/qq-releases.json` 当前平台条目 → 下载 → sha256 → 7z 解包 |
 
@@ -93,7 +93,7 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
   `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到同一缓存布局。
 - 下载 URL 经 `normalizeDownloadUrl` 归一化：腾讯 CDN 边缘 WAF 对 `/QQNTV2/` 大小写敏感，
   请求前转小写 `/qqntv2/`。
-- 清单由 `.github/workflows/update-qq-releases.yml` 维护；`NAPUTO_7Z_PATH` 可覆盖解包工具。
+- 清单由 `.github/workflows/update-qq-releases.yml` 维护；`NAPUKETTO_7Z_PATH` 可覆盖解包工具。
 ## 登录与 session
 
 `NapukettoCore.login`：
@@ -104,7 +104,7 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
    `<数据根>/nt_qq`，loader 把子进程
    `HOME`/`XDG_*` 收敛到 `<数据根>/home`，管住 `libbugly` 崩溃文件等残余写入。
 2. 先 `connect()` 等 `onLoginConnected` 再留短暂缓冲；快速登录默认选第一个可用账号
-   （`-q` / `NAPUTO_QUICK_UIN` 可指定），单步有超时兜底。
+   （`-q` / `NAPUKETTO_QUICK_UIN` 可指定），单步有超时兜底。
 3. 快速登录失败 → 二维码登录（`qrFallback`）：PNG 写 `cache/qrcode.png`，日志打印 URL，
    CLI 渲染二维码，IPC 经 `qr` 消息转发；`qrOnly` 跳过快速登录。
 
@@ -176,7 +176,7 @@ OB11、Satori 与 Milky 从各账号协议段读取 `media.outboundPolicy`。IPC
 - `runtime.json`、`supervisor.json` 供 `status/stop/restart` 读取；进程存活以 pid 探测修正，
   不只看文件里的 `running`。
 
-**IPC 模式**：`NAPUTO_IPC=1` 时宿主不装配 HTTP/WS 协议传输，stdout 只输出 JSON 行协议，
+**IPC 模式**：`NAPUKETTO_IPC=1` 时宿主不装配 HTTP/WS 协议传输，stdout 只输出 JSON 行协议，
 stdin 接收 `action` / `control` / `ping`；pino console 关闭，文件日志照常。`control login`
 支持指定账号/强制扫码，已就绪时走“软重登”：清理旧协议/桥/缓存 → 用新登录结果重跑装配链，
 不重启进程。Koishi 适配器（独立仓库）通过此协议驱动宿主；普通 CLI 部署不需要 IPC。

@@ -77,7 +77,7 @@ function createSatori(input: SatoriAssemblyInput): AdapterHandle | null {
     }
     const broadcaster = new input.network.EventBroadcaster();
     // cacheDir 缺省：落账号目录 cache（与 OB11 download_file 同目录）
-    let cacheDir = join(env.NAPUTO_CFG_DIR || ".", "cache");
+    let cacheDir = join(env.NAPUKETTO_CFG_DIR || ".", "cache");
     const configuredCacheDir = section["cacheDir"];
     if (typeof configuredCacheDir === "string" && configuredCacheDir !== "") {
         cacheDir = configuredCacheDir;
@@ -104,7 +104,7 @@ function createSatori(input: SatoriAssemblyInput): AdapterHandle | null {
         mediaBaseDir: input.mediaBaseDir,
         localMediaBaseDir: localMediaBaseDir(
             input.cfgFile,
-            env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR,
+            env.NAPUKETTO_DATA ?? env.NAPUKETTO_CFG_DIR,
         ),
         groupCache: services.groupCache,
     });
@@ -185,12 +185,12 @@ function createMilky(input: MilkyAssemblyInput): AdapterHandle {
         recentContactApi: services.recentContactApi,
         self: services.self,
         groupCache: services.groupCache,
-        qqVersion: env.NAPUTO_QQ_VERSION || "unknown",
+        qqVersion: env.NAPUKETTO_QQ_VERSION || "unknown",
         // 发送远程媒体 URI 的下载缓存目录（与 OB11 download_file 同目录）
-        mediaDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
+        mediaDir: join(env.NAPUKETTO_CFG_DIR || ".", "cache"),
         localMediaBaseDir: localMediaBaseDir(
             input.cfgFile,
-            env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR,
+            env.NAPUKETTO_DATA ?? env.NAPUKETTO_CFG_DIR,
         ),
         logger: services.calibLogger,
     });
@@ -348,10 +348,10 @@ export async function assembleOb11AndSatori(
     services: KernelServices,
     loginResult: LoginResultLike,
 ): Promise<() => Promise<void>> {
-    const adapterEntry = env.NAPUTO_ADAPTER_ENTRY;
-    const networkEntry = env.NAPUTO_NETWORK_ENTRY;
+    const adapterEntry = env.NAPUKETTO_ADAPTER_ENTRY;
+    const networkEntry = env.NAPUKETTO_NETWORK_ENTRY;
     if (!adapterEntry || !networkEntry) {
-        log("bootstrap: NAPUTO_ADAPTER_ENTRY/NETWORK_ENTRY 未设置，跳过协议装配");
+        log("bootstrap: NAPUKETTO_ADAPTER_ENTRY/NETWORK_ENTRY 未设置，跳过协议装配");
         return async () => {
             // 未装配，无资源可清
         };
@@ -405,7 +405,10 @@ export async function assembleOb11AndSatori(
         const mediaBaseDir = qqRoot !== null ? kernel.resolveQqGlobalPath?.(qqRoot) : undefined;
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: ob11Config,
-            localMediaBaseDir: localMediaBaseDir(cfgFile, env.NAPKETTO_DATA ?? env.NAPUTO_CFG_DIR),
+            localMediaBaseDir: localMediaBaseDir(
+                cfgFile,
+                env.NAPUKETTO_DATA ?? env.NAPUKETTO_CFG_DIR,
+            ),
             broadcaster: ob11Broadcaster,
             msgChannel: channel,
             // OB11 request 事件源（2026-09-08）：群通知 + 好友申请推送
@@ -429,17 +432,17 @@ export async function assembleOb11AndSatori(
             // P2-16：api/ 聚合（self + system 回调合并为一个对象）
             self: services.self,
             system: {
-                appVersion: env.NAPUTO_QQ_VERSION || "unknown",
+                appVersion: env.NAPUKETTO_QQ_VERSION || "unknown",
                 // clean_cache：清理 kernel 数据目录缓存（PathWrapper.clearCache）
                 cleanCache: async () => {
                     const paths = new kernel.PathWrapper({
-                        dataRoot: env.NAPKETTO_DATA,
+                        dataRoot: env.NAPUKETTO_DATA,
                         account: loginResult.uin,
                     });
                     paths.clearCache();
                 },
                 // download_file：缓存目录
-                cacheDir: join(env.NAPUTO_CFG_DIR || ".", "cache"),
+                cacheDir: join(env.NAPUKETTO_CFG_DIR || ".", "cache"),
                 // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）；
                 // mediaBaseDir 在 adapter 构造前解析（下方 ob11 构造处）
                 ...(mediaBaseDir !== undefined ? { mediaBaseDir } : {}),

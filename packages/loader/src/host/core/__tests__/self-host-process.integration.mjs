@@ -15,7 +15,7 @@ const lockFile = "instance.lock";
 
 function spawnHost(t, dir, { held = false } = {}) {
     const inherited = Object.fromEntries(
-        Object.entries(process.env).filter(([name]) => !/^NAPU?K?ETTO_|^NAPUTO_/.test(name)),
+        Object.entries(process.env).filter(([name]) => !/^NAPU?K?ETTO_|^NAPUKETTO_/.test(name)),
     );
     const trace = join(dir, "trace");
     const child = spawn(process.execPath, [hostPath], {

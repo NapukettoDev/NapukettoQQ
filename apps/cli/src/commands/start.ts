@@ -35,7 +35,7 @@ async function runSingleAccountBranch(opts: StartOptions, qqs: string[]): Promis
 
 /** 无 -q 时：读全局配置 accounts（账号必填，2026-08-08 拍板），supervisor 拉起全部启用账号。
  * 不再有「配置为空 → 交互式单账号登录」老路径：缺账号直接报错提示编辑模板。
- * 配置加载内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78。 */
+ * 配置加载内联优先（NAPUKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78。 */
 async function autoStart(opts: StartOptions): Promise<void> {
     const { config } = await loadCliConfigWithSource({
         ...(opts.dataDir === undefined ? {} : { dataDir: opts.dataDir }),

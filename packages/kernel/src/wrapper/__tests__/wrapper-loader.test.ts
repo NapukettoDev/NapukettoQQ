@@ -226,8 +226,8 @@ describe("resolveQqUserDataRoot", () => {
         expect(getNTUserDataInfoConfig).not.toHaveBeenCalled();
     });
 
-    it("Linux：未显式传数据根时读 NAPUTO_DATA_ROOT", () => {
-        vi.stubEnv("NAPUTO_DATA_ROOT", "/env/napuketto");
+    it("Linux：未显式传数据根时读 NAPUKETTO_DATA_ROOT", () => {
+        vi.stubEnv("NAPUKETTO_DATA_ROOT", "/env/napuketto");
         const exports = mockExports({
             NodeQQNTWrapperUtil: { get: () => ({ getNTUserDataInfoConfig: () => null }) },
         });
@@ -237,7 +237,7 @@ describe("resolveQqUserDataRoot", () => {
     });
 
     it("Linux：数据根缺失时回退 QQ 官方 API", () => {
-        vi.stubEnv("NAPUTO_DATA_ROOT", "");
+        vi.stubEnv("NAPUKETTO_DATA_ROOT", "");
         const exports = mockExports({
             NodeQQNTWrapperUtil: {
                 get: () => ({

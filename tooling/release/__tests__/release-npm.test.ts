@@ -97,7 +97,7 @@ beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "nk-release-npm-test-"));
     delete process.env["ACTIONS_ID_TOKEN_REQUEST_URL"];
     delete process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"];
-    delete process.env["NAPKETTO_NPM_OTP"];
+    delete process.env["NAPUKETTO_NPM_OTP"];
     // 失败复核的重试间隔归零（否则失败用例每个包要等 2s×2）
     vi.stubEnv("RELEASE_PUBLISH_CONFIRM_DELAY_MS", "0");
     for (const fn of [mocks.spawnSync, mocks.discoverPackages]) {
@@ -121,15 +121,15 @@ describe("parseArgs", () => {
         expect(parseArgs(["--dry-run", "--otp=123456"])).toEqual({ dryRun: true, otp: "123456" });
     });
 
-    it("缺省 → dryRun = false，otp 取 NAPKETTO_NPM_OTP 环境变量", () => {
-        process.env["NAPKETTO_NPM_OTP"] = "654321";
+    it("缺省 → dryRun = false，otp 取 NAPUKETTO_NPM_OTP 环境变量", () => {
+        process.env["NAPUKETTO_NPM_OTP"] = "654321";
         expect(parseArgs([])).toEqual({ dryRun: false, otp: "654321" });
-        delete process.env["NAPKETTO_NPM_OTP"];
+        delete process.env["NAPUKETTO_NPM_OTP"];
         expect(parseArgs([])).toEqual({ dryRun: false, otp: undefined });
     });
 
     it("otp 参数优先于环境变量", () => {
-        process.env["NAPKETTO_NPM_OTP"] = "654321";
+        process.env["NAPUKETTO_NPM_OTP"] = "654321";
         expect(parseArgs(["--otp=000000"]).otp).toBe("000000");
     });
 });

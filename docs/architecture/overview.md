@@ -53,7 +53,7 @@ create-napukettoqq
 ```
 
 `@napuketto/loader` 对 kernel 是**运行期契约**而非编译期依赖：`package.json` 只依赖
-`zod`，引导时通过 `NAPUTO_KERNEL_ENTRY` 动态 `import()` kernel。这样自建宿主入口可以
+`zod`，引导时通过 `NAPUKETTO_KERNEL_ENTRY` 动态 `import()` kernel。这样自建宿主入口可以
 打成单文件 CJS bundle，同时依赖方向仍保持 loader → kernel 语义。
 
 Koishi 适配器在独立仓库，不参与本仓 workspace / CI / 发布链；跨仓联调走 `pnpm pack`

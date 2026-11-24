@@ -3,7 +3,7 @@
  *
  * 覆盖：
  *  - 显式参数（相对路径 resolve 为绝对 / `~` 展开）
- *  - NAPUKETTO_DATA 新前缀优先、NAPKETTO_DATA 旧前缀回退
+ *  - NAPUKETTO_DATA 环境变量（唯一规范拼写；已废弃的旧前缀不再读取）
  *  - 项目根探测：cwd 向上找 pnpm-workspace.yaml / package.json → <root>/.napuketto
  *  - 无标记目录 → 用户目录兜底（与 kernel resolveDataRoot 同语义）
  */
@@ -40,21 +40,23 @@ describe("resolveDataRoot", () => {
         expect(resolveDataRoot("~")).toBe(homedir());
     });
 
-    it("无参数时读 NAPKETTO_DATA（旧前缀回退）", () => {
-        vi.stubEnv("NAPKETTO_DATA", "env/data");
+    it("无参数时读 NAPUKETTO_DATA", () => {
+        vi.stubEnv("NAPUKETTO_DATA", "env/data");
         expect(resolveDataRoot()).toBe(resolve("env/data"));
     });
 
-    it("NAPUKETTO_DATA 优先于 NAPKETTO_DATA", () => {
-        vi.stubEnv("NAPUKETTO_DATA", "new/data");
-        vi.stubEnv("NAPKETTO_DATA", "old/data");
-        expect(resolveDataRoot()).toBe(resolve("new/data"));
-    });
-
-    it("NAPKETTO_DATA 为空串 → 走项目根探测（不算显式值）", () => {
+    it("已废弃旧前缀（NAPKETTO_ / NAPUTO_）不再被读取", () => {
         tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-dataroot-test-"));
         withCwd(tmpRoot);
-        vi.stubEnv("NAPKETTO_DATA", "");
+        vi.stubEnv("NAPKETTO_DATA", "legacy/data");
+        vi.stubEnv("NAPUTO_DATA", "legacy/data");
+        expect(resolveDataRoot()).toBe(join(homedir(), ".napuketto"));
+    });
+
+    it("NAPUKETTO_DATA 为空串 → 走项目根探测（不算显式值）", () => {
+        tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-dataroot-test-"));
+        withCwd(tmpRoot);
+        vi.stubEnv("NAPUKETTO_DATA", "");
         expect(resolveDataRoot()).toBe(join(homedir(), ".napuketto"));
     });
 

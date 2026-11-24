@@ -1,9 +1,10 @@
 /**
  * load-config.test.ts：协议配置段读取单测（2026-10-25 内联配置接入）。
  *
- * 覆盖：内联优先级矩阵（NAPKETTO_CONFIG_JSON > NAPKETTO_CONFIG > NAPUTO_CFG_DIR
+ * 覆盖：内联优先级矩阵（NAPUKETTO_CONFIG_JSON > NAPUKETTO_CONFIG > NAPUKETTO_CFG_DIR
  * 兜底）、内联生效不读任何 toml 文件（cfgFile = "<inline>" 哨兵）、按登录 uin
- * 取协议段、内联 JSON 坏值宽松回退文件形态、空串/纯空白/大小写别名不识别。
+ * 取协议段、内联 JSON 坏值宽松回退文件形态、空串/纯空白/大小写别名不识别、
+ * 已废弃旧前缀（NAPKETTO_* / NAPUTO_*）不生效。
  * env 是模块加载期快照——每用例 resetModules 后重导（与 log-config.test.ts 同法）。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ import type { KernelLike } from "../types.js";
 type LoadConfigModule = typeof import("../load-config.js");
 
 /** 本用例涉及的 env 键（用例内显式置空，隔离宿主环境残留）。 */
-const ENV_KEYS = ["NAPKETTO_CONFIG", "NAPKETTO_CONFIG_JSON", "NAPUTO_CFG_DIR"];
+const ENV_KEYS = ["NAPUKETTO_CONFIG", "NAPUKETTO_CONFIG_JSON", "NAPUKETTO_CFG_DIR"];
 
 let tmp = "";
 
@@ -42,7 +43,7 @@ async function freshLoadConfig(env: Record<string, string | undefined>): Promise
     return await import("../load-config.js");
 }
 
-const ALIAS_CONFIG_KEY = "NAPKETTO_CONFIG_json";
+const ALIAS_CONFIG_KEY = "NAPUKETTO_CONFIG_json";
 
 /** kernel 桩：parseToml 返回固定文档（文件分支只走桩，不依赖 smol-toml）。 */
 function stubKernel(doc: Record<string, unknown>): KernelLike {
@@ -76,8 +77,8 @@ const accountsDoc = (kurobotUrl: string): Record<string, unknown> => ({
 describe("loadProtocolSections 内联分支", () => {
     it("内联生效：按 uin 取段，cfgFile 为 <inline> 哨兵，不读任何 toml 文件", async () => {
         const mod = await freshLoadConfig({
-            NAPKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
-            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+            NAPUKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
+            NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml"),
         });
         const sections = mod.loadProtocolSections(stubKernel({}), "10001");
         expect(sections.cfgFile).toBe("<inline>");
@@ -88,7 +89,7 @@ describe("loadProtocolSections 内联分支", () => {
 
     it("sections 表与具名投影同源（协议键表驱动，具名属性仅兼容投影）", async () => {
         const mod = await freshLoadConfig({
-            NAPKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
+            NAPUKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
         });
         const sections = mod.loadProtocolSections(stubKernel({}), "10001");
         expect(sections.sections.onebot11).toEqual({ token: "t1" });
@@ -102,15 +103,15 @@ describe("loadProtocolSections 内联分支", () => {
         expect(sections.milkySection).toBe(sections.sections.milky);
     });
 
-    it("内联优先级高于 NAPKETTO_CONFIG 文件（文件内容不同的账号也不串）", async () => {
+    it("内联优先级高于 NAPUKETTO_CONFIG 文件（文件内容不同的账号也不串）", async () => {
         const cfgFile = join(freshDir(), "napuketto.toml");
         writeFileSync(
             cfgFile,
             '[[accounts]]\nqq = "10001"\n[accounts.kurobot]\nurl = "ws://file:9000"\n',
         );
         const mod = await freshLoadConfig({
-            NAPKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
-            NAPKETTO_CONFIG: cfgFile,
+            NAPUKETTO_CONFIG_JSON: JSON.stringify(accountsDoc("ws://inline:9000")),
+            NAPUKETTO_CONFIG: cfgFile,
         });
         const sections = mod.loadProtocolSections(stubKernel({ accounts: [] }), "10001");
         expect(sections.cfgFile).toBe("<inline>");
@@ -124,8 +125,8 @@ describe("loadProtocolSections 内联分支", () => {
             '[[accounts]]\nqq = "10001"\n[accounts.kurobot]\nurl = "ws://file:9000"\n',
         );
         const mod = await freshLoadConfig({
-            NAPKETTO_CONFIG_JSON: "{not-json",
-            NAPKETTO_CONFIG: cfgFile,
+            NAPUKETTO_CONFIG_JSON: "{not-json",
+            NAPUKETTO_CONFIG: cfgFile,
         });
         const sections = mod.loadProtocolSections(
             stubKernel({ accounts: [{ qq: "10001", kurobot: { url: "ws://file:9000" } }] }),
@@ -137,8 +138,8 @@ describe("loadProtocolSections 内联分支", () => {
 
     it("内联非 JSON 对象（数组）：回退文件形态", async () => {
         const mod = await freshLoadConfig({
-            NAPKETTO_CONFIG_JSON: "[1,2,3]",
-            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+            NAPUKETTO_CONFIG_JSON: "[1,2,3]",
+            NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml"),
         });
         const sections = mod.loadProtocolSections(stubKernel({}), "10001");
         expect(sections.cfgFile).not.toBe("<inline>");
@@ -153,8 +154,8 @@ describe("loadProtocolSections 内联分支", () => {
         );
         for (const value of ["", "   "]) {
             const mod = await freshLoadConfig({
-                NAPKETTO_CONFIG_JSON: value,
-                NAPKETTO_CONFIG: cfgFile,
+                NAPUKETTO_CONFIG_JSON: value,
+                NAPUKETTO_CONFIG: cfgFile,
             });
             const sections = mod.loadProtocolSections(
                 stubKernel({ accounts: [{ qq: "10001", kurobot: { url: "ws://file:9000" } }] }),
@@ -164,7 +165,7 @@ describe("loadProtocolSections 内联分支", () => {
         }
     });
 
-    // 大小写别名（NAPKETTO_CONFIG_json）不识别：env 读取是精确键访问。
+    // 大小写别名（NAPUKETTO_CONFIG_json）不识别：env 读取是精确键访问。
     // 仅 POSIX 可测——Windows 的 process.env 是大小写不敏感代理，别名键赋值
     // 直接改写原变量，物理上无法共存两个仅大小写不同的变量（宿主侧天然免疫）。
     it.runIf(process.platform !== "win32")("大小写别名拼写不识别（键名区分大小写）", async () => {
@@ -174,8 +175,8 @@ describe("loadProtocolSections 内联分支", () => {
             '[[accounts]]\nqq = "10001"\n[accounts.kurobot]\nurl = "ws://file:9000"\n',
         );
         setEnv(ALIAS_CONFIG_KEY, JSON.stringify(accountsDoc("ws://inline:9000")));
-        // 别名不识别 → 走文件形态：NAPKETTO_CONFIG 指向临时文件（env 清理由 afterEach 兜底）
-        setEnv("NAPKETTO_CONFIG", cfgFile);
+        // 别名不识别 → 走文件形态：NAPUKETTO_CONFIG 指向临时文件（env 清理由 afterEach 兜底）
+        setEnv("NAPUKETTO_CONFIG", cfgFile);
         vi.resetModules();
         const mod = await import("../load-config.js");
         const sections = mod.loadProtocolSections(
@@ -185,13 +186,38 @@ describe("loadProtocolSections 内联分支", () => {
         expect(sections.cfgFile).toBe(cfgFile);
         expect(sections.kurobotSection).toEqual({ url: "ws://file:9000" });
     });
+
+    // 2026-11 前缀统一：旧拼写不再双读，写进 process.env 也不生效（仅规范键生效）。
+    it("已废弃旧前缀键（NAPKETTO_* / NAPUTO_*）不再被读取", async () => {
+        const cfgFile = join(freshDir(), "napuketto.toml");
+        writeFileSync(
+            cfgFile,
+            '[[accounts]]\nqq = "10001"\n[accounts.kurobot]\nurl = "ws://file:9000"\n',
+        );
+        process.env["NAPKETTO_CONFIG_JSON"] = JSON.stringify(accountsDoc("ws://inline:9000"));
+        process.env["NAPUTO_CFG_DIR"] = freshDir();
+        try {
+            setEnv("NAPUKETTO_CONFIG", cfgFile);
+            vi.resetModules();
+            const mod = await import("../load-config.js");
+            const sections = mod.loadProtocolSections(
+                stubKernel({ accounts: [{ qq: "10001", kurobot: { url: "ws://file:9000" } }] }),
+                "10001",
+            );
+            expect(sections.cfgFile).toBe(cfgFile);
+            expect(sections.kurobotSection).toEqual({ url: "ws://file:9000" });
+        } finally {
+            delete process.env["NAPKETTO_CONFIG_JSON"];
+            delete process.env["NAPUTO_CFG_DIR"];
+        }
+    });
 });
 
 describe("loadProtocolSections 文件分支（行为不回退）", () => {
     it("按 uin 匹配账号；未匹配账号 → 全空段", async () => {
         const cfgFile = join(freshDir(), "napuketto.toml");
         writeFileSync(cfgFile, "placeholder = true\n");
-        const mod = await freshLoadConfig({ NAPKETTO_CONFIG: cfgFile });
+        const mod = await freshLoadConfig({ NAPUKETTO_CONFIG: cfgFile });
         const hit = mod.loadProtocolSections(stubKernel(accountsDoc("ws://f:1")), "10002");
         expect(hit.cfgFile).toBe(cfgFile);
         expect(hit.ob11Section).toEqual({});
@@ -200,7 +226,7 @@ describe("loadProtocolSections 文件分支（行为不回退）", () => {
     });
 
     it("文件读取失败：空段 + 不抛错（宽松）", async () => {
-        const mod = await freshLoadConfig({ NAPKETTO_CONFIG: join(freshDir(), "不存在.toml") });
+        const mod = await freshLoadConfig({ NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml") });
         const sections = mod.loadProtocolSections(stubKernel({}), "10001");
         expect(sections.ob11Section).toEqual({});
         expect(sections.kurobotSection).toEqual({});

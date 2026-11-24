@@ -50,18 +50,14 @@ import {
  * 默认 engine 配置（按平台探测）。
  *
  * 平台：`process.platform` → KLINUX/KMAC/KWINDOWS；qua 优先从 wrapper.node 同目录
- * major.node 扫描（`NAPUTO_WRAPPER_PATH` 由 loader 注入），找不到再按版本拼。
+ * major.node 扫描（`NAPUKETTO_WRAPPER_PATH` 由 loader 注入），找不到再按版本拼。
  * Linux 实测需要 `V1_LNX_NQ_3.2.35_54395_GW_B`；Windows 旧行为（qua 空）仅在
  * 拿不到版本/major.node 时保底。
  */
 function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginInitDesktopConfig {
     const platform = detectPlatformType();
     const fullVersion = env.qqVersion ?? "";
-    const wrapperPath =
-        env.wrapperPath ??
-        process.env["NAPUKETTO_WRAPPER_PATH"] ??
-        process.env["NAPUTO_WRAPPER_PATH"] ??
-        "";
+    const wrapperPath = env.wrapperPath ?? process.env["NAPUKETTO_WRAPPER_PATH"] ?? "";
     const majorPath = wrapperPath !== "" ? join(dirname(wrapperPath), "major.node") : "";
     const scanned = majorPath !== "" ? parseQuaFromMajor(majorPath) : null;
     const qua = scanned ?? (fullVersion !== "" ? buildQua(fullVersion, platform) : "");
@@ -91,7 +87,7 @@ export function electronProcessType(): string | undefined {
 
 /** `resolveQqUserDataRoot` 选项（平台覆盖供测试/联调，缺省按 `process.platform` 探测）。 */
 export interface QqDataRootOptions {
-    /** 数据根（`NAPKETTO_DATA` / `--data-dir` 解析结果）。Linux 和调试沙箱在此存放 QQ 数据。 */
+    /** 数据根（`NAPUKETTO_DATA` / `--data-dir` 解析结果）。Linux 和调试沙箱在此存放 QQ 数据。 */
     dataRoot?: string | undefined;
     /** 平台覆盖（缺省 `detectPlatformType()`）。 */
     platform?: PlatformType | undefined;
@@ -117,9 +113,7 @@ export function resolveQqUserDataRoot(
     opts: QqDataRootOptions = {},
 ): string | null {
     if (process.env["NAPUKETTO_SANDBOX_ROOT"]) {
-        const dataRoot = resolveDataRoot(
-            opts.dataRoot || process.env["NAPUKETTO_DATA_ROOT"] || process.env["NAPUTO_DATA_ROOT"],
-        );
+        const dataRoot = resolveDataRoot(opts.dataRoot || process.env["NAPUKETTO_DATA_ROOT"]);
         resolveSandboxWritePath(resolveQqGlobalPath(dataRoot), "QQ 数据目录");
         return dataRoot;
     }
@@ -128,9 +122,7 @@ export function resolveQqUserDataRoot(
         const dataRoot =
             opts.dataRoot ??
             process.env["NAPUKETTO_DATA_ROOT"] ??
-            process.env["NAPUTO_DATA_ROOT"] ??
             process.env["NAPUKETTO_DATA"] ??
-            process.env["NAPKETTO_DATA"] ??
             "";
         if (dataRoot !== "") {
             return dataRoot;
@@ -373,10 +365,7 @@ export function startNapuketto(options: StartNapukettoOptions): WrapperContext {
     prepareSession(ctx, hasCapturedSession, isSelfHost);
     initEngine(ctx, resolveEngineConfig(ctx, env, engineConfig));
     resolveLoginService(ctx, qqLoginService);
-    ctx.wrapperPath =
-        env?.wrapperPath ??
-        process.env["NAPUKETTO_WRAPPER_PATH"] ??
-        process.env["NAPUTO_WRAPPER_PATH"];
+    ctx.wrapperPath = env?.wrapperPath ?? process.env["NAPUKETTO_WRAPPER_PATH"];
     // 自建宿主必须激活 O3MiscService（三要素之二）：不激活则 getLoginList 永不
     // resolve（挂起）。放在装配入口自动执行，避免下游漏调 activateO3MiscService
     // 导致登录永久死锁；函数自身幂等（同一 exports 只激活一次）。
@@ -444,7 +433,7 @@ function captureSession(
  * engine，无需解析。
  *
  * `dataRoot` 在 Linux 和调试沙箱生效（`resolveQqUserDataRoot` 平台分流）：loader 由
- * `NAPUTO_DATA_ROOT` 注入，QQ 数据固定落 `<数据根>/nt_qq/global`。
+ * `NAPUKETTO_DATA_ROOT` 注入，QQ 数据固定落 `<数据根>/nt_qq/global`。
  */
 function resolveBootQqGlobalPath(ctx: WrapperContext, dataRoot?: string): string | undefined {
     if (electronProcessType() === "browser") {
@@ -500,7 +489,7 @@ export interface BootEnv {
     selfUid?: string | undefined;
     /**
      * wrapper.node 绝对路径（appid 自动解析用：同目录 major.node）。
-     * 缺省回退 `NAPUKETTO_WRAPPER_PATH` / `NAPUTO_WRAPPER_PATH` 环境变量。
+     * 缺省回退 `NAPUKETTO_WRAPPER_PATH` 环境变量。
      */
     wrapperPath?: string | undefined;
 }

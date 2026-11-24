@@ -38,7 +38,7 @@ async function main(): Promise<void> {
         NAPUKETTO_SANDBOX_ROOT: root,
         NAPUKETTO_CONFIG: config,
         NAPUKETTO_DATA: data,
-        NAPUTO_LINUX_HOME: join(root, "home"),
+        NAPUKETTO_LINUX_HOME: join(root, "home"),
         TMPDIR: temp,
         TMP: temp,
         TEMP: temp,

@@ -11,7 +11,7 @@
  * <项目根>/.napuketto/         # 数据根（默认值，2026-08-08 用户拍板：直接放项目主目录）
  * ```
  *
- * 数据根优先级：cli `--data-dir`（显式参数）> `NAPKETTO_DATA` 环境变量 >
+ * 数据根优先级：cli `--data-dir`（显式参数）> `NAPUKETTO_DATA` 环境变量 >
  * `<项目根>/.napuketto`（默认，部署原因不放用户目录）。
  * 配置文件路径见 `resolveConfigPath`（项目根探测，与数据根解耦）。
  */
@@ -91,7 +91,7 @@ function resolveProjectRoot(): string | undefined {
  * 返回绝对路径。独立导出便于 cli / 探测脚本复用。
  */
 export function resolveDataRoot(dataRoot?: string): string {
-    const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"] ?? process.env["NAPKETTO_DATA"];
+    const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"];
     if (explicit !== undefined && explicit !== "") {
         return resolveSandboxWritePath(resolve(expandTilde(explicit)), "数据目录");
     }
@@ -131,14 +131,14 @@ export interface ConfigPathOptions {
  * 数据仍按数据根组织**——数据根只承载账号目录/日志/缓存/QQ 数据）。
  *
  * 优先级：
- *  1. `NAPKETTO_CONFIG` 环境变量（显式指定完整路径，任意场景可用）
+ *  1. `NAPUKETTO_CONFIG` 环境变量（显式指定完整路径，任意场景可用）
  *  2. 项目根探测（入口模块向上找 pnpm-workspace.yaml → cwd 向上找，见 resolveProjectRoot）
  *  3. 数据根兜底 `<dataRoot>/napuketto.toml`（旧行为兼容）
  *
  * 返回绝对路径。独立导出便于 cli / loader 装配链复用。
  */
 export function resolveConfigPath(opts: ConfigPathOptions = {}): string {
-    const explicit = process.env["NAPUKETTO_CONFIG"] ?? process.env["NAPKETTO_CONFIG"];
+    const explicit = process.env["NAPUKETTO_CONFIG"];
     if (explicit !== undefined && explicit !== "") {
         return resolveSandboxWritePath(resolve(explicit), "配置文件");
     }

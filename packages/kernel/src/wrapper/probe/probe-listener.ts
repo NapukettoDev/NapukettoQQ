@@ -6,8 +6,8 @@
  * JS 对象 + NAPI 按名反射回调（MsgBridge 模式），用 Proxy get 陷阱构造万能
  * 监听器，原生调什么记什么，不需要预先知道回调名。
  *
- * 开关：NAPUTO_LISTENER_RECORD=1（loader bootstrap 挂起，位置与 runProbePhase 相邻）。
- * 产物：NAPUTO_CFG_DIR/napuketto-listener-record.jsonl（JSONL 追加，注册过程
+ * 开关：NAPUKETTO_LISTENER_RECORD=1（loader bootstrap 挂起，位置与 runProbePhase 相邻）。
+ * 产物：NAPUKETTO_CFG_DIR/napuketto-listener-record.jsonl（JSONL 追加，注册过程
  * 逐行落盘，原生崩溃保留断点定位肇事服务）。
  *
  * 安全边界：记录函数只序列化入参后回调 onEvent，绝不反向调用原生；录制器与
@@ -150,7 +150,7 @@ export function startListenerRecording(
     ctx: WrapperContext,
     file = "napuketto-listener-record.jsonl",
 ): ListenerRecordingResult {
-    const dir = process.env["NAPUKETTO_CFG_DIR"] ?? process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
+    const dir = process.env["NAPUKETTO_CFG_DIR"] ?? process.cwd();
     mkdirSync(dir, { recursive: true });
     const full = join(dir, file);
     // JSONL 语义：本次录制起全新文件（截断），此后逐行 append（崩溃保留断点）

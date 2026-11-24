@@ -10,9 +10,9 @@ import process from "node:process";
 import { env } from "./env.js";
 import { getErrorMessage } from "./type-guards.js";
 
-/** boot 日志路径（NAPUTO_CFG_DIR 下，与 stub 验证日志同目录）。 */
-const LOG_PATH = env.NAPUTO_CFG_DIR
-    ? join(env.NAPUTO_CFG_DIR, "napuketto-boot.log")
+/** boot 日志路径（NAPUKETTO_CFG_DIR 下，与 stub 验证日志同目录）。 */
+const LOG_PATH = env.NAPUKETTO_CFG_DIR
+    ? join(env.NAPUKETTO_CFG_DIR, "napuketto-boot.log")
     : join(tmpdir(), "napuketto-boot.log");
 
 /** 追加一行 boot 日志（失败静默，不阻塞引导）。 */
@@ -33,7 +33,7 @@ export function bootLogPath(): string {
  * 致命引导错误输出（issue #144）：写 napuketto-boot.log，并同步到 stderr。
  *
  * 此前致命失败只落 boot 日志，Docker / 终端只看到 code=1 而没有任何原因。
- * 严禁写 stdout：IPC 模式（NAPUTO_IPC=1）stdout 专用于 JSON 行协议，写入会撕裂
+ * 严禁写 stdout：IPC 模式（NAPUKETTO_IPC=1）stdout 专用于 JSON 行协议，写入会撕裂
  * 协议行；stderr 是独立通道，cli/boot.ts 的 forwardChildOutput 与 supervisor
  * 都会逐行转发（非 IPC / IPC 两种宿主都可见）。
  */

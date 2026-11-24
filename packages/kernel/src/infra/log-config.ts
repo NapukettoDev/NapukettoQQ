@@ -5,8 +5,8 @@
  * 避免两处手写解析漂移。输入为 TOML 解析后的 [log] 段原对象（缺失传 undefined）
  * + 环境变量快照；输出为已解析的 LogConfig（env 覆盖优先于 toml）。
  *
- * 环境变量（优先级高于 toml；非法值忽略——与既有 NAPKETTO_LOG_LEVEL 行为一致）：
- *   - NAPUKETTO_LOG_LEVEL / NAPKETTO_LOG_LEVEL（兼容旧拼写，NAPUKETTO_ 优先）
+ * 环境变量（优先级高于 toml；非法值忽略）：
+ *   - NAPUKETTO_LOG_LEVEL（唯一规范拼写）
  *   - NAPUKETTO_LOG_FORMAT（pretty | single-line | json）
  *   - NAPUKETTO_NO_BANNER（1/true = 关 banner）
  *   - NAPUKETTO_LOG_COLORIZE（1/true/0/false，CLI 顶层进程向子进程传播控制台
@@ -216,11 +216,10 @@ function applySectionFields(draft: LogConfigDraft, raw: Record<string, unknown>)
     applyBoolean(draft, raw, "unboundReceive");
 }
 
-/** env 覆盖（优先级高于 toml；非法值忽略）：兼容旧拼写 NAPKETTO_LOG_LEVEL。
+/** env 覆盖（优先级高于 toml；非法值忽略）。
  * file.level 显式配置时不被 env 全局级别顶掉（缺省跟随全局）。 */
 function applyEnvOverrides(draft: LogConfigDraft, env: LogEnvSource): void {
-    const envLevel =
-        optionalLevel(env["NAPUKETTO_LOG_LEVEL"]) ?? optionalLevel(env["NAPKETTO_LOG_LEVEL"]);
+    const envLevel = optionalLevel(env["NAPUKETTO_LOG_LEVEL"]);
     if (envLevel !== undefined) {
         draft.level = envLevel;
         if (draft.file !== undefined && draft.fileLevelExplicit !== true) {

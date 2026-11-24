@@ -3,7 +3,7 @@
  *
  * 从 config-cmds.ts 拆出（2026-10-25 模块收拢）：
  * - `CliConfigStore` 只负责 napuketto.toml 的读写/校验（kernel ConfigBase）；
- * - `loadCliConfigWithSource` 负责来源决议（NAPKETTO_CONFIG_JSON 优先）与来源日志；
+ * - `loadCliConfigWithSource` 负责来源决议（NAPUKETTO_CONFIG_JSON 优先）与来源日志；
  * - 4 个 config 子命令留在 commands/config.ts，不反向依赖本文件的私有实现。
  */
 import { mkdirSync } from "node:fs";
@@ -135,8 +135,7 @@ export async function loadCliConfigWithSource(
         validateSandboxConfigPaths(config, opts.dataDir);
         if (!sourceLogged) {
             sourceLogged = true;
-            // 旧前缀 NAPKETTO_CONFIG_JSON 仍在兼容期内，日志输出实际命中的键名，
-            // 避免按新名排查环境变量却对不上。
+            // 来源日志固定标注规范键名，便于按环境变量名排查。
             opts.onInfo?.(`配置来源: inline（${inlineConfigEnvName() ?? "环境变量"}）`);
         }
         return { config, source: "inline" };

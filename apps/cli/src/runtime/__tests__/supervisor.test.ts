@@ -106,7 +106,7 @@ const watchOpts: Array<{ dataRoot: string; onTrigger: () => void }> = [];
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-supervisor-test-"));
     // 渲染决策读全局配置：指向不存在的文件 → 缺省（隔离开发机 napuketto.toml）
-    process.env["NAPKETTO_CONFIG"] = join(tmp, "不存在.toml");
+    process.env["NAPUKETTO_CONFIG"] = join(tmp, "不存在.toml");
     delete process.env["NAPUKETTO_LOG_FORMAT"];
     delete process.env["NAPUKETTO_LOG_COLORIZE"];
     exitCodeBefore = process.exitCode as number | undefined;
@@ -138,7 +138,7 @@ beforeEach(() => {
 
 afterEach(() => {
     setTty(undefined);
-    delete process.env["NAPKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_CONFIG"];
     process.exitCode = exitCodeBefore as number | undefined;
     vi.restoreAllMocks();
     if (tmp !== "") {

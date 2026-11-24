@@ -2,7 +2,7 @@
  * parseLogConfig 测试（[log] 段 + 环境变量覆盖，2026-10-25 日志可配置化）。
  *
  * 覆盖：缺省值 / toml 各键解析 / 非法值报错 / env 覆盖优先级（含
- * NAPKETTO_LOG_LEVEL 旧拼写兼容与非法 env 忽略）/ file.level 跟随与显式保留。
+ * 非法 env 忽略与已废弃旧前缀不生效）/ file.level 跟随与显式保留。
  */
 import { describe, expect, it } from "vitest";
 import { parseLogConfig } from "../log-config.js";
@@ -71,13 +71,10 @@ describe("parseLogConfig env 覆盖", () => {
         expect(cfg.level).toBe("warn");
     });
 
-    it("旧拼写 NAPKETTO_LOG_LEVEL 兼容，NAPUKETTO_ 优先", () => {
-        expect(parseLogConfig({}, { NAPKETTO_LOG_LEVEL: "warn" }).level).toBe("warn");
-        const both = parseLogConfig(
-            {},
-            { NAPKETTO_LOG_LEVEL: "error", NAPUKETTO_LOG_LEVEL: "debug" },
-        );
-        expect(both.level).toBe("debug");
+    it("已废弃旧前缀（NAPKETTO_ / NAPUTO_）不再被读取", () => {
+        const legacy = { NAPKETTO_LOG_LEVEL: "warn", NAPUTO_LOG_LEVEL: "error" };
+        expect(parseLogConfig({}, legacy).level).toBe("info");
+        expect(parseLogConfig({ level: "debug" }, legacy).level).toBe("debug");
     });
 
     it("非法 env 值忽略（不报错不生效）", () => {

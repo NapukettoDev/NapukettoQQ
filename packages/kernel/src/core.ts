@@ -108,7 +108,7 @@ export interface CoreLoginOptions {
     /**
      * appid（登录握手）。**可选**：未传时自动从 wrapperPath 同目录 major.node
      * 解析（`resolveAppidQua`）；wrapperPath 缺省回退 `NAPUKETTO_WRAPPER_PATH` /
-     * `NAPUTO_WRAPPER_PATH` 环境变量。仍无法解析则抛 INVALID_PARAM。
+     * `NAPUKETTO_WRAPPER_PATH` 环境变量。仍无法解析则抛 INVALID_PARAM。
      */
     appid?: string | undefined;
     /** session.init 超时（毫秒），默认 15s。 */
@@ -476,19 +476,17 @@ export class NapukettoCore {
     }
 }
 
-/** wrapperPath 候选环境变量（优先级从高到低）。 */
-const WRAPPER_PATH_ENV_KEYS = ["NAPUKETTO_WRAPPER_PATH", "NAPUTO_WRAPPER_PATH"] as const;
+/** wrapperPath 环境变量键（唯一规范拼写）。 */
+const WRAPPER_PATH_ENV_KEY = "NAPUKETTO_WRAPPER_PATH";
 
 /** 解析 wrapperPath：wrapper 上下文优先，其次环境变量。 */
 function resolveWrapperPath(wrapper: WrapperContext): string | undefined {
     if (wrapper.wrapperPath !== undefined && wrapper.wrapperPath !== "") {
         return wrapper.wrapperPath;
     }
-    for (const key of WRAPPER_PATH_ENV_KEYS) {
-        const value = process.env[key];
-        if (value !== undefined && value !== "") {
-            return value;
-        }
+    const value = process.env[WRAPPER_PATH_ENV_KEY];
+    if (value !== undefined && value !== "") {
+        return value;
     }
     return undefined;
 }

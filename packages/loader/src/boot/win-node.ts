@@ -7,7 +7,7 @@
  *
  * ⚠️ 与 Linux 无关：Linux 自建宿主直接跑系统 node（ADR-027 起唯一路径，Wine 已退役）。
  * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，运行时下载到
- * <数据根>/runtime/win-node/，可被 NAPUTO_WIN_NODE_PATH 覆盖）。
+ * <数据根>/runtime/win-node/，可被 NAPUKETTO_WIN_NODE_PATH 覆盖）。
  *
  * 设计文档「平台分支」。与 qq-download.ts 同构：https 下载 + 解压 + 缓存幂等。
  */
@@ -46,20 +46,20 @@ export async function ensureWinNode(
     options: {
         /** 数据根（缓存 <数据根>/runtime/win-node/）。 */
         dataRoot?: string;
-        /** node 版本（缺省读 NAPUTO_WIN_NODE_VERSION，再兜底 latest v24）。 */
+        /** node 版本（缺省读 NAPUKETTO_WIN_NODE_VERSION，再兜底 latest v24）。 */
         version?: string;
-        /** 显式 node.exe 路径（覆盖缓存逻辑，读 NAPUTO_WIN_NODE_PATH）。 */
+        /** 显式 node.exe 路径（覆盖缓存逻辑，读 NAPUKETTO_WIN_NODE_PATH）。 */
         exePath?: string;
     } = {},
 ): Promise<WinNodeInfo> {
-    // 显式路径覆盖（NAPUTO_WIN_NODE_PATH / exePath 参数）
-    const explicit = options.exePath ?? process.env["NAPUTO_WIN_NODE_PATH"];
+    // 显式路径覆盖（NAPUKETTO_WIN_NODE_PATH / exePath 参数）
+    const explicit = options.exePath ?? process.env["NAPUKETTO_WIN_NODE_PATH"];
     if (explicit !== undefined && explicit !== "" && existsSync(explicit)) {
         return { exePath: resolve(explicit), version: "explicit" };
     }
 
     const version =
-        options.version ?? process.env["NAPUTO_WIN_NODE_VERSION"] ?? DEFAULT_WIN_NODE_VERSION;
+        options.version ?? process.env["NAPUKETTO_WIN_NODE_VERSION"] ?? DEFAULT_WIN_NODE_VERSION;
     const dataRoot = resolveDataRoot(options.dataRoot);
     const cacheDir = join(dataRoot, "runtime", WIN_NODE_DIR_NAME, version);
     const exePath = join(cacheDir, WIN_NODE_EXE);
@@ -69,7 +69,7 @@ export async function ensureWinNode(
 
     // 下载 zip + 解压（用 P1 的 7z 解 zip；7z 支持 zip）
     const zipPath = join(cacheDir, `node-${version}-win-x64.zip`);
-    const url = process.env["NAPUTO_WIN_NODE_URL"] ?? nodeZipUrl(version);
+    const url = process.env["NAPUKETTO_WIN_NODE_URL"] ?? nodeZipUrl(version);
     mkdirSync(cacheDir, { recursive: true });
     try {
         await downloadFile({ dest: zipPath, url });
@@ -102,6 +102,6 @@ async function unzipNode(zipPath: string, cacheDir: string): Promise<void> {
 /**
  * 默认 Windows node 版本（latest v24，LTS 线；可被环境变量/参数覆盖）。
  * ⚠️ nodejs.org/dist 保留历史版本不会 404，但 pin 死旧 patch 收不到安全更新——
- * 升级 Windows node 时记得同步 bump 此常量（或经 NAPUTO_WIN_NODE_VERSION 覆盖）。
+ * 升级 Windows node 时记得同步 bump 此常量（或经 NAPUKETTO_WIN_NODE_VERSION 覆盖）。
  */
 const DEFAULT_WIN_NODE_VERSION = "v24.16.0";

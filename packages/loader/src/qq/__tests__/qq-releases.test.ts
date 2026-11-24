@@ -127,18 +127,18 @@ describe("resolveDownloadUrl", () => {
         source: "official",
     };
 
-    it("无 NAPUTO_QQ_URL 时返回清单里的官方原样 URL（归一化只在请求时做）", () => {
-        setEnv("NAPUTO_QQ_URL", undefined);
+    it("无 NAPUKETTO_QQ_URL 时返回清单里的官方原样 URL（归一化只在请求时做）", () => {
+        setEnv("NAPUKETTO_QQ_URL", undefined);
         expect(resolveDownloadUrl(release)).toBe(OFFICIAL_9_9_36);
     });
 
-    it("NAPUTO_QQ_URL 非空时覆盖清单 URL", () => {
-        setEnv("NAPUTO_QQ_URL", "https://example.test/custom.exe");
+    it("NAPUKETTO_QQ_URL 非空时覆盖清单 URL", () => {
+        setEnv("NAPUKETTO_QQ_URL", "https://example.test/custom.exe");
         expect(resolveDownloadUrl(release)).toBe("https://example.test/custom.exe");
     });
 
-    it("NAPUTO_QQ_URL 为空串时回退清单 URL", () => {
-        setEnv("NAPUTO_QQ_URL", "");
+    it("NAPUKETTO_QQ_URL 为空串时回退清单 URL", () => {
+        setEnv("NAPUKETTO_QQ_URL", "");
         expect(resolveDownloadUrl(release)).toBe(OFFICIAL_9_9_36);
     });
 });

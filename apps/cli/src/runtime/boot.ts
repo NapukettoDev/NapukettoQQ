@@ -5,11 +5,11 @@
  * （标准 node + stub QQNT.dll 直接 dlopen，不拉起 QQ / 不注入）→ 常驻。
  *
  * QQ 原生文件来源（本机未装 QQ 也能跑，2026-08-16 接入）：
- *   L0 NAPUTO_QQ_FILES 显式文件根 → L1 本机 QQ 安装（--qq-path / NAPUTO_QQ_PATH /
+ *   L0 NAPUKETTO_QQ_FILES 显式文件根 → L1 本机 QQ 安装（--qq-path / NAPUKETTO_QQ_PATH /
  *      注册表 / 常见路径）→ L2 数据根缓存 <数据根>/qq-files/<版本> → 全部缺失时
  *      自动下载官方安装包（sha256 校验 + 7z 解包 + 提取缓存，幂等）。
  * cached 来源下 qq.qqPath 为语义占位（缓存目录无 QQ.exe）——launchSelfHost 只消费
- * qq.wrapperPath / qq.version（NAPUTO_QQ_PATH 仅注入、self-host 未读取），占位安全。
+ * qq.wrapperPath / qq.version（NAPUKETTO_QQ_PATH 仅注入、self-host 未读取），占位安全。
  *
  * 不写业务逻辑：kernel 装配 + 登录 + 协议装配全部在 self-host.cjs → boot-bootstrap.js 完成。
  * 路线 B（拉起 QQ + 注入）已淘汰（launchQqWithLoader 已移除，cli 只走自建宿主）。
@@ -130,14 +130,9 @@ async function resolvePackageEntries(): Promise<PackageEntries> {
     };
 }
 
-/** stub QQNT.dll 目录（--stub-dir > NAPUKETTO_STUB_DIR > NAPUTO_STUB_DIR > loader 包内闭源 submodule 默认）。 */
+/** stub QQNT.dll 目录（--stub-dir > NAPUKETTO_STUB_DIR > loader 包内闭源 submodule 默认）。 */
 function resolveStubDir(opts: BootOptions): string {
-    return (
-        opts.stubDir ??
-        process.env["NAPUKETTO_STUB_DIR"] ??
-        process.env["NAPUTO_STUB_DIR"] ??
-        defaultStubDir()
-    );
+    return opts.stubDir ?? process.env["NAPUKETTO_STUB_DIR"] ?? defaultStubDir();
 }
 
 /** QQ 原生文件多级来源 + 自动下载（本机未装 QQ 时走下载管线）。
@@ -156,8 +151,8 @@ async function locateQqFiles(
             { err },
             `定位/下载 QQ 原生文件失败：${errorMessage(err)}\n` +
                 "（本机未装 QQ 时自动下载官方安装包；若下载失败请检查网络，或手动安装 QQ、" +
-                "设置 NAPUTO_QQ_PATH 指定已有安装、NAPUTO_QQ_FILES 指定文件根、" +
-                "NAPUTO_QQ_URL 覆盖下载地址）",
+                "设置 NAPUKETTO_QQ_PATH 指定已有安装、NAPUKETTO_QQ_FILES 指定文件根、" +
+                "NAPUKETTO_QQ_URL 覆盖下载地址）",
         );
         process.exitCode = 1;
         return;

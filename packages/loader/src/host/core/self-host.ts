@@ -26,14 +26,14 @@ import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";
 
 const ACCOUNT_PATH_SEPARATOR = /[\\/]/;
-const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
+const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
 const ipc: IpcServerOptions | undefined = ipcMode ? { actions: new Map() } : undefined;
 
 installSignalShutdown();
-const dataRoot = env.NAPUTO_DATA_ROOT;
+const dataRoot = env.NAPUKETTO_DATA_ROOT;
 if (dataRoot) {
     const account =
-        env.NAPUTO_CFG_DIR?.split(ACCOUNT_PATH_SEPARATOR).filter(Boolean).pop() ?? "default";
+        env.NAPUKETTO_CFG_DIR?.split(ACCOUNT_PATH_SEPARATOR).filter(Boolean).pop() ?? "default";
     registerShutdownHook(
         watchStopSentinel({
             dataRoot,
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
         return;
     }
     log(`[self-host] 启动 pid=${process.pid} node=${process.version}`);
-    const lockDataDir = env.NAPUTO_CFG_DIR;
+    const lockDataDir = env.NAPUKETTO_CFG_DIR;
     if (lockDataDir) {
         if (!acquireInstanceLock(lockDataDir)) {
             const { pid } = checkInstanceLock(lockDataDir);
@@ -90,10 +90,10 @@ async function main(): Promise<void> {
         }
         registerLockCleanup(lockDataDir);
     } else {
-        log("[self-host] NAPUTO_CFG_DIR 未设置，跳过单实例锁");
+        log("[self-host] NAPUKETTO_CFG_DIR 未设置，跳过单实例锁");
     }
-    if (!env.NAPUTO_WRAPPER_PATH) {
-        await failBoot("NAPUTO_WRAPPER_PATH 未设置", 1, "INVALID_STATE");
+    if (!env.NAPUKETTO_WRAPPER_PATH) {
+        await failBoot("NAPUKETTO_WRAPPER_PATH 未设置", 1, "INVALID_STATE");
         return;
     }
     if (!(await bootstrap(createState(), ipc))) {

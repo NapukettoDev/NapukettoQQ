@@ -14,7 +14,7 @@ export interface LoginTargetRef {
     targetUin: string | undefined;
 }
 
-/** 打印可用快速登录账号 + 返回目标账号（启动横幅）。forcedUin（cli `-q` / NAPUTO_QUICK_UIN）优先。 */
+/** 打印可用快速登录账号 + 返回目标账号（启动横幅）。forcedUin（cli `-q` / NAPUKETTO_QUICK_UIN）优先。 */
 export async function pickLoginAccount(
     kernel: KernelLike,
     ctx: CoreContextLike,
@@ -43,7 +43,7 @@ export async function pickLoginAccount(
             }
         } else {
             // boot 阶段尚未 loginService.initConfig（core.login 内部才做），
-            // 此处 getLoginList 必空——账号选择交给登录流程（NAPUTO_QUICK_UIN 可指定）。
+            // 此处 getLoginList 必空——账号选择交给登录流程（NAPUKETTO_QUICK_UIN 可指定）。
             log("登录列表暂不可用（boot 阶段未 initConfig），由登录流程自动选择账号");
         }
     } catch (listErr) {

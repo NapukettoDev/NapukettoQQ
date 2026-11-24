@@ -223,13 +223,13 @@ beforeEach(() => {
     h.wrapperExtracts.length = 0;
     h.wrapperExtractError = null;
     for (const key of [
-        "NAPUTO_QQ_PATH",
-        "NAPUTO_QQ_FILES",
-        "NAPUTO_QQ_URL",
-        "NAPUTO_QQ_DIR",
+        "NAPUKETTO_QQ_PATH",
+        "NAPUKETTO_QQ_FILES",
+        "NAPUKETTO_QQ_URL",
+        "NAPUKETTO_QQ_DIR",
         "LOCALAPPDATA",
-        "NAPUTO_7Z_PATH",
-        "NAPUTO_7Z_URL",
+        "NAPUKETTO_7Z_PATH",
+        "NAPUKETTO_7Z_URL",
     ]) {
         delete process.env[key];
     }
@@ -330,9 +330,9 @@ describe("resolveQqFiles 来源优先级", () => {
         expect(info.installDir).toBe(root);
     });
 
-    it("L0：NAPUTO_QQ_FILES 环境变量兜底（相对路径 resolve）", async () => {
+    it("L0：NAPUKETTO_QQ_FILES 环境变量兜底（相对路径 resolve）", async () => {
         const root = makeInstall();
-        vi.stubEnv("NAPUTO_QQ_FILES", root);
+        vi.stubEnv("NAPUKETTO_QQ_FILES", root);
         const info = await resolveQqFiles({ autoDownload: false });
         expect(info.source).toBe("cached");
     });
@@ -344,9 +344,9 @@ describe("resolveQqFiles 来源优先级", () => {
         expect(info.version).toBe("9.9.33-51802");
     });
 
-    it("L1：NAPUTO_QQ_PATH 环境变量兜底", async () => {
+    it("L1：NAPUKETTO_QQ_PATH 环境变量兜底", async () => {
         const root = makeInstall();
-        vi.stubEnv("NAPUTO_QQ_PATH", join(root, "QQ.exe"));
+        vi.stubEnv("NAPUKETTO_QQ_PATH", join(root, "QQ.exe"));
         const info = await resolveQqFiles({ autoDownload: false });
         expect(info.source).toBe("local");
     });
@@ -481,9 +481,9 @@ describe("Linux 原生模式（平台注入）", () => {
         });
     });
 
-    it("L1b：扁平安装（NAPUTO_QQ_DIR）→ local，且不触发 deb 下载", async () => {
+    it("L1b：扁平安装（NAPUKETTO_QQ_DIR）→ local，且不触发 deb 下载", async () => {
         const root = makeLinuxInstall();
-        vi.stubEnv("NAPUTO_QQ_DIR", root);
+        vi.stubEnv("NAPUKETTO_QQ_DIR", root);
         await withLinuxPlatform(async () => {
             const info = await resolveQqFiles({ dataRoot: tmpRoot });
             expect(info.source).toBe("local");
@@ -498,7 +498,7 @@ describe("Linux 原生模式（平台注入）", () => {
 
     it("L1b：扁平安装 wrapper 非 ELF → 视为未命中", async () => {
         const root = makeLinuxInstall("3.2.35-54395", "pe");
-        vi.stubEnv("NAPUTO_QQ_DIR", root);
+        vi.stubEnv("NAPUKETTO_QQ_DIR", root);
         await withLinuxPlatform(async () => {
             await expect(
                 resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false }),
@@ -506,15 +506,15 @@ describe("Linux 原生模式（平台注入）", () => {
         });
     });
 
-    it("L1 优先于 L1b：显式 NAPUTO_QQ_PATH（versions 结构）胜过 /opt/QQ", async () => {
+    it("L1 优先于 L1b：显式 NAPUKETTO_QQ_PATH（versions 结构）胜过 /opt/QQ", async () => {
         const canonical = makeInstall("9.9.33-51802");
         writeFileSync(
             join(canonical, "versions", "9.9.33-51802", "resources", "app", "wrapper.node"),
             elfBytes(),
         );
         const flat = makeLinuxInstall();
-        vi.stubEnv("NAPUTO_QQ_PATH", join(canonical, "QQ.exe"));
-        vi.stubEnv("NAPUTO_QQ_DIR", flat);
+        vi.stubEnv("NAPUKETTO_QQ_PATH", join(canonical, "QQ.exe"));
+        vi.stubEnv("NAPUKETTO_QQ_DIR", flat);
         await withLinuxPlatform(async () => {
             const info = await resolveQqFiles({ dataRoot: tmpRoot, autoDownload: false });
             // 平台切成 linux 后路径归一化为正斜杠（Windows 上跑用例时需同样归一化）
@@ -563,15 +563,15 @@ describe("tryResolveLinuxLocalQq（平台注入）", () => {
     });
 
     it("缺省安装根是 /opt/QQ", () => {
-        const saved = process.env["NAPUTO_QQ_DIR"];
-        delete process.env["NAPUTO_QQ_DIR"];
+        const saved = process.env["NAPUKETTO_QQ_DIR"];
+        delete process.env["NAPUKETTO_QQ_DIR"];
         try {
             // 开发机通常没有 /opt/QQ → null；关键是走默认路径而非 env
             expect(tryResolveLinuxLocalQq({ platform: "linux" })).toBeNull();
             expect(LINUX_QQ_INSTALL_DIR).toBe("/opt/QQ");
         } finally {
             if (saved !== undefined) {
-                process.env["NAPUTO_QQ_DIR"] = saved;
+                process.env["NAPUKETTO_QQ_DIR"] = saved;
             }
         }
     });
@@ -599,7 +599,7 @@ describe("ensureQqFiles 下载流", () => {
             onStage: (m) => stages.push(m),
         });
         expect(info.version).toBe(Version);
-        // 清单 URL 透传（NAPUTO_QQ_URL 未设 → release.url；归一化在 downloadFile 内部）
+        // 清单 URL 透传（NAPUKETTO_QQ_URL 未设 → release.url；归一化在 downloadFile 内部）
         expect(h.downloads[0]?.url).toContain("QQ");
         expect(h.downloads[0]?.expectedSha256).toBeTypeOf("string");
         expect(h.wrapperExtracts[0]?.version).toBe(Version);
@@ -630,8 +630,8 @@ describe("ensureQqFiles 下载流", () => {
         expect(readdirSync(join(tmpRoot, "tmp"))).toHaveLength(0);
     });
 
-    it("NAPUTO_QQ_URL 覆盖下载地址（resolveDownloadUrl 兜底）", async () => {
-        vi.stubEnv("NAPUTO_QQ_URL", "https://mirror.example.com/QQ.exe");
+    it("NAPUKETTO_QQ_URL 覆盖下载地址（resolveDownloadUrl 兜底）", async () => {
+        vi.stubEnv("NAPUKETTO_QQ_URL", "https://mirror.example.com/QQ.exe");
         await ensureQqFiles({ dataRoot: tmpRoot, sevenZipPath: join(tmpRoot, "7z.exe") });
         expect(h.downloads[0]?.url).toBe("https://mirror.example.com/QQ.exe");
     });
@@ -651,7 +651,7 @@ describe("ensureLinuxSevenZip", () => {
     ])("用固定摘要下载并替换不可信的旧缓存（URL 覆盖 %s）", async (override, url) => {
         hideBundledSevenZip();
         if (override !== undefined) {
-            vi.stubEnv("NAPUTO_7Z_URL", override);
+            vi.stubEnv("NAPUKETTO_7Z_URL", override);
         }
         h.tarExe = readFileSync(Bundled7zz);
         const cacheDir = join(tmpRoot, "runtime", "7zip");
@@ -676,7 +676,7 @@ describe("ensureLinuxSevenZip", () => {
 
     it("下载器拒绝镜像摘要时不解包，也不发布缓存", async () => {
         hideBundledSevenZip();
-        vi.stubEnv("NAPUTO_7Z_URL", "https://mirror.example/7zz.tar.xz");
+        vi.stubEnv("NAPUKETTO_7Z_URL", "https://mirror.example/7zz.tar.xz");
         h.downloadError = new Error("sha256 校验失败");
 
         await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).rejects.toThrow(
@@ -705,10 +705,10 @@ describe("ensureLinuxSevenZip", () => {
 
     it.each(["", "http://mirror.example/7zz.tar.xz"])("拒绝非 HTTPS 镜像地址 %s", async (url) => {
         hideBundledSevenZip();
-        vi.stubEnv("NAPUTO_7Z_URL", url);
+        vi.stubEnv("NAPUKETTO_7Z_URL", url);
 
         await expect(ensureLinuxSevenZip({ dataRoot: tmpRoot, arch: "x64" })).rejects.toThrow(
-            /NAPUTO_7Z_URL.*HTTPS/,
+            /NAPUKETTO_7Z_URL.*HTTPS/,
         );
         expect(h.downloads).toEqual([]);
         expect(h.execCalls).toEqual([]);

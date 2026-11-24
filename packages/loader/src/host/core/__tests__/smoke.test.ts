@@ -2,7 +2,7 @@
  * smoke.test.ts：P2-1 收发消息冒烟自检单测（smoke.ts runSmokeTest 全分支）。
  *
  * 假 kernel（NTEventChannel 可手动 emit / MsgBridge / MsgApi / GroupApi）+
- * env 快照隔离（vi.stubEnv + vi.resetModules + 动态 import，NAPUTO_SMOKE_PEER
+ * env 快照隔离（vi.stubEnv + vi.resetModules + 动态 import，NAPUKETTO_SMOKE_PEER
  * 每用例注入）。覆盖：
  *  - session 缺失短路 false
  *  - 目标解析：缺省自己（c2c + selfUid 直通）、group:<uin>、c2c:<uin>（uinToUid）、
@@ -191,7 +191,7 @@ describe("runSmokeTest 短路与目标解析", () => {
     });
 
     it("group:<uin> → 群号直通 peerUid（不走 uinToUid）", async () => {
-        vi.stubEnv("NAPUTO_SMOKE_PEER", "group:999");
+        vi.stubEnv("NAPUKETTO_SMOKE_PEER", "group:999");
         const { kernel, lastChannel } = fakeKernel();
         const smoke = await freshSmoke();
         const pending = smoke.runSmokeTest(kernel, freshCtx(), LOGIN);
@@ -207,7 +207,7 @@ describe("runSmokeTest 短路与目标解析", () => {
     });
 
     it("c2c:<其他 uin> → uinToUid 解析 uid", async () => {
-        vi.stubEnv("NAPUTO_SMOKE_PEER", "c2c:20002");
+        vi.stubEnv("NAPUKETTO_SMOKE_PEER", "c2c:20002");
         const uidMap = new Map([["20002", "u_20002"]]);
         const { kernel, lastChannel } = fakeKernel({ uidMap });
         const smoke = await freshSmoke();
@@ -226,7 +226,7 @@ describe("runSmokeTest 短路与目标解析", () => {
     });
 
     it("c2c 目标解析失败（空映射）→ runSmokeTest 抛错（bootstrap 侧捕获）", async () => {
-        vi.stubEnv("NAPUTO_SMOKE_PEER", "c2c:20002");
+        vi.stubEnv("NAPUKETTO_SMOKE_PEER", "c2c:20002");
         const { kernel } = fakeKernel({ uidMap: new Map() });
         const smoke = await freshSmoke();
         await expect(smoke.runSmokeTest(kernel, freshCtx(), LOGIN)).rejects.toThrow(
@@ -237,7 +237,7 @@ describe("runSmokeTest 短路与目标解析", () => {
     it("非法格式（bogus / group: 空uin / c2c: 空uin）→ 回退自己", async () => {
         for (const peer of ["bogus", "group:", "c2c:"]) {
             h.logs.length = 0;
-            vi.stubEnv("NAPUTO_SMOKE_PEER", peer);
+            vi.stubEnv("NAPUKETTO_SMOKE_PEER", peer);
             const smoke = await freshSmoke();
             const { kernel, lastChannel } = fakeKernel();
             const pending = smoke.runSmokeTest(kernel, freshCtx(), LOGIN);

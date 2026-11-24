@@ -20,7 +20,7 @@
  *   （2026-11-03 引入 catalog 后的 0.6.x–0.7.x 事故，2026-11-10 nightly smoke 抓到）。
  *
  * 两种运行形态：
- *   - 本地（默认）：走本机 npm 登录态 + 2FA（`--otp=` / `NAPKETTO_NPM_OTP`）。
+ *   - 本地（默认）：走本机 npm 登录态 + 2FA（`--otp=` / `NAPUKETTO_NPM_OTP`）。
  *   - CI 可信发布（OIDC，2026-10-21 接入）：job 声明 `id-token: write` +
  *     `environment: release` 时，npm 用 Actions 的 id_token 换**包级**短时 token，
  *     不存在长期凭证，发布产物自动带 provenance（各包 package.json 亦显式声明
@@ -61,13 +61,13 @@ import { fetchGithubIdToken, probeTrustConfigs } from "./release-trust.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const REGISTRY = process.env["NAPKETTO_REGISTRY"] ?? "https://registry.npmjs.org";
+const REGISTRY = process.env["NAPUKETTO_REGISTRY"] ?? "https://registry.npmjs.org";
 
 /** 命令行参数解析结果。 */
 export interface ReleaseArgs {
     /** 只打包不发布（npm publish --dry-run）。 */
     dryRun: boolean;
-    /** npm 2FA 一次性验证码（--otp= 或 NAPKETTO_NPM_OTP；缺省交给 npm 自行处理）。 */
+    /** npm 2FA 一次性验证码（--otp= 或 NAPUKETTO_NPM_OTP；缺省交给 npm 自行处理）。 */
     otp: string | undefined;
 }
 
@@ -81,7 +81,7 @@ export function parseArgs(argv: readonly string[]): ReleaseArgs {
     }
     return {
         dryRun: argv.includes("--dry-run"),
-        otp: otp ?? process.env["NAPKETTO_NPM_OTP"],
+        otp: otp ?? process.env["NAPUKETTO_NPM_OTP"],
     };
 }
 

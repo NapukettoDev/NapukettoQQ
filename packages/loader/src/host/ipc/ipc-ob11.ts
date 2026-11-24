@@ -1,7 +1,7 @@
 /**
- * ipc-ob11.ts：OB11 动作容器 IPC 桥（NAPUTO_IPC=1 可选装配，2026-08-27）。
+ * ipc-ob11.ts：OB11 动作容器 IPC 桥（NAPUKETTO_IPC=1 可选装配，2026-08-27）。
  *
- * 触发条件：IPC 模式 && NAPUTO_ADAPTER_ENTRY + NAPUTO_NETWORK_ENTRY 已注入
+ * 触发条件：IPC 模式 && NAPUKETTO_ADAPTER_ENTRY + NAPUKETTO_NETWORK_ENTRY 已注入
  * （koishi 插件 launcher 透传；未注入 = app 层不要 OB11 面，静默跳过）。
  *
  * 装配：动态 import adapter onebot11/core 子路径 + network 入口（assemble-
@@ -139,11 +139,11 @@ export async function attachOb11IpcBridge(
     deps: Ob11BridgeDeps = {},
 ): Promise<() => void> {
     const e: Ob11BridgeEnv = deps.env ?? {
-        adapterEntry: env.NAPUTO_ADAPTER_ENTRY,
-        networkEntry: env.NAPUTO_NETWORK_ENTRY,
-        qqVersion: env.NAPUTO_QQ_VERSION,
-        dataRoot: env.NAPKETTO_DATA,
-        cfgDir: env.NAPUTO_CFG_DIR,
+        adapterEntry: env.NAPUKETTO_ADAPTER_ENTRY,
+        networkEntry: env.NAPUKETTO_NETWORK_ENTRY,
+        qqVersion: env.NAPUKETTO_QQ_VERSION,
+        dataRoot: env.NAPUKETTO_DATA,
+        cfgDir: env.NAPUKETTO_CFG_DIR,
     };
     const noop = (): void => {
         // 降级空操作（未注入入口 / 装配失败：保持纯 kernel 动作面）

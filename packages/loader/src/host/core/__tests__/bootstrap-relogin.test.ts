@@ -5,7 +5,7 @@
  * sendLogin）与 protocols（startProtocols 返回带 dispose 探针的假服务）。
  * 假 kernel 直接传参（bootstrapWithCore 以参数接收 kernel，无需 .mjs 文件）；
  * 全文件不 resetModules——env 快照在 beforeAll stubEnv 后首次动态 import 时
- * 固定（NAPUTO_IPC=1 / NAPUTO_SELF_HOST=1），mock 实例全程同一份。
+ * 固定（NAPUKETTO_IPC=1 / NAPUKETTO_SELF_HOST=1），mock 实例全程同一份。
  *
  * 断言：
  *  - 初次引导：logging → logged_in → sessioning → startProtocols → attach
@@ -180,11 +180,11 @@ function freshState(): SharedState {
 
 beforeAll(async () => {
     tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-relogin-test-"));
-    vi.stubEnv("NAPUTO_CFG_DIR", tmpRoot);
-    vi.stubEnv("NAPUTO_IPC", "1");
-    vi.stubEnv("NAPUTO_SELF_HOST", "1");
-    vi.stubEnv("NAPUTO_QQ_VERSION", "9.9.9-Test");
-    vi.stubEnv("NAPUTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
+    vi.stubEnv("NAPUKETTO_CFG_DIR", tmpRoot);
+    vi.stubEnv("NAPUKETTO_IPC", "1");
+    vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+    vi.stubEnv("NAPUKETTO_QQ_VERSION", "9.9.9-Test");
+    vi.stubEnv("NAPUKETTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
     vi.useFakeTimers(); // startSessionProbe 起 5s interval / 60s timeout，假定时器隔离
     bootstrapCore = await import("../bootstrap-core.js");
     ipc = await import("../../ipc/index.js");

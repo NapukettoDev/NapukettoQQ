@@ -70,10 +70,10 @@ describe("resolveWinHostNode", () => {
         expect(path).toBe("C:\\Program Files\\nodejs\\node.exe");
     });
 
-    it("NAPUTO_WIN_NODE_PATH 环境变量作为显式覆盖（未传参数时）", async () => {
+    it("NAPUKETTO_WIN_NODE_PATH 环境变量作为显式覆盖（未传参数时）", async () => {
         const exe = fakeNodeExe();
-        const prev = process.env["NAPUTO_WIN_NODE_PATH"];
-        process.env["NAPUTO_WIN_NODE_PATH"] = exe;
+        const prev = process.env["NAPUKETTO_WIN_NODE_PATH"];
+        process.env["NAPUKETTO_WIN_NODE_PATH"] = exe;
         try {
             const path = await resolveWinHostNode({}, { findSystemNode: () => undefined });
             expect(path).toBe(exe);
@@ -81,9 +81,9 @@ describe("resolveWinHostNode", () => {
             expect(existsSync(path)).toBe(true);
         } finally {
             if (prev === undefined) {
-                delete process.env["NAPUTO_WIN_NODE_PATH"];
+                delete process.env["NAPUKETTO_WIN_NODE_PATH"];
             } else {
-                process.env["NAPUTO_WIN_NODE_PATH"] = prev;
+                process.env["NAPUKETTO_WIN_NODE_PATH"] = prev;
             }
         }
     });

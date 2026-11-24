@@ -374,7 +374,7 @@ function stopAll(ctx: SupervisorCtx): void {
 /** 运行 supervisor（多账号编排）。 */
 export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void> {
     const dataRoot = resolveDataRoot(opts.dataDir);
-    // 内联优先（NAPKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78
+    // 内联优先（NAPUKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78
     const { config } = await loadCliConfigWithSource({
         ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
         // 日志经回调注入：store 不反向 import logger（config <-> logger 解耦）

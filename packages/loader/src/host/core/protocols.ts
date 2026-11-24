@@ -4,7 +4,7 @@
  * assemble-protocols.ts。本文件只留入口 + IPC 模式分支。
  *
  * 分支：
- *  - IPC 模式（NAPUTO_IPC=1，koishi 插件驱动）：跳过 OB11/Satori（插件直接消费
+ *  - IPC 模式（NAPUKETTO_IPC=1，koishi 插件驱动）：跳过 OB11/Satori（插件直接消费
  *    kernel 服务），返回 KernelServices 由 bootstrap 装配 ipc-server。
  *  - 非 IPC（cli pnpm start）：照旧装配 OB11/Satori 网络传输。
  */
@@ -39,7 +39,7 @@ export async function startProtocols(
         services.dispose();
         return null;
     }
-    if (isEnvEnabled(env.NAPUTO_IPC)) {
+    if (isEnvEnabled(env.NAPUKETTO_IPC)) {
         log("bootstrap: IPC 模式，跳过 OB11/Satori 装配（koishi 插件直接消费 kernel 服务）");
         return services;
     }

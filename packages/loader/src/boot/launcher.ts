@@ -10,7 +10,7 @@
  * 平台分支（ADR-027，2026-11-14）：
  *  - win32：本机 node + PE stub `QQNT.dll`（非 node 宿主如 Bun 时先解析真 `node.exe`）
  *  - linux：标准 Linux node + stub `.so`（`LD_PRELOAD`）直跑官方 Linux `wrapper.node`
- *  - Wine 分支已退役（不再有 Windows 版 `node.exe` / `Z:\` 路径转换 / `NAPUTO_WINE`）
+ *  - Wine 分支已退役（不再有 Windows 版 `node.exe` / `Z:\` 路径转换 / Wine 宿主开关）
  */
 import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -45,9 +45,9 @@ export interface LaunchOptions {
     qq: QqInstallInfo;
     /** kernel 入口（.mjs，self-host.cjs 里 import）。 */
     kernelEntry: string;
-    /** 配置目录（账号数据目录，NAPUTO_CFG_DIR）。 */
+    /** 配置目录（账号数据目录，NAPUKETTO_CFG_DIR）。 */
     cfgDir: string;
-    /** 全局配置文件路径（项目根 napuketto.toml，注入 NAPKETTO_CONFIG 供装配链读取）。 */
+    /** 全局配置文件路径（项目根 napuketto.toml，注入 NAPUKETTO_CONFIG 供装配链读取）。 */
     configPath?: string;
     /** adapter 入口（.mjs，协议装配用）。 */
     adapterEntry?: string;
@@ -59,13 +59,13 @@ export interface LaunchOptions {
     stubDir?: string;
     /** Linux 原生 stub `.so` 路径（缺省 native/prebuilt/linux-x64/libnapuketto_stub.so）。 */
     linuxStubPath?: string;
-    /** 强制指定快速登录账号（注入 NAPUTO_QUICK_UIN；cli `-q <uin>` 透传，2026-08-07）。 */
+    /** 强制指定快速登录账号（注入 NAPUKETTO_QUICK_UIN；cli `-q <uin>` 透传，2026-08-07）。 */
     quickUin?: string;
-    /** 强制扫码登录（注入 NAPUTO_QR_ONLY；跳过快速登录直接 QR，koishi 面板「扫码登录」用）。 */
+    /** 强制扫码登录（注入 NAPUKETTO_QR_ONLY；跳过快速登录直接 QR，koishi 面板「扫码登录」用）。 */
     qrOnly?: boolean;
     /**
      * IPC 诊断动作（`diag.*`）开关：true = 显式启用（仅本地调试），false = 强制关闭，
-     * undefined = 沿用父进程 `NAPUKETTO_DIAG` / `NAPUTO_DIAG`。默认关闭。
+     * undefined = 沿用父进程 `NAPUKETTO_DIAG`。默认关闭。
      */
     diagnostics?: boolean;
     /** 子进程日志配置（可选公开契约；映射到 NAPUKETTO_LOG_*，值不写日志）。 */
@@ -99,7 +99,7 @@ export interface LaunchOptions {
     /**
      * 追加注入子进程的环境变量（在继承白名单之后合并；同键以本对象的强类型字段为准）。
      * cli 用：传播有效控制台渲染决策（NAPUKETTO_LOG_FORMAT/COLORIZE——子进程
-     * stdout 恒为 pipe，TTY 判定失真）与数据根（NAPUTO_DATA_ROOT，停止哨兵用）。
+     * stdout 恒为 pipe，TTY 判定失真）与数据根（NAPUKETTO_DATA_ROOT，停止哨兵用）。
      */
     extraEnv?: Record<string, string>;
     /**
@@ -134,25 +134,19 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
         );
     }
 
-    // Linux：原生 ELF 宿主（ADR-027 起唯一分支）。NAPUTO_LINUX_NATIVE 已退役——
-    // 显式设 0 只播报一句，不再回退 Wine（Wine 分支代码已删除）。
+    // Linux：原生 ELF 宿主（ADR-027 起唯一分支，Wine 分支代码已删除）。
     if (process.platform === "linux") {
-        if (process.env["NAPUTO_LINUX_NATIVE"] === "0") {
-            options.onStage?.(
-                "NAPUTO_LINUX_NATIVE=0 已失效（Wine 于 ADR-027 退役）：Linux 恒走原生 ELF 宿主",
-            );
-        }
         return { child: launchLinuxNative(options, selfHostPath), bootJsPath: selfHostPath };
     }
 
     // stub QQNT.dll 校验（自建宿主必需：PATH 前置 stub 转发 napi_* 到 node.exe，
     // 否则 wrapper.node dlopen 失败）。默认 loader 包内闭源 submodule
-    // native/prebuilt/win32-x64，缺失时提示 --stub-dir / NAPUTO_STUB_DIR 指定。
+    // native/prebuilt/win32-x64，缺失时提示 --stub-dir / NAPUKETTO_STUB_DIR 指定。
     const stub = options.stubDir ?? defaultStubDir();
     if (!existsSync(join(stub, "QQNT.dll"))) {
         throw new Error(
             `stub QQNT.dll 未找到: ${stub}（自建宿主必需：stub 转发 QQNT.dll 符号到 node.exe；` +
-                "请用 --stub-dir 或环境变量 NAPUTO_STUB_DIR 指定 stub 目录）",
+                "请用 --stub-dir 或环境变量 NAPUKETTO_STUB_DIR 指定 stub 目录）",
         );
     }
     options.onStage?.(`stub QQNT.dll 就绪：${stub}`);
@@ -210,11 +204,11 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
  */
 function launchLinuxNative(options: LaunchOptions, selfHostPath: string): ReturnType<typeof spawn> {
     const stub =
-        options.linuxStubPath ?? process.env["NAPUTO_LINUX_STUB"] ?? defaultLinuxStubPath();
+        options.linuxStubPath ?? process.env["NAPUKETTO_LINUX_STUB"] ?? defaultLinuxStubPath();
     if (!existsSync(stub)) {
         throw new Error(
             `Linux stub 未找到: ${stub}（应随 @napuketto/loader 的 native/prebuilt/linux-x64/ 发布；` +
-                "可用 --stub-dir 之外的 NAPUTO_LINUX_STUB 指定）",
+                "可用 --stub-dir 之外的 NAPUKETTO_LINUX_STUB 指定）",
         );
     }
     const gnutls = resolveGnutls();
@@ -242,7 +236,7 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
     const home = resolveLinuxHome({
         dataRoot: options.cwd,
         cfgDir: options.cfgDir,
-        explicit: process.env["NAPUTO_LINUX_HOME"],
+        explicit: process.env["NAPUKETTO_LINUX_HOME"],
     });
     mkdirSync(home, { recursive: true });
     Object.assign(env, linuxHomeEnv(home));
@@ -332,7 +326,7 @@ export interface WinHostNodeResolvers {
 
 /**
  * win32 非 node 宿主时解析真 node.exe：显式覆盖（winNodePath 参数 /
- * NAPUTO_WIN_NODE_PATH）> 系统 PATH node（离线可用，免下载）> ensureWinNode
+ * NAPUKETTO_WIN_NODE_PATH）> 系统 PATH node（离线可用，免下载）> ensureWinNode
  * 下载（缓存幂等）。显式路径不存在时静默跳过（与 ensureWinNode 行为一致）。
  */
 export async function resolveWinHostNode(
@@ -346,7 +340,7 @@ export async function resolveWinHostNode(
     const findSystem = resolvers.findSystemNode ?? findSystemNode;
     const ensure = resolvers.ensureWinNode ?? ensureWinNode;
 
-    const explicit = options.explicitPath ?? process.env["NAPUTO_WIN_NODE_PATH"];
+    const explicit = options.explicitPath ?? process.env["NAPUKETTO_WIN_NODE_PATH"];
     if (explicit !== undefined && explicit !== "" && existsSync(explicit)) {
         const exePath = resolve(explicit);
         options.onStage?.(`使用显式指定 node：${exePath}`);

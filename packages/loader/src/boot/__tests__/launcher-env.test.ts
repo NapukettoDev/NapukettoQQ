@@ -3,7 +3,7 @@
  *
  * win32 标准 node 直路（resolveNodeExecutable 短路，不触发下载/探测）；
  * spawn 注入假实现拦截。覆盖：extraEnv 覆盖传播（NAPUKETTO_LOG_FORMAT /
- * COLORIZE / NAPUTO_DATA_ROOT）、cfgDir/kernel/config 注入、stub PATH 前置、
+ * COLORIZE / NAPUKETTO_DATA_ROOT）、cfgDir/kernel/config 注入、stub PATH 前置、
  * cwd 建目录、spawn 命令形态（本机 node 直跑 self-host 入口）。
  */
 import type { spawn } from "node:child_process";
@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe("launchSelfHost 环境注入（win32 本机 node）", () => {
     it.skipIf(process.platform !== "win32")(
-        "extraEnv / NAPUTO_* 注入 + stub PATH 前置 + cwd 建目录",
+        "extraEnv / NAPUKETTO_* 注入 + stub PATH 前置 + cwd 建目录",
         async () => {
             tmp = mkdtempSync(join(tmpdir(), "napuketto-launcher-env-test-"));
             const selfHostEntry = join(tmp, "self-host.cjs");
@@ -66,7 +66,7 @@ describe("launchSelfHost 环境注入（win32 本机 node）", () => {
                 extraEnv: {
                     NAPUKETTO_LOG_FORMAT: "json",
                     NAPUKETTO_LOG_COLORIZE: "0",
-                    NAPUTO_DATA_ROOT: tmp,
+                    NAPUKETTO_DATA_ROOT: tmp,
                 },
             });
             expect(spawnMock).toHaveBeenCalledOnce();
@@ -82,7 +82,7 @@ describe("launchSelfHost 环境注入（win32 本机 node）", () => {
             const env = opts.env;
             expect(env["NAPUKETTO_LOG_FORMAT"]).toBe("json");
             expect(env["NAPUKETTO_LOG_COLORIZE"]).toBe("0");
-            expect(env["NAPUTO_DATA_ROOT"]).toBe(tmp);
+            expect(env["NAPUKETTO_DATA_ROOT"]).toBe(tmp);
             expect(env["NAPUKETTO_CFG_DIR"]).toBe(join(tmp, "acct-10001"));
             expect(env["NAPUKETTO_CONFIG"]).toBe(join(tmp, "napuketto.toml"));
             expect((env["PATH"] ?? "").includes(stubDir)).toBe(true);
@@ -193,13 +193,13 @@ describe("buildLaunchEnv：缩小默认继承与优先级（H-06）", () => {
     parentEnv["HTTPS_PROXY"] = "http://proxy.example:8080";
     parentEnv["NO_PROXY"] = "localhost";
     parentEnv["NODE_EXTRA_CA_CERTS"] = "C:\\certs\\ca.pem";
-    parentEnv["NAPKETTO_CONFIG_JSON"] = '{"accounts":[]}';
+    parentEnv["NAPUKETTO_CONFIG_JSON"] = '{"accounts":[]}';
     parentEnv["NAPUKETTO_SANDBOX_ROOT"] = "C:\\sandbox";
     parentEnv["NAPUKETTO_LOG_LEVEL"] = "debug";
     parentEnv["NAPUKETTO_LOG_FORMAT"] = "json";
-    parentEnv["NAPUTO_QUICK_UIN"] = "10001";
-    parentEnv["NAPUTO_QR_ONLY"] = "1";
-    parentEnv["NAPUTO_DIAG"] = "1";
+    parentEnv["NAPUKETTO_QUICK_UIN"] = "10001";
+    parentEnv["NAPUKETTO_QR_ONLY"] = "1";
+    parentEnv["NAPUKETTO_DIAG"] = "1";
     parentEnv["NAPUTO_DISABLE_MEDIA_PATCH"] = "1";
     // 以下必须被白名单挡掉
     parentEnv["SECRET_TOKEN"] = "fake-test-secret";
@@ -208,23 +208,21 @@ describe("buildLaunchEnv：缩小默认继承与优先级（H-06）", () => {
     parentEnv["LD_LIBRARY_PATH"] = "/evil";
     parentEnv["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
 
-    it("win32：只继承白名单 + 显式透传，清除旧标记并去重 PATH", () => {
+    it("win32：只继承白名单 + 显式透传，typed false 清标记并去重 PATH", () => {
         const env = buildLaunchEnv(envInput({ qrOnly: false }), "win32", parentEnv);
         // 白名单 / 透传
         expect(env["SystemRoot"]).toBe("C:\\Windows");
         expect(env["HTTPS_PROXY"]).toBe("http://proxy.example:8080");
         expect(env["NO_PROXY"]).toBe("localhost");
         expect(env["NODE_EXTRA_CA_CERTS"]).toBe("C:\\certs\\ca.pem");
-        expect(env["NAPKETTO_CONFIG_JSON"]).toBe('{"accounts":[]}');
+        expect(env["NAPUKETTO_CONFIG_JSON"]).toBe('{"accounts":[]}');
         expect(env["NAPUKETTO_SANDBOX_ROOT"]).toBe("C:\\sandbox");
         expect(env["NAPUKETTO_LOG_LEVEL"]).toBe("debug");
         expect(env["NAPUKETTO_LOG_FORMAT"]).toBe("json");
-        // 旧控制标记规范化为新前缀（旧标记清除）
+        // 控制标记按规范前缀透传
         expect(env["NAPUKETTO_QUICK_UIN"]).toBe("10001");
-        expect(env["NAPUTO_QUICK_UIN"]).toBeUndefined();
         // 显式 qrOnly:false 删除父进程残留的一次性扫码标记
         expect(env[ENV.QR_ONLY]).toBeUndefined();
-        expect(env["NAPUTO_QR_ONLY"]).toBeUndefined();
         expect(env[ENV.DIAG]).toBe("1");
         // 凭据 / 加载器注入面不进入子进程
         expect(env["SECRET_TOKEN"]).toBeUndefined();
@@ -235,6 +233,32 @@ describe("buildLaunchEnv：缩小默认继承与优先级（H-06）", () => {
         // PATH 只有一个键，且来自父进程
         expect(env["PATH"]).toBe("C:\\Windows\\System32");
         expect(Object.keys(env).filter((key) => key.toLowerCase() === "path")).toEqual(["PATH"]);
+    });
+
+    // 2026-11 前缀统一：旧拼写不再做别名翻译，也不进入子进程（原生契约键除外）。
+    it("已废弃旧前缀控制标记 / 日志 / 配置键一律不透传", () => {
+        const env = buildLaunchEnv(envInput(), "linux", {
+            NAPUTO_QUICK_UIN: "10001",
+            NAPUTO_QR_ONLY: "1",
+            NAPUTO_SMOKE: "1",
+            NAPUTO_PROBE: "1",
+            NAPUTO_DIAG: "1",
+            NAPKETTO_LOG_LEVEL: "debug",
+            NAPKETTO_CONFIG_JSON: '{"accounts":[]}',
+            NAPKETTO_DATA: "/legacy/data",
+        });
+        expect(env["NAPUKETTO_QUICK_UIN"]).toBeUndefined();
+        expect(env["NAPUKETTO_QR_ONLY"]).toBeUndefined();
+        expect(env["NAPUKETTO_SMOKE"]).toBeUndefined();
+        expect(env["NAPUKETTO_PROBE"]).toBeUndefined();
+        expect(env["NAPUKETTO_LOG_LEVEL"]).toBeUndefined();
+        expect(env["NAPUKETTO_CONFIG_JSON"]).toBeUndefined();
+        expect(env["NAPUKETTO_DATA"]).toBeUndefined();
+        // 原生契约键（NAPUTO_MEDIA_PATCH_STATUS）恒注入，是唯一允许的旧形态键
+        expect(Object.keys(env).filter((key) => key.startsWith("NAPUTO_"))).toEqual([
+            ENV.MEDIA_PATCH_STATUS,
+        ]);
+        expect(Object.keys(env).some((key) => key.startsWith("NAPKETTO_"))).toBe(false);
     });
 
     it("linux：不继承 LD_PRELOAD；代理/证书透传；显式字段覆盖 extraEnv 与控制标记", () => {
@@ -257,8 +281,8 @@ describe("buildLaunchEnv：缩小默认继承与优先级（H-06）", () => {
                 LD_LIBRARY_PATH: "/evil",
                 HTTP_PROXY: "http://proxy.example:3128",
                 SSL_CERT_FILE: "/etc/ssl/custom.pem",
-                NAPUTO_QUICK_UIN: "20002",
-                NAPUTO_QR_ONLY: "1",
+                NAPUKETTO_QUICK_UIN: "20002",
+                NAPUKETTO_QR_ONLY: "1",
             },
         );
         expect(env["LD_PRELOAD"]).toBeUndefined();

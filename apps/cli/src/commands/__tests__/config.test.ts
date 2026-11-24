@@ -49,15 +49,15 @@ async function captureStdout(run: () => Promise<void>): Promise<string> {
 
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-validate-test-"));
-    delete process.env["NAPKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
 });
 
 afterEach(() => {
-    delete process.env["NAPKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
     if (tmp !== "") {
         rmSync(tmp, { recursive: true, force: true });
         tmp = "";
@@ -178,22 +178,22 @@ describe("cmdConfigValidate 显式形态", () => {
 
 describe("cmdConfigValidate 无参形态（生效配置）", () => {
     it("内联 env 生效 → inline 来源", async () => {
-        process.env["NAPKETTO_CONFIG_JSON"] = inline;
+        process.env["NAPUKETTO_CONFIG_JSON"] = inline;
         const result = await cmdConfigValidate({ dataDir: tmp });
         expect(result).toEqual({ source: "inline" });
     });
 
-    it("无内联 + NAPKETTO_CONFIG 指向缺失文件 → 配置缺失报 78 族，不落模板", async () => {
+    it("无内联 + NAPUKETTO_CONFIG 指向缺失文件 → 配置缺失报 78 族，不落模板", async () => {
         const path = join(tmp, "缺失.toml");
-        process.env["NAPKETTO_CONFIG"] = path;
+        process.env["NAPUKETTO_CONFIG"] = path;
         await expect(cmdConfigValidate({ dataDir: tmp })).rejects.toThrow(/配置文件不存在/);
         expect(existsSync(path)).toBe(false);
     });
 
-    it("无内联 + NAPKETTO_CONFIG 指向合法文件 → file 来源", async () => {
+    it("无内联 + NAPUKETTO_CONFIG 指向合法文件 → file 来源", async () => {
         const path = join(tmp, "napuketto.toml");
         writeFileSync(path, '[[accounts]]\nqq = "10001"\n');
-        process.env["NAPKETTO_CONFIG"] = path;
+        process.env["NAPUKETTO_CONFIG"] = path;
         const result = await cmdConfigValidate({ dataDir: tmp });
         expect(result).toEqual({ source: "file", path });
     });
@@ -202,7 +202,7 @@ describe("cmdConfigValidate 无参形态（生效配置）", () => {
 describe("cmdConfigInit", () => {
     it("配置缺失 → 生成模板（文件内容 = 模板 + 换行）并 stdout 原样输出", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         const writes: string[] = [];
         const spy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
             writes.push(String(chunk));
@@ -226,7 +226,7 @@ describe("cmdConfigInit", () => {
 
     it("配置已存在 → 跳过生成（不覆盖用户配置），输出原文件内容", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const writes: string[] = [];
         const spy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
@@ -248,7 +248,7 @@ describe("cmdConfigInit", () => {
 
     it.runIf(process.platform !== "win32")("生成的配置文件权限 0o600（POSIX）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         await captureStdout(() => cmdConfigInit({ dataDir: tmp }));
         expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
     });
@@ -257,7 +257,7 @@ describe("cmdConfigInit", () => {
 describe("cmdConfigList", () => {
     it("列出全局配置 TOML 与各账号 config 目录文件清单", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         mkdirSync(join(tmp, "账号A", "config"), { recursive: true });
         writeFileSync(join(tmp, "账号A", "config", "a.json"), "{}", "utf8");
@@ -291,7 +291,7 @@ describe("cmdConfigList", () => {
 
     it("协议段 token 默认脱敏；--show-secrets 输出明文（文件始终保留明文）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(
             cfgPath,
             '[[accounts]]\nqq = "10001"\n[accounts.onebot11]\ntoken = "s3cret"\n',
@@ -307,7 +307,7 @@ describe("cmdConfigList", () => {
 
     it("配置缺失 → store.load 报 ConfigError 且不落盘（模板兜底在 loadCliConfigWithSource 层）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         await expect(cmdConfigList({ dataDir: tmp })).rejects.toThrow(ConfigError);
         expect(existsSync(cfgPath)).toBe(false);
     });
@@ -316,7 +316,7 @@ describe("cmdConfigList", () => {
 describe("cmdConfigApply", () => {
     it("TOML 补丁覆盖合并：全局字段覆盖、accounts 保留、写回并 stdout 输出", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, 'autoRestart = true\n[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "patch.toml");
         writeFileSync(patchPath, "autoRestart = false\nrestartDelayMs = 4000\n", "utf8");
@@ -341,7 +341,7 @@ describe("cmdConfigApply", () => {
 
     it("JSON 补丁（按扩展名解析）同样生效", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "patch.json");
         writeFileSync(patchPath, '{"autoRestart": false}', "utf8");
@@ -351,7 +351,7 @@ describe("cmdConfigApply", () => {
 
     it("外部配置文件缺失 → kernelError（INVALID_PARAM 语义，exit 1）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         await expect(cmdConfigApply(join(tmp, "缺失.toml"), { dataDir: tmp })).rejects.toThrow(
             /读取外部配置失败/,
@@ -360,7 +360,7 @@ describe("cmdConfigApply", () => {
 
     it("JSON 补丁非法 → kernelError「不是合法 JSON」", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "bad.json");
         writeFileSync(patchPath, "{oops", "utf8");
@@ -369,7 +369,7 @@ describe("cmdConfigApply", () => {
 
     it("补丁为原始值（非对象）→ kernelError「必须是对象」", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "scalar.json");
         writeFileSync(patchPath, "42", "utf8");
@@ -378,7 +378,7 @@ describe("cmdConfigApply", () => {
 
     it("合并结果非法（accounts 清空）→ ConfigError 且不写回", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         const original = 'autoRestart = true\n[[accounts]]\nqq = "10001"\n';
         writeFileSync(cfgPath, original, "utf8");
         const patchPath = join(tmp, "empty-accounts.json");
@@ -389,7 +389,7 @@ describe("cmdConfigApply", () => {
 
     it("协议段字段非法 → ConfigError 且不写回（与 config validate 同口径）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         const original = 'autoRestart = true\n[[accounts]]\nqq = "10001"\n';
         writeFileSync(cfgPath, original, "utf8");
         const patchPath = join(tmp, "bad-protocol.json");
@@ -408,7 +408,7 @@ describe("cmdConfigApply", () => {
 
     it("TOML 语法错误 → KernelError（INVALID_PARAM，与 JSON 解析失败同口径）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "bad.toml");
         writeFileSync(patchPath, "autoRestart = [[\n", "utf8");
@@ -425,7 +425,7 @@ describe("cmdConfigApply", () => {
 
     it("token 写盘保留明文、stdout 默认脱敏；--show-secrets 输出明文", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "token.json");
         writeFileSync(
@@ -445,7 +445,7 @@ describe("cmdConfigApply", () => {
 
     it.runIf(process.platform !== "win32")("写回配置文件权限 0o600（POSIX）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n', "utf8");
         const patchPath = join(tmp, "patch.json");
         writeFileSync(patchPath, '{"autoRestart": false}', "utf8");

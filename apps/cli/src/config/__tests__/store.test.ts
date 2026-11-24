@@ -2,7 +2,7 @@
  * store.test.ts：CliConfigStore 读写与模板兜底单测。
  *
  * 覆盖（补充 source.test.ts 之外的 store 领域）：defaultCliConfig 形状、
- * store 路径决议（NAPKETTO_CONFIG 显式）、save/load 往返、配置缺失时
+ * store 路径决议（NAPUKETTO_CONFIG 显式）、save/load 往返、配置缺失时
  * ensureConfigTemplate 自动生成模板（生成后再 load 报占位值 ConfigError）。
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -28,18 +28,18 @@ let tmp = "";
 
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-store-test-"));
-    delete process.env["NAPKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
     for (const fn of Object.values(mocks.logger)) {
         fn.mockReset();
     }
 });
 
 afterEach(() => {
-    delete process.env["NAPKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
     if (tmp !== "") {
         rmSync(tmp, { recursive: true, force: true });
         tmp = "";
@@ -64,16 +64,16 @@ describe("defaultCliConfig", () => {
 });
 
 describe("CliConfigStore", () => {
-    it("NAPKETTO_CONFIG 显式指定 → store.path 取该路径", () => {
+    it("NAPUKETTO_CONFIG 显式指定 → store.path 取该路径", () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         const store = new CliConfigStore(tmp);
         expect(store.path).toBe(configPath);
     });
 
     it("save → load 往返保持账号与全局字段", async () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         const store = new CliConfigStore(tmp);
         await store.save({
             dataDir: tmp,
@@ -92,7 +92,7 @@ describe("CliConfigStore", () => {
 
     it("配置缺失 → load 报 ConfigError 且不落盘（缺省 defaults 无账号过不了校验；模板兜底在上游 ensureConfigTemplate）", async () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         const store = new CliConfigStore(tmp);
         // save(defaults) 先 parse 再写盘：defaults（accounts 为空）校验失败 → 无文件产生
         await expect(store.load()).rejects.toThrow(ConfigError);
@@ -102,7 +102,7 @@ describe("CliConfigStore", () => {
 
     it("load 合法文件 → 解析出 accounts 与全局字段", async () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         writeFileSync(configPath, validToml("10001"), "utf8");
         const store = new CliConfigStore(tmp);
         const config = await store.load();
@@ -115,7 +115,7 @@ describe("CliConfigStore", () => {
 
 describe("resolveCliConfigSource", () => {
     it("内联非空 → inline 来源并带回原文（不读文件）", () => {
-        process.env["NAPKETTO_CONFIG_JSON"] = '{"accounts":[{"qq":"10086"}]}';
+        process.env["NAPUKETTO_CONFIG_JSON"] = '{"accounts":[{"qq":"10086"}]}';
         const resolved = resolveCliConfigSource({ dataDir: tmp });
         if (resolved.source !== "inline") {
             expect.unreachable("内联生效时应返回 inline 来源");
@@ -125,7 +125,7 @@ describe("resolveCliConfigSource", () => {
 
     it("无内联 → file 来源带回路径与数据根", () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         const resolved = resolveCliConfigSource({ dataDir: tmp });
         expect(resolved.source).toBe("file");
         if (resolved.source === "file") {
@@ -136,7 +136,7 @@ describe("resolveCliConfigSource", () => {
 
     it("opts 缺省调用（无 dataDir）→ file 来源（env/项目根决议）", () => {
         const configPath = join(tmp, "explicit.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         const resolved = resolveCliConfigSource();
         expect(resolved.source).toBe("file");
         if (resolved.source === "file") {
@@ -148,7 +148,7 @@ describe("resolveCliConfigSource", () => {
 describe("loadCliConfigWithSource 文件形态补充", () => {
     it("文件缺失 → ensureConfigTemplate 生成模板（落盘）再解析报 ConfigError（占位号在 cause）", async () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         await expect(
             loadCliConfigWithSource({ dataDir: tmp, onInfo: mocks.logger.info }),
         ).rejects.toThrow(/配置文件校验失败/);
@@ -165,7 +165,7 @@ describe("loadCliConfigWithSource 文件形态补充", () => {
 
     it.runIf(process.platform !== "win32")("模板兜底落盘权限 0o600（POSIX）", async () => {
         const configPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG"] = configPath;
+        process.env["NAPUKETTO_CONFIG"] = configPath;
         await expect(loadCliConfigWithSource({ dataDir: tmp })).rejects.toThrow(ConfigError);
         expect(statSync(configPath).mode & 0o777).toBe(0o600);
     });

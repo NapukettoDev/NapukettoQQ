@@ -20,7 +20,7 @@ apps/cli/src/
 │   └── ops.ts                   # status/stop/restart（-q 入口校验）
 ├── config/                      # 配置领域
 │   ├── schema.ts                # CliConfig 类型 + parseCliConfig + QQ 号校验（主配置/-q 共用）
-│   ├── inline.ts                # NAPKETTO_CONFIG_JSON 文本/文档/严格解析
+│   ├── inline.ts                # NAPUKETTO_CONFIG_JSON 文本/文档/严格解析
 │   ├── template.ts              # TOML 模板文本
 │   └── store.ts                 # CliConfigStore + 默认值 + 模板落盘 + 来源决议/加载
 └── runtime/                     # 进程运行期
@@ -82,9 +82,10 @@ cli 内部的读取分两档，调用方必须按场景选择：
 | `readInlineConfigSection` | 宽松：坏文档 -> `undefined` | logger 读 `[log]` 段（日志配置损坏不阻塞启动） |
 
 来源决议统一走 `config/store.ts` 的 `resolveCliConfigSource`：
-`NAPKETTO_CONFIG_JSON` 非空 -> inline；否则按 kernel `resolveConfigPath`
-（`NAPKETTO_CONFIG` > 项目根探测 > 数据根兜底）解析文件路径。`config validate`
-无参分支复用同一个决议，但保持只读（不落模板）。
+`NAPUKETTO_CONFIG_JSON` 非空 -> inline；否则按 kernel `resolveConfigPath`
+（`NAPUKETTO_CONFIG` > 项目根探测 > 数据根兜底）解析文件路径。`config validate`
+无参分支复用同一个决议，但保持只读（不落模板）。内联键只认规范前缀；历史拼写不再双读，
+来源日志固定输出 `NAPUKETTO_CONFIG_JSON`。
 
 **不把该逻辑下沉到 kernel**：loader 引导进程编译期只依赖 zod、运行期通过
 `KernelLike` 动态 import kernel，且其策略是“坏配置回退、不阻塞引导”，与 cli 的
@@ -179,7 +180,6 @@ commands/__tests__/start.test.ts
 config/__tests__/schema.test.ts
 config/__tests__/store.test.ts
 config/__tests__/source.test.ts   # inline + store 来源优先级
-config/__tests__/source-log.test.ts # 来源日志实际命中的内联 env 键名
 config/__tests__/template.test.ts   # 配置模板段落归属
 runtime/__tests__/boot.test.ts
 runtime/__tests__/lines.test.ts     # 逐行切分 + 无换行超长行截断

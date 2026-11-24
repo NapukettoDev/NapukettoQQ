@@ -11,7 +11,7 @@ blank_issues_enabled: false
 contact_links:
     - name: 安装与配置（napuketto.toml 怎么填）
       url: https://github.com/NapukettoDev/NapukettoQQ/blob/main/docs/guides/configuration.md
-      about: 账号、内嵌协议段、数据目录与优先级，用户变量 NAPKETTO_*
+      about: 账号、内嵌协议段、数据目录与优先级，用户变量 NAPUKETTO_*
     - name: 启动失败 / 掉线 / 端口冲突
       url: https://github.com/NapukettoDev/NapukettoQQ/blob/main/docs/guides/operations.md
       about: 运维与排障手册：退出码、日志位置、常见故障逐条对照

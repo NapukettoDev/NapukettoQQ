@@ -271,7 +271,7 @@ beforeEach(() => {
     process.exitCode = undefined;
     // argv[1] 指向模块自身 → 触发「直接执行」分支跑 main；slice(2) 作为 CLI 参数
     process.argv = ["node", MODULE_PATH];
-    delete process.env["NAPUTO_7Z_PATH"];
+    delete process.env["NAPUKETTO_7Z_PATH"];
     stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined); // 静音输出
     stubHttpsGet();
@@ -673,7 +673,7 @@ describe("下载传输边角", () => {
 });
 
 describe("版本解析与清单合并边角", () => {
-    it("NAPUTO_7Z_PATH 环境变量优先（指向存在文件）→ execFile 使用该路径", async () => {
+    it("NAPUKETTO_7Z_PATH 环境变量优先（指向存在文件）→ execFile 使用该路径", async () => {
         manifestContent = fixtureManifest("https://old.example/qq.exe");
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
         mocks.execFile.mockImplementation(((
@@ -684,7 +684,7 @@ describe("版本解析与清单合并边角", () => {
         ) => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
-        process.env["NAPUTO_7Z_PATH"] = MODULE_PATH; // 存在的文件即可（execFile 已 mock）
+        process.env["NAPUKETTO_7Z_PATH"] = MODULE_PATH; // 存在的文件即可（execFile 已 mock）
         try {
             downloadBehaviors = ["ok"];
             await import("./update-qq-releases.ts");
@@ -693,7 +693,7 @@ describe("版本解析与清单合并边角", () => {
             expect(process.exitCode).toBe(0);
             expect(mocks.execFile.mock.calls[0]?.[0]).toBe(MODULE_PATH);
         } finally {
-            delete process.env["NAPUTO_7Z_PATH"];
+            delete process.env["NAPUKETTO_7Z_PATH"];
         }
     });
 

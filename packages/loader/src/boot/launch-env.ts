@@ -8,7 +8,7 @@
  *  1. 平台基础变量（系统路径 / 临时目录 / 区域设置）
  *  2. 明确透传的部署策略（代理、私有 CA、主配置、调试沙箱）
  *  3. 子进程日志覆盖（可选公开契约，值不写日志）
- *  4. 用户控制标记（新前缀优先；仅旧拼写时规范化为新前缀 = 旧标记清除）
+ *  4. 用户控制标记（仅规范前缀 `NAPUKETTO_*` 透传，不识别旧拼写）
  *  5. `extraEnv`（调用方显式逃生口）
  *  6. 强类型 `LaunchOptions` 字段（最终生效，`false` 删除继承标记）
  *
@@ -129,13 +129,13 @@ const CERT_ENV_KEYS = ["NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR"] a
 
 /** 主配置 / 数据根 / 调试沙箱：子进程装配链与路径边界需要。 */
 const CONFIG_ENV_KEYS = [
-    "NAPKETTO_CONFIG_JSON",
-    "NAPKETTO_CONFIG",
-    "NAPKETTO_DATA",
+    "NAPUKETTO_CONFIG_JSON",
+    "NAPUKETTO_CONFIG",
+    "NAPUKETTO_DATA",
     "NAPUKETTO_SANDBOX_ROOT",
 ] as const;
 
-/** 子进程日志覆盖（kernel parseLogConfig 支持；旧拼写仅在新拼写缺失时规范化）。 */
+/** 子进程日志覆盖（kernel parseLogConfig 支持）。 */
 const LOG_ENV_KEYS = [
     "NAPUKETTO_LOG_LEVEL",
     "NAPUKETTO_LOG_FORMAT",
@@ -143,19 +143,16 @@ const LOG_ENV_KEYS = [
     "NAPUKETTO_LOG_COLORIZE",
 ] as const;
 
-/**
- * 用户控制标记：新前缀优先。存在新拼写时只写新拼写（旧拼写被清除）；只有旧拼写时
- * 规范化为新拼写后再进入子进程，子进程读侧仍兼容旧名（env.ts）。
- */
-const CONTROL_ENV_ALIASES: ReadonlyArray<readonly [canonical: string, legacy: string]> = [
-    ["NAPUKETTO_QUICK_UIN", "NAPUTO_QUICK_UIN"],
-    ["NAPUKETTO_QR_ONLY", "NAPUTO_QR_ONLY"],
-    ["NAPUKETTO_SMOKE", "NAPUTO_SMOKE"],
-    ["NAPUKETTO_SMOKE_PEER", "NAPUTO_SMOKE_PEER"],
-    ["NAPUKETTO_PROBE", "NAPUTO_PROBE"],
-    ["NAPUKETTO_LISTENER_RECORD", "NAPUTO_LISTENER_RECORD"],
-    ["NAPUKETTO_DIAG", "NAPUTO_DIAG"],
-];
+/** 用户控制标记（唯一规范拼写，逐键白名单透传，不做别名翻译）。 */
+const CONTROL_ENV_KEYS = [
+    "NAPUKETTO_QUICK_UIN",
+    "NAPUKETTO_QR_ONLY",
+    "NAPUKETTO_SMOKE",
+    "NAPUKETTO_SMOKE_PEER",
+    "NAPUKETTO_PROBE",
+    "NAPUKETTO_LISTENER_RECORD",
+    "NAPUKETTO_DIAG",
+] as const;
 
 /**
  * 闭源 stub 硬编码读取的原生契约键（禁止改名）：只透传，不翻译。
@@ -279,20 +276,6 @@ function copyKeys(
     }
 }
 
-/** 用户控制标记：新前缀优先，旧拼写规范化为新前缀（旧标记清除）。 */
-function copyControlKeys(
-    target: Record<string, string>,
-    source: NodeJS.ProcessEnv | Record<string, string | undefined>,
-    platform: NodeJS.Platform,
-): void {
-    for (const [canonical, legacy] of CONTROL_ENV_ALIASES) {
-        const value = readEnv(source, canonical, platform) ?? readEnv(source, legacy, platform);
-        if (value !== undefined) {
-            setEnv(target, canonical, value, platform);
-        }
-    }
-}
-
 /** 日志级别 / 格式合法值（与 kernel parseLogConfig 对齐）。 */
 const LOG_LEVEL_VALUES: ReadonlySet<string> = new Set([
     "trace",
@@ -402,8 +385,8 @@ function applyOptionalPath(
 }
 
 /**
- * 布尔启动标记：true 写入 `1`，false 删除继承值，undefined 保留继承值。
- * 删除同时覆盖旧拼写（例如 `qrOnly: false` 清掉父进程残留的 `NAPUTO_QR_ONLY`）。
+ * 布尔启动标记：true 写入 `1`，false 删除该规范键的继承值，undefined 保留继承值。
+ * 只处理传入的键本身（不再清理任何旧拼写）。
  */
 function applyBooleanFlag(
     target: Record<string, string>,
@@ -419,10 +402,6 @@ function applyBooleanFlag(
         return;
     }
     unsetEnv(target, key, platform);
-    const legacy = CONTROL_ENV_ALIASES.find(([canonical]) => canonical === key)?.[1];
-    if (legacy !== undefined) {
-        unsetEnv(target, legacy, platform);
-    }
 }
 
 /** 补丁状态文件路径（与账号数据目录同层，保持既有可观测面）。 */
@@ -449,14 +428,7 @@ export function buildLaunchEnv(
     copyKeys(env, parentEnv, CERT_ENV_KEYS, platform);
     copyKeys(env, parentEnv, CONFIG_ENV_KEYS, platform);
     copyKeys(env, parentEnv, LOG_ENV_KEYS, platform);
-    // 旧拼写 NAPKETTO_LOG_LEVEL 只在新拼写缺失时规范化（旧标记清除）
-    if (env["NAPUKETTO_LOG_LEVEL"] === undefined) {
-        const legacyLevel = readEnv(parentEnv, "NAPKETTO_LOG_LEVEL", platform);
-        if (legacyLevel !== undefined) {
-            setEnv(env, "NAPUKETTO_LOG_LEVEL", legacyLevel, platform);
-        }
-    }
-    copyControlKeys(env, parentEnv, platform);
+    copyKeys(env, parentEnv, CONTROL_ENV_KEYS, platform);
     copyKeys(env, parentEnv, NATIVE_CONTRACT_ENV_KEYS, platform);
 
     // 调用方显式逃生口（未类型化的值）；随后由强类型字段覆盖。

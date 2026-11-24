@@ -1,9 +1,9 @@
 /**
- * 内联配置（NAPKETTO_CONFIG_JSON 旧前缀，2026-11 起规范前缀 NAPUKETTO_CONFIG_JSON）。
+ * 内联配置（`NAPUKETTO_CONFIG_JSON`，2026-11 起唯一规范拼写）。
  *
  * KuroBridge 等嵌入式宿主每次拉起前整体生成配置，经环境变量喂 JSON 文本
  * （与 napuketto.toml 同构：parseCliConfig 直接吃 JSON.parse 产物），消除托管
- * toml 文件本体。优先级 NAPKETTO_CONFIG_JSON > NAPKETTO_CONFIG > 缺省模板生成；
+ * toml 文件本体。优先级 NAPUKETTO_CONFIG_JSON > NAPUKETTO_CONFIG > 缺省模板生成；
  * 内联生效时不读 / 不写 / 不校验任何 toml 文件。Windows 单环境变量上限 32767
  * 字符（约 32KB），嵌入式配置形状远小于该限（超限宿主退回文件形态）。
  *
@@ -21,42 +21,23 @@ import process from "node:process";
 import { configError, errorMessage, isRecord } from "@napuketto/kernel";
 import { type CliConfig, parseCliConfig } from "./schema.js";
 
-/** 内联配置 env 键（规范前缀；读取为精确键访问，Windows 上 process.env 本身大小写不敏感）。 */
+/** 内联配置 env 键（唯一规范拼写；读取为精确键访问，Windows 上 process.env 本身大小写不敏感）。 */
 const INLINE_CONFIG_ENV = "NAPUKETTO_CONFIG_JSON";
-
-/** 旧前缀兼容键（2026-11 前缀统一前已发布，双读回退）。 */
-const LEGACY_INLINE_CONFIG_ENV = "NAPKETTO_CONFIG_JSON";
 
 /** 配置来源。 */
 export type ConfigSource = "inline" | "file";
 
 /**
- * 读取内联配置文本（新前缀优先、旧前缀回退；未设置 / 空串 / 纯空白 → undefined，
- * 回退文件形态）。
+ * 读取内联配置文本（未设置 / 空串 / 纯空白 → undefined，回退文件形态）。
  */
 export function readInlineConfigText(): string | undefined {
-    return readInlineEnvEntry()?.text;
+    const text = process.env[INLINE_CONFIG_ENV];
+    return text === undefined || text.trim() === "" ? undefined : text;
 }
 
-/**
- * 实际命中的内联配置 env 键名（新前缀优先、旧前缀回退；未生效 → undefined）。
- * 来源日志据此输出真实键名，避免旧前缀兼容期日志写死新名误导排查。
- */
+/** 实际命中的内联配置 env 键名（未生效 → undefined）。来源日志据此标注来源键。 */
 export function inlineConfigEnvName(): string | undefined {
-    return readInlineEnvEntry()?.key;
-}
-
-/** 内联 env 决议（精确键读取；新前缀存在但为空时不回退旧前缀，与历史口径一致）。 */
-function readInlineEnvEntry(): { key: string; text: string } | undefined {
-    const primary = process.env[INLINE_CONFIG_ENV];
-    if (primary !== undefined) {
-        return primary.trim() === "" ? undefined : { key: INLINE_CONFIG_ENV, text: primary };
-    }
-    const legacy = process.env[LEGACY_INLINE_CONFIG_ENV];
-    if (legacy === undefined || legacy.trim() === "") {
-        return undefined;
-    }
-    return { key: LEGACY_INLINE_CONFIG_ENV, text: legacy };
+    return readInlineConfigText() === undefined ? undefined : INLINE_CONFIG_ENV;
 }
 
 /** 内联是否生效（boot/装配链决定「不碰文件」的判定口径，与 readInlineConfigText 同源）。 */

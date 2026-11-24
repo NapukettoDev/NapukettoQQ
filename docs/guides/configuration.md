@@ -7,31 +7,31 @@
 
 1. 运行 `napuketto config init`；文件形态下首次启动也会自动生成模板，已存在不覆盖。
 2. 在 `[[accounts]]` 填入真实 `qq`，并在账号内添加所需协议段。
-3. 需要独立数据目录时，启动加 `--data-dir <dir>` 或设置 `NAPKETTO_DATA`。
+3. 需要独立数据目录时，启动加 `--data-dir <dir>` 或设置 `NAPUKETTO_DATA`。
 4. 启动前运行 `napuketto config validate`；返回 0 才继续。
 
 ## 配置文件与来源
 
 默认位置为项目根 `napuketto.toml`，与数据根解耦。来源优先级：
 
-1. `NAPKETTO_CONFIG_JSON`：内联 JSON 文本（最高优先级，见下节）。
-2. `NAPKETTO_CONFIG`：显式配置文件路径。
+1. `NAPUKETTO_CONFIG_JSON`：内联 JSON 文本（最高优先级，见下节）。
+2. `NAPUKETTO_CONFIG`：显式配置文件路径。
 3. 项目根探测：入口模块向上找 `pnpm-workspace.yaml`；未命中则从 `cwd` 向上找
    `pnpm-workspace.yaml` 或 `package.json`，取根下 `napuketto.toml`。
 4. 数据根兜底：`<dataRoot>/napuketto.toml`。
 
 文件来源且缺失时自动写入带注释模板，全文见 [template.ts](../../apps/cli/src/config/template.ts)。
 
-### 内联配置 `NAPKETTO_CONFIG_JSON`
+### 内联配置 `NAPUKETTO_CONFIG_JSON`
 
 KuroBridge 等嵌入式宿主把整份配置作为 JSON 文本经环境变量传入，契约如下：
 
 - 与 `napuketto.toml` 同构：`dataDir` / `autoRestart` / `restartDelayMs` / `accounts[]` /
   `log`，协议段仍嵌在账号内；共用同一校验器。
-- 生效时零 toml 落盘：不生成模板，不读、不写、不校验任何 toml，也不注入 `NAPKETTO_CONFIG`。
+- 生效时零 toml 落盘：不生成模板，不读、不写、不校验任何 toml，也不注入 `NAPUKETTO_CONFIG`。
 - 协议段热更新不可用：无文件可重读，装配使用启动时的配置。
 - 键名精确匹配；空串或纯空白视为未设置，回退文件形态。
-- Windows 单环境变量上限 32767 字符（约 32KB）；超限宿主应改用 `NAPKETTO_CONFIG` 文件形态。
+- Windows 单环境变量上限 32767 字符（约 32KB）；超限宿主应改用 `NAPUKETTO_CONFIG` 文件形态。
 - 校验失败均为 ConfigError（退出码 78），错误文案标注「内联配置」且不含 toml 路径。
 
 ## 数据根
@@ -39,7 +39,7 @@ KuroBridge 等嵌入式宿主把整份配置作为 JSON 文本经环境变量传
 数据根承载账号目录、日志、缓存、QQ 原生文件与运行时状态。优先级：
 
 1. CLI `--data-dir <dir>`。
-2. `NAPKETTO_DATA` 环境变量（空串视为未设置）。
+2. `NAPUKETTO_DATA` 环境变量（空串视为未设置）。
 3. `<项目根>/.napuketto`。
 4. 裸脚本场景（探测不到项目根）：用户主目录下 `.napuketto`。
 
@@ -161,32 +161,32 @@ Satori 可通过 `message.get` 获取可重新发送的 QQ 本地媒体引用，
 
 | 变量 | 作用 |
 |---|---|
-| `NAPKETTO_CONFIG_JSON` | 内联配置 JSON（最高优先级） |
-| `NAPKETTO_CONFIG` | 配置文件路径（显式覆盖） |
-| `NAPKETTO_DATA` | 数据根 |
+| `NAPUKETTO_CONFIG_JSON` | 内联配置 JSON（最高优先级） |
+| `NAPUKETTO_CONFIG` | 配置文件路径（显式覆盖） |
+| `NAPUKETTO_DATA` | 数据根 |
 | `NAPUKETTO_LOG_LEVEL` | 日志级别覆盖 |
 | `NAPUKETTO_LOG_FORMAT` | 输出格式覆盖 |
 | `NAPUKETTO_NO_BANNER` | `1`/`true` 关闭启动 banner |
 | `NAPUKETTO_LOG_COLORIZE` | 颜色开关（子进程传播） |
-| `NAPUTO_QQ_PATH` | 本机 QQ 安装路径 |
-| `NAPUTO_QQ_FILES` | QQ 文件根（含 `versions/`） |
-| `NAPUTO_QQ_URL` | QQ 安装包下载地址 |
-| `NAPUTO_STUB_DIR` | stub `QQNT.dll` 目录 |
-| `NAPUTO_LINUX_STUB` | Linux `.so` stub 路径 |
-| `NAPUTO_7Z_PATH` | 7-Zip 可执行文件 |
-| `NAPUTO_7Z_URL` | Linux 7zz 下载地址 |
-| `NAPUTO_WIN_NODE_PATH` | 非 Node 宿主用 `node.exe` |
-| `NAPUTO_QUICK_UIN` | 强制快速登录账号 |
-| `NAPUTO_QR_ONLY` | 强制扫码登录 |
-| `NAPUTO_SMOKE` | 启动后收发冒烟自检 |
-| `NAPUTO_SMOKE_PEER` | 冒烟自检对端 |
-| `NAPUTO_PROBE` | 运行时探测（诊断） |
+| `NAPUKETTO_QQ_PATH` | 本机 QQ 安装路径 |
+| `NAPUKETTO_QQ_FILES` | QQ 文件根（含 `versions/`） |
+| `NAPUKETTO_QQ_URL` | QQ 安装包下载地址 |
+| `NAPUKETTO_STUB_DIR` | stub `QQNT.dll` 目录 |
+| `NAPUKETTO_LINUX_STUB` | Linux `.so` stub 路径 |
+| `NAPUKETTO_7Z_PATH` | 7-Zip 可执行文件 |
+| `NAPUKETTO_7Z_URL` | Linux 7zz 下载地址 |
+| `NAPUKETTO_WIN_NODE_PATH` | 非 Node 宿主用 `node.exe` |
+| `NAPUKETTO_QUICK_UIN` | 强制快速登录账号 |
+| `NAPUKETTO_QR_ONLY` | 强制扫码登录 |
+| `NAPUKETTO_SMOKE` | 启动后收发冒烟自检 |
+| `NAPUKETTO_SMOKE_PEER` | 冒烟自检对端 |
+| `NAPUKETTO_PROBE` | 运行时探测（诊断） |
 | `NAPUKETTO_DIAG` | `1`/`true` 启用 IPC 诊断动作（默认关闭，仅本地调试） |
 
-日志变量的旧拼写 `NAPKETTO_LOG_LEVEL` 仍被接受（`NAPUKETTO_` 优先）。
-
-`NAPUTO_KERNEL_ENTRY`、`NAPUTO_ADAPTER_ENTRY`、`NAPUTO_CFG_DIR`、`NAPUTO_IPC` 等由
-CLI/loader 注入，正常部署不要手工设置。
+前缀唯一：只认规范前缀 `NAPUKETTO_*`。2026-11 前缀统一前的历史拼写不再被读取，也不会进入
+子进程（闭源 stub 硬编码的原生契约键除外）。`NAPUKETTO_KERNEL_ENTRY`、
+`NAPUKETTO_ADAPTER_ENTRY`、`NAPUKETTO_CFG_DIR`、`NAPUKETTO_IPC` 等由 CLI/loader 注入，
+正常部署不要手工设置。
 
 自建宿主子进程不再继承父进程全部环境变量：只透传平台运行变量、代理／证书、主配置、
 日志覆盖与上表控制标记。需要额外变量时用 `LaunchOptions.extraEnv` 显式传入；不要把凭据放进
@@ -196,7 +196,7 @@ CLI/loader 注入，正常部署不要手工设置。
 ## 验证与常见排障
 
 - `napuketto config validate` 返回 0 表示合法；78 表示 ConfigError，宿主不会自动重启。
-- 启动日志出现 `配置来源: inline（NAPKETTO_CONFIG_JSON）` 说明走内联，否则为文件来源。
+- 启动日志出现 `配置来源: inline（NAPUKETTO_CONFIG_JSON）` 说明走内联，否则为文件来源。
 - 报「缺少 accounts」或占位 QQ 号时编辑模板对应段；`qq` 必须是 5-11 位真实号码。
 - 协议未监听：确认协议段非空（Milky 还需 `enabled = true`）且端口未被占用。
-- 内联内容超 32KB 或需要热更新时，改用 `NAPKETTO_CONFIG` 指向的 TOML 文件。
+- 内联内容超 32KB 或需要热更新时，改用 `NAPUKETTO_CONFIG` 指向的 TOML 文件。

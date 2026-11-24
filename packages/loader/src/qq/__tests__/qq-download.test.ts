@@ -6,7 +6,7 @@
  * 其余透传）。覆盖：
  *  - 成功下载：sha256 计算 + 落盘完成态校验（文件非空）+ 目录自动创建
  *  - sha256 校验：无期望值恒 true、大小写不敏感、失败 → DownloadError + 清理
- *  - 无 URL（参数/env 都缺）→ DownloadError；NAPUTO_QQ_URL 兜底
+ *  - 无 URL（参数/env 都缺）→ DownloadError；NAPUKETTO_QQ_URL 兜底
  *  - normalizeDownloadUrl 统一生效（QQNTV2 → qqntv2，含 env 兜底路径）
  *  - HTTP 非 200 → DownloadError；302 重定向跟随 + 5 跳上限
  *  - 请求超时（setTimeout → destroy）→ DownloadError；连接错误 → 抛出
@@ -215,8 +215,8 @@ describe("downloadFile 成功路径", () => {
         expect(existsSync(nested)).toBe(true);
     });
 
-    it("NAPUTO_QQ_URL 兜底（options.url 未传）", async () => {
-        vi.stubEnv("NAPUTO_QQ_URL", "https://env.example.com/qq.exe");
+    it("NAPUKETTO_QQ_URL 兜底（options.url 未传）", async () => {
+        vi.stubEnv("NAPUKETTO_QQ_URL", "https://env.example.com/qq.exe");
         respond(() => ({ res: okResponse("env-body") }));
         await downloadFile({ dest });
         expect(h.requestedUrls[0]).toBe("https://env.example.com/qq.exe");
@@ -228,8 +228,8 @@ describe("downloadFile 成功路径", () => {
         expect(h.requestedUrls[0]).toBe("https://qqdl.gtimg.com/qqfile/qqntv2/9.9.33/QQ.exe");
     });
 
-    it("NAPUTO_QQ_URL 兜底路径同样归一化", async () => {
-        vi.stubEnv("NAPUTO_QQ_URL", "https://cdn.example.com/QQNTV2/a.exe");
+    it("NAPUKETTO_QQ_URL 兜底路径同样归一化", async () => {
+        vi.stubEnv("NAPUKETTO_QQ_URL", "https://cdn.example.com/QQNTV2/a.exe");
         respond(() => ({ res: okResponse("x") }));
         await downloadFile({ dest });
         expect(h.requestedUrls[0]).toBe("https://cdn.example.com/qqntv2/a.exe");
@@ -238,7 +238,7 @@ describe("downloadFile 成功路径", () => {
 
 describe("downloadFile 失败路径", () => {
     it("无 URL（参数/env 都缺）→ DownloadError 下载地址为空", async () => {
-        delete process.env["NAPUTO_QQ_URL"];
+        delete process.env["NAPUKETTO_QQ_URL"];
         await expect(downloadFile({ dest })).rejects.toMatchObject({
             name: "DownloadError",
             message: expect.stringContaining("下载地址为空"),

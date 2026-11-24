@@ -78,7 +78,7 @@ function probeCreatedSession(state: SharedState, ctx: CoreContextLike): void {
     }
 }
 
-/** 登录参数（NAPUTO_QUICK_UIN 强制指定 / ref 目标 / qrOnly 强制扫码 / 默认）。 */
+/** 登录参数（NAPUKETTO_QUICK_UIN 强制指定 / ref 目标 / qrOnly 强制扫码 / 默认）。 */
 function buildLoginOpts(
     Appid: string | number,
     forcedUin: string | undefined,
@@ -93,7 +93,7 @@ function buildLoginOpts(
         ...(quickUin !== undefined ? { quickUin } : {}),
         ...(qrOnly ? { qrOnly: true } : {}),
     };
-    const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
+    const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
     // 登录进度回调：QR 阶段透出二维码数据（cli 终端渲染 / koishi IPC 转发共用）。
     //  - IPC 模式：走 JSON 行协议 sendQr/sendLogin（koishi 插件驱动，不变）
     //  - cli 自建宿主模式：QR 数据以 NAPUTO_QR 标记行输出 stdout，由 cli
@@ -119,11 +119,11 @@ function replaceSession(
     state: SharedState,
     ctx: CoreContextLike,
 ): SessionCandidate | null {
-    // 自建宿主（NAPUTO_SELF_HOST）例外：无 QQ 主进程/vehicle/qqSession 捕获，
+    // 自建宿主（NAPUKETTO_SELF_HOST）例外：无 QQ 主进程/vehicle/qqSession 捕获，
     // 且 getMainSession 内部会先 startupSession.start()——与「先 init 后 start」
     // 顺序冲突（HANDOVER-V9 实证）；登录前 createSession 创建的配套 session
     // （ctx.session + ctx.startupSession）才是正确激活目标。
-    const isSelfHost = isEnvEnabled(env.NAPUTO_SELF_HOST);
+    const isSelfHost = isEnvEnabled(env.NAPUKETTO_SELF_HOST);
     if (isSelfHost) {
         return null;
     }
@@ -212,13 +212,13 @@ async function waitSessionReady(kernel: KernelLike, ctx: CoreContextLike): Promi
     }
 }
 
-/** P2-1 收发消息冒烟自检（NAPUTO_SMOKE=1）：MsgBridge + MsgApi 真发/收一条。 */
+/** P2-1 收发消息冒烟自检（NAPUKETTO_SMOKE=1）：MsgBridge + MsgApi 真发/收一条。 */
 async function runSmokeIfEnabled(
     kernel: KernelLike,
     ctx: CoreContextLike,
     loginResult: LoginResultLike,
 ): Promise<void> {
-    if (!isEnvEnabled(env.NAPUTO_SMOKE)) {
+    if (!isEnvEnabled(env.NAPUKETTO_SMOKE)) {
         return;
     }
     try {
@@ -229,9 +229,9 @@ async function runSmokeIfEnabled(
     }
 }
 
-/** 立即探测一次（NAPUTO_PROBE=1）：fallback / core 两处引导路径共用的探测原语。 */
+/** 立即探测一次（NAPUKETTO_PROBE=1）：fallback / core 两处引导路径共用的探测原语。 */
 export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (!isEnvEnabled(env.NAPUTO_PROBE) || typeof kernel.probeRuntime !== "function") {
+    if (!isEnvEnabled(env.NAPUKETTO_PROBE) || typeof kernel.probeRuntime !== "function") {
         return;
     }
     try {
@@ -245,13 +245,13 @@ export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
 }
 
 /**
- * listener 录制模式（NAPUTO_LISTENER_RECORD=1，批次三前置）：万能监听器挂满
+ * listener 录制模式（NAPUKETTO_LISTENER_RECORD=1，批次三前置）：万能监听器挂满
  * 候选服务，回调逐行落盘 napuketto-listener-record.jsonl。
  * ⚠️ 必须先于 runProbePhase——probe 的 getMainSession 写回副作用会毒化
  * ctx.session（空壳主 session），录制器要先取服务。
  */
 function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (!isEnvEnabled(env.NAPUTO_LISTENER_RECORD)) {
+    if (!isEnvEnabled(env.NAPUKETTO_LISTENER_RECORD)) {
         return;
     }
     if (typeof kernel.startListenerRecording !== "function") {
@@ -273,9 +273,9 @@ function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): vo
     }
 }
 
-/** 探测模式（NAPUTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
+/** 探测模式（NAPUKETTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
 function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (!isEnvEnabled(env.NAPUTO_PROBE)) {
+    if (!isEnvEnabled(env.NAPUKETTO_PROBE)) {
         return;
     }
     probeOnce(kernel, ctx);
@@ -300,7 +300,7 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
 /**
  * kernel 数据根 / 账号目录：`paths.dataRoot` 传全局数据根、`paths.account` 传账号目录名，
  * 使 `ctx.paths.root` 是数据根（Linux 下 QQ 数据根 = `<数据根>/nt_qq`，所有账号共享，
- * 与 Windows QQ 数据目录语义一致）。`NAPUTO_DATA_ROOT` 缺失或不是账号目录父级时
+ * 与 Windows QQ 数据目录语义一致）。`NAPUKETTO_DATA_ROOT` 缺失或不是账号目录父级时
  * 退化为「账号目录当数据根」（旧行为，Windows 不受影响）。
  */
 function resolveKernelPaths(bootEnv: BootstrapEnv): { dataRoot: string; account?: string } {
@@ -327,11 +327,11 @@ function buildCoreCreateOptions(
                   logFileLevel: logCfg.file.level,
               }
             : {}),
-        ...(env.NAPUTO_QUICK_UIN !== undefined ? { account: env.NAPUTO_QUICK_UIN } : {}),
+        ...(env.NAPUKETTO_QUICK_UIN !== undefined ? { account: env.NAPUKETTO_QUICK_UIN } : {}),
         // IPC 模式关 console：stdout 专用于 JSON 行协议，控制台日志并发写会
         // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
         // logs/napuketto.log 不受影响，cli 模式 console 输出不变
-        ...(isEnvEnabled(env.NAPUTO_IPC) ? { consoleLog: false } : {}),
+        ...(isEnvEnabled(env.NAPUKETTO_IPC) ? { consoleLog: false } : {}),
     };
 }
 
@@ -374,7 +374,7 @@ export async function bootstrapWithCore(
     // 否则登录中（waiting_scan）前端刷新/control 指令堆积在 pipe 缓冲区，
     // 子进程不读 stdin → 指令不可达；同时心跳 ping（15s）提前启动，
     // 防扫码耗时超过 45s 被 driver 误判失联强杀（2026-08-13 结构性修复）。
-    const ipc = hostIpc ?? (isEnvEnabled(env.NAPUTO_IPC) ? { actions: new Map() } : undefined);
+    const ipc = hostIpc ?? (isEnvEnabled(env.NAPUKETTO_IPC) ? { actions: new Map() } : undefined);
     // control login 抢占（2026-09-08）：初始登录竞速——doLogin 与 control login
     // 先 settle 者胜。快速登录风控挂起时「强制扫码」control login 成功的结果
     // 接管引导链（否则 doLogin 永远不 settle，出码登录成功也到不了 ready）。
@@ -527,13 +527,13 @@ export async function bootstrapWithCore(
         control.abort();
         return false;
     }
-    // NAPUTO_QUICK_UIN 强制指定快速登录账号（cli `-q <uin>` 透传，2026-08-07；
+    // NAPUKETTO_QUICK_UIN 强制指定快速登录账号（cli `-q <uin>` 透传，2026-08-07；
     // 也用于实验/自建宿主验证，防止自动选中风控账号 3054108135 导致挂起）。
-    // NAPUTO_QR_ONLY 强制扫码（2026-09-08）：跳过快速登录直接 QR——
+    // NAPUKETTO_QR_ONLY 强制扫码（2026-09-08）：跳过快速登录直接 QR——
     // koishi 面板「扫码登录」的重启路径（qrOnly 一次性，登录后 env 不再生效）。
     // 打印可用快速登录账号（启动横幅）
-    const forcedUin = env.NAPUTO_QUICK_UIN;
-    // 一次性扫码标记：读取即消费（删除新旧拼写），软重登/重试不被残留标记强制扫码。
+    const forcedUin = env.NAPUKETTO_QUICK_UIN;
+    // 一次性扫码标记：读取即消费（从 process.env 删除），软重登/重试不被残留标记强制扫码。
     const qrOnly = consumeQrOnlyMarker();
     const ref: LoginTargetRef = { targetUin: undefined };
     await pickLoginAccount(kernel, ctx, ref, forcedUin);
@@ -571,7 +571,7 @@ export async function bootstrapWithCore(
     log(
         `bootstrap: 登录成功 uin=${loginResult.uin} uid=${loginResult.uid} nick=${loginResult.nick}`,
     );
-    if (isEnvEnabled(env.NAPUTO_IPC)) {
+    if (isEnvEnabled(env.NAPUKETTO_IPC)) {
         sendLogin("logged_in", {
             uin: loginResult.uin,
             uid: loginResult.uid,

@@ -10,7 +10,7 @@
 launchSelfHost（调用进程）
   ├─ qq/      L0–L2 定位 → 版本清单 → 下载(https + sha256) → 解包(7z / 7zz) → 缓存
   ├─ boot/    平台分支：win32 PE stub ｜ linux .so + LD_PRELOAD
-  └─ spawn    标准 node 跑 self-host.cjs，env 注入 NAPUTO_*
+  └─ spawn    标准 node 跑 self-host.cjs，env 注入 NAPUKETTO_*
 self-host（宿主子进程）
   ├─ lifecycle/ 实例锁 → 停止哨兵 / 信号
   ├─ 动态 import kernel → dlopenWrapper → activateO3MiscService
@@ -20,8 +20,8 @@ self-host（宿主子进程）
 ### QQ 文件来源与管线
 
 ```text
-L0 NAPUTO_QQ_FILES：显式文件根（含 versions/ 结构）
-L1 本机安装：NAPUTO_QQ_PATH → Linux NAPUTO_QQ_DIR > /opt/QQ → 注册表 / 常见路径
+L0 NAPUKETTO_QQ_FILES：显式文件根（含 versions/ 结构）
+L1 本机安装：NAPUKETTO_QQ_PATH → Linux NAPUKETTO_QQ_DIR > /opt/QQ → 注册表 / 常见路径
 L2 <数据根>/qq-files/<版本>/：下载解包产物，扫描最新可用版本
 L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 ```
@@ -29,7 +29,7 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 - 版本选择：`latestRelease` 先按 `platform`/`arch` 过滤再取末条；`version` 既是缓存目录名
   也是 `app_version`，Linux 另记 `coreVersion`（清单 schema 2，`qq-releases.json` 为纯文本）。
 - 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时。
-  收到 HTTP 200 才打开目标文件，流关闭后检查文件大小与摘要。`NAPUTO_QQ_URL` 覆盖清单
+  收到 HTTP 200 才打开目标文件，流关闭后检查文件大小与摘要。`NAPUKETTO_QQ_URL` 覆盖清单
   URL，QQ 安装包临时文件带 pid + 时间戳保证并发隔离。
 - URL 归一化：`normalizeDownloadUrl` 在唯一出站口把路径段 `/QQNTV2/` 降为 `/qqntv2/`
   （CDN 边缘对该段大小写敏感，大写必 403）；清单仍存官方原样 URL。
@@ -40,7 +40,7 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
   整体保留；跳过 `avsdk/`、`resource/`、`application.asar`。
 - 缓存布局固定为 Windows 同构的 `<版本>/versions/<版本>/resources/app/`，kernel 的
   wrapper 路径解析（ADR-018）无需平台分支。
-- 7-Zip 选择：调用方显式指定的解包工具优先。Windows 探测按 `NAPUTO_7Z_PATH`、内置资产、
+- 7-Zip 选择：调用方显式指定的解包工具优先。Windows 探测按 `NAPUKETTO_7Z_PATH`、内置资产、
   系统 PATH 顺序。Linux x64 自动下载 QQ 时优先用内置 `7zz`，缺失时复用通过 SHA-256
   校验的数据根缓存 `runtime/7zip/7zz`，否则重新下载。Linux 非 x64 使用系统 PATH
   （`7zz` → `7z`），缺失时抛安装指引。
@@ -48,7 +48,7 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
   SHA-256。许可证按仓库规则保存为 LF，清单记录入库后的字节摘要。测试校验所有资产及
   许可证。loader 和 QQ 版本清单更新脚本使用内置工具前校验可执行文件及 Windows 的
   `7z.dll`，缺失的 DLL 或不匹配的摘要会阻止执行该工具。
-- Linux x64 兜底下载使用清单中的官方归档 SHA-256。`NAPUTO_7Z_URL` 仅覆盖 HTTPS
+- Linux x64 兜底下载使用清单中的官方归档 SHA-256。`NAPUKETTO_7Z_URL` 仅覆盖 HTTPS
   下载位置，镜像必须提供逐字节相同的归档。无效地址、非 HTTPS 地址或重定向、下载失败
   及摘要不匹配均终止兜底。归档通过校验后才在独立临时目录提取 `7zz`，校验可执行文件
   后原子更新缓存，下载或解包失败会清理临时目录。并发写入冲突时仅复用摘要匹配的成品，
@@ -58,10 +58,10 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 
 Windows：
 
-- stub 校验：`native/prebuilt/win32-x64/QQNT.dll`（`--stub-dir` 或 `NAPUTO_STUB_DIR`
+- stub 校验：`native/prebuilt/win32-x64/QQNT.dll`（`--stub-dir` 或 `NAPUKETTO_STUB_DIR`
   覆盖），缺失在 spawn 前抛错。
 - 环境：PATH 前置 stub 目录 + `wrapper.node` 目录（按 Windows 大小写不敏感的键名
-  规范化，只保留一个 `PATH`），并注入 `NAPUTO_STUB_DIR`。其余父进程变量按环境契约白名单
+  规范化，只保留一个 `PATH`），并注入 `NAPUKETTO_STUB_DIR`。其余父进程变量按环境契约白名单
   透传。
 - 入站图片自动下载补丁（issue #105）：stub 私有组件在 wrapper 加载后
   运行期放行 QQ 原生收图管线（零磁盘篡改；版本特征失配自动降级，绝不盲写内存）。
@@ -69,22 +69,22 @@ Windows：
   `<账号数据目录>/media-patch-status.json`，self-host bootstrap 完成后读一次记日志
   （pending 时 45s 复读一次）。机制细节只在私有 `native/` 子模块。
 - 宿主 node：`process.execPath` 是 node 直接用；非 Node 宿主（Bun/koishi CE）按
-  `NAPUTO_WIN_NODE_PATH` > 系统 `where node` > `ensureWinNode` 下载缓存解析真 `node.exe`
+  `NAPUKETTO_WIN_NODE_PATH` > 系统 `where node` > `ensureWinNode` 下载缓存解析真 `node.exe`
   ——bun.exe 进程内没有该模块，`LoadLibrary` 报 1114。
 
 Linux：
 
-- stub：`native/prebuilt/linux-x64/libnapuketto_stub.so`（`NAPUTO_LINUX_STUB` 覆盖），
+- stub：`native/prebuilt/linux-x64/libnapuketto_stub.so`（`NAPUKETTO_LINUX_STUB` 覆盖），
   预加载 `LD_PRELOAD=<stub>:<libgnutls.so.30>`；`LD_PRELOAD` 由本模块独占写入，父进程的
   `LD_PRELOAD` / `LD_LIBRARY_PATH` / `LD_AUDIT` 不会进入子进程。gnutls 是 `libbugly` 的
   无 `DT_NEEDED` 隐藏依赖。
 - 宿主 node：`process.execPath` 是 node 直接用，否则 `which node`。
-- HOME/XDG 收敛：`<数据根>/home`（`NAPUTO_LINUX_HOME` 覆盖；无数据根退到
+- HOME/XDG 收敛：`<数据根>/home`（`NAPUKETTO_LINUX_HOME` 覆盖；无数据根退到
   `<账号目录>/home`），`XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` /
   `XDG_STATE_HOME` 指到其下；`XDG_RUNTIME_DIR` 不接管（会话级目录）。
 - spawn 前预检 stub / gnutls / node，缺失抛可读错误；child `error` 监听兜住异步
   ENOENT，不让宿主进程崩溃。
-- `NAPUTO_LINUX_NATIVE` 已退役：Linux 恒走原生分支，设 `0` 只播报一句提示。
+- Linux 恒走原生分支（ADR-027）：不再有任何宿主开关环境变量。
 
 ### launchSelfHost 环境变量契约
 
@@ -98,38 +98,40 @@ Linux：
    `LD_LIBRARY_PATH`、`LD_AUDIT` 等加载器注入面。
 2. **显式透传**：代理（`HTTP(S)_PROXY` / `NO_PROXY` / `ALL_PROXY` 及小写拼写、
    `NODE_USE_ENV_PROXY`）、证书（`NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE` /
-   `SSL_CERT_DIR`）、配置（`NAPKETTO_CONFIG_JSON` / `NAPKETTO_CONFIG` / `NAPKETTO_DATA` /
+   `SSL_CERT_DIR`）、配置（`NAPUKETTO_CONFIG_JSON` / `NAPUKETTO_CONFIG` / `NAPUKETTO_DATA` /
    `NAPUKETTO_SANDBOX_ROOT`）、子进程日志覆盖（`NAPUKETTO_LOG_LEVEL` /
-   `NAPKETTO_LOG_LEVEL` / `NAPUKETTO_LOG_FORMAT` / `NAPUKETTO_NO_BANNER` /
-   `NAPUKETTO_LOG_COLORIZE`）与用户控制标记。
+   `NAPUKETTO_LOG_FORMAT` / `NAPUKETTO_NO_BANNER` / `NAPUKETTO_LOG_COLORIZE`）与
+   用户控制标记（`NAPUKETTO_QUICK_UIN` / `NAPUKETTO_QR_ONLY` / `NAPUKETTO_SMOKE` /
+   `NAPUKETTO_SMOKE_PEER` / `NAPUKETTO_PROBE` / `NAPUKETTO_LISTENER_RECORD` /
+   `NAPUKETTO_DIAG`）。
 3. **调用方 `extraEnv`**：显式逃生口，按原样合并；调用方不应把凭据放进来。
 4. **强类型 `LaunchOptions` 字段**：`quickUin` / `qrOnly` / `ipc` / `selfHost` /
    `diagnostics` / `nativeMediaPatch` / `log` 最终生效，`false` 会删除对应继承标记。
 
 | 变量 | 必填 | 含义 |
 |---|---|---|
-| `NAPUTO_WRAPPER_PATH` | 是 | `wrapper.node` 绝对路径（dlopen 目标） |
-| `NAPUTO_KERNEL_ENTRY` | 是 | kernel 入口 `.mjs`，运行期动态 import |
-| `NAPUTO_CFG_DIR` | 是 | 账号数据目录（实例锁 / boot 日志 / 配置兜底） |
-| `NAPUTO_QQ_PATH` | 是 | QQ 入口路径（cached 来源为语义占位） |
-| `NAPUTO_QQ_VERSION` | 是 | 版本目录名，即 `app_version` |
-| `NAPUTO_SELF_HOST` | 否 | `1` = 自建宿主分支 |
-| `NAPUTO_STUB_DIR` | 否 | stub 目录（诊断与 PATH 装配） |
-| `NAPUTO_ADAPTER_ENTRY` | 否 | adapter 入口 `.mjs`（协议装配） |
-| `NAPUTO_NETWORK_ENTRY` | 否 | network 入口 `.mjs`（协议装配） |
-| `NAPKETTO_CONFIG` | 否 | 全局配置路径（`napuketto.toml`） |
-| `NAPUTO_QUICK_UIN` | 否 | 强制快速登录账号（cli `-q`） |
-| `NAPUTO_QR_ONLY` | 否 | `1` = 跳过快速登录强制扫码（一次性：子进程读取后删除） |
-| `NAPUTO_IPC` | 否 | `1` = IPC 子进程模式 |
-| `NAPUTO_DIAG` | 否 | `1` = 显式启用 IPC 诊断动作（默认关闭，仅本地调试） |
-| `NAPUTO_DATA_ROOT` | 否 | 数据根（停止哨兵；调用方 `extraEnv` 注入） |
+| `NAPUKETTO_WRAPPER_PATH` | 是 | `wrapper.node` 绝对路径（dlopen 目标） |
+| `NAPUKETTO_KERNEL_ENTRY` | 是 | kernel 入口 `.mjs`，运行期动态 import |
+| `NAPUKETTO_CFG_DIR` | 是 | 账号数据目录（实例锁 / boot 日志 / 配置兜底） |
+| `NAPUKETTO_QQ_PATH` | 是 | QQ 入口路径（cached 来源为语义占位） |
+| `NAPUKETTO_QQ_VERSION` | 是 | 版本目录名，即 `app_version` |
+| `NAPUKETTO_SELF_HOST` | 否 | `1` = 自建宿主分支 |
+| `NAPUKETTO_STUB_DIR` | 否 | stub 目录（诊断与 PATH 装配） |
+| `NAPUKETTO_ADAPTER_ENTRY` | 否 | adapter 入口 `.mjs`（协议装配） |
+| `NAPUKETTO_NETWORK_ENTRY` | 否 | network 入口 `.mjs`（协议装配） |
+| `NAPUKETTO_CONFIG` | 否 | 全局配置路径（`napuketto.toml`） |
+| `NAPUKETTO_QUICK_UIN` | 否 | 强制快速登录账号（cli `-q`） |
+| `NAPUKETTO_QR_ONLY` | 否 | `1` = 跳过快速登录强制扫码（一次性：子进程读取后删除） |
+| `NAPUKETTO_IPC` | 否 | `1` = IPC 子进程模式 |
+| `NAPUKETTO_DIAG` | 否 | `1` = 显式启用 IPC 诊断动作（默认关闭，仅本地调试） |
+| `NAPUKETTO_DATA_ROOT` | 否 | 数据根（停止哨兵；调用方 `extraEnv` 注入） |
 | `NAPUTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，issue #105） |
 | `NAPUTO_MEDIA_PATCH_STATUS` | 否 | 补丁状态文件路径（恒注入 `<账号数据目录>/media-patch-status.json`；stub 写 JSON，self-host 读后记日志） |
 
-- 新前缀优先：`NAPUKETTO_QUICK_UIN` / `NAPUKETTO_QR_ONLY` / `NAPUKETTO_SMOKE` /
-  `NAPUKETTO_PROBE` / `NAPUKETTO_LISTENER_RECORD` / `NAPUKETTO_DIAG` 存在时，旧 `NAPUTO_*`
-  拼写不会再进入子进程；仅有旧拼写时才按新前缀规范化后透传。
-- `NAPUTO_QR_ONLY` 只对本次登录生效：`bootstrap-core` 读取后从 `process.env` 删除新旧拼写，
+- 前缀唯一：只读 / 只透传规范前缀 `NAPUKETTO_*`，不做任何旧拼写别名翻译；2026-11 前缀
+  统一前的历史拼写既不会被读取，也不会进入子进程。唯一例外是闭源 stub 硬编码的两个
+  原生契约键（见下表，禁止改名）。
+- `NAPUKETTO_QR_ONLY` 只对本次登录生效：`bootstrap-core` 读取后从 `process.env` 删除该键，
   软重登与后续重试不再被残留标记强制扫码。
 - 子进程日志配置是可选公开契约：调用方可用 `LaunchOptions.log`（level / format /
   noBanner / colorize）表达，或经上述 `NAPUKETTO_LOG_*` 环境变量透传；两条路径都不会把
@@ -175,7 +177,7 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
 
 ### IPC 模式与 OB11 容器
 
-- `NAPUTO_IPC=1`：stdout 专用于 JSON 行协议 `{v, type, id?, payload}`（v=1），stdin 收
+- `NAPUKETTO_IPC=1`：stdout 专用于 JSON 行协议 `{v, type, id?, payload}`（v=1），stdin 收
   action / control / ping；kernel console 日志关闭，避免撕裂协议行。
 - 消息类型：status（booting/dlopening/logging/sessioning/ready/failed）、login、qr、
   event、result、log、ping/pong、action、control（stop/restart/login/status）。
@@ -214,7 +216,7 @@ kernel 日志设施检查路径，自定义协议缓存通过同一边界检查�
   原生日志及执行状态恢复；该平台边界需要真实 QQ 环境复验。
 - 编码统一 `encodeIpcMessage`：先 `toJsonSafe`（Map→对象、Set→数组、环引用丢分支）再
   stringify，否则 Map/Set 跨进程即丢。
-- OB11 容器可选：IPC 模式且 `NAPUTO_ADAPTER_ENTRY` + `NAPUTO_NETWORK_ENTRY` 已注入时，
+- OB11 容器可选：IPC 模式且 `NAPUKETTO_ADAPTER_ENTRY` + `NAPUKETTO_NETWORK_ENTRY` 已注入时，
   `attachOb11IpcBridge` 动态 import adapter 子路径；按实际登录账号从主配置提取
   `onebot11.media`，交给动态载入的 OB11 schema，默认 `public-only`。仅将媒体配置
   注入内存 seed，其他字段取协议缺省值。`subscribeOnly()` 只订阅不启传输，动作名平铺进共享表（OB11
@@ -280,7 +282,7 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 
 ### 内联配置与退出码
 
-- 来源优先级：`NAPKETTO_CONFIG_JSON` > `NAPKETTO_CONFIG` > `<账号目录>/napuketto.toml`。
+- 来源优先级：`NAPUKETTO_CONFIG_JSON` > `NAPUKETTO_CONFIG` > `<账号目录>/napuketto.toml`。
 - 内联生效时零 toml 读写，`cfgFile` 返回哨兵 `"<inline>"`；坏内联回退文件形态并记日志
   （cli 主路径已在拉起前校验）。
 - 协议段 seed 的 zod 失败包装为 `ConfigError`（按错误名复刻 kernel 契约，不静态依赖
@@ -291,7 +293,7 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 
 - 编译期只依赖 zod；kernel / adapter / network 一律运行期 `import(file://…)`，接口面在
   `../src/host/types.ts` 与各模块内声明最小面，不新增 workspace 依赖（依赖方向红线）。
-- `NAPUTO_KERNEL_ENTRY` 指向 kernel 构建产物；loader 只用其语义化能力
+- `NAPUKETTO_KERNEL_ENTRY` 指向 kernel 构建产物；loader 只用其语义化能力
   （`NapukettoCore` / `startNapuketto`、`resolveAppidQua`、`quickLogin`、
   `initAndStartSession`、`resolveQqUserDataRoot` / `resolveQqGlobalPath`、`PathWrapper`
   等），能力探测失败即判引导失败，不在本层实现业务。

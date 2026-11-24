@@ -25,7 +25,7 @@ NapukettoQQ：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人
    - **零磁盘篡改**：只允许运行期内存操作，严禁改 QQ 安装目录二进制。
 4. **范围禁区**：不做 framework 模式、WebUI、插件系统、Proxy 事件老方案。
 5. **配置单一来源**：根 `napuketto.toml`（账号必填，协议嵌在 `[[accounts]]` 内，未写=不启用，OB11 缺段按空传输装配）。
-   优先级：`NAPKETTO_CONFIG_JSON`（最高，零落盘）> `--data-dir` > `NAPKETTO_DATA` > `<根>/.napuketto`。
+   优先级：`NAPUKETTO_CONFIG_JSON`（最高，零落盘）> `--data-dir` > `NAPUKETTO_DATA` > `<根>/.napuketto`。
    配置校验失败退出码固定为 `78`。
 
 ## 代码风格与红线
