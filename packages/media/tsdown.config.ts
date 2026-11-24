@@ -15,7 +15,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-    entry: ["src/index.ts"],
+    entry: ["src/index.ts", "src/silk-worker.mts"],
     format: ["esm"],
     platform: "node",
     clean: true,

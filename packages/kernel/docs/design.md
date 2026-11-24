@@ -170,7 +170,9 @@ Linux 3.2.x 原生对象把**未命中的变体字段显式置 `null`**（Window
 canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `durationSec`）经
 `MsgApi.prepareVideoElement` 变成可播放的 `videoElement`：
 
-1. `statFile` + `hashFile` 得视频 md5；`getRichMediaFilePathForGuild`（elementType 5、
+1. `statFile` + `hashFile` 得视频 md5；摘要在打开的普通文件句柄上以固定大小分块计算，
+   读取长度以句柄打开后的大小为准，长度变化映射为 `INVALID_PARAM`。图片、语音、视频、
+   缩略图与文件共用该逻辑。`getRichMediaFilePathForGuild`（elementType 5、
    downloadType 1、needCreate）取 Ori 目标路径，`util.copyFile` 放置原文件。
 2. 有缩略图时另算缩略图内容 md5（填 `thumbMd5`），但目标路径用**视频 md5** +
    缩略图扩展名（downloadType 2，落 `Thumb/<videoMd5>_0.png`）——用缩略图 md5 会让 native

@@ -269,7 +269,8 @@ describe("富媒体发送预处理（PIC / PTT / FILE）", () => {
 
     it("image：md5/大小/放置路径 + copyFile 调用（downloadType=1 Ori 路径）", async () => {
         const imgPath = join(dir, "pic.png");
-        writeFileSync(imgPath, Buffer.from("image-bytes"));
+        const image = Buffer.alloc(2 * 64 * 1024 + 7, "image-bytes");
+        writeFileSync(imgPath, image);
         const { copyFile, util } = makeUtil();
         const getRichMediaFilePathForGuild = vi.fn(
             (req: {
@@ -282,7 +283,7 @@ describe("富媒体发送预处理（PIC / PTT / FILE）", () => {
         const { api, service } = makeApi({ getRichMediaFilePathForGuild }, { util });
         await api.sendMessage(target, [{ type: "image", path: imgPath }]);
 
-        const md5 = createHash("md5").update("image-bytes").digest("hex");
+        const md5 = createHash("md5").update(image).digest("hex");
         expect(getRichMediaFilePathForGuild).toHaveBeenCalledWith(
             expect.objectContaining({
                 md5HexStr: md5,
@@ -297,7 +298,7 @@ describe("富媒体发送预处理（PIC / PTT / FILE）", () => {
             | undefined;
         const pic = sent?.[0]?.picElement ?? {};
         expect(pic["md5HexStr"]).toBe(md5);
-        expect(pic["fileSize"]).toBe(String(Buffer.byteLength("image-bytes")));
+        expect(pic["fileSize"]).toBe(String(image.byteLength));
         expect(pic["sourcePath"]).toBe(`Pic/2026-11/Ori/${md5}.png`);
         expect(pic["original"]).toBe(true);
     });
@@ -403,7 +404,7 @@ describe("富媒体发送预处理（PIC / PTT / FILE）", () => {
     });
 
     it("stat 通过但读内容失败（路径是目录）→ hashFile 抛 INVALID_PARAM", async () => {
-        // 目录 stat 成功、readFile 报 EISDIR——覆盖 hashFile 的 catch 分支
+        // 目录 stat 成功，但摘要只接受普通文件。
         const { api } = makeApi({}, {});
         await expect(api.sendMessage(target, [{ type: "image", path: dir }])).rejects.toMatchObject(
             {

@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { getDuration, isSilk } from "silk-wasm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodePcmToSilk, SILK_SAMPLE_RATE } from "../audio.js";
+import { mockFfmpegChild } from "./test-support.js";
 
 const { execaMock } = vi.hoisted(() => ({ execaMock: vi.fn() }));
 vi.mock("execa", () => ({ execa: execaMock }));
@@ -92,14 +93,7 @@ describe("encodePcmToSilk", () => {
     it("压缩编码（伪 mp3）→ ffmpeg 归一化后编码为合法 silk", async () => {
         const mp3 = join(dir, "voice.mp3");
         writeFileSync(mp3, Buffer.alloc(64 * 1024, 0x5a));
-        execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
-            const out = args.at(-1);
-            if (out === undefined) {
-                throw new Error("ffmpeg mock：缺输出路径参数");
-            }
-            writeFileSync(out, makePcm(2, SILK_SAMPLE_RATE));
-            return { exitCode: 0 };
-        });
+        execaMock.mockImplementation(() => mockFfmpegChild([makePcm(2, SILK_SAMPLE_RATE)]));
 
         const silk = await encodePcmToSilk(mp3);
         const buf = readFileSync(silk);
@@ -112,7 +106,7 @@ describe("encodePcmToSilk", () => {
     it("ffmpeg 归一化失败 → 抛 MediaError（不再 divide by zero / 静默回落）", async () => {
         const mp3 = join(dir, "voice.mp3");
         writeFileSync(mp3, Buffer.alloc(64 * 1024, 0x5a));
-        execaMock.mockImplementation(async () => ({ exitCode: 1 }));
+        execaMock.mockImplementation(() => mockFfmpegChild([], { exitCode: 1 }));
 
         await expect(encodePcmToSilk(mp3)).rejects.toThrow("ffmpeg 音频归一化失败");
     });

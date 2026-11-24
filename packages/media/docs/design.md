@@ -42,7 +42,8 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/downloader.ts` | `downloadUrl`、`downloadPublicUrl`、`inferExtension`、`DownloadUrlOptions`、`MediaOutboundPolicy` | 共享逐跳校验、流式落盘、超时（缺省 15s）、大小上限（缺省 30 MiB）和失败清理。创建目标目录，成功文件由调用方管理 |
 | `src/public-download.ts` | 包内传输 | 绑定公网 DNS 校验与实际连接，逐跳直连并保留 TLS 主机认证 |
 | `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
-| `src/index.ts` | 上述全部 | 包门面（唯一构建入口）：只做 re-export，不含逻辑 |
+| `src/index.ts` | 上述全部 | 公开包门面，只做 re-export |
+| `src/silk-worker.mts` | — | 随包构建的私有 Worker 入口，执行同步 WASM 编解码 |
 | `src/__tests__/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
 
 ### 下载地址的归一化与兼容性
@@ -79,7 +80,8 @@ Forwarded 和 X-Forwarded-*，调用者设置会被忽略。头名匹配不区�
 
 - 所有 ffmpeg/ffprobe 使用共同进程选项：探测 15s、抽帧 30s、音频归一化 120s、
   视频转码 300s；超时先 SIGTERM，1s 后强杀，等待进程退出后清理。禁用交互 stdin，
-  stdout/stderr 各限 1MiB；spawn、超时、非零退出及缺失/空输出均为 `MediaError`。
+  FFprobe stdout 与进程 stderr 各限 1 MiB，FFmpeg 的媒体 stdout 按实际写入量单独限额；
+  spawn、超时、非零退出及缺失/空输出均为 `MediaError`。
 - 输入只接受当前平台可解析的本地普通文件（相对路径、绝对路径及指向普通文件的符号链接）；
   拒绝 URL/协议表达式、Windows UNC/设备路径、目录与管道。传给工具的路径统一绝对化，
   避免连字符文件名被解析成选项。Windows 盘符路径按平台处理。
@@ -99,14 +101,31 @@ Forwarded 和 X-Forwarded-*，调用者设置会被忽略。头名匹配不区�
   调用方通过 `onVideoTranscoded` 接管清理；未提供时必须自行清理返回路径。抽帧先写
   独占目录，成功后 rename 到调用方给定路径，失败保留旧目标；缩略图仍由
   `prepareVideoElements.cleanup` 发送后清理。
-- 音频输入在读入前限 32MiB，WASM 编解码前限制时长 600s 和有效采样率；归一化固定
-  24kHz/单声道/16bit，以略超 600s 的哨兵时长及字节限制截住解码膨胀，落盘后先检查
-  普通文件及大小再读入，超过 28,800,000 字节报错而非静默截断。PCM/WAV 直编码与
-  SILK 解码同样有时长/解码字节检查；这不是 WASM/FFmpeg 的 CPU 或内存硬沙箱。
+- 图片尺寸最多读取 512 KiB，魔数检测最多读取 1 MiB。类型或尺寸信息超出探测窗口而无法识别时返回
+  `MediaError`。图片尺寸读取只解析头部元数据，不执行整图解码。
+- 公开常量 `MAX_AUDIO_INPUT_BYTES`（32 MiB）、`MAX_AUDIO_SECONDS`（600s）与
+  `SILK_SAMPLE_RATE`（24 kHz）供嵌入方共用。SILK 元数据逐块计帧并校验包边界。
+  解码支持 8、12、16、24、48 kHz，输出最多 600s 的单声道 16-bit PCM，WAV 额外写 44 字节头。
+  按实际解码后字节及库报告的时长判断，包含编解码器填充。压缩音频按头部识别，
+  由 FFmpeg 归一化成 24 kHz 单声道 PCM，实际输出在写入前按 28,800,000 字节逐块限制。
+  未在头部窗口内识别为单声道 16-bit PCM 的 WAV 也经 FFmpeg 归一化。
+- SILK 编解码在独立 Worker 执行，最长 30s。超时和取消等待 Worker 退出；外部进程同样等待退出
+  后再清理。公开音视频入口接受可选 `AbortSignal`；取消和预算失败以 `MediaError` 报告。
+  音频文件先写同目录独占临时文件再原子换名，提交前失败保留原目标，成功产物由调用方删除。
+  下游接收侧用每次调用独占的 `outDir` 避免重名，播放器或上传方完成消费后再删除文件和目录。
+- 视频用有限大小的 FFprobe 输出核验主视频流的尺寸、帧率与时长。输入至多 128 MiB，
+  视频至多 600s、60 fps、单边 4096、8,294,400 像素；整段转码另限 18,662,400,000 像素帧。
+  转码宽高须为偶整数 [2, 4096]，单边缺省保持比例并在运行前检查推导尺寸。帧率须为
+  [1, 60] 的有限数。FFmpeg 限制单次分配、流数、解码像素及处理线程，实际转码帧数在
+  输出端复核。H.264/AAC 分片 MP4 经管道逐块写入，上限 128 MiB，PNG 抽帧上限 16 MiB。
+  显式帧率在视频过滤器中换算，H.264 禁用 B 帧以减少分片输出的时戳偏移。
+  达到停止哨兵、输出为空、输出校验失败或超限时删除部分文件。分片 MP4 需要支持该封装的播放端。
+  FFmpeg 需要稳定、可寻址的输入文件，协议层使用已取得的缓存副本。预检文件大小以启动前的状态为准。
+  这些是每次操作的预算，进程总内存和并发容量由部署环境管理。
 
 ## 构建与发布形态
 
-- tsdown 从 `src/index.ts` 构建 `dist/index.mjs`。包级 `tsconfig.json` 开启
+- tsdown 从 `src/index.ts` 构建 `dist/index.mjs`，并构建独立的 SILK Worker 入口。包级 `tsconfig.json` 开启
   `isolatedDeclarations`，tsdown 使用 Oxc 生成 `dist/index.d.mts`。
 - `exports` 的 `types` 和 `default` 分别指向声明和 ESM 入口。CJS 消费方通过
   Node ≥ 22.12 的 `require(esm)` 加载同一个 ESM 入口。

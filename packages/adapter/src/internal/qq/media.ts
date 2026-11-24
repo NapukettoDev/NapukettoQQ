@@ -18,14 +18,13 @@ import {
     encodePcmToSilk,
     extractVideoFrame,
     getVideoInfo,
+    MAX_AUDIO_INPUT_BYTES,
     type MediaOutboundPolicy,
 } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
 import { cacheMediaFile, MEDIA_TEMP_ROOT } from "../infra/media-cache.js";
 
 const MEDIA_EXTENSION_RE = /^\.[a-zA-Z0-9]+$/;
-// Match media's audio input bound before creating the owned conversion copy.
-const MAX_AUDIO_COPY_BYTES = 32 * 1024 * 1024;
 
 /** 协议动作默认走公网下载，兼容模式由受信任的装配方显式启用。 */
 export function mediaDownloader(policy: MediaOutboundPolicy | undefined): typeof downloadUrl {
@@ -75,7 +74,7 @@ async function readFileHead(path: string): Promise<string> {
 export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Promise<string> {
     try {
         const info = await stat(path);
-        if (!info.isFile() || info.size > MAX_AUDIO_COPY_BYTES) {
+        if (!info.isFile() || info.size > MAX_AUDIO_INPUT_BYTES) {
             throw kernelError("语音复制输入必须是 32MiB 以内的普通文件", "INVALID_PARAM");
         }
         const header = await readFileHead(path);

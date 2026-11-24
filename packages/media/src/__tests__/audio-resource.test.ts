@@ -9,22 +9,47 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeSilkToPcm, decodeSilkToWav, encodePcmToSilk } from "../audio.js";
-import { LOCAL_MEDIA_INPUT_OPTIONS } from "../process.js";
+import { decodeSilkToPcm, decodeSilkToWav, encodePcmToSilk, getSilkInfo } from "../audio.js";
+import { FFMPEG_WORK_OPTIONS, LOCAL_MEDIA_INPUT_OPTIONS } from "../process.js";
 import { MediaError } from "../types.js";
-import { makeWav } from "./test-support.js";
+import { makeWav, mockFfmpegChild } from "./test-support.js";
 
-const { execaMock, encodeMock, decodeMock } = vi.hoisted(() => ({
+const { execaMock, encodeMock, decodeMock, terminated } = vi.hoisted(() => ({
     execaMock: vi.fn(),
     encodeMock: vi.fn(),
     decodeMock: vi.fn(),
+    terminated: vi.fn(),
 }));
 vi.mock("execa", () => ({ execa: execaMock }));
-vi.mock("silk-wasm", async (original) => ({
-    ...(await original<typeof import("silk-wasm")>()),
-    encode: encodeMock,
-    decode: decodeMock,
-}));
+vi.mock("node:worker_threads", async () => {
+    const { EventEmitter } = await import("node:events");
+    class Worker extends EventEmitter {
+        constructor(
+            _path: URL,
+            { workerData }: { workerData: { mode: string; data: Buffer; sampleRate: number } },
+        ) {
+            super();
+            const action = workerData.mode === "encode" ? encodeMock : decodeMock;
+            Promise.resolve(action(workerData.data, workerData.sampleRate))
+                .then((result: unknown) => {
+                    this.emit("message", result);
+                    this.emit("exit", 0);
+                })
+                .catch((error: unknown) => {
+                    this.emit("error", error);
+                    this.emit("exit", 1);
+                });
+        }
+        async terminate(): Promise<number> {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            terminated();
+            this.emit("exit", 1);
+            return 1;
+        }
+    }
+    // biome-ignore lint/style/useNamingConvention: Matches the Node.js export.
+    return { Worker };
+});
 
 describe("H-02: 音频资源边界", () => {
     let dir: string;
@@ -36,18 +61,13 @@ describe("H-02: 音频资源边界", () => {
         execaMock.mockReset();
         encodeMock.mockReset();
         decodeMock.mockReset();
+        terminated.mockClear();
         encodeMock.mockResolvedValue({ data: new Uint8Array([1, 2]), duration: 1000 });
     });
     afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
     function normalizeBytes(size: number): void {
-        execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
-            const output = args.at(-1);
-            if (output === undefined) throw new Error("missing output");
-            writeFileSync(output, "");
-            truncateSync(output, size);
-            return { exitCode: 0 };
-        });
+        execaMock.mockImplementation(() => mockFfmpegChild(size === 0 ? [] : [Buffer.alloc(size)]));
     }
 
     it("H-02: 归一化命令限制协议、格式、时间及落盘字节", async () => {
@@ -58,22 +78,21 @@ describe("H-02: 音频资源边界", () => {
             "-nostdin",
             "-v",
             "error",
-            "-y",
+            ...FFMPEG_WORK_OPTIONS,
             ...LOCAL_MEDIA_INPUT_OPTIONS,
             "-i",
             input,
-            "-vn",
+            "-map",
+            "0:a:0",
             "-ac",
             "1",
             "-ar",
             "24000",
             "-t",
             "600.02",
-            "-fs",
-            "28800002",
             "-f",
             "s16le",
-            expect.any(String),
+            "pipe:1",
         ]);
         expect(execaMock.mock.calls[0]?.[2]).toMatchObject({
             timeout: 120_000,
@@ -105,14 +124,12 @@ describe("H-02: 音频资源边界", () => {
     });
 
     it("H-02: 超时产生部分 PCM 后也清理，错误保留原因", async () => {
-        execaMock.mockImplementation(async (_cmd: string, args: string[]) => {
-            const output = args.at(-1);
-            if (output !== undefined) writeFileSync(output, "partial");
-            return { exitCode: undefined, failed: true, timedOut: true };
-        });
+        execaMock.mockImplementation(() =>
+            mockFfmpegChild([Buffer.from("partial")], { failed: true, timedOut: true }),
+        );
         await expect(encodePcmToSilk(input)).rejects.toMatchObject({
             name: "MediaError",
-            cause: { timedOut: true },
+            cause: { cause: { timedOut: true } },
         });
         expect(readdirSync(dir)).toEqual(["-压缩 音频.mp3"]);
         expect(encodeMock).not.toHaveBeenCalled();
@@ -162,5 +179,30 @@ describe("H-02: 音频资源边界", () => {
         await expect(encodePcmToSilk(input, 1_000_000)).rejects.toThrow(MediaError);
         expect(decodeMock).not.toHaveBeenCalled();
         expect(encodeMock).not.toHaveBeenCalled();
+    });
+
+    it("600s SILK 信息可以流式读取，增加一帧或截断最后一包时拒绝", async () => {
+        const header = Buffer.from("#!SILK_V3");
+        const frames = Buffer.from(new Uint8Array(30_000 * 3).map((_, i) => (i % 3 === 0 ? 1 : 0)));
+        writeFileSync(input, Buffer.concat([header, frames, Buffer.from([0xff, 0xff])]));
+        await expect(getSilkInfo(input)).resolves.toMatchObject({ durationMs: 600_000 });
+        writeFileSync(input, Buffer.concat([header, frames, Buffer.from([1, 0, 0])]));
+        await expect(getSilkInfo(input)).rejects.toThrow(/600s/);
+        writeFileSync(input, Buffer.concat([header, frames.subarray(0, -1)]));
+        await expect(getSilkInfo(input)).rejects.toThrow(/不完整/);
+    });
+
+    it("取消等待 Worker 退出并保留旧产物", async () => {
+        writeFileSync(input, Buffer.concat([Buffer.from("#!SILK_V3"), Buffer.from([1, 0, 0])]));
+        const old = join(dir, "-压缩 音频.wav");
+        writeFileSync(old, "old");
+        const controller = new AbortController();
+        decodeMock.mockImplementation(() => {
+            setImmediate(() => controller.abort());
+            return new Promise(() => undefined);
+        });
+        await expect(decodeSilkToWav(input, { signal: controller.signal })).rejects.toThrow(/取消/);
+        expect(terminated).toHaveBeenCalledOnce();
+        expect(readdirSync(dir).sort()).toEqual(["-压缩 音频.mp3", "-压缩 音频.wav"]);
     });
 });
