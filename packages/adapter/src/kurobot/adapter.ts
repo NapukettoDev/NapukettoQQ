@@ -204,14 +204,14 @@ function resolvePackageVersion(log?: KurobotLogger): string | null {
     } catch (err) {
         log?.debug(
             { error: errorMessage(err) },
-            "kurobot: package.json 版本探测失败，hello 降级 unknown/napukettoqq",
+            "kurobot: package.json 版本探测失败，hello.client 降级为 napuketto（不带版本）",
         );
         return null;
     }
 }
 
-/** hello.client 缺省身份：napukettoqq/<版本>（取不到版本则 napukettoqq）。 */
+/** hello.client 缺省身份：napuketto/<版本>（取不到版本则 napuketto）。 */
 function resolveDefaultClient(log?: KurobotLogger): string {
     const version = resolvePackageVersion(log);
-    return version === null ? "napukettoqq" : `napukettoqq/${version}`;
+    return version === null ? "napuketto" : `napuketto/${version}`;
 }

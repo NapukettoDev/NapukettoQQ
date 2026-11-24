@@ -27,7 +27,7 @@ export function createSystemActions(api: MilkyApi): MilkyAction[] {
             name: "get_impl_info",
             schema: z.object({}).strict(),
             handle: async (): Promise<GetImplInfoOutput> => ({
-                impl_name: "napukettoqq",
+                impl_name: "napuketto",
                 impl_version: api.implVersion,
                 qq_protocol_version: api.qqVersion,
                 qq_protocol_type: "windows",

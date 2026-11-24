@@ -1,6 +1,6 @@
 # OneBot 11 协议
 
-> NapukettoQQ 的主协议适配器：HTTP / WS / 反向 WS / Webhook 四种接入形态，动作与事件按
+> Napuketto 的主协议适配器：HTTP / WS / 反向 WS / Webhook 四种接入形态，动作与事件按
 > OneBot 11 约定翻译。源码入口 `packages/adapter/src/onebot11/`。
 
 ## 配置方式

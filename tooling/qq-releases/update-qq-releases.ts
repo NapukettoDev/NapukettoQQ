@@ -70,7 +70,7 @@ const REPO_ROOT = resolve(__dirname, "../..");
 const MANIFEST_PATH = join(REPO_ROOT, "packages", "loader", "qq-releases.json");
 const SEVEN_ZIP_DIR = join(REPO_ROOT, "packages", "loader", "assets", "7zip");
 
-const USER_AGENT = "napuketto-qq-releases/1.0";
+const USER_AGENT = "napuketto-releases/1.0";
 
 /** 官方下载配置源（主生产 + 备 CDN，后者可能滞后）。 */
 const PC_CONFIG_URLS = [
@@ -546,7 +546,7 @@ async function buildLinuxEntry(
     coreVersion: string,
     existing: QqReleaseEntry | undefined,
 ): Promise<QqReleaseEntry | null> {
-    const tmp = mkdtempSync(join(tmpdir(), `napuketto-qq-linux-${arch}-`));
+    const tmp = mkdtempSync(join(tmpdir(), `napuketto-linux-${arch}-`));
     try {
         const debPath = join(tmp, "qq.deb");
         info(`Linux ${arch}：下载 deb 并计算 sha256…`);
@@ -873,7 +873,7 @@ async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Pro
     }
 
     // 3. 下载安装包 + 流式 sha256
-    const tmp = mkdtempSync(join(tmpdir(), "napuketto-qq-"));
+    const tmp = mkdtempSync(join(tmpdir(), "napuketto-"));
     try {
         const installerPath = join(tmp, "installer.exe");
         info("下载安装包并计算 sha256…");

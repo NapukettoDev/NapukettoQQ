@@ -32,7 +32,7 @@ afterEach(() => {
 describe("escapePackageName / exchangeUrl", () => {
     it("把 scoped 包的斜杠转成 %2F", () => {
         expect(escapePackageName("@napuketto/kernel")).toBe("@napuketto%2Fkernel");
-        expect(escapePackageName("create-napukettoqq")).toBe("create-napukettoqq");
+        expect(escapePackageName("create-napuketto")).toBe("create-napuketto");
     });
 
     it("拼出 npm CLI 同款换 token 端点", () => {

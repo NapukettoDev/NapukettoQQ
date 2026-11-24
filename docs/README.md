@@ -1,4 +1,4 @@
-# NapukettoQQ 文档
+# Napuketto 文档
 
 > 代码是唯一事实源。本目录只解释现行机制、边界与操作；字段默认值、动作名、类型签名与
 > 包版本以源码和 `package.json` 为准。文档与代码冲突时，以代码为准并顺手修文档。
@@ -40,7 +40,7 @@
 - [kernel design](../packages/kernel/docs/design.md) · [evidence](../packages/kernel/docs/evidence.md)
 - [adapter design](../packages/adapter/docs/design.md) · [evidence](../packages/adapter/docs/evidence.md)
 - [loader design](../packages/loader/docs/design.md) · [evidence](../packages/loader/docs/evidence.md)
-- [create design](../apps/napuketto-create/docs/design.md)
+- [create design](../apps/create/docs/design.md)
 - [cli design](../apps/cli/docs/design.md) · [network design](../packages/network/docs/design.md) ·
   [media design](../packages/media/docs/design.md)
 

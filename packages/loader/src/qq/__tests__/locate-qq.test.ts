@@ -21,7 +21,7 @@ const ELF_HEAD = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
 
 /** 构造最小 QQ 安装结构：<root>/QQ.exe + <root>/versions/<v>/resources/app/wrapper.node。 */
 function makeFakeInstall(): { root: string; version: string } {
-    const root = mkdtempSync(join(tmpdir(), "napuketto-qq-"));
+    const root = mkdtempSync(join(tmpdir(), "napuketto-"));
     tmpDirs.push(root);
     const version = "9.9.33-51802";
     const wrapperDir = join(root, "versions", version, "resources", "app");

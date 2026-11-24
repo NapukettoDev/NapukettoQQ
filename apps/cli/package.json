@@ -3,21 +3,20 @@
     "name": "@napuketto/cli",
     "version": "0.8.0",
     "type": "module",
-    "description": "Command line interface for NapukettoQQ",
+    "description": "Command line interface for Napuketto",
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "cli",
         "terminal"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/apps/cli#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/apps/cli#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "apps/cli"
     },
     "license": "MIT",

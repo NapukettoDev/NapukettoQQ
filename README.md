@@ -1,13 +1,13 @@
 <div align="center">
-<h1 id="napukettoqq">
+<h1 id="napuketto">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
-    <img src=".github/assets/wordmark-light.svg" alt="NapukettoQQ" width="900">
+    <img src=".github/assets/wordmark-light.svg" alt="Napuketto" width="740">
   </picture>
 </h1>
 <p>
-  <a href="https://github.com/NapukettoDev/NapukettoQQ/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/NapukettoDev/NapukettoQQ/ci.yml?style=flat-square&label=CI" alt="CI"></a>&emsp;
-  <a href="https://www.npmjs.com/package/create-napukettoqq"><img src="https://img.shields.io/npm/v/create-napukettoqq?style=flat-square&label=npm&color=cb3837" alt="npm"></a>&emsp;
+  <a href="https://github.com/NapukettoDev/Napuketto/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/NapukettoDev/Napuketto/ci.yml?style=flat-square&label=CI" alt="CI"></a>&emsp;
+  <a href="https://www.npmjs.com/package/create-napuketto"><img src="https://img.shields.io/npm/v/create-napuketto?style=flat-square&label=npm&color=cb3837" alt="npm"></a>&emsp;
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
 </p>
 </div>
@@ -48,7 +48,7 @@
 ### 创建并启动
 
 ```bash
-pnpm create napukettoqq      # 按提示填写项目名
+pnpm create napuketto      # 按提示填写项目名
 cd <项目名>
 pnpm start
 ```
@@ -57,7 +57,7 @@ pnpm start
 
 <details>
 <summary><b>点击查看部署演示</b></summary>
-<img src=".github/assets/Deploy.webp" alt="NapukettoQQ 部署演示" width="600">
+<img src=".github/assets/Deploy.webp" alt="Napuketto 部署演示" width="600">
 
 </details>
 
@@ -67,8 +67,8 @@ pnpm start
 官方容器镜像，无需 Node.js 环境：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
-curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/Napuketto/main/docker/compose.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/Napuketto/main/docker/napuketto.toml.example -o napuketto.toml
 
 # 编辑 napuketto.toml 修改 qq 与 token（容器内监听地址保持 0.0.0.0）
 docker compose up -d
@@ -90,7 +90,7 @@ docker compose logs -f      # 首次启动：下载官方包 → 解包 → 渲�
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/architecture-dark.svg">
-    <img src=".github/assets/architecture-light.svg" alt="NapukettoQQ 结构：CLI / supervisor → boot → 自建宿主 → kernel → adapter → 各协议">
+    <img src=".github/assets/architecture-light.svg" alt="Napuketto 结构：CLI / supervisor → boot → 自建宿主 → kernel → adapter → 各协议">
   </picture>
 </p>
 
@@ -130,7 +130,7 @@ pnpm exec napuketto restart             # 重启 supervisor
 
 ## English
 
-**NapukettoQQ** is a self-hosted bot framework built on the QQ NT native module (`wrapper.node`).
+**Napuketto** is a self-hosted bot framework built on the QQ NT native module (`wrapper.node`).
 It runs a standard Node.js process with a stub `QQNT.dll`, loads the native module directly, and
 exposes **Milky**, **OneBot 11**, **Satori**, and **KuroBot** interfaces — no QQ client, no
 injection, no disk patching; one account = one supervised host process, all config in one

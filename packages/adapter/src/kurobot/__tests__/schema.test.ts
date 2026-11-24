@@ -69,7 +69,7 @@ describe("golden 帧对表：Peer → Server", () => {
     it("hello（含可选 token/client，MVP-3 0.3.1 形状）", () => {
         const golden =
             `{"header":{"type":"hello","id":"${UUID_A}"},"body":{"peerId":"10001","platform":"qq",` +
-            `"version":"0.2.1","protocolVersion":"0.4.0","token":"secret","client":"napukettoqq/0.2.1"}}`;
+            `"version":"0.2.1","protocolVersion":"0.4.0","token":"secret","client":"napuketto/0.2.1"}}`;
         expectGoldenRoundTrip(helloFrame, golden);
         const body = (
             helloFrame.safeParse(JSON.parse(golden) as unknown) as {
@@ -78,7 +78,7 @@ describe("golden 帧对表：Peer → Server", () => {
         ).data.body;
         expect(body.peerId).toBe("10001");
         expect(body.token).toBe("secret");
-        expect(body.client).toBe("napukettoqq/0.2.1");
+        expect(body.client).toBe("napuketto/0.2.1");
     });
 
     it("chat（QQ → MC，事件无 id）", () => {

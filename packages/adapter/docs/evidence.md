@@ -284,10 +284,10 @@ seq 索引：接收链路双向登记 seq ↔ msgId（FIFO 4096）；反查未�
 
 | 编号 | 当前代码与验收 |
 | --- | --- |
-| F-02 | 逐跳校验、映射 IPv6 归一化及实际连接 DNS 绑定分别由 [#153](https://github.com/NapukettoDev/NapukettoQQ/pull/153)（`691fea6`）、[#157](https://github.com/NapukettoDev/NapukettoQQ/pull/157)（`5ff7ae3`、media 0.2.1）、[#171](https://github.com/NapukettoDev/NapukettoQQ/pull/171)（`4340a0f`、media 0.2.3）引入。本次让协议下载实际采用公网入口。替身 DNS 验证逐跳候选，回环监听验证策略拒绝时端点未收到请求。 |
+| F-02 | 逐跳校验、映射 IPv6 归一化及实际连接 DNS 绑定分别由 [#153](https://github.com/NapukettoDev/Napuketto/pull/153)（`691fea6`）、[#157](https://github.com/NapukettoDev/Napuketto/pull/157)（`5ff7ae3`、media 0.2.1）、[#171](https://github.com/NapukettoDev/Napuketto/pull/171)（`4340a0f`、media 0.2.3）引入。本次让协议下载实际采用公网入口。替身 DNS 验证逐跳候选，回环监听验证策略拒绝时端点未收到请求。 |
 | F-10 | [共享下载循环](../../media/src/downloader.ts) 按 URL 源应用逐跳请求头策略。首跳和同源保留允许的头，跨源丢弃调用者全部头，返回初始源时也不恢复。HTTP 和 HTTPS 桩覆盖跨端口、Cookie、Authorization、Origin、Referer、自定义 API 头、Host 和 identity 编码。 |
 | F-11 | [MIME 白名单和扩展名回退](../../media/src/downloader.ts)、[公网响应头适配](../../media/src/public-download.ts) 覆盖带参数、大小写、畸形和未知 MIME，及混合大小写的 Location 和 Content-Length 读取。 |
-| H-02 远程侧 | [公网和兼容下载器](../../media/src/downloader.ts) 共享 15 秒缺省全程超时、30 MiB 缺省最终响应上限和 5 次跳转上限。定向测试覆盖 DNS/传输超时、声明与实际大小、非 2xx、跳转上限、响应关闭和临时产物回收。Satori 转码收到本地下载文件。媒体子进程限制沿用 [#160](https://github.com/NapukettoDev/NapukettoQQ/pull/160)（`37087d5`、media 0.2.2）。 |
+| H-02 远程侧 | [公网和兼容下载器](../../media/src/downloader.ts) 共享 15 秒缺省全程超时、30 MiB 缺省最终响应上限和 5 次跳转上限。定向测试覆盖 DNS/传输超时、声明与实际大小、非 2xx、跳转上限、响应关闭和临时产物回收。Satori 转码收到本地下载文件。媒体子进程限制沿用 [#160](https://github.com/NapukettoDev/Napuketto/pull/160)（`37087d5`、media 0.2.2）。 |
 | I-01 A | [IPC 动作桥](../../loader/src/host/ipc/ipc-ob11.ts) 使用实际登录账号的 `onebot11.media`，由动态加载的 adapter schema 校验。真实 adapter 注入和回环 HTTP 桩验证缺省拒绝、显式 `compat` 成功。测试同时覆盖旧 adapter 降级和非法模式报配置错误。 |
 
 ### 生产动作验收
@@ -329,12 +329,12 @@ seq 索引：接收链路双向登记 seq ↔ msgId（FIFO 4096）；反查未�
 | 审计项 | 源码与验收证据 |
 | --- | --- |
 | F-01 | [本地媒体授权](../src/internal/infra/local-media.ts) 在协议动作侧解析配置、真实路径和已打开的普通文件。[授权测试](../src/internal/infra/__tests__/local-media.test.ts) 覆盖缺省拒绝、授权裸路径和文件 URI、相邻目录、歧义、junction／符号链接与硬链接。以已获动作调用权限的调用方为边界，涉及 QQ 接收／实际上传的影响未在真实账号复现。 |
-| H-02 本地侧 | [OB11 发送](../src/onebot11/action/message/send.ts)、[Milky URI](../src/milky/helper/message/media-uri.ts) 和 [Satori 资源](../src/satori/helper/element/asset.ts) 先取得私有副本再进入处理链。普通文件夹具在打开时替换源路径，验证拒绝交付；另在交付后替换源路径并模拟原生重新打开，读取的仍是核验过的副本。Linux 用打开句柄对应的 `/proc/self/fd` 路径，Windows 核对前后的实际路径和卷／文件标识，并依赖配置目录的受信任 ACL。FFmpeg 协议与容器限制沿用 [#160](https://github.com/NapukettoDev/NapukettoQQ/pull/160)，合并提交 `37087d5`，media 0.2.2。 |
+| H-02 本地侧 | [OB11 发送](../src/onebot11/action/message/send.ts)、[Milky URI](../src/milky/helper/message/media-uri.ts) 和 [Satori 资源](../src/satori/helper/element/asset.ts) 先取得私有副本再进入处理链。普通文件夹具在打开时替换源路径，验证拒绝交付；另在交付后替换源路径并模拟原生重新打开，读取的仍是核验过的副本。Linux 用打开句柄对应的 `/proc/self/fd` 路径，Windows 核对前后的实际路径和卷／文件标识，并依赖配置目录的受信任 ACL。FFmpeg 协议与容器限制沿用 [#160](https://github.com/NapukettoDev/Napuketto/pull/160)，合并提交 `37087d5`，media 0.2.2。 |
 | M-09 | [缓存所有权和租约](../src/internal/infra/media-cache.ts) 隔离账号及协议，引用校验所有权标记、文件名和 TTL。模拟发送失败与并发消费者，验证只移除该请求产物；[缓存测试](../src/internal/infra/__tests__/media-cache.test.ts) 覆盖到期、回收与消费者互斥和崩溃遗留的副本／输出清理。 |
 | L-03 | [OB11 媒体查询](../src/onebot11/action/message/media.ts) 在当前账号的 QQ 媒体根内查找并导出；语音未落盘只返回元数据。[Satori 消息测试](../src/satori/action/__tests__/message.test.ts) 验证 `message.get` 的 QQ 本地引用可由 `message.create` 复用，[解析测试](../src/satori/helper/element/__tests__/asset.test.ts) 覆盖错误账户／平台、目录结构和过期引用。 |
 | I-01 A 本地侧 | [IPC 动作桥](../../loader/src/host/ipc/ipc-ob11.ts) 以动态加载的 OB11 schema 校验实际登录账号的媒体配置。[IPC 测试](../../loader/src/host/ipc/__tests__/ipc-ob11.test.ts) 用真实 adapter 与文件消费桩验证缺省拒绝、相对导出目录授权、跨账号拒绝，并拒绝旧版丢弃字段的 schema。 |
 
-任务 06 的先决条件已由 [#178](https://github.com/NapukettoDev/NapukettoQQ/pull/178)
+任务 06 的先决条件已由 [#178](https://github.com/NapukettoDev/Napuketto/pull/178)
 合入（`5966a5e`），其发布提交为 `ad0e2a7`，经 npm registry 验证版本为 adapter 0.20.0、
 loader 0.12.0、media 0.3.0。任务 07 需要等待本 PR 合并和发布，随后下游同时升级 adapter 和
 loader，再消费公开的 `ProtocolMediaConfig` 与 `media.localMediaRoots`。任务 09 继续等待
@@ -350,9 +350,9 @@ loader，再消费公开的 `ProtocolMediaConfig` 与 `media.localMediaRoots`。
 
 ## 任务 10 群请求、消息身份与事件
 
-以 main `89392c1` 为基线。沿用 [#128](https://github.com/NapukettoDev/NapukettoQQ/pull/128)
-的历史好友申请过滤、[#168](https://github.com/NapukettoDev/NapukettoQQ/pull/168) 的 IPC ready
-门，以及 [#174](https://github.com/NapukettoDev/NapukettoQQ/pull/174) 的原生消息 ID 业务动作。
+以 main `89392c1` 为基线。沿用 [#128](https://github.com/NapukettoDev/Napuketto/pull/128)
+的历史好友申请过滤、[#168](https://github.com/NapukettoDev/Napuketto/pull/168) 的 IPC ready
+门，以及 [#174](https://github.com/NapukettoDev/Napuketto/pull/174) 的原生消息 ID 业务动作。
 编号按任务 10 的实施范围追踪。
 
 | 编号 | 当前验证及改动 |

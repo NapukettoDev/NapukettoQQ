@@ -3,9 +3,8 @@
     "name": "@napuketto/adapter",
     "version": "0.23.1",
     "type": "module",
-    "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for NapukettoQQ",
+    "description": "Protocol adapters (OneBot11 / Satori / KuroBot / Milky) for Napuketto",
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "adapter",
@@ -14,13 +13,13 @@
         "kurobot",
         "milky"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/adapter#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/packages/adapter#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "packages/adapter"
     },
     "license": "MIT",

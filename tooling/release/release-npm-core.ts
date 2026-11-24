@@ -290,7 +290,7 @@ export function planPublish(
 
 /**
  * 按内部依赖拓扑排序：被依赖者在前（kernel → media/network → adapter →
- * loader → cli → create-napukettoqq → koishi 适配器）。
+ * loader → cli → create-napuketto → koishi 适配器）。
  *
  * 依赖方向取自 dependencies 中出现的工作区内包名（koishi 适配器的
  * `~0.0.x` 范围同样命中）。存在环 → 抛错。

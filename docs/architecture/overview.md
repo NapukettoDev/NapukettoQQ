@@ -5,7 +5,7 @@
 
 ## 项目定位
 
-NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人框架：
+Napuketto 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器人框架：
 
 - **自建宿主**：标准 Node 进程通过 stub 直接 `dlopen` `wrapper.node`，不拉起 QQ 客户端、
   不注入 QQ 进程、无 UI。Windows 用 PE stub `QQNT.dll`（PATH 前置转发宿主符号）；
@@ -29,7 +29,7 @@ NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器�
 | `packages/adapter` | `@napuketto/adapter` | 协议适配器容器：core 框架 + onebot11 / satori / kurobot / milky |
 | `packages/loader` | `@napuketto/loader` | QQ 原生文件定位/下载、stub 校验、自建宿主启动、实例锁、IPC |
 | `apps/cli` | `@napuketto/cli` | 命令行入口：单账号/多账号 supervisor、config、status/stop/restart |
-| `apps/napuketto-create` | `create-napukettoqq` | 项目脚手架：生成 `napuketto.toml` 与目录骨架 |
+| `apps/create` | `create-napuketto` | 项目脚手架：生成 `napuketto.toml` 与目录骨架 |
 | 仓外 | `koishi-plugin-adapter-napuketto` | Koishi 适配器，独立仓库，只依赖 npm 上已发布的 `@napuketto/*` |
 
 ## 依赖方向
@@ -37,7 +37,7 @@ NapukettoQQ 是基于 QQ NT 客户端原生模块（`wrapper.node`）的机器�
 只允许向下依赖。编译期依赖如下：
 
 ```
-create-napukettoqq
+create-napuketto
   └─ @napuketto/cli
        ├─ @napuketto/adapter
        │    ├─ @napuketto/kernel

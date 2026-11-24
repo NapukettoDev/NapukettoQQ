@@ -3,9 +3,8 @@
     "name": "@napuketto/media",
     "version": "0.4.0",
     "type": "module",
-    "description": "Media utilities for NapukettoQQ",
+    "description": "Media utilities for Napuketto",
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "media",
@@ -13,13 +12,13 @@
         "image",
         "silk"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/media#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/packages/media#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "packages/media"
     },
     "license": "MIT",

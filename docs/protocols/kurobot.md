@@ -44,7 +44,7 @@ connecting → establishing（hello 已发，等 hello_ack）
 - 连接时带 `Sec-WebSocket-Protocol: kurobridge-ws.v1`。
 - 每次 open 立即发 `hello`（新 UUID），内容：`peerId`（本账号 uin）、`platform: "qq"`、
   `version`（adapter 包版本）、`protocolVersion: "0.4.0"`、`client`（缺省
-  `napukettoqq/<adapter 版本>`）、非空 `token`。
+  `napuketto/<adapter 版本>`）、非空 `token`。
 - `hello_ack ok:true` → 建立，记录 `channelBindings` 快照；`ok:false` → 永久停止。
 - established 后每 `pingIntervalMs` 发应用层 `ping`（默认 15s；服务端空闲阈值 30s，
   WS 层 ping 不重置它的计时）。

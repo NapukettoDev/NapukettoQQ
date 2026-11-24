@@ -1,10 +1,10 @@
-# create-napukettoqq
+# create-napuketto
 
-一键生成 NapukettoQQ 机器人项目（pnpm / yarn / npm 均可）。
+一键生成 Napuketto 机器人项目（pnpm / yarn / npm 均可）。
 
 ```bash
-pnpm create napukettoqq            # 交互输入部署目录名（回车取默认 NapukettoQQ）
-pnpm create napukettoqq my-bot     # 位置参数指定目录，跳过交互
+pnpm create napuketto            # 交互输入部署目录名（回车取默认 Napuketto）
+pnpm create napuketto my-bot     # 位置参数指定目录，跳过交互
 ```
 
 生成 `package.json` / `napuketto.toml`（yarn 额外写空 `yarn.lock` 隔离父目录 workspace），

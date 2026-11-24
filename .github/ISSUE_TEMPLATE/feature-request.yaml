@@ -7,7 +7,7 @@ body:
     - type: markdown
       attributes:
           value: |
-              范围先说清（见根 [AGENTS.md](https://github.com/NapukettoDev/NapukettoQQ/blob/main/AGENTS.md) 的「范围禁区」）：
+              范围先说清（见根 [AGENTS.md](https://github.com/NapukettoDev/Napuketto/blob/main/AGENTS.md) 的「范围禁区」）：
               **framework 模式、WebUI、插件系统、Proxy 事件老方案**不在路线内，相关请求会被关闭并说明原因。
               新协议属于路线内：在 `packages/adapter` 内新增目录、复用 core 框架，不改 `network`、不改 `kernel`。
 

@@ -16,7 +16,7 @@ const MARKER = ".napuketto-sandbox.json";
 
 /** Accept only a sandbox that neither contains nor is contained by the checkout. */
 export function resolveSandboxRoot(repo: string, override: string | undefined): string {
-    const target = resolve(repo, override?.trim() || "../Debug/napukettoqq-sandbox");
+    const target = resolve(repo, override?.trim() || "../Debug/napuketto-sandbox");
     const realTarget = resolveExistingPath(target);
     for (const path of [target, realTarget]) {
         if (isPathWithin(repo, path) || isPathWithin(path, repo)) {
@@ -43,7 +43,7 @@ function checkLinks(root: string, dir: string): void {
 export function prepareSandbox(root: string, repo: string): void {
     mkdirSync(root, { recursive: true });
     const marker = join(root, MARKER);
-    const contents = `${JSON.stringify({ generator: "napukettoqq-sandbox", repo }, null, 4)}\n`;
+    const contents = `${JSON.stringify({ generator: "napuketto-sandbox", repo }, null, 4)}\n`;
     if (readdirSync(root).length === 0) {
         try {
             writeFileSync(marker, contents, { flag: "wx" });

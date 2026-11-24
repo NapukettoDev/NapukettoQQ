@@ -1,6 +1,6 @@
-# create-napukettoqq 脚手架设计
+# create-napuketto 脚手架设计
 
-> 职责：npm 脚手架 `create-napukettoqq`，生成用户项目骨架（`package.json` + `napuketto.toml`）并按
+> 职责：npm 脚手架 `create-napuketto`，生成用户项目骨架（`package.json` + `napuketto.toml`）并按
 > 调用方包管理器装依赖；不管运行时（业务与协议装配在 `@napuketto/cli`），生成后由 cli → loader
 > 自建宿主启动。源码入口 `src/index.ts`（参数/交互）与 `src/scaffold.ts`（模板/目录/包管理器检测）。
 
@@ -8,8 +8,8 @@
 
 ### 包名与调用方式
 
-- `yarn create napukettoqq` / `pnpm create napukettoqq` / `npm create napukettoqq`：包管理器从
-  registry 拉 `create-napukettoqq` 并执行同名 bin（`dist/index.mjs`），所以包名必须带 `create-` 前缀。
+- `yarn create napuketto` / `pnpm create napuketto` / `npm create napuketto`：包管理器从
+  registry 拉 `create-napuketto` 并执行同名 bin（`dist/index.mjs`），所以包名必须带 `create-` 前缀。
 - 生成物是**独立用户项目**（非 monorepo 包）：`package.json` 只声明 `@napuketto/cli` 依赖，
   install 后 `start` 经 cli → loader 自建宿主（标准 node + stub QQNT.dll）。
 - QQ 资源（`wrapper.node`）由 loader 在启动时定位：本机 QQ NT 安装 / 数据根缓存 / 自动下载；
@@ -17,7 +17,7 @@
 
 ### 类型检查与构建
 
-包级 `tsconfig.json` 继承根编译选项，独立检查 `src`。`tsc -p apps/napuketto-create`
+包级 `tsconfig.json` 继承根编译选项，独立检查 `src`。`tsc -p apps/create`
 沿用 `noEmit`，发布的 bin 入口由 tsdown 生成。
 
 ### 模板随包发布与生成
@@ -34,11 +34,11 @@
 ### CLI 参数与交互流
 
 ```bash
-create-napukettoqq                # 交互问部署文件夹名（默认 NapukettoQQ）
-create-napukettoqq my-bot         # 位置参数指定文件夹名，跳过命名交互
-create-napukettoqq my-bot -f      # 目标目录非空时强制清空覆盖
-create-napukettoqq -y             # 全默认：命名用默认值（不隐式清空已有目录）
-create-napukettoqq -h             # 打印 usage 退出
+create-napuketto                # 交互问部署文件夹名（默认 Napuketto）
+create-napuketto my-bot         # 位置参数指定文件夹名，跳过命名交互
+create-napuketto my-bot -f      # 目标目录非空时强制清空覆盖
+create-napuketto -y             # 全默认：命名用默认值（不隐式清空已有目录）
+create-napuketto -h             # 打印 usage 退出
 ```
 
 - 参数手写解析（flag 仅三个，不引 yargs-parser）：未知 flag / 多余位置参数抛错，退出码 1。

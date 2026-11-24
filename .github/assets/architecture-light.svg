@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="860" height="500" viewBox="0 0 860 500" role="img" aria-labelledby="title desc">
-<title id="title">NapukettoQQ 架构总览</title>
+<title id="title">Napuketto 架构总览</title>
 <desc id="desc">CLI / supervisor 启动 boot，boot 拉起自建宿主（标准 Node，加载 stub QQNT.dll 与 wrapper.node）；wrapper.node 向下接 kernel，kernel 下方是 adapter，adapter 对外提供 Milky、OneBot 11、Satori、KuroBot 四套协议。</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">

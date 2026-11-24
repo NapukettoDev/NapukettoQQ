@@ -2,7 +2,7 @@
 # Copyright (c) 2026-present Napuketto contributors.
 
 name: Bug 报告
-description: 报告 NapukettoQQ 自身的问题（宿主引导、内核、协议适配、CLI）
+description: 报告 Napuketto 自身的问题（宿主引导、内核、协议适配、CLI）
 title: "Bug: "
 labels:
     - bug
@@ -32,7 +32,7 @@ body:
           options:
               - Windows 10 / 11（标准 Node + stub QQNT.dll）
               - Linux x64（LD_PRELOAD stub 宿主）
-              - Docker 官方镜像（ghcr.io/napukettodev/napukettoqq）
+              - Docker 官方镜像（ghcr.io/napukettodev/napuketto）
               - 其他或不确定
       validations:
           required: true
@@ -40,7 +40,7 @@ body:
     - type: input
       id: version
       attributes:
-          label: NapukettoQQ 版本
+          label: Napuketto 版本
           description: |
               `@napuketto/*` 包版本（如 `@napuketto/cli` 0.4.x）、镜像 tag，或 `git rev-parse --short HEAD`。
               版本不明时贴 `pnpm list --depth 0` 的相关行。
@@ -110,7 +110,7 @@ body:
           options:
               - 不确定
               - 是，原生 QQ 客户端同样异常
-              - 否，仅 NapukettoQQ 下出现
+              - 否，仅 Napuketto 下出现
       validations:
           required: true
 

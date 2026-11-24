@@ -1,5 +1,5 @@
 # ============================================================
-# NapukettoQQ Docker 部署配置示例
+# Napuketto Docker 部署配置示例
 # ============================================================
 # 用法：cp napuketto.toml.example napuketto.toml，改 qq / token / 端口，
 #      然后 docker compose up -d。

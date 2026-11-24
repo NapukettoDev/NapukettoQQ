@@ -1,6 +1,6 @@
 # @napuketto/kernel
 
-NapukettoQQ 核心运行时内核——**全仓唯一原生交互层**。
+Napuketto 核心运行时内核——**全仓唯一原生交互层**。
 
 直接 `process.dlopen` 加载 `wrapper.node`，把 QQ NT 内部 C++ 服务封装成语义化 API：
 

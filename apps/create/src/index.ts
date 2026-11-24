@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * create-napukettoqq 入口（2026-08-07 美化 v3，交互层用 @clack/prompts——
+ * create-napuketto 入口（2026-08-07 美化 v3，交互层用 @clack/prompts——
  * 现代脚手架交互标准，create-vue / create-turbo 同款）。
  *
  * 用法：
- *   create-napukettoqq                # intro + 交互问部署文件夹名（默认 NapukettoQQ）
- *   create-napukettoqq my-bot         # 位置参数指定文件夹名，跳过命名交互
- *   create-napukettoqq my-bot -f      # 目标目录非空时强制清空覆盖
- *   create-napukettoqq -y             # 全默认（命名用默认值）
- *   create-napukettoqq -h             # 打印帮助
+ *   create-napuketto                # intro + 交互问部署文件夹名（默认 Napuketto）
+ *   create-napuketto my-bot         # 位置参数指定文件夹名，跳过命名交互
+ *   create-napuketto my-bot -f      # 目标目录非空时强制清空覆盖
+ *   create-napuketto -y             # 全默认（命名用默认值）
+ *   create-napuketto -h             # 打印帮助
  *
  * 流程：intro → 问文件夹名 → 目标目录准备（非空需确认清空）→ spinner 生成骨架
  *   （package.json / napuketto.toml）→ 用调用方包管理器自动 install →
@@ -53,7 +53,7 @@ interface CliOptions {
 }
 
 /** 帮助文本（-h/--help）。 */
-const HELP = `  用法: create-napukettoqq [name] [选项]
+const HELP = `  用法: create-napuketto [name] [选项]
 
   选项:
     -f, --forced   目标目录非空时强制清空并覆盖
@@ -235,7 +235,7 @@ function quoteShellArg(arg: string): string {
  * 去掉 NODE_OPTIONS 里 yarn dlx 注入的 PnP 加载器条目（--require/--import 后跟
  * .pnp.cjs / .pnp.loader.mjs 路径），其余选项原样保留。
  *
- * 背景：`yarn create napukettoqq` 实为 `yarn dlx`，脚手架本身跑在临时 PnP
+ * 背景：`yarn create napuketto` 实为 `yarn dlx`，脚手架本身跑在临时 PnP
  * 项目里，其 PnP 钩子经 NODE_OPTIONS 注入进程环境。install 子进程若继承该变量，
  * corepack 解析 yarn 版本时 `require("corepack/package.json")` 会被 PnP 拦截，
  * 报「tried to access corepack, but it isn't declared in your dependencies」。
@@ -337,7 +337,7 @@ async function main(): Promise<void> {
     const brand = brandColor(pm);
 
     // intro：品牌色标题（按调用方包管理器取色，PNPM 黄 / Yarn 蓝 / npm 红）
-    intro(brand(`create-napukettoqq  v${readVersion()}`));
+    intro(brand(`create-napuketto  v${readVersion()}`));
 
     const dirName = opts.name ?? (await askProjectName(opts.yes));
     const prepared = await prepareTargetDir(dirName, opts);

@@ -50,7 +50,7 @@
 # 等于合并必然失败。
 #
 # 三个 job 的 name 就是 ruleset 里的必需检查 context，**改名必须同步改规则集**
-# （gh api repos/NapukettoDev/NapukettoQQ/rulesets/24073406），否则 PR 永远等
+# （gh api repos/NapukettoDev/Napuketto/rulesets/24073406），否则 PR 永远等
 # 不到同名检查。
 
 name: CI

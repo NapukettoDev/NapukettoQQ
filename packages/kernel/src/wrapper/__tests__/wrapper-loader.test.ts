@@ -172,7 +172,7 @@ describe("resolveQqUserDataRoot", () => {
     });
 
     it("Windows 沙箱：使用沙箱数据根且拒绝越界", () => {
-        const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "napuketto-qq-root-")));
+        const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "napuketto-root-")));
         try {
             vi.stubEnv("NAPUKETTO_SANDBOX_ROOT", sandbox);
             const dataRoot = join(sandbox, ".napuketto");

@@ -80,7 +80,7 @@ describe("系统动作（system.ts）", () => {
         const registry = profileApi();
         const res = await actionOf(registry, "get_impl_info").handle({});
         expect(res.data).toEqual({
-            impl_name: "napukettoqq",
+            impl_name: "napuketto",
             impl_version: "0.0.0",
             qq_protocol_version: "9.9.9-test",
             qq_protocol_type: "windows",

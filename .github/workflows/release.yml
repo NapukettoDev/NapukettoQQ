@@ -47,7 +47,7 @@
 # 就是现成通道，故推送用 `-c core.hooksPath=/dev/null` 显式禁用 hook；剩余面
 # 靠 CODEOWNERS 对构建文件的强制复核兜底。
 #
-# App token 单枚复用（NapukettoBot，Contents: Read and write，安装到 NapukettoQQ
+# App token 单枚复用（NapukettoBot，Contents: Read and write，安装到 Napuketto
 # 与私有仓 Napuketto-Native 两仓）：checkout（含闭源 submodule 检出）与推版本
 # 提交共用。token 在 install 之前铸造——被污染的构建期代码理论上可窃取一枚能推
 # main 的凭证；接受面：token 1 小时有效（≥ job timeout 45 分钟）、推送步骤显式
@@ -92,7 +92,7 @@
 #      是在「被 dispatch 的那个 ref」上取 workflow 文件的，不限制的话，有写权限
 #      者可以在分支上改本文件后 dispatch，借 environment 拿到 OIDC。
 #   3. GitHub App NapukettoBot（Repository permissions 只给 Contents: Read and
-#      write，Webhook 关掉），安装到 NapukettoDev/NapukettoQQ **与** 私有仓
+#      write，Webhook 关掉），安装到 NapukettoDev/Napuketto **与** 私有仓
 #      NapukettoDev/Napuketto-Native（闭源 submodule packages/loader/native 的
 #      检出需要）。Client ID 存成仓库 variable `RELEASE_APP_CLIENT_ID`（Client ID
 #      非敏感）、私钥存成 secret `RELEASE_APP_PRIVATE_KEY`，并把 App 加进主分支
@@ -101,7 +101,7 @@
 #      （含空转运行）都会撞上。
 #   4. 开启 require_code_owner_review（CODEOWNERS 已覆盖 .github/workflows/**、
 #      tooling/release/**、.changeset/**、package.json、pnpm-lock.yaml）。
-#   5. npm 侧各包信任配置：repository=NapukettoDev/NapukettoQQ、
+#   5. npm 侧各包信任配置：repository=NapukettoDev/Napuketto、
 #      workflow 文件=release.yml、environment=release、权限只含 publish。
 #      **逐包配置、不是仓库级开关**；新建后 2 天内必须完成首次发布。
 
@@ -145,7 +145,7 @@ jobs:
             changed: ${{ steps.bump.outputs.changed }}
         steps:
             # App 配置缺失时早失败：否则会先消费 changeset、跑完构建测试，才在
-            # create-github-app-token 处报难懂的错。App 需同时安装到 NapukettoQQ
+            # create-github-app-token 处报难懂的错。App 需同时安装到 Napuketto
             # 与私有仓 Napuketto-Native（submodule 检出），漏装时铸 token 一步
             # 立即报错，且每次触发（含空转运行）都会撞上。
             - name: 检查发布 App 配置
@@ -170,7 +170,7 @@ jobs:
               with:
                   client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
                   private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-                  repositories: NapukettoQQ,Napuketto-Native
+                  repositories: Napuketto,Napuketto-Native
 
             # persist-credentials: false —— checkout 默认把 token 写进 .git/config
             # 并一直生效（这里是 App token，不再是 GITHUB_TOKEN）；留着这份

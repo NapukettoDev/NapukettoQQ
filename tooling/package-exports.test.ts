@@ -38,7 +38,7 @@ const PUBLISHED_PACKAGES = [
     "packages/adapter",
     "packages/loader",
     "apps/cli",
-    "apps/napuketto-create",
+    "apps/create",
 ] as const;
 
 /** 库包：可被 import，必须声明 sideEffects: false 让打包器摇树。 */
@@ -51,12 +51,12 @@ const LIBRARY_PACKAGES = new Set<string>([
 ]);
 
 /**
- * 有 `exports` 的包（create-napukettoqq 只有 bin，不导出模块）。
- * ⚠️ apps/cli 与 create-napukettoqq 是 bin 包，**不**声明 sideEffects: false：
+ * 有 `exports` 的包（create-napuketto 只有 bin，不导出模块）。
+ * ⚠️ apps/cli 与 create-napuketto 是 bin 包，**不**声明 sideEffects: false：
  * 它们的入口在顶层就执行 main()（import 即启动机器人/脚手架），声明无副作用
  * 属于虚假元数据。
  */
-const EXPORTING_PACKAGES = PUBLISHED_PACKAGES.filter((dir) => dir !== "apps/napuketto-create");
+const EXPORTING_PACKAGES = PUBLISHED_PACKAGES.filter((dir) => dir !== "apps/create");
 
 /** Node 运行时底线：commander@15 / execa@10 硬要求，也是 require(esm) 的起点。 */
 const MIN_NODE = ">=22.12.0";

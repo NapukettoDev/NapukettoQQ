@@ -124,7 +124,7 @@ export async function runSmokeTest(
     // ③ 发送方向：MsgApi.sendMessage
     const msgApi = new kernel.MsgApi(session);
     const peer = await resolvePeerUid(kernel, ctx, target, loginResult.uid);
-    const content = `NapukettoQQ smoke test ${Date.now()}`;
+    const content = `Napuketto smoke test ${Date.now()}`;
     let sentMsgId = "";
     try {
         const { msgId } = await msgApi.sendMessage(peer, [{ type: "text", text: content }]);
