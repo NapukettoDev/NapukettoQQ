@@ -185,6 +185,20 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 接收方向 `videoToCanonical` 用 `readVideoThumbPath` 容忍 `thumbPath` 的 Map / 平面对象 /
 字符串三形态，并补 `width` / `height`（thumbWidth/Height）与 `durationSec`（fileTime 秒）。
 
+### 图片发送
+
+canonical `image`（`path`、可选 `size` / `mime`）经 `MsgApi.prepareImageElement` 写完整
+`picElement`：
+
+1. `picWidth` / `picHeight` 优先取 canonical `size`；任一维度或 `mime` 缺失时，
+   `apis/image-meta.ts` 零依赖读取文件头（最多前 64 KiB）解析 PNG / GIF / BMP /
+   WebP（VP8/VP8L/VP8X）/ JPEG（SOF0/SOF1/SOF2）补齐，仍无有效正整数则写 0。
+2. `picType` 由 `resolvePicType` 按 MIME（优先）/ 扩展名映射：PNG 1001、WebP 1002、
+   BMP 1005、GIF 2000、JPG/未知 1000。硬编码 0/0/1000（JPG）会让手机端 QQ 显示空白。
+3. 探测失败静默降级（`{}`），不阻断发送；`picSubType` / `original` / `thumbFileSize`
+   等其余契约字段不变。adapter 发送前用 `@napuketto/media` 的 `getImageSize` /
+   `detectFileType` 预填 `size` / `mime`；kernel 不依赖 media（解耦红线）。
+
 ### ARK 卡片接收
 
 `elementType 10` 的 `arkElement.bytesData` 是卡片 JSON 字符串：接收方向原样透传为

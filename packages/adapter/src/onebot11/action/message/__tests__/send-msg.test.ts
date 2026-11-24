@@ -7,12 +7,28 @@
  * 路径原样）、消息段超上限 → 400、缺目标 → 400、message_id 经 MessageUnique 分配。
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type CanonicalElement, ChatType, type Peer } from "@napuketto/kernel";
 import { describe, expect, it, type Mock, vi } from "vitest";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
 import type { Ob11Action } from "../../base-action.js";
 import { createSendActions, type SendMsgDeps } from "../send.js";
+
+/** 最小 PNG 头（8 字节签名 + IHDR），供 image-size / file-type 探测。 */
+function pngHeader(width: number, height: number): Buffer {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(13, 8);
+    buf.write("IHDR", 12, "ascii");
+    buf.writeUInt32BE(width, 16);
+    buf.writeUInt32BE(height, 20);
+    buf[24] = 8;
+    buf[25] = 6;
+    return buf;
+}
 
 /** 取发送域动作（TReturn 断言为 { message_id }，保持 result.data 属性访问的编译期类型）。 */
 function sendActionOf(
@@ -168,6 +184,30 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
         expect(uinToUid).toHaveBeenCalledTimes(1);
         const [, elements] = sendMessage.mock.calls[0] ?? [];
         expect(elements?.[0]?.type === "at" && elements?.[0]?.target).toBe("90002");
+    });
+
+    it("图片段：发送前补齐 size/mime 透传给 kernel（PIC 契约）", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "nk-ob11-image-"));
+        try {
+            const imagePath = join(dir, "pic.png");
+            writeFileSync(imagePath, pngHeader(320, 240));
+            const { deps, sendMessage } = makeDeps();
+            const action = sendActionOf({ ...deps, getLocalMediaRoots: () => [dir] }, "send_msg");
+            const result = await action.handle({
+                message_type: "group",
+                group_id: 808,
+                message: [{ type: "image", data: { file: imagePath } }],
+            });
+            expect(result.retcode).toBe(0);
+            const [, elements] = sendMessage.mock.calls[0] ?? [];
+            expect(elements?.[0]).toMatchObject({
+                type: "image",
+                size: { width: 320, height: 240 },
+                mime: "image/png",
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it("语音段：未授权路径在转码和发送前拒绝", async () => {

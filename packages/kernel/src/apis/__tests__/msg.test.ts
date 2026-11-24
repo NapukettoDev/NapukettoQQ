@@ -123,6 +123,43 @@ describe("sendMessage", () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    it("image → picElement 写入真实尺寸与 picType（canonical size + mime）", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "napuketto-kernel-image-"));
+        const imagePath = join(dir, "photo.png");
+        writeFileSync(imagePath, Buffer.from("png-bytes"));
+        try {
+            const sendMsg = vi.fn(async () => ({ result: 0 }));
+            const { api } = makeApi({
+                getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/photo.png"),
+                sendMsg,
+            });
+
+            await api.sendMessage(target, [
+                {
+                    type: "image",
+                    path: imagePath,
+                    size: { width: 1280, height: 720 },
+                    mime: "image/png",
+                },
+            ]);
+
+            const sent = (sendMsg.mock.calls[0] as unknown[] | undefined)?.[2] as
+                | Array<{ elementType: number; picElement: Record<string, unknown> }>
+                | undefined;
+            const element = sent?.[0];
+            expect(element?.elementType).toBe(2);
+            const pic = element?.picElement ?? {};
+            expect(pic["picWidth"]).toBe(1280);
+            expect(pic["picHeight"]).toBe(720);
+            // PNG 必须是 1001（旧实现硬编码 1000/JPG，手机端显示空白）
+            expect(pic["picType"]).toBe(1001);
+            expect(pic["md5HexStr"]).toBe(createHash("md5").update("png-bytes").digest("hex"));
+            expect(pic["fileSize"]).toBe(String(Buffer.byteLength("png-bytes")));
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });
 
 describe("recallMessage", () => {

@@ -8,7 +8,7 @@
  * 嵌套 forward / 混发均 -400）、撤回失败 best-effort、file:// 媒体段展开、
  * 段数上限、附加字段容忍。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -40,6 +40,19 @@ import { actionOf, indexableMsg, messageApi } from "./test-support.js";
 const media = useLocalMediaFixture();
 
 const PEER: Peer = { chatType: ChatType.GROUP, peerUid: "10001" };
+
+/** 最小 PNG 头（签名 + IHDR），供 image-size / file-type 探测。 */
+function pngHeader(width: number, height: number): Buffer {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(13, 8);
+    buf.write("IHDR", 12, "ascii");
+    buf.writeUInt32BE(width, 16);
+    buf.writeUInt32BE(height, 20);
+    buf[24] = 8;
+    buf[25] = 6;
+    return buf;
+}
 
 /** 发送成功回查用的 RawMessage（回查输出断言）。 */
 function sentMsg(seq: string, time: string): RawMessage {
@@ -467,6 +480,29 @@ describe("send_private_message / send_group_message（动作层）", () => {
         expect(peer).toEqual({ chatType: ChatType.GROUP, peerUid: "10001" });
         const image = elements?.[1];
         expect(image?.type === "image" && image.path.endsWith("x.png")).toBe(true);
+    });
+
+    it("file:// 图片段：发送前补 size/mime 透传给 kernel", async () => {
+        const imagePath = join(media.roots()[0] ?? tmpdir(), "pic.png");
+        writeFileSync(imagePath, pngHeader(320, 240));
+        const sendMessage = vi.fn(async (_peer: Peer, _elements: CanonicalElement[]) => ({
+            msgId: "sent-1",
+        }));
+        const registry = messageApi({
+            msgApi: { sendMessage, fetchMsgsByMsgId: vi.fn(async () => [indexableMsg("1300")]) },
+            getLocalMediaRoots: media.roots,
+        });
+        const res = await actionOf(registry, "send_group_message").handle({
+            group_id: 10001,
+            message: [{ type: "image", data: { uri: pathToFileURL(imagePath).href } }],
+        });
+        expect(res.status).toBe("ok");
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toMatchObject({
+            type: "image",
+            size: { width: 320, height: 240 },
+            mime: "image/png",
+        });
     });
 
     it("远程媒体缺 mediaDir → INVALID_PARAM（-400）", async () => {

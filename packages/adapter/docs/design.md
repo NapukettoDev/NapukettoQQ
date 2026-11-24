@@ -219,8 +219,9 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
   未配对标签），`renderElements` 序列化；canonical 双向转换在 `element-convert.ts` /
   `canonical.ts`。
 - 媒体：img / audio / video / file → canonical；audio 走 `ensureSilk`（非 silk 转码）；
-  video 非 mp4 走 `transcodeVideo`，ffmpeg 缺失或失败 fail-soft 原样透传；file 的
-  `title` 映射为 canonical `name`。
+  img 经 `prepareImageElements` 补 `size` / `mime`（image-size / file-type，探测失败
+  warn 后降级由 kernel 零依赖兜底）；video 非 mp4 走 `transcodeVideo`，ffmpeg 缺失或
+  失败 fail-soft 原样透传；file 的 `title` 映射为 canonical `name`。
 - Satori 视频转码消费 media 返回的独占 `.mp4` 路径（不推导或覆盖源文件）。`message.create`
   使用请求级 `onVideoTranscoded` 登记产物；转换或发送结束后在 finally 删除文件及父临时
   目录（含失败路径），转换阶段不得提前删除。独立调用转换器时由调用方接管返回路径的

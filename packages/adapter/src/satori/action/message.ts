@@ -6,6 +6,7 @@ import { rm, rmdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { kernelError, type Peer, type RawMessage } from "@napuketto/kernel";
 import { z } from "zod";
+import { prepareImageElements } from "../../internal/qq/media.js";
 import type { SatoriApi } from "../api/satori-api.js";
 import { parseContentToCanonical } from "../helper/element/element-convert.js";
 import { toChannelById, toSatoriMessage } from "../helper/index.js";
@@ -22,6 +23,7 @@ export type MessageActionDeps = Pick<
     | "setChannelType"
     | "toCanonicalDeps"
     | "publishLocalAsset"
+    | "logger"
 >;
 
 /** 消息列表默认条数（规范推荐 50）。 */
@@ -50,10 +52,13 @@ export function createMessageActions(deps: MessageActionDeps): SatoriActionHandl
                 const ownedOutputs = new Set<string>();
                 let msgId: string;
                 try {
-                    const elements = await parseContentToCanonical(content, {
-                        ...deps.toCanonicalDeps(),
-                        onVideoTranscoded: (path) => ownedOutputs.add(path),
-                    });
+                    const elements = await prepareImageElements(
+                        await parseContentToCanonical(content, {
+                            ...deps.toCanonicalDeps(),
+                            onVideoTranscoded: (path) => ownedOutputs.add(path),
+                        }),
+                        deps.logger,
+                    );
                     ({ msgId } = await deps.msgApi.sendMessage(peer, elements));
                 } finally {
                     await Promise.all(
