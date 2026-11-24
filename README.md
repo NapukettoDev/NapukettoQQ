@@ -24,7 +24,7 @@
 | **Milky** | 单端口 HTTP + SSE / WS + WebHook | 消息、群管、好友、群通知、群文件与表态 |
 | **Satori** | HTTP RPC / WS 事件 | 消息、频道、群组、成员、好友与表态 |
 | **OneBot11** | HTTP / WS / 反向 WS / Webhook | 消息、群管、好友、通知、系统与媒体 |
-| **KuroBot** | 出站 WS 客户端 | QQ 群聊与 Minecraft 服务器互通 |
+| **KuroBot** | 出站 WS 客户端 | 群聊与 Minecraft 服务器互通 |
 
 协议文档（传输、鉴权、事件字段与限制）：[Milky](./docs/protocols/milky.md) ·
 [Satori](./docs/protocols/satori.md) · [OneBot 11](./docs/protocols/onebot11.md) ·
