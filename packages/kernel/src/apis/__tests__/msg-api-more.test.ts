@@ -21,6 +21,47 @@ import { MsgApi } from "../msg.js";
 
 const target: Peer = { chatType: 1, peerUid: "10001" };
 
+/** 最小 PNG 头（8 字节签名 + IHDR），供零依赖兜底解析宽高。 */
+function makePng(width: number, height: number): Buffer {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(13, 8);
+    buf.write("IHDR", 12, "ascii");
+    buf.writeUInt32BE(width, 16);
+    buf.writeUInt32BE(height, 20);
+    buf[24] = 8;
+    buf[25] = 6;
+    return buf;
+}
+
+/** 最小 JPEG（SOI + APP0 + SOF0），供零依赖兜底解析宽高。 */
+function makeJpeg(width: number, height: number): Buffer {
+    const app0 = Buffer.alloc(18);
+    app0[0] = 0xff;
+    app0[1] = 0xe0;
+    app0.writeUInt16BE(16, 2);
+    app0.write("JFIF\0", 4, "ascii");
+    const frame = Buffer.alloc(19);
+    frame[0] = 0xff;
+    frame[1] = 0xc0;
+    frame.writeUInt16BE(17, 2);
+    frame[4] = 8;
+    frame.writeUInt16BE(height, 5);
+    frame.writeUInt16BE(width, 7);
+    frame[9] = 3;
+    return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, frame]);
+}
+
+/** 从 sendMsg 调用里取第一个 picElement（断言发送契约）。 */
+function sentPic(
+    service: ReturnType<typeof makeApi>["service"],
+): Record<string, unknown> | undefined {
+    const sent = (service.sendMsg.mock.calls[0] as unknown[] | undefined)?.[2] as
+        | Array<{ picElement: Record<string, unknown> }>
+        | undefined;
+    return sent?.[0]?.picElement;
+}
+
 /** 构造 MsgApi（mock msg service，可选事件通道与 util）。 */
 function makeApi(
     overrides: Record<string, unknown> = {},
@@ -301,6 +342,111 @@ describe("富媒体发送预处理（PIC / PTT / FILE）", () => {
         expect(pic["fileSize"]).toBe(String(image.byteLength));
         expect(pic["sourcePath"]).toBe(`Pic/2026-11/Ori/${md5}.png`);
         expect(pic["original"]).toBe(true);
+    });
+
+    it("image：canonical size + mime 优先写入 picWidth/picHeight/picType（PNG → 1001）", async () => {
+        const imgPath = join(dir, "explicit.png");
+        // 文件头尺寸与 canonical 不同，锁定「canonical 优先」
+        writeFileSync(imgPath, makePng(320, 200));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/x.png") },
+            { util: makeUtil().util },
+        );
+        await api.sendMessage(target, [
+            {
+                type: "image",
+                path: imgPath,
+                size: { width: 640, height: 480 },
+                mime: "image/png",
+            },
+        ]);
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(640);
+        expect(pic["picHeight"]).toBe(480);
+        expect(pic["picType"]).toBe(1001);
+        // 其余发送契约字段保持不变
+        expect(pic["picSubType"]).toBe(0);
+        expect(pic["original"]).toBe(true);
+        expect(pic["thumbFileSize"]).toBe(0);
+        expect(pic["fileUuid"]).toBe("");
+        expect(pic["fileSubId"]).toBe("");
+        expect(pic["summary"]).toBe("");
+    });
+
+    it("image：IPC 直发缺失 size/mime → 零依赖解析真实 PNG 宽高 + picType 1001", async () => {
+        const imgPath = join(dir, "fallback.png");
+        writeFileSync(imgPath, makePng(128, 96));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/p.png") },
+            { util: makeUtil().util },
+        );
+        await api.sendMessage(target, [{ type: "image", path: imgPath }]);
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(128);
+        expect(pic["picHeight"]).toBe(96);
+        expect(pic["picType"]).toBe(1001);
+    });
+
+    it("image：IPC 直发缺失 size/mime → 零依赖解析真实 JPEG 宽高 + picType 1000", async () => {
+        const imgPath = join(dir, "fallback.jpg");
+        writeFileSync(imgPath, makeJpeg(800, 600));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/j.jpg") },
+            { util: makeUtil().util },
+        );
+        await api.sendMessage(target, [{ type: "image", path: imgPath }]);
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(800);
+        expect(pic["picHeight"]).toBe(600);
+        expect(pic["picType"]).toBe(1000);
+    });
+
+    it("image：无 size/mime 且非图片字节 → 安全回退 0/0/1000 不报错", async () => {
+        const imgPath = join(dir, "garbage.jpg");
+        writeFileSync(imgPath, Buffer.from("definitely-not-an-image"));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/g.jpg") },
+            { util: makeUtil().util },
+        );
+        await expect(api.sendMessage(target, [{ type: "image", path: imgPath }])).resolves.toEqual({
+            msgId: "msgid-1",
+        });
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(0);
+        expect(pic["picHeight"]).toBe(0);
+        expect(pic["picType"]).toBe(1000);
+    });
+
+    it("image：仅给 size（缺 mime）→ 仍探测 MIME 决定 picType", async () => {
+        const imgPath = join(dir, "size-only.png");
+        writeFileSync(imgPath, makePng(64, 64));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/s.png") },
+            { util: makeUtil().util },
+        );
+        await api.sendMessage(target, [
+            { type: "image", path: imgPath, size: { width: 300, height: 150 } },
+        ]);
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(300);
+        expect(pic["picHeight"]).toBe(150);
+        expect(pic["picType"]).toBe(1001);
+    });
+
+    it("image：非字符串 mime（IPC 脏值）→ 安全忽略并探测真实类型", async () => {
+        const imgPath = join(dir, "dirty.png");
+        writeFileSync(imgPath, makePng(48, 24));
+        const { api, service } = makeApi(
+            { getRichMediaFilePathForGuild: vi.fn(() => "Pic/2026-11/Ori/d.png") },
+            { util: makeUtil().util },
+        );
+        await api.sendMessage(target, [
+            { type: "image", path: imgPath, mime: 42 as unknown as string },
+        ]);
+        const pic = sentPic(service) ?? {};
+        expect(pic["picWidth"]).toBe(48);
+        expect(pic["picHeight"]).toBe(24);
+        expect(pic["picType"]).toBe(1001);
     });
 
     it("voice：silk 契约值 + 时长按 ~3KB/s 估算（最小 1）", async () => {

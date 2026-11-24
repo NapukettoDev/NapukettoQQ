@@ -58,6 +58,8 @@ export class SatoriApi {
     readonly cacheDir: string;
     readonly publishLocalAsset?: ((path: string) => Promise<string | undefined>) | undefined;
     readonly groupCache: GroupCache | undefined;
+    /** 动作层可观测出口（媒体缓存/图片元数据探测降级留痕；缺省静默）。 */
+    readonly logger: AdapterLoggerLike | undefined;
 
     /**
      * 频道类型缓存：channel_id → isGroup（群聊频道 id 与私聊 uin 无法从数字
@@ -82,6 +84,7 @@ export class SatoriApi {
         this.self = opts.self;
         this.selfUin = opts.self.uin;
         this.cacheDir = opts.cacheDir ?? join(tmpdir(), "napuketto-satori-cache");
+        this.logger = opts.logger;
         this.mediaCache = new MediaCache({
             root: this.cacheDir,
             logger: opts.logger,

@@ -1,9 +1,11 @@
 /**
- * adapter core 媒体辅助：语音归一化 + 视频缩略图（media 严格解耦的协议层落点）
+ * adapter core 媒体辅助：语音归一化 + 视频缩略图 + 图片元数据
+ * （media 严格解耦的协议层落点）
  *
- * 协议层（onebot11 / satori）发送媒体前统一走这里：
+ * 协议层（onebot11 / milky / satori）发送媒体前统一走这里：
  * - `ensureSilk`：非 silk 音频转 QQ 语音格式（silk v3）；
- * - `prepareVideoElements`：视频缺缩略图/时长/尺寸时，用 ffmpeg 抽首帧并探测元数据。
+ * - `prepareVideoElements`：视频缺缩略图/时长/尺寸时，用 ffmpeg 抽首帧并探测元数据；
+ * - `prepareImageElements`：图片缺尺寸/MIME 时用 image-size / file-type 补齐。
  * 都依赖 @napuketto/media，只发生在 adapter 层；kernel 不 import media（红线），
  * 只接收「文件齐全」的 canonical 元素。
  */
@@ -13,10 +15,12 @@ import { extname, join } from "node:path";
 import type { CanonicalElement } from "@napuketto/kernel";
 import { errorMessage, kernelError } from "@napuketto/kernel";
 import {
+    detectFileType,
     downloadPublicUrl,
     downloadUrl,
     encodePcmToSilk,
     extractVideoFrame,
+    getImageSize,
     getVideoInfo,
     MAX_AUDIO_INPUT_BYTES,
     type MediaOutboundPolicy,
@@ -94,6 +98,56 @@ export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Prom
         logger?.warn({ path, error: errorMessage(err) }, "语音 silk 转码失败，原样透传");
         return path;
     }
+}
+
+/** 图片元素（带可选 size / mime）。 */
+type ImageElement = Extract<CanonicalElement, { type: "image" }>;
+
+/** 清洗 canonical MIME：IPC / 第三方可能传非字符串脏值，统一按缺失处理。 */
+function imageMime(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+/** 是否需要补图片尺寸/MIME（任一缺失）。 */
+function needsImageMeta(el: CanonicalElement): el is ImageElement {
+    return el.type === "image" && (el.size === undefined || imageMime(el.mime) === undefined);
+}
+
+/**
+ * 图片元素补「像素尺寸 + MIME」（QQ PIC 发送契约的 picWidth / picHeight / picType）。
+ *
+ * 为什么必须补：kernel 的 `prepareImageElement` 会把 canonical `size` / `mime`
+ * 写进 picElement；缺失时它只能退到零依赖文件头解析。协议层先用
+ * `@napuketto/media`（image-size / file-type，覆盖格式更全）补齐，kernel 不必
+ * 依赖媒体库（解耦红线）。单项探测失败只 warn 并保留原元素——发送链不能因为
+ * 元数据失败而中断，kernel 仍有零依赖兜底。
+ */
+export async function prepareImageElements(
+    elements: readonly CanonicalElement[],
+    logger?: AdapterLoggerLike,
+): Promise<CanonicalElement[]> {
+    if (!elements.some(needsImageMeta)) {
+        return [...elements];
+    }
+    const out: CanonicalElement[] = [];
+    for (const el of elements) {
+        if (!needsImageMeta(el)) {
+            out.push(el);
+            continue;
+        }
+        try {
+            const size = el.size ?? (await getImageSize(el.path));
+            const mime = imageMime(el.mime) ?? (await detectFileType(el.path)).mime;
+            out.push({ ...el, size, mime });
+        } catch (err) {
+            logger?.warn(
+                { path: el.path, error: errorMessage(err) },
+                "图片元数据探测失败，交由 kernel 零依赖兜底",
+            );
+            out.push(el);
+        }
+    }
+    return out;
 }
 
 /** 视频元素准备结果。 */

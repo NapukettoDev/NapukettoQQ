@@ -8,6 +8,7 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
+import { prepareImageElements } from "../../internal/qq/media.js";
 import type { MilkyApi } from "../api.js";
 import { resolveUriToPath } from "../helper/message/media-uri.js";
 import {
@@ -176,7 +177,8 @@ async function recallTempMessages(peer: Peer, msgIds: string[], api: MilkyApi): 
 
 /** ---------- 元素二次解析 ---------- */
 
-/** 元素二次解析：at uin→uid + 远程媒体 URI 落盘（reply seq 已在映射层兜底原样）。 */
+/** 元素二次解析：at uin→uid + 远程媒体 URI 落盘 + 图片尺寸/MIME 补齐
+ * （reply seq 已在映射层兜底原样）。 */
 async function resolveElements(
     elements: CanonicalElement[],
     atUins: string[],
@@ -187,7 +189,9 @@ async function resolveElements(
     for (const el of elements) {
         out.push(await resolveElement(el, uinToUid, api));
     }
-    return out;
+    // 图片尺寸/MIME 在 URI 落盘之后探测（探测对象是本地副本）；同时覆盖普通
+    // 发送与 forward 组装链的每条临时消息。
+    return await prepareImageElements(out, api.logger);
 }
 
 /** at uin→uid 批量转换（失败返回 undefined：at 原样 uin，交 QQ 端判断）。 */

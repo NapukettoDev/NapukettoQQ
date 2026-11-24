@@ -26,6 +26,7 @@ import type {
 } from "../types/index.js";
 import { ChatType, ElementType, toSendElements, VIDEO_THUMB_KEY } from "../types/index.js";
 import { hasCallableProp, isRecord, requireKernelService } from "../utils/type-guards.js";
+import { probeImageMetaFallback, resolvePicType } from "./image-meta.js";
 import { checkLooseResult, unwrapResult } from "./result.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */
@@ -38,16 +39,19 @@ const QQ_EMOJI_ID_PATTERN = /^\d+$/;
 const MESSAGE_SEQ_PATTERN = /^[1-9]\d*$/;
 
 /**
- * PIC 元素发送契约值（NapCat 同款发送契约值，未逐字段校准）。
- * 下列固定值均为实测调通的 wrapper 发送契约（picType / picSubType /
- * picWidth / picHeight / original / thumbFileSize），只抽常量不改值——改值会破坏图片发送。
+ * PIC 元素发送契约值。
+ *
+ * `picSubType` / `original` / `thumbFileSize` 是实测调通的固定契约值，只抽常量
+ * 不改值。`picType` 不再硬编码 1000：由 `resolvePicType` 按 MIME/扩展名映射
+ * （PNG → 1001、WebP → 1002、BMP → 1005、GIF → 2000、JPG/未知 → 1000）；
+ * `picWidth` / `picHeight` 取 canonical 元数据或零依赖文件头探测结果，未知时
+ * 才写 0。硬编码 0/0/1000 会让手机端 QQ 显示空白图片。
  */
-const PIC_TYPE = 1000;
 const PIC_SUB_TYPE = 0;
-const PIC_WIDTH = 0;
-const PIC_HEIGHT = 0;
 const PIC_ORIGINAL = true;
 const PIC_THUMB_FILE_SIZE = 0;
+/** 无法探测出正整数宽高时的占位值（不是有效尺寸，仅满足发送契约字段）。 */
+const PIC_FALLBACK_SIZE = 0;
 
 /**
  * PTT 元素发送契约值（NapCat 同款发送契约值，未逐字段校准）。
@@ -163,6 +167,19 @@ async function hashFile(path: string, label = "图片"): Promise<string> {
     } catch {
         throw kernelError(`${label}文件读取失败: ${path}`, "INVALID_PARAM");
     }
+}
+
+/**
+ * 正整数校验：`0` / 负数 / 非安全整数一律视为「未探测到」。
+ * canonical `size` 可能来自外部协议层，不能直接当成有效宽高写进 picElement。
+ */
+function positiveInt(value: number | undefined): number | undefined {
+    return value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+/** 清洗 canonical MIME：IPC / 第三方可能传非字符串脏值，统一按缺失处理。 */
+function normalizeMime(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
 /**
@@ -282,7 +299,7 @@ export class MsgApi {
         for (const el of elements) {
             switch (el.type) {
                 case "image":
-                    out.push(await this.prepareImageElement(el.path));
+                    out.push(await this.prepareImageElement(el));
                     break;
                 case "voice":
                     out.push(await this.preparePttElement(el.path));
@@ -301,24 +318,46 @@ export class MsgApi {
         return out;
     }
 
-    /** PIC 元素 NapCat 式预处理：md5 → 目标路径 → copyFile → 完整 picElement。 */
-    private async prepareImageElement(path: string): Promise<SendMessageElement> {
-        const file = await statFile(path);
-        const md5 = await hashFile(path);
-        const fileName = basename(path);
-        const relPath = await this.placeMediaFile(path, ElementType.PIC, md5, fileName);
+    /**
+     * PIC 元素 NapCat 式预处理：md5 → 目标路径 → copyFile → 完整 picElement。
+     *
+     * 图片尺寸/MIME 优先取 canonical（adapter 已用 `@napuketto/media` 探测并写入
+     * `size` / `mime`）；缺任一项时（IPC 直发、第三方直接调 kernel）用本包的
+     * 零依赖文件头解析兜底补齐，`picType` 按真实类型映射。硬编码 0/0/1000
+     * 会让手机端 QQ 收到的图片消息显示空白（上传本身成功）。
+     */
+    private async prepareImageElement(
+        el: Extract<CanonicalElement, { type: "image" }>,
+    ): Promise<SendMessageElement> {
+        const file = await statFile(el.path);
+        const md5 = await hashFile(el.path);
+        const fileName = basename(el.path);
+        const relPath = await this.placeMediaFile(el.path, ElementType.PIC, md5, fileName);
+        const width = positiveInt(el.size?.width);
+        const height = positiveInt(el.size?.height);
+        const mime = normalizeMime(el.mime);
+        // 任一维度或 MIME 缺失 → 读文件头补齐（探测失败静默返回空，不阻断发送）。
+        let picWidth = width;
+        let picHeight = height;
+        let picMime = mime;
+        if (width === undefined || height === undefined || mime === undefined) {
+            const probed = await probeImageMetaFallback(el.path);
+            picWidth = width ?? probed.width;
+            picHeight = height ?? probed.height;
+            picMime = mime ?? probed.mime;
+        }
         return {
             elementType: ElementType.PIC,
             elementId: "",
             picElement: {
                 md5HexStr: md5,
                 fileSize: String(file.size),
-                picWidth: PIC_WIDTH,
-                picHeight: PIC_HEIGHT,
+                picWidth: picWidth ?? PIC_FALLBACK_SIZE,
+                picHeight: picHeight ?? PIC_FALLBACK_SIZE,
                 fileName,
                 sourcePath: relPath,
                 original: PIC_ORIGINAL,
-                picType: PIC_TYPE,
+                picType: resolvePicType(picMime, el.path),
                 picSubType: PIC_SUB_TYPE,
                 fileUuid: "",
                 fileSubId: "",
@@ -329,7 +368,7 @@ export class MsgApi {
     }
 
     /**
-     * PTT 元素 NapCat 式预处理：md5 → 目标路径 → copyFile → 完整 pttElement。
+     * PTT 元素预处理：md5 → 目标路径 → copyFile → 完整 pttElement。
      *
      * 2026-08-12（实测依据）：只给 filePath 时 wrapper 内部抛
      * "Cannot convert undefined or null to object"（缺 md5HexStr/fileSize 等字段），

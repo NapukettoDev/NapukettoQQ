@@ -13,7 +13,15 @@
 export type CanonicalElement =
     | { type: "text"; text: string }
     | { type: "at"; target: string; display?: string }
-    | { type: "image"; path: string; url?: string; size?: { width: number; height: number } }
+    | {
+          type: "image";
+          path: string;
+          url?: string;
+          /** 图片像素尺寸（协议层探测后填充；缺省时 kernel 读文件头兜底）。 */
+          size?: { width: number; height: number };
+          /** 图片 MIME（如 image/png；缺省时 kernel 按扩展名/文件头推断 picType）。 */
+          mime?: string;
+      }
     | { type: "face"; id: string }
     | { type: "voice"; path: string; durationMs?: number; url?: string }
     | {

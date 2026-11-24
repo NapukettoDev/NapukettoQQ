@@ -14,7 +14,11 @@ import { errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
 import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
-import { ensureSilk, prepareVideoElements } from "../../../internal/qq/media.js";
+import {
+    ensureSilk,
+    prepareImageElements,
+    prepareVideoElements,
+} from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     applySendContext,
@@ -101,9 +105,12 @@ async function sendOb11Message(
     }
     // 语音段：非 silk 输入转 silk（QQ 语音协议）；转换在协议层完成，kernel 不背 media（红线）
     canonical = await ensureVoiceSilk(canonical, deps.logger);
+    // 图片段：缺尺寸/MIME 时用 @napuketto/media 补齐（PIC 发送契约 picWidth /
+    // picHeight / picType；缺失会让手机端显示空白）
+    const withImageMeta = await prepareImageElements(canonical, deps.logger);
     // 视频段：缺首帧缩略图时用 ffmpeg 抽帧并补时长/尺寸（QQ 视频消息发送契约，
     // 缺失时 native 只回 sendStatus=0）
-    const prepared = await prepareVideoElements(canonical);
+    const prepared = await prepareVideoElements(withImageMeta);
     try {
         const { msgId } = await deps.msgApi.sendMessage(peer, prepared.elements);
         return { message_id: deps.messageUnique.alloc(msgId, peer) };

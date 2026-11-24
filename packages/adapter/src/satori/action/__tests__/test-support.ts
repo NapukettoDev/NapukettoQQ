@@ -17,6 +17,7 @@ import type {
 } from "@napuketto/kernel";
 import { vi } from "vitest";
 import { stub } from "../../../internal/__tests__/stub.js";
+import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
 import { MediaCache } from "../../../internal/infra/media-cache.js";
 import type { SatoriToCanonicalDeps } from "../../helper/element/element-convert.js";
 import type { SatoriActionHandler } from "../base-action.js";
@@ -88,6 +89,11 @@ export function stubSatoriApi() {
         self: { uin: "10001", nickname: "机器人" },
         selfUin: "10001",
         cacheDir: "/tmp/nk-cache",
+        logger: stub<AdapterLoggerLike>({
+            warn: vi.fn(),
+            info: vi.fn(),
+            debug: vi.fn(),
+        }),
         groupCache: undefined as unknown,
         resolvePeer: vi.fn(async () => ({ chatType: 2, peerUid: "10001" }) as never),
         setChannelType: vi.fn((_channelId: string, _isGroup: boolean) => undefined),

@@ -34,6 +34,19 @@ vi.mock("@napuketto/media", async (original) => ({
     downloadPublicUrl: downloadMock,
 }));
 
+/** 最小 PNG 头（签名 + IHDR），供 image-size / file-type 探测。 */
+function pngHeader(width: number, height: number): Buffer {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(13, 8);
+    buf.write("IHDR", 12, "ascii");
+    buf.writeUInt32BE(width, 16);
+    buf.writeUInt32BE(height, 20);
+    buf[24] = 8;
+    buf[25] = 6;
+    return buf;
+}
+
 /** 从桩 api 构造 MessageActionDeps。 */
 function makeDeps(api: StubSatoriApi): MessageActionDeps {
     return stub<MessageActionDeps>({
@@ -52,6 +65,34 @@ function actionOf<R>(api: StubSatoriApi, name: string) {
 }
 
 describe("message.create", () => {
+    it("img：发送前补 size/mime（kernel PIC 契约）", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "nk-satori-image-meta-"));
+        const api = stubSatoriApi();
+        api.toCanonicalDeps.mockReturnValue({ cacheDir: dir, uinToUid: api.uinToUid });
+        downloadMock.mockImplementation(async (_url: string, dest: string) => {
+            writeFileSync(dest, pngHeader(320, 240));
+            return 33;
+        });
+        vi.mocked(api.msgApi.sendMessage).mockImplementationOnce(async (_peer, elements) => {
+            expect(elements[0]).toMatchObject({
+                type: "image",
+                size: { width: 320, height: 240 },
+                mime: "image/png",
+            });
+            return { msgId: "sent-msg-1" };
+        });
+        try {
+            await actionOf<Message[]>(api, "message.create").run({
+                channel_id: "10001",
+                content: '<img src="https://a.example/a.png"/>',
+            });
+            expect(api.msgApi.sendMessage).toHaveBeenCalledOnce();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+            downloadMock.mockReset();
+        }
+    });
+
     it.each(["", ' title="custom.pdf"'])(
         "H-04: remote file keeps its logical title %s",
         async (title) => {
