@@ -1,24 +1,23 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
-    "name": "NapukettoQQ",
+    "name": "napuketto",
     "version": "1.0.0",
     "description": "High-performance modular QQ bot framework and protocol implementation.",
     "type": "module",
     "private": true,
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "typescript",
         "monorepo"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git"
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git"
     },
     "license": "MIT",
     "author": {

@@ -1,5 +1,5 @@
 #!/bin/sh
-# NapukettoQQ 容器入口：校验配置 → 对齐数据卷属主 → 降权到 node(1000) 后 exec。
+# Napuketto 容器入口：校验配置 → 对齐数据卷属主 → 降权到 node(1000) 后 exec。
 #
 # 为什么要这层：
 # - Docker 在 bind mount 目标不存在时会建成**空目录**，直接交给 cli 只会得到一句

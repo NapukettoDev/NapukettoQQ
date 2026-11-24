@@ -3,22 +3,21 @@
     "name": "@napuketto/kernel",
     "version": "0.19.0",
     "type": "module",
-    "description": "Core runtime kernel of NapukettoQQ",
+    "description": "Core runtime kernel of Napuketto",
     "keywords": [
-        "qq",
         "qqnt",
         "bot",
         "napuketto",
         "kernel",
         "runtime"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/kernel#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/packages/kernel#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "packages/kernel"
     },
     "license": "MIT",

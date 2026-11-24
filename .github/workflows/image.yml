@@ -70,7 +70,7 @@ jobs:
                       version="${GITHUB_REF_NAME##*@}"
                   fi
                   echo "version=${version}" >> "${GITHUB_OUTPUT}"
-                  echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/napukettoqq" >> "${GITHUB_OUTPUT}"
+                  echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/napuketto" >> "${GITHUB_OUTPUT}"
 
             # 与 Dockerfile 里的 node:24 对齐：预检要复现构建期 npm 的解析行为
             # （不同 npm 大版本的 semver 处理有差异，如 11 拒绝隐式 latest 降级）。
@@ -147,8 +147,8 @@ jobs:
                       WITH_FFMPEG=true
                   provenance: true
                   sbom: true
-                  cache-from: type=gha,scope=napukettoqq
-                  cache-to: type=gha,scope=napukettoqq,mode=max
+                  cache-from: type=gha,scope=napuketto
+                  cache-to: type=gha,scope=napuketto,mode=max
 
             - name: 生成镜像标签（slim，无 ffmpeg）
               id: meta-slim
@@ -177,4 +177,4 @@ jobs:
                   provenance: true
                   sbom: true
                   # 只读 full 导出到同一 scope 的缓存；slim 自身没有新层，不需要再写一份
-                  cache-from: type=gha,scope=napukettoqq
+                  cache-from: type=gha,scope=napuketto

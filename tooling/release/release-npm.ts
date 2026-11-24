@@ -305,7 +305,7 @@ function reportTrustGaps(
     );
     console.log("[release-npm] 💡 处置（本机 npm login，npm CLI ≥ 11.15）：");
     console.log(
-        "[release-npm]    npm trust github <包名> --file release.yml --repo NapukettoDev/NapukettoQQ --environment release --allow-publish --yes",
+        "[release-npm]    npm trust github <包名> --file release.yml --repo NapukettoDev/Napuketto --environment release --allow-publish --yes",
     );
     console.log(
         "[release-npm]    已有失效记录先 npm trust revoke <包名> --id <id> 再重建；配完当天就发，别隔天。",

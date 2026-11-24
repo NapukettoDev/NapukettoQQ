@@ -156,7 +156,7 @@ describe("loadCliConfigWithSource 文件形态补充", () => {
         expect(existsSync(configPath)).toBe(true);
         const generated = readFileSync(configPath, "utf8");
         expect(generated).toContain('qq = "123456"');
-        expect(generated).toContain("NapukettoQQ 全局配置文件");
+        expect(generated).toContain("Napuketto 全局配置文件");
         expect(mocks.logger.info).toHaveBeenCalledWith(
             { path: configPath },
             "配置文件不存在，已生成默认模板（请编辑 accounts 段填入 QQ 号）",

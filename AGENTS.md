@@ -1,4 +1,4 @@
-# NapukettoQQ 工程指南
+# Napuketto 工程指南
 
 > **上下文省流铁律（必读）**：
 > 1. **按需读文档**：严禁开局通读所有文档！仅在修改具体包时，读取对应包的 `packages/<pkg>/docs/design.md`；涉及跨包契约变更时才读 `docs/architecture/`。
@@ -7,7 +7,7 @@
 
 ## 项目概览
 
-NapukettoQQ：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人框架，提供 Milky、OneBot 11、Satori 与 KuroBot 协议支持（OB12 已弃）。
+Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人框架，提供 Milky、OneBot 11、Satori 与 KuroBot 协议支持（OB12 已弃）。
 技术栈：pnpm monorepo + TypeScript (ESM) + tsdown + biome，MIT 协议，包名前缀 `@napuketto/*`。
 
 ## 硬性约束（违反 = 错误）
@@ -17,7 +17,7 @@ NapukettoQQ：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人
    - 底层（无内部依赖）：`kernel` / `media` / `network`（`network` 必须协议无关、泛型化；`media` 仅被协议层依赖，kernel 不碰媒体）
    - 协议层：`adapter` → 依赖 `kernel + network + media`
    - 启动层：`loader` → 编译期仅依赖 `zod`，运行期动态 `import` kernel
-   - 应用层：`apps/cli` → 依赖 `kernel + network + adapter + loader`；`apps/napuketto-create` → 依赖 `cli`
+   - 应用层：`apps/cli` → 依赖 `kernel + network + adapter + loader`；`apps/create` → 依赖 `cli`
 3. **原生与逆向边界**：
    - **唯一原生层**：仅 `packages/kernel` 允许 `process.dlopen`、访问 `wrapper.node`、注册原生 listener；其他包只调语义 API、订阅事件、读缓存。
    - **自建宿主路线**：标准 Node + stub（Win PE `QQNT.dll` / Linux ELF `LD_PRELOAD`），注入/worker 路线已淘汰。

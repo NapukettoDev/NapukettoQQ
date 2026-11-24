@@ -245,7 +245,7 @@ afterEach(() => {
 
 /** 构造完整安装结构：<root>/QQ.exe + <root>/versions/<v>/resources/app/wrapper.node。 */
 function makeInstall(version = "9.9.33-51802"): string {
-    const root = mkdtempSync(join(tmpdir(), "napuketto-qq-install-"));
+    const root = mkdtempSync(join(tmpdir(), "napuketto-install-"));
     const appDir = join(root, "versions", version, "resources", "app");
     mkdirSync(appDir, { recursive: true });
     // wrapper 写 ELF 魔数：Linux 平台下 resolveFromRoot 会校验（真实 wrapper 是 PE 或 ELF，
@@ -758,14 +758,14 @@ describe("ensureLinuxSevenZip", () => {
 
 describe("resolveFromRoot 结构校验（经 resolveQqFiles 显式根触发）", () => {
     it("L0 文件根缺 versions 目录 → 抛 QQ 版本目录不存在", async () => {
-        const root = mkdtempSync(join(tmpdir(), "napuketto-qq-root-"));
+        const root = mkdtempSync(join(tmpdir(), "napuketto-root-"));
         await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
             "QQ 版本目录不存在",
         );
     });
 
     it("versions 目录为空 → 抛 QQ 版本目录为空", async () => {
-        const root = mkdtempSync(join(tmpdir(), "napuketto-qq-root-"));
+        const root = mkdtempSync(join(tmpdir(), "napuketto-root-"));
         mkdirSync(join(root, "versions"), { recursive: true });
         await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
             "QQ 版本目录为空",
@@ -773,7 +773,7 @@ describe("resolveFromRoot 结构校验（经 resolveQqFiles 显式根触发）",
     });
 
     it("版本目录缺 wrapper.node → 抛未找到 wrapper.node", async () => {
-        const root = mkdtempSync(join(tmpdir(), "napuketto-qq-root-"));
+        const root = mkdtempSync(join(tmpdir(), "napuketto-root-"));
         mkdirSync(join(root, "versions", "9.9.33-51802", "resources", "app"), { recursive: true });
         await expect(resolveQqFiles({ qqFilesDir: root, autoDownload: false })).rejects.toThrow(
             "未找到 wrapper.node",

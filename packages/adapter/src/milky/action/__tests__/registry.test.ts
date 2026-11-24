@@ -23,12 +23,12 @@ describe("createMilkyActionRegistry", () => {
         ]);
     });
 
-    it("get_impl_info：milky_version=1.3 + impl_name=napukettoqq", async () => {
+    it("get_impl_info：milky_version=1.3 + impl_name=napuketto", async () => {
         const registry = registryOf(buildMilkyApi());
         const result = await registry.get("get_impl_info")?.handle({});
         expect(result?.status).toBe("ok");
         expect(result?.data).toMatchObject({
-            impl_name: "napukettoqq",
+            impl_name: "napuketto",
             qq_protocol_type: "windows",
             milky_version: "1.3",
         });

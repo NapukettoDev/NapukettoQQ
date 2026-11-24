@@ -3,9 +3,8 @@
     "name": "@napuketto/network",
     "version": "0.5.0",
     "type": "module",
-    "description": "Network layer of NapukettoQQ",
+    "description": "Network layer of Napuketto",
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "network",
@@ -13,13 +12,13 @@
         "http",
         "hono"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/network#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/packages/network#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "packages/network"
     },
     "license": "MIT",

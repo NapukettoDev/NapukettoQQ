@@ -44,7 +44,7 @@
 "pkg: create":
   - changed-files:
       - any-glob-to-any-file:
-          - "apps/napuketto-create/**"
+          - "apps/create/**"
 
 "protocol: onebot11":
   - changed-files:

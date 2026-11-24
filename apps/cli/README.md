@@ -1,6 +1,6 @@
 # @napuketto/cli
 
-NapukettoQQ 命令行入口。
+Napuketto 命令行入口。
 
 ```bash
 napuketto                  # 启动：自动登录（快速/扫码）→ 按账号配置装配协议服务

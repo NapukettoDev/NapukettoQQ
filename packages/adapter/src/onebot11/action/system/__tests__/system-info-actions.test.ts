@@ -19,7 +19,7 @@ describe("本地组装类动作", () => {
             "get_version_info",
         ).handle({});
         expect(result.data).toEqual({
-            app_name: "napuketto-qq",
+            app_name: "napuketto",
             app_version: "9.9.9-test",
             protocol_version: "v11",
         });

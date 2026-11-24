@@ -1,8 +1,8 @@
 # 任务 12 媒体预算验证
 
-以 `origin/main` 的 `e774e37` 为基线。复用 [#160 的进程和输出隔离](https://github.com/NapukettoDev/NapukettoQQ/pull/160)
-（`37087d5`）、[#178 的媒体出站策略](https://github.com/NapukettoDev/NapukettoQQ/pull/178)
-（`5966a5e`）与 [#179 的动作缓存所有权](https://github.com/NapukettoDev/NapukettoQQ/pull/179)
+以 `origin/main` 的 `e774e37` 为基线。复用 [#160 的进程和输出隔离](https://github.com/NapukettoDev/Napuketto/pull/160)
+（`37087d5`）、[#178 的媒体出站策略](https://github.com/NapukettoDev/Napuketto/pull/178)
+（`5966a5e`）与 [#179 的动作缓存所有权](https://github.com/NapukettoDev/Napuketto/pull/179)
 （`f572475`）。任务 12 的提交可独立应用，06／07 无额外在途依赖。
 
 | 审计编号 | 改动 | 验证 |

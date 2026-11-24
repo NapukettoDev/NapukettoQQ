@@ -2,7 +2,7 @@
 
 > 面向维护者，复核协议文件与出站边界、内核缓存、原生宿主和发布来源。正文链接到对应实现。
 
-代码基线为 [`2156c35`](https://github.com/NapukettoDev/NapukettoQQ/commit/2156c3553a0fddd8411d8cf68b7ea40b45fde8cc)。
+代码基线为 [`2156c35`](https://github.com/NapukettoDev/Napuketto/commit/2156c3553a0fddd8411d8cf68b7ea40b45fde8cc)。
 复核了已合入的相关 PR 与远端待合入 PR。以下将静态判断与产物实测分别标明。
 优先级反映触发条件和后续工作顺序。此次未对部署执行越权请求，未做内存压测、QQ 原生联调或原生全面审计。
 
@@ -50,7 +50,7 @@
 [文件 URI](../packages/adapter/src/internal/qq/media.ts#L27) ·
 [租约](../packages/adapter/src/internal/infra/media-cache.ts#L498) ·
 [媒体读取](../packages/kernel/src/apis/msg.ts#L119) ·
-[原生上传](../packages/kernel/src/apis/flash-transfer.ts#L68) · [缓存生命周期 PR](https://github.com/NapukettoDev/NapukettoQQ/pull/162)
+[原生上传](../packages/kernel/src/apis/flash-transfer.ts#L68) · [缓存生命周期 PR](https://github.com/NapukettoDev/Napuketto/pull/162)
 
 **未认证可达性** · 静态确认空 token 不挂鉴权。OneBot 11 和 Satori 的 HTTP/WS 服务默认列表为空，
 显式启用服务时默认监听回环，Milky 段启用后默认回环且 token 为空。OneBot 11 反向 WS 的对端可下发动作，
@@ -63,7 +63,7 @@ Satori WS 的 `IDENTIFY` 管事件接收，文件动作走 HTTP。可达的空 t
 [Milky 配置](../packages/adapter/src/milky/config.ts#L10) ·
 [Milky HTTP](../packages/adapter/src/milky/transport.ts#L135) ·
 [Satori 传输](../packages/adapter/src/satori/transport.ts#L184) ·
-[鉴权 PR](https://github.com/NapukettoDev/NapukettoQQ/pull/159) · [事件鉴权 PR](https://github.com/NapukettoDev/NapukettoQQ/pull/152)
+[鉴权 PR](https://github.com/NapukettoDev/Napuketto/pull/159) · [事件鉴权 PR](https://github.com/NapukettoDev/Napuketto/pull/152)
 
 **设计与验收** · 在根 `napuketto.toml` 的 `[accounts.<协议>.media]` 按账号和协议配置 `localFilePolicy`、
 `localMediaRoots`。存量缺省先映射为 `legacy`，保持当前路径兼容并告警，告警只含协议、动作与拒绝类别。
@@ -91,8 +91,8 @@ Satori WS 的 `IDENTIFY` 管事件接收，文件动作走 HTTP。可达的空 t
 PR #153 引入流式落盘、超时、大小限制和逐跳字面地址校验，明确保留私网和环回以支持 LAN 媒体及本机渲染服务。
 PR #157 补齐 IPv4-mapped IPv6 的字面地址分类。
 当前连接仍走普通 `fetch`，域名解析结果没有地址限制，也没有把校验结果绑定到实际连接。
-[下载加固](https://github.com/NapukettoDev/NapukettoQQ/pull/153) ·
-[映射地址修复](https://github.com/NapukettoDev/NapukettoQQ/pull/157) ·
+[下载加固](https://github.com/NapukettoDev/Napuketto/pull/153) ·
+[映射地址修复](https://github.com/NapukettoDev/Napuketto/pull/157) ·
 [下载器](../packages/media/src/downloader.ts#L120) ·
 [OneBot 11 下载](../packages/adapter/src/onebot11/action/system/file.ts#L81) ·
 [Milky 下载](../packages/adapter/src/milky/helper/message/media-uri.ts#L20) ·
@@ -187,14 +187,14 @@ CMake、Linux 构建脚本及两份预编译文件。CMake 输出到 `build/`，
 两份 stub 在自建宿主启动时以宿主账号权限加载。闭源限制独立审阅，当前证据未指认具体 C++ 缺陷。
 [gitlink 配置](../.gitmodules) · [文件清单](../packages/loader/package.json#L35) ·
 [发布检出](../.github/workflows/release.yml#L178) · [打包门禁](../.github/workflows/release.yml#L268) ·
-[公开 CI](../.github/workflows/ci.yml#L29) · [构建依赖加固](https://github.com/NapukettoDev/NapukettoQQ/pull/164)
+[公开 CI](../.github/workflows/ci.yml#L29) · [构建依赖加固](https://github.com/NapukettoDev/Napuketto/pull/164)
 
 **产物实测** · npm `@napuketto/loader@0.10.6` 的 tarball SHA-512 与 registry `dist.integrity` 一致，
 包内两个 stub 逐字节等于发布 tag 所指 gitlink 的本地副本。
 解码的 npm SLSA statement 的 subject digest 也匹配 tarball，记录主仓的 `release.yml` 和触发提交 `f7fb4fb`。
 本次未独立验证 attestation 签名，未重编或加载 stub。上述证据表明包内字节可追到入库副本，
 源码如何编成这两个副本仍缺每平台构建证明。
-[发布 tag](https://github.com/NapukettoDev/NapukettoQQ/tree/@napuketto%2Floader@0.10.6) ·
+[发布 tag](https://github.com/NapukettoDev/Napuketto/tree/@napuketto%2Floader@0.10.6) ·
 [Registry 元数据](https://registry.npmjs.org/@napuketto%2floader/0.10.6) ·
 [npm attestation](https://registry.npmjs.org/-/npm/v1/attestations/@napuketto%2floader@0.10.6)
 

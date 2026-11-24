@@ -1,12 +1,12 @@
 # Docker 部署
 
-> 适用场景：把 NapukettoQQ 跑在服务器或 Docker Desktop 上。本文只讲容器化部署的文件、
+> 适用场景：把 Napuketto 跑在服务器或 Docker Desktop 上。本文只讲容器化部署的文件、
 > 路径与运维；协议字段与默认值见 [configuration.md](configuration.md)，原生层排障见
 > [operations.md](operations.md)。
 
 ## 部署形态与进程拓扑
 
-官方镜像 `ghcr.io/napukettodev/napukettoqq` 只发布 `linux/amd64`，容器内与原生部署共用同一套进程拓扑：
+官方镜像 `ghcr.io/napukettodev/napuketto` 只发布 `linux/amd64`，容器内与原生部署共用同一套进程拓扑：
 
 ```text
 entrypoint(sh) → setpriv node → CLI(supervisor) → 每账号 boot 进程 → 自建宿主 → dlopen wrapper.node
@@ -43,8 +43,8 @@ entrypoint(sh) → setpriv node → CLI(supervisor) → 每账号 boot 进程 �
 取到两个文件（也可直接从仓库 `docker/` 目录复制）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/napuketto.toml.example -o napuketto.toml
-curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docker/compose.yaml -o compose.yaml
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/Napuketto/main/docker/napuketto.toml.example -o napuketto.toml
+curl -fsSL https://raw.githubusercontent.com/NapukettoDev/Napuketto/main/docker/compose.yaml -o compose.yaml
 ```
 
 1. 改 `napuketto.toml`：`qq` 换成你的号、`token` 换成随机串、监听地址保持 `0.0.0.0`
@@ -116,8 +116,8 @@ docker compose start
 ## 自建镜像
 
 ```bash
-docker build --build-arg NAPUKETTO_VERSION=<版本> -t napukettoqq:<版本> docker/
-docker build --build-arg NAPUKETTO_VERSION=<版本> --build-arg WITH_FFMPEG=false -t napukettoqq:<版本>-slim docker/
+docker build --build-arg NAPUKETTO_VERSION=<版本> -t napuketto:<版本> docker/
+docker build --build-arg NAPUKETTO_VERSION=<版本> --build-arg WITH_FFMPEG=false -t napuketto:<版本>-slim docker/
 ```
 
 - 构建只从 npm 安装**已发布**的 `@napuketto/cli`，不 COPY 仓库源码；`compose.yaml` 不带

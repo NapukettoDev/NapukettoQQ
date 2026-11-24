@@ -56,7 +56,7 @@ describe("外部调试沙箱", () => {
     it("初始化到指定外部目录，复用已有配置且保留 CLI 退出码", () => {
         const config = join(sandbox, "napuketto.toml");
         expect(run("init").status).toBe(0);
-        expect(readFileSync(config, "utf8")).toContain("NapukettoQQ 全局配置文件");
+        expect(readFileSync(config, "utf8")).toContain("Napuketto 全局配置文件");
         expect(run("config", "validate").status).toBe(78);
         writeFileSync(config, DISABLED_ACCOUNT);
         expect(run("init").output).not.toContain("[[accounts]]");

@@ -3,9 +3,8 @@
     "name": "@napuketto/loader",
     "version": "0.16.0",
     "type": "module",
-    "description": "Standalone host and native wrapper.node loader for NapukettoQQ (without launching or injecting into QQNT).",
+    "description": "Standalone host and native wrapper.node loader for Napuketto (without launching or injecting into QQNT).",
     "keywords": [
-        "qq",
         "qqnt",
         "bot",
         "napuketto",
@@ -13,13 +12,13 @@
         "native",
         "headless"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/packages/loader#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/packages/loader#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
         "directory": "packages/loader"
     },
     "license": "MIT",

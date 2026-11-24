@@ -32,7 +32,7 @@
     // 界面与图标
     "material-icon-theme.folders.associations": {
         // apps
-        "napuketto-create": "generator",
+        "create": "generator",
         // packages
         "adapter": "connection",
         "kernel": "core",

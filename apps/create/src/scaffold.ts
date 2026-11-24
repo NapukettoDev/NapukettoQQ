@@ -1,5 +1,5 @@
 /**
- * create-napukettoqq 脚手架核心：模板渲染 + 目标目录创建 + 文件写入。
+ * create-napuketto 脚手架核心：模板渲染 + 目标目录创建 + 文件写入。
  *
  * 模板为独立文件（templates/ 目录，运行时读取），不硬编码在源码里；
  * 需要插值的占位符用 {{key}} 标记（见 renderTemplate）。
@@ -51,7 +51,7 @@ async function fetchLatestCliVersion(): Promise<string | null> {
  *
  * 2026-11-03 起该依赖放在 devDependencies（依赖审计整改）：脚手架只在运行时读
  * 自己的 package.json 取版本号，不需要在消费者机器上装整个 CLI（否则 `pnpm create
- * napukettoqq` 会先下载 95 个生产包，生成完项目再装一遍）。npm 发布时
+ * napuketto` 会先下载 95 个生产包，生成完项目再装一遍）。npm 发布时
  * devDependencies 字段仍保留在 package.json 里，读取路径不变。
  */
 async function cliVersionRange(): Promise<string> {
@@ -80,7 +80,7 @@ async function cliVersionRange(): Promise<string> {
 }
 
 /** 默认部署文件夹名（用户交互回车缺省值）。 */
-export const DEFAULT_PROJECT_NAME = "NapukettoQQ";
+export const DEFAULT_PROJECT_NAME = "Napuketto";
 
 /** 用户可用的包管理器（npm_config_user_agent 检测）。 */
 export type PackageManager = "pnpm" | "yarn" | "npm";
@@ -180,7 +180,7 @@ function renderTemplate(content: string, vars: Record<string, string>): string {
 }
 
 /**
- * 生成 NapukettoQQ 项目骨架到当前目录下的 <dirName>/。
+ * 生成 Napuketto 项目骨架到当前目录下的 <dirName>/。
  * 目标目录已存在且非空：overwrite=false → 抛错；overwrite=true → 清空后生成。
  * 模板与写入目标一一对应（同文件名）。pm 为调用方包管理器：yarn 时额外生成
  * 空 yarn.lock 把用户项目隔离成独立项目——yarn install 会向上探测父目录的

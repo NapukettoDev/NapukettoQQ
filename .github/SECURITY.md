@@ -4,7 +4,7 @@
 
 ## 支持的版本
 
-NapukettoQQ 处于 0.x 早期阶段（npm 作用域 `@napuketto/*`），API 未冻结。安全更新仅针对当前发布线提供，并以补丁版本的形式通过正式发布链（changesets → `pnpm release`）发布。
+Napuketto 处于 0.x 早期阶段（npm 作用域 `@napuketto/*`），API 未冻结。安全更新仅针对当前发布线提供，并以补丁版本的形式通过正式发布链（changesets → `pnpm release`）发布。
 
 | 版本线 | 支持情况 |
 | ------ | -------- |
@@ -38,7 +38,7 @@ NapukettoQQ 处于 0.x 早期阶段（npm 作用域 `@napuketto/*`），API 未�
 
 ## Supported Versions
 
-NapukettoQQ is in its early 0.x stage (npm scope `@napuketto/*`); the API is not frozen yet. Security updates are provided for the current release line only, shipped as patch releases through the formal release chain (changesets → `pnpm release`).
+Napuketto is in its early 0.x stage (npm scope `@napuketto/*`); the API is not frozen yet. Security updates are provided for the current release line only, shipped as patch releases through the formal release chain (changesets → `pnpm release`).
 
 | Version | Supported |
 | ------- | --------- |

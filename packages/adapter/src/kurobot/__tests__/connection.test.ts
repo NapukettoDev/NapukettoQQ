@@ -46,7 +46,7 @@ function makeConnection(
             platform: "qq",
             version: "0.2.1",
             protocolVersion: "0.4.0",
-            client: "napukettoqq/0.2.1",
+            client: "napuketto/0.2.1",
         },
         ...FAST,
         onEstablished: (ack) => established.push(ack),
@@ -110,7 +110,7 @@ describe("KurobotConnection 握手", () => {
             platform: "qq",
             version: "0.2.1",
             protocolVersion: "0.4.0",
-            client: "napukettoqq/0.2.1",
+            client: "napuketto/0.2.1",
         });
         // ack ok：绑定快照透出
         expect(established[0]?.channelBindings).toEqual(["808", "10086"]);

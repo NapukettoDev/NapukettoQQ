@@ -1,5 +1,5 @@
 /**
- * index.test.ts：create-napukettoqq 交互流程（index.ts）单测。
+ * index.test.ts：create-napuketto 交互流程（index.ts）单测。
  *
  * 交互（@clack/prompts）/ 子进程（spawn）/ 脚手架核心（scaffoldProject、
  * checkDirStatus、包管理器检测）全部 mock 到边界；main() 随 import 执行，
@@ -87,7 +87,7 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 
 /** 设置 argv 后动态加载入口模块（main() 随 import 执行）。 */
 async function runCreate(argv: string[]): Promise<void> {
-    process.argv = ["node", "create-napukettoqq", ...argv];
+    process.argv = ["node", "create-napuketto", ...argv];
     await import("../index.js");
 }
 
@@ -160,7 +160,7 @@ describe("参数解析", () => {
     it("-h → 打印帮助后直接返回（不 intro、不生成）", async () => {
         await runCreate(["-h"]);
         await untilSettled();
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("用法: create-napukettoqq"));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("用法: create-napuketto"));
         expect(mocks.intro).not.toHaveBeenCalled();
         expect(mocks.scaffoldProject).not.toHaveBeenCalled();
     });
@@ -190,7 +190,7 @@ describe("命名与目标目录", () => {
         expect(mocks.spinnerStart).toHaveBeenCalledWith(expect.stringContaining("my-bot"));
     });
 
-    it("-y → 跳过命名交互，用默认名 NapukettoQQ", async () => {
+    it("-y → 跳过命名交互，用默认名 Napuketto", async () => {
         await runCreate(["-y"]);
         await untilSettled();
         expect(mocks.text).not.toHaveBeenCalled();

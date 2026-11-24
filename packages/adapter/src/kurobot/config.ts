@@ -17,7 +17,7 @@ export const kurobotConfigSchema = z.object({
     }),
     /** 鉴权 token（缺省空 = 不带；服务端配置了非空 token 则必须一致，否则 close 1008）。 */
     token: z.string().default(""),
-    /** 自报身份（缺省 napukettoqq，能取到 adapter 包版本则 napukettoqq/<版本>）。 */
+    /** 自报身份（缺省 napuketto，能取到 adapter 包版本则 napuketto/<版本>）。 */
     client: z.string().min(1).optional(),
     /** 群命令前缀（前缀开头 → command 帧，不再作为 chat 发送）。 */
     commandPrefix: z.string().min(1).default("/"),

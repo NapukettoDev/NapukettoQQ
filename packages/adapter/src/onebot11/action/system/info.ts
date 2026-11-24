@@ -54,7 +54,7 @@ export function createSystemInfoActions(api: OneBotApi): Ob11Action[] {
             schema: getVersionInfoSchema,
             handle: (): Promise<VersionInfo> =>
                 Promise.resolve({
-                    app_name: "napuketto-qq",
+                    app_name: "napuketto",
                     app_version: api.appVersion,
                     protocol_version: "v11",
                 }),

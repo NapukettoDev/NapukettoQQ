@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# NapukettoQQ 官方运行镜像（linux/amd64）
+# Napuketto 官方运行镜像（linux/amd64）
 #
 # 设计要点：
 # - **不内置腾讯二进制**（ADR-019）：官方 Linux deb 由 loader 在首启时下载、解包到
@@ -20,9 +20,9 @@
 # - WITH_FFMPEG=false 派生 -slim：默认 tag 保留完整媒体能力，slim 给纯文本 Bot。
 #
 # 构建（版本缺省 latest；发布工作流会传入精确版本）：
-#   docker build -t napukettoqq:local docker/
-#   docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napukettoqq:0.5.17 docker/
-#   docker build --build-arg WITH_FFMPEG=false -t napukettoqq:0.5.17-slim docker/
+#   docker build -t napuketto:local docker/
+#   docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napuketto:0.5.17 docker/
+#   docker build --build-arg WITH_FFMPEG=false -t napuketto:0.5.17-slim docker/
 
 # ==========================================
 # 1. 静态 FFmpeg 提取层（钉死版本与摘要）

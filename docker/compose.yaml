@@ -1,4 +1,4 @@
-# NapukettoQQ 官方镜像的 Compose 部署示例（Linux / Docker Desktop 均可）
+# Napuketto 官方镜像的 Compose 部署示例（Linux / Docker Desktop 均可）
 #
 # 首次部署：
 #   cp napuketto.toml.example napuketto.toml   # 改 qq / token / 端口
@@ -9,7 +9,7 @@
 # 升级只换 image tag（或 docker compose pull），配置与已登录票据保留。
 services:
     napuketto:
-        image: ghcr.io/napukettodev/napukettoqq:latest
+        image: ghcr.io/napukettodev/napuketto:latest
         # 本地验证自己改的 Dockerfile：先在本目录 `docker build -t <上面的 image> .`，
         # 再 `docker compose up -d`（compose 有本地镜像时不会去拉远端）。
         # 这里刻意不写 build:，避免只下载 compose 的用户被要求先有 Dockerfile。

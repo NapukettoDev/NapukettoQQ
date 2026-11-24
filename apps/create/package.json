@@ -1,11 +1,10 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
-    "name": "create-napukettoqq",
+    "name": "create-napuketto",
     "version": "0.3.17",
     "type": "module",
-    "description": "Scaffolding tool to quickly create a NapukettoQQ bot project (pnpm/npm/yarn create napukettoqq).",
+    "description": "Scaffolding tool to quickly create a Napuketto bot project (pnpm/npm/yarn create napuketto).",
     "keywords": [
-        "qq",
         "bot",
         "napuketto",
         "create",
@@ -13,14 +12,14 @@
         "template",
         "cli"
     ],
-    "homepage": "https://github.com/NapukettoDev/NapukettoQQ/tree/main/apps/napuketto-create#readme",
+    "homepage": "https://github.com/NapukettoDev/Napuketto/tree/main/apps/create#readme",
     "bugs": {
-        "url": "https://github.com/NapukettoDev/NapukettoQQ/issues"
+        "url": "https://github.com/NapukettoDev/Napuketto/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/NapukettoDev/NapukettoQQ.git",
-        "directory": "apps/napuketto-create"
+        "url": "git+https://github.com/NapukettoDev/Napuketto.git",
+        "directory": "apps/create"
     },
     "license": "MIT",
     "author": {
@@ -40,7 +39,7 @@
         "templates"
     ],
     "bin": {
-        "create-napukettoqq": "./dist/index.mjs"
+        "create-napuketto": "./dist/index.mjs"
     },
     "main": "./dist/index.mjs",
     "scripts": {

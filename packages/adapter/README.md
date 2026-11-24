@@ -1,6 +1,6 @@
 # @napuketto/adapter
 
-NapukettoQQ 协议适配器容器：core 框架 + OneBot 11 / Satori / KuroBot / Milky。
+Napuketto 协议适配器容器：core 框架 + OneBot 11 / Satori / KuroBot / Milky。
 
 - **core**：协议适配器生命周期框架（`BaseProtocolAdapter` / 动作执行内核 `runAction` / 动作注册表 / `ConfigBase`）
 - **onebot11**：动作注册表与 HTTP / WebSocket / 反向 WebSocket 多实例传输，鉴权 + 心跳

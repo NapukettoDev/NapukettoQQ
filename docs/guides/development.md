@@ -46,9 +46,9 @@ pnpm dev
 ```
 
 `pnpm sandbox` 会提示 `napuketto.toml` 的位置。先填入调试账号，再校验并启动。
-默认目录是仓库同级的 `Debug/napukettoqq-sandbox`，可用 `NAPUKETTO_SANDBOX_DIR`
+默认目录是仓库同级的 `Debug/napuketto-sandbox`，可用 `NAPUKETTO_SANDBOX_DIR`
 覆盖。相对设置值以仓库根为基准。PowerShell 当前会话可用
-`$env:NAPUKETTO_SANDBOX_DIR = '../Debug/napukettoqq-sandbox'` 设置。
+`$env:NAPUKETTO_SANDBOX_DIR = '../Debug/napuketto-sandbox'` 设置。
 
 数据、日志、缓存和原生 QQ 数据都放在外部目录。CLI 参数中的相对路径以沙箱为基准，
 例如从其他地方读取配置时，给 `pnpm run config apply` 或 `pnpm run config validate --config`
