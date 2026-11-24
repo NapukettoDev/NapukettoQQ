@@ -3,7 +3,7 @@
  *
  * - get_login_info：self 由装配方注入（接 kernel selfInfo 取真实昵称）
  * - get_version_info：appVersion 由装配方注入（kernel wrapper 版本或
- *   NAPUTO_QQ_VERSION）
+ *   NAPUKETTO_QQ_VERSION）
  * - get_status：返回与心跳 status 同构的 OB11Status（online/good）
  * - get_robot_uin_range：NapCat 从配置返回；这里给通用范围（min/max）
  * - translate_en2zh：kernel RichMediaApi.translateWords（词条数组限长）

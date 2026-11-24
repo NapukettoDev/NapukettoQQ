@@ -18,17 +18,17 @@ export interface QqInstallInfo {
     version: string;
     /** wrapper.node 绝对路径。 */
     wrapperPath: string;
-    /** 来源：local = 本机安装；cached = NAPUTO_QQ_FILES / 数据根缓存。 */
+    /** 来源：local = 本机安装；cached = NAPUKETTO_QQ_FILES / 数据根缓存。 */
     source: QqFileSource;
 }
 
 /** resolveQqFiles 选项。 */
 export interface ResolveQqFilesOptions {
-    /** 显式文件根（L0；缺省读 NAPUTO_QQ_FILES）。 */
+    /** 显式文件根（L0；缺省读 NAPUKETTO_QQ_FILES）。 */
     qqFilesDir?: string;
-    /** 显式 QQ.exe 路径（L1；缺省读 NAPUTO_QQ_PATH）。 */
+    /** 显式 QQ.exe 路径（L1；缺省读 NAPUKETTO_QQ_PATH）。 */
     qqPath?: string;
-    /** 数据根（L2 缓存扫描；缺省轻量解析 NAPKETTO_DATA ?? 项目根/.napuketto）。 */
+    /** 数据根（L2 缓存扫描；缺省按 `NAPUKETTO_DATA` → 项目根 `/.napuketto` 轻量解析）。 */
     dataRoot?: string;
     /** L0/L1/L2 全部失败时自动进入下载流程（P1；默认 true，测试可关）。 */
     autoDownload?: boolean;

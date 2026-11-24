@@ -276,7 +276,7 @@ async function downloadFile(url: string, dest: string): Promise<string> {
 
 /** 定位 7-Zip 可执行文件（环境变量 > 内置资产 > 系统 PATH）。 */
 function findSevenZip(): string {
-    const envPath = process.env["NAPUTO_7Z_PATH"];
+    const envPath = process.env["NAPUKETTO_7Z_PATH"];
     if (envPath !== undefined && envPath !== "" && existsSync(envPath)) {
         return envPath;
     }

@@ -5,7 +5,7 @@
  * 22 行重复 resolveDataRoot + findProjectRoot）。
  *
  * 语义与 kernel `resolveDataRoot`（packages/kernel/src/infra/paths.ts）对齐：
- * 显式参数 > `NAPUKETTO_DATA` ?? `NAPKETTO_DATA` > 项目根/.napuketto > 用户目录兜底；
+ * 显式参数 > `NAPUKETTO_DATA` > 项目根/.napuketto > 用户目录兜底；
  * 支持 `~` 前缀展开（跨平台配置文件写法 `dataDir = "~/.napuketto"`）。
  */
 import { existsSync } from "node:fs";
@@ -27,9 +27,9 @@ function expandTilde(p: string): string {
     return p;
 }
 
-/** 解析数据根（显式参数 > NAPUKETTO_DATA/NAPKETTO_DATA > 项目根/.napuketto > 用户目录兜底）。 */
+/** 解析数据根（显式参数 > NAPUKETTO_DATA > 项目根/.napuketto > 用户目录兜底）。 */
 export function resolveDataRoot(dataRoot?: string): string {
-    const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"] ?? process.env["NAPKETTO_DATA"];
+    const explicit = dataRoot ?? process.env["NAPUKETTO_DATA"];
     if (explicit !== undefined && explicit !== "") {
         return resolve(expandTilde(explicit));
     }

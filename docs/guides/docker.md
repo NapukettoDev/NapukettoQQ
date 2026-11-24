@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/NapukettoDev/NapukettoQQ/main/docke
 
 ## 容器内路径布局
 
-下表路径相对 `/app/.napuketto/`（镜像已固定 `NAPKETTO_CONFIG` 与 `NAPKETTO_DATA`）：
+下表路径相对 `/app/.napuketto/`（镜像已固定 `NAPUKETTO_CONFIG` 与 `NAPUKETTO_DATA`）：
 
 | 路径 | 内容 |
 |---|---|

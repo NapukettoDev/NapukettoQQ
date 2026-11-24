@@ -76,7 +76,7 @@ beforeEach(() => {
     h.calls.length = 0;
     h.nextError = null;
     h.onCall = null;
-    delete process.env["NAPUTO_7Z_PATH"];
+    delete process.env["NAPUKETTO_7Z_PATH"];
 });
 
 afterEach(() => {
@@ -88,17 +88,17 @@ afterEach(() => {
 });
 
 describe("findSevenZip", () => {
-    it("NAPUTO_7Z_PATH 指向存在的文件 → 环境变量来源", () => {
+    it("NAPUKETTO_7Z_PATH 指向存在的文件 → 环境变量来源", () => {
         const exe = join(tmpRoot, "my-7z.exe");
         writeFileSync(exe, "");
-        vi.stubEnv("NAPUTO_7Z_PATH", exe);
+        vi.stubEnv("NAPUKETTO_7Z_PATH", exe);
         const result = findSevenZip();
         expect(result.exe).toBe(exe);
-        expect(result.source).toContain("NAPUTO_7Z_PATH");
+        expect(result.source).toContain("NAPUKETTO_7Z_PATH");
     });
 
-    it("NAPUTO_7Z_PATH 指向不存在路径 → 回退（不使用坏路径）", () => {
-        vi.stubEnv("NAPUTO_7Z_PATH", join(tmpRoot, "missing-7z.exe"));
+    it("NAPUKETTO_7Z_PATH 指向不存在路径 → 回退（不使用坏路径）", () => {
+        vi.stubEnv("NAPUKETTO_7Z_PATH", join(tmpRoot, "missing-7z.exe"));
         const result = findSevenZip();
         expect(result.exe).not.toBe(join(tmpRoot, "missing-7z.exe"));
     });
@@ -181,7 +181,7 @@ describe("extractInstaller", () => {
     it("未显式传 7z → 用 findSevenZip 探测结果", async () => {
         const exe = join(tmpRoot, "probed.exe");
         writeFileSync(exe, "");
-        vi.stubEnv("NAPUTO_7Z_PATH", exe);
+        vi.stubEnv("NAPUKETTO_7Z_PATH", exe);
         await extractInstaller("C:/pkg/QQ.exe", join(tmpRoot, "out"));
         expect(h.calls[0]?.exe).toBe(exe);
     });

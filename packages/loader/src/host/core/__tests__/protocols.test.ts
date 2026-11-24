@@ -72,7 +72,7 @@ describe("startProtocols", () => {
     });
 
     it("IPC 模式 → 跳过 OB11/Satori 装配，直接返回服务", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_IPC", "1");
         const protocols = await freshProtocols();
         const services = await protocols.startProtocols(KERNEL, { session: {} }, LOGIN);
         expect(services).not.toBeNull();
@@ -81,7 +81,7 @@ describe("startProtocols", () => {
     });
 
     it("非 IPC：装配成功 → stopAdapters 绑定装配返回的停止函数", async () => {
-        vi.stubEnv("NAPUTO_IPC", "");
+        vi.stubEnv("NAPUKETTO_IPC", "");
         const protocols = await freshProtocols();
         const services = await protocols.startProtocols(KERNEL, { session: {} }, LOGIN);
         expect(services).not.toBeNull();
@@ -92,7 +92,7 @@ describe("startProtocols", () => {
     });
 
     it("装配抛 ConfigError → 原样重抛（退出码 78 契约）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "");
+        vi.stubEnv("NAPUKETTO_IPC", "");
         h.throws = new ConfigError("协议配置 kurobot 段校验失败");
         const protocols = await freshProtocols();
         await expect(
@@ -101,7 +101,7 @@ describe("startProtocols", () => {
     });
 
     it("装配抛其他错误 → 收敛 null，具体原因写 stderr（issue #144）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "");
+        vi.stubEnv("NAPUKETTO_IPC", "");
         h.throws = new Error("adapter 入口损坏");
         const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
         try {

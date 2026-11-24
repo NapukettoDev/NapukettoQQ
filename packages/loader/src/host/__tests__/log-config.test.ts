@@ -3,7 +3,7 @@
  *
  * 覆盖：kernel 无 parseLogConfig（老版本）回退缺省、配置读取失败回退缺省、
  * 正常路径（parseToml → parseLogConfig 透传 [log] 段）、resolveLogFilePath
- * 的相对路径基准优先级（NAPUTO_DATA_ROOT > NAPKETTO_DATA > CFG_DIR 父目录）
+ * 的相对路径基准优先级（NAPUKETTO_DATA_ROOT > NAPUKETTO_DATA > CFG_DIR 父目录）
  * 与绝对路径直传。env 是模块加载期快照——每用例 resetModules 后重导。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,11 +16,11 @@ type LogCfgModule = typeof import("../log-config.js");
 
 /** 本用例涉及的 env 键（用例内显式置空，隔离宿主环境残留）。 */
 const ENV_KEYS = [
-    "NAPKETTO_CONFIG",
-    "NAPKETTO_CONFIG_JSON",
-    "NAPKETTO_DATA",
-    "NAPUTO_CFG_DIR",
-    "NAPUTO_DATA_ROOT",
+    "NAPUKETTO_CONFIG",
+    "NAPUKETTO_CONFIG_JSON",
+    "NAPUKETTO_DATA",
+    "NAPUKETTO_CFG_DIR",
+    "NAPUKETTO_DATA_ROOT",
 ];
 
 let tmp = "";
@@ -70,7 +70,7 @@ function stubKernel(
 
 describe("resolveLoaderLogConfig", () => {
     it("kernel 无 parseLogConfig（老版本）：回退缺省", async () => {
-        const mod = await freshLogCfg({ NAPKETTO_CONFIG: join(freshDir(), "none.toml") });
+        const mod = await freshLogCfg({ NAPUKETTO_CONFIG: join(freshDir(), "none.toml") });
         const cfg = mod.resolveLoaderLogConfig(stubKernel(() => ({})));
         expect(cfg.level).toBe("info");
         expect(cfg.banner).toBe(true);
@@ -78,7 +78,7 @@ describe("resolveLoaderLogConfig", () => {
     });
 
     it("配置文件读取失败：回退缺省，不阻塞引导", async () => {
-        const mod = await freshLogCfg({ NAPKETTO_CONFIG: join(freshDir(), "不存在.toml") });
+        const mod = await freshLogCfg({ NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml") });
         const parseLogConfig = vi.fn();
         const cfg = mod.resolveLoaderLogConfig(stubKernel(() => ({}), parseLogConfig));
         expect(cfg.level).toBe("info");
@@ -89,7 +89,7 @@ describe("resolveLoaderLogConfig", () => {
         const dir = freshDir();
         const configPath = join(dir, "napuketto.toml");
         writeFileSync(configPath, '[log]\nlevel = "debug"\n', "utf8");
-        const mod = await freshLogCfg({ NAPKETTO_CONFIG: configPath });
+        const mod = await freshLogCfg({ NAPUKETTO_CONFIG: configPath });
         const parseLogConfig = vi.fn((_section: unknown) => ({
             level: "debug",
             banner: false,
@@ -108,10 +108,10 @@ describe("resolveLoaderLogConfig", () => {
         expect(parseLogConfig).toHaveBeenCalledWith({ level: "debug" });
     });
 
-    it("NAPKETTO_CONFIG 未设时按 CFG_DIR 兜底 napuketto.toml", async () => {
+    it("NAPUKETTO_CONFIG 未设时按 CFG_DIR 兜底 napuketto.toml", async () => {
         const dir = freshDir();
         writeFileSync(join(dir, "napuketto.toml"), '[log]\nlevel = "warn"\n', "utf8");
-        const mod = await freshLogCfg({ NAPUTO_CFG_DIR: dir });
+        const mod = await freshLogCfg({ NAPUKETTO_CFG_DIR: dir });
         const parseLogConfig = vi.fn((_section: unknown) => ({
             level: "warn",
             banner: true,
@@ -128,10 +128,10 @@ describe("resolveLoaderLogConfig", () => {
 });
 
 describe("resolveLoaderLogConfig 内联来源（2026-10-25）", () => {
-    it("内联生效：[log] 段取自 NAPKETTO_CONFIG_JSON，不读任何 toml 文件", async () => {
+    it("内联生效：[log] 段取自 NAPUKETTO_CONFIG_JSON，不读任何 toml 文件", async () => {
         const mod = await freshLogCfg({
-            NAPKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
-            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+            NAPUKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
+            NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml"),
         });
         const parseLogConfig = vi.fn((_section: unknown) => ({
             level: "debug",
@@ -154,8 +154,8 @@ describe("resolveLoaderLogConfig 内联来源（2026-10-25）", () => {
 
     it("内联缺 [log] 段：section 为 undefined 仍走 parseLogConfig（缺省语义）", async () => {
         const mod = await freshLogCfg({
-            NAPKETTO_CONFIG_JSON: JSON.stringify({ accounts: [] }),
-            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+            NAPUKETTO_CONFIG_JSON: JSON.stringify({ accounts: [] }),
+            NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml"),
         });
         const parseLogConfig = vi.fn((_section: unknown) => mod.defaultLogConfig());
         const kernel = stubKernel(
@@ -168,8 +168,8 @@ describe("resolveLoaderLogConfig 内联来源（2026-10-25）", () => {
 
     it("内联 JSON 坏值：回退缺省，不阻塞引导", async () => {
         const mod = await freshLogCfg({
-            NAPKETTO_CONFIG_JSON: "{not-json",
-            NAPKETTO_CONFIG: join(freshDir(), "不存在.toml"),
+            NAPUKETTO_CONFIG_JSON: "{not-json",
+            NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml"),
         });
         const cfg = mod.resolveLoaderLogConfig(stubKernel(() => ({})));
         expect(cfg.level).toBe("info");
@@ -179,7 +179,7 @@ describe("resolveLoaderLogConfig 内联来源（2026-10-25）", () => {
 
 describe("resolveLogFilePath", () => {
     it("绝对路径直传", async () => {
-        const mod = await freshLogCfg({ NAPUTO_DATA_ROOT: freshDir() });
+        const mod = await freshLogCfg({ NAPUKETTO_DATA_ROOT: freshDir() });
         expect(mod.resolveLogFilePath("/var/log/a.log")).toBe("/var/log/a.log");
         const winPath = "D:\\logs\\a.log";
         if (process.platform === "win32") {
@@ -187,27 +187,27 @@ describe("resolveLogFilePath", () => {
         }
     });
 
-    it("相对路径基准：NAPUTO_DATA_ROOT 优先", async () => {
+    it("相对路径基准：NAPUKETTO_DATA_ROOT 优先", async () => {
         const mod = await freshLogCfg({
-            NAPUTO_DATA_ROOT: join(freshDir(), "root-a"),
-            NAPKETTO_DATA: join(tmp, "root-b"),
-            NAPUTO_CFG_DIR: join(tmp, "root-c"),
+            NAPUKETTO_DATA_ROOT: join(freshDir(), "root-a"),
+            NAPUKETTO_DATA: join(tmp, "root-b"),
+            NAPUKETTO_CFG_DIR: join(tmp, "root-c"),
         });
         const path = mod.resolveLogFilePath("logs/x.log");
         expect(path.startsWith(join(tmp, "root-a"))).toBe(true);
         expect(isAbsolute(path)).toBe(true);
     });
 
-    it("相对路径基准：次选 NAPKETTO_DATA", async () => {
+    it("相对路径基准：次选 NAPUKETTO_DATA", async () => {
         const mod = await freshLogCfg({
-            NAPKETTO_DATA: join(freshDir(), "root-b"),
-            NAPUTO_CFG_DIR: join(tmp, "root-c"),
+            NAPUKETTO_DATA: join(freshDir(), "root-b"),
+            NAPUKETTO_CFG_DIR: join(tmp, "root-c"),
         });
         expect(mod.resolveLogFilePath("x.log")).toBe(join(tmp, "root-b", "x.log"));
     });
 
     it("相对路径基准：再次选 CFG_DIR 父目录（账号目录 → 数据根）", async () => {
-        const mod = await freshLogCfg({ NAPUTO_CFG_DIR: join(freshDir(), "root-c") });
+        const mod = await freshLogCfg({ NAPUKETTO_CFG_DIR: join(freshDir(), "root-c") });
         expect(mod.resolveLogFilePath("x.log")).toBe(join(tmp, "root-c", "..", "x.log"));
     });
 

@@ -1,8 +1,8 @@
 /**
  * 协议配置段读取（从 protocols.ts 拆分，2026-08-08 FTA 优化；2026-08-08 结构拍板：按账号取段）
  *
- * 主配置来源（2026-10-25 嵌入式内联契约）：**NAPKETTO_CONFIG_JSON（内联 JSON，
- * 与 napuketto.toml 同构）> NAPKETTO_CONFIG（文件）> NAPUTO_CFG_DIR 兜底（旧行为
+ * 主配置来源（2026-10-25 嵌入式内联契约）：**NAPUKETTO_CONFIG_JSON（内联 JSON，
+ * 与 napuketto.toml 同构）> NAPUKETTO_CONFIG（文件）> NAPUKETTO_CFG_DIR 兜底（旧行为
  * 兼容）**。内联生效时不读任何 toml 文件，cfgFile 返回哨兵 "<inline>"（仅作
  * ProtocolConfig 来源标注；seed 模式本就不读盘，协议段热更新在内联形态不可用）。
  *
@@ -92,11 +92,11 @@ function sectionFields(sections: SectionMap): SectionFields {
 }
 
 /**
- * 读内联配置文档（NAPKETTO_CONFIG_JSON 非空才生效；JSON 解析失败 / 非对象 →
+ * 读内联配置文档（NAPUKETTO_CONFIG_JSON 非空才生效；JSON 解析失败 / 非对象 →
  * undefined 回退文件形态并记日志）。
  */
 export function readInlineConfigDoc(): Record<string, unknown> | undefined {
-    const raw = env.NAPKETTO_CONFIG_JSON;
+    const raw = env.NAPUKETTO_CONFIG_JSON;
     if (raw === undefined || raw.trim() === "") {
         return undefined;
     }
@@ -137,13 +137,13 @@ function extractSections(accounts: unknown, uin?: string): SectionMap {
 export function loadProtocolSections(kernel: KernelLike, uin?: string): ProtocolSections {
     const inlineDoc = readInlineConfigDoc();
     if (inlineDoc !== undefined) {
-        log("bootstrap: 配置来源: inline（NAPKETTO_CONFIG_JSON）");
+        log("bootstrap: 配置来源: inline（NAPUKETTO_CONFIG_JSON）");
         return {
             cfgFile: INLINE_CONFIG_SENTINEL,
             ...sectionFields(extractSections(inlineDoc["accounts"], uin)),
         };
     }
-    const cfgFile = env.NAPKETTO_CONFIG || join(env.NAPUTO_CFG_DIR || ".", "napuketto.toml");
+    const cfgFile = env.NAPUKETTO_CONFIG || join(env.NAPUKETTO_CFG_DIR || ".", "napuketto.toml");
     let sections = emptySections();
     try {
         const raw = readFileSync(cfgFile, "utf8");

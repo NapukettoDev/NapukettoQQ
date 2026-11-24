@@ -64,7 +64,7 @@
 3. 非表格、非 URL 行 ≤120 字符；表格单元格不写长句，不放代码块。
 4. 单段 JSON >15 行必须进 `evidence.md`；正文只留最小示意。
 5. 固定术语：`wrapper.node`、Linux 原生宿主、`napuketto.toml`、内嵌协议段、`@napuketto/*`；
-   用户变量 `NAPKETTO_*`，loader 内部变量 `NAPUTO_*`（以源码为准）。
+   环境变量统一 `NAPUKETTO_*`（用户变量与 loader 内部变量同前缀，以源码为准）。
 
 ## 维护红线
 

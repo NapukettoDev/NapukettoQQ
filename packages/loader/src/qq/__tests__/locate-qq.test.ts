@@ -48,16 +48,16 @@ describe("linuxSevenZipUrl", () => {
         );
     });
 
-    it("NAPUTO_7Z_URL 覆盖下载地址", () => {
-        const saved = process.env["NAPUTO_7Z_URL"];
-        process.env["NAPUTO_7Z_URL"] = "https://mirror.example/7zz.tar.xz";
+    it("NAPUKETTO_7Z_URL 覆盖下载地址", () => {
+        const saved = process.env["NAPUKETTO_7Z_URL"];
+        process.env["NAPUKETTO_7Z_URL"] = "https://mirror.example/7zz.tar.xz";
         try {
             expect(linuxSevenZipUrl()).toBe("https://mirror.example/7zz.tar.xz");
         } finally {
             if (saved === undefined) {
-                delete process.env["NAPUTO_7Z_URL"];
+                delete process.env["NAPUKETTO_7Z_URL"];
             } else {
-                process.env["NAPUTO_7Z_URL"] = saved;
+                process.env["NAPUKETTO_7Z_URL"] = saved;
             }
         }
     });

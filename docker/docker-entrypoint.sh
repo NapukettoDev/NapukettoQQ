@@ -11,11 +11,11 @@
 set -eu
 
 APP_DIR="${APP_DIR:-/app}"
-DATA_ROOT="${NAPKETTO_DATA:-$APP_DIR/.napuketto}"
-CONFIG="${NAPKETTO_CONFIG:-$APP_DIR/napuketto.toml}"
+DATA_ROOT="${NAPUKETTO_DATA:-$APP_DIR/.napuketto}"
+CONFIG="${NAPUKETTO_CONFIG:-$APP_DIR/napuketto.toml}"
 
-export NAPKETTO_DATA="$DATA_ROOT"
-export NAPKETTO_CONFIG="$CONFIG"
+export NAPUKETTO_DATA="$DATA_ROOT"
+export NAPUKETTO_CONFIG="$CONFIG"
 
 if [ ! -f "$CONFIG" ]; then
     cat >&2 <<EOF

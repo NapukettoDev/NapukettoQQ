@@ -1,5 +1,5 @@
 /**
- * smoke.ts：P2-1 收发消息冒烟自检（NAPUTO_SMOKE=1 触发，2026-08-06）。
+ * smoke.ts：P2-1 收发消息冒烟自检（NAPUKETTO_SMOKE=1 触发，2026-08-06）。
  * 2026-08-07 阶段 2：由 runtime/boot-smoke.js TS 化（零语义改动）。
  *
  * 目的：业务层最后试金石——登录 + session 就绪后，真正用 kernel MsgBridge
@@ -8,7 +8,7 @@
  *  ② 接收方向：MsgBridge 订阅 onRecvMsg 收到消息事件
  *  ③ 落库验证：fetchMessages 拉取最近消息，确认刚发的消息在列表里
  *
- * 目标 peer 由环境变量 NAPUTO_SMOKE_PEER 指定（格式：c2c:<uin> 或 group:<uin>），
+ * 目标 peer 由环境变量 NAPUKETTO_SMOKE_PEER 指定（格式：c2c:<uin> 或 group:<uin>），
  * 缺省发给自己的 uin（C2C 我的设备）。发送内容固定带时间戳，便于日志核对。
  *
  * 由 bootstrap.ts 在登录成功、session 就绪后调用（协议装配前——不依赖
@@ -29,7 +29,7 @@ interface SmokeTarget {
     uin: string;
 }
 
-/** 解析冒烟目标：NAPUTO_SMOKE_PEER（c2c:<uin> / group:<uin>），缺省发给自己。 */
+/** 解析冒烟目标：NAPUKETTO_SMOKE_PEER（c2c:<uin> / group:<uin>），缺省发给自己。 */
 function parseSmokeTarget(envPeer: string | undefined, selfUin: string): SmokeTarget {
     if (!envPeer) {
         return { kind: "c2c", uin: selfUin };
@@ -90,9 +90,9 @@ export async function runSmokeTest(
         log("smoke: ❌ session 为空，跳过");
         return false;
     }
-    const target = parseSmokeTarget(env.NAPUTO_SMOKE_PEER, loginResult.uin);
+    const target = parseSmokeTarget(env.NAPUKETTO_SMOKE_PEER, loginResult.uin);
     log(
-        `smoke: 目标=${target.kind}:${target.uin}（peer env=${env.NAPUTO_SMOKE_PEER ?? "(缺省=自己)"}）`,
+        `smoke: 目标=${target.kind}:${target.uin}（peer env=${env.NAPUKETTO_SMOKE_PEER ?? "(缺省=自己)"}）`,
     );
 
     // ① 消息事件通道 + 桥（addKernelMsgListener 普通 JS 对象，NAPI 反射）

@@ -8,7 +8,7 @@
  *  - 绑定过滤（P1-7）：holder 判定未绑定的群消息整行不打；私聊恒放行；
  *    holder null / 未传 = 不过滤
  *
- * env.ts 是模块加载时的 process.env 快照——NAPUTO_CFG_DIR 指向临时目录使
+ * env.ts 是模块加载时的 process.env 快照——NAPUKETTO_CFG_DIR 指向临时目录使
  * log() 落盘无污染。
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ function recvOnce(): void {
 
 beforeAll(async () => {
     tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-msglog-test-"));
-    vi.stubEnv("NAPUTO_CFG_DIR", tmpRoot);
+    vi.stubEnv("NAPUKETTO_CFG_DIR", tmpRoot);
     const { setupMsgLogging } = await import("../msg-log.js");
     const kernel = stubKernel();
     const handlers: ((payload: unknown) => void)[] = [];

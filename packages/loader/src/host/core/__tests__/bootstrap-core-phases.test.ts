@@ -7,9 +7,9 @@
  *  - activateSession：先 init 后 start（buildSessionConfig 参数含 QQ global 目录与
  *    machineGuid）/ init 失败容错
  *  - waitSessionReady 失败容错；startProtocols null → 引导失败
- *  - 探测相位（NAPUTO_PROBE=1 立即 + 35s 晚探测）与 listener 录制相位
+ *  - 探测相位（NAPUKETTO_PROBE=1 立即 + 35s 晚探测）与 listener 录制相位
  *  - NapukettoCore.create 选项折叠（[log] 段 + IPC consoleLog:false）
- *  - 登录前置：NAPUTO_QR_ONLY 强制扫码 / 登录回调 QR 透出（cli NAPUTO_QR 标记行、
+ *  - 登录前置：NAPUKETTO_QR_ONLY 强制扫码 / 登录回调 QR 透出（cli NAPUTO_QR 标记行、
  *    IPC sendQr）/ core.login 缺失 / 登录失败 → failed(NOT_LOGIN)
  *
  * vi.mock ipc/index + protocols + log-config（bootstrap-relogin.test.ts 同套路）；
@@ -168,10 +168,10 @@ async function freshModule(): Promise<typeof import("../bootstrap-core.js")> {
 
 /** 通用引导 env（IPC/自建宿主开关由用例覆盖）。 */
 function stubBootEnv(): void {
-    vi.stubEnv("NAPUTO_CFG_DIR", tmpRoot);
-    vi.stubEnv("NAPUTO_QQ_VERSION", "9.9.9-Test");
-    vi.stubEnv("NAPUTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
-    vi.stubEnv("NAPUTO_IPC", "");
+    vi.stubEnv("NAPUKETTO_CFG_DIR", tmpRoot);
+    vi.stubEnv("NAPUKETTO_QQ_VERSION", "9.9.9-Test");
+    vi.stubEnv("NAPUKETTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
+    vi.stubEnv("NAPUKETTO_IPC", "");
 }
 
 /** 假 core（NapukettoCore.create 产物；login 可编程）。 */
@@ -325,9 +325,9 @@ describe("bootstrapWithCore：session 替换（非自建宿主）", () => {
 });
 
 describe("bootstrapWithCore：session 激活（自建宿主）", () => {
-    it("NAPUTO_SELF_HOST=1 → 不替换，对 kernel 自建 session 走 init+start（三要素参数）", async () => {
+    it("NAPUKETTO_SELF_HOST=1 → 不替换，对 kernel 自建 session 走 init+start（三要素参数）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core, setSession } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -352,7 +352,7 @@ describe("bootstrapWithCore：session 激活（自建宿主）", () => {
 
     it("initAndStartSession 拒绝 → 容错继续（waitSessionReady → 装配）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core, {
             initAndStartSession: () => Promise.reject(new Error("session init 断言")),
@@ -365,7 +365,7 @@ describe("bootstrapWithCore：session 激活（自建宿主）", () => {
 
     it("waitSessionReady 拒绝 → 容错继续装配（30s 超时参数）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         let waited = 0;
         const kernel = fakeKernel(core, {
@@ -386,7 +386,7 @@ describe("bootstrapWithCore：session 激活（自建宿主）", () => {
 describe("bootstrapWithCore：引导失败分支", () => {
     it("startProtocols null（服务未装配）→ 引导 false", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         h.protocolResult = null;
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
@@ -397,7 +397,7 @@ describe("bootstrapWithCore：引导失败分支", () => {
 
     it("core.login 缺失（kernel core 不完整）→ 引导 false", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const core: Record<string, unknown> = {
             attachWrapper: () => ({ session: null, engine: {} }),
         };
@@ -408,8 +408,8 @@ describe("bootstrapWithCore：引导失败分支", () => {
 
     it("doLogin null（登录失败）→ failed(NOT_LOGIN) + 引导 false", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(null);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -419,7 +419,7 @@ describe("bootstrapWithCore：引导失败分支", () => {
 
     it("kernel 无 NapukettoCore（非 fallback 入口）→ 引导 false", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const kernel = fakeKernel({}) as KernelLike;
         delete (kernel as unknown as Record<string, unknown>)["NapukettoCore"];
         const mod = await freshModule();
@@ -429,7 +429,7 @@ describe("bootstrapWithCore：引导失败分支", () => {
 
     it("probeCreatedSession：S2.create() 抛错 → 探测日志留痕，引导继续", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const state = freshState({
@@ -447,8 +447,8 @@ describe("bootstrapWithCore：引导失败分支", () => {
 
     it("关停钩子注册：requestShutdown 先停协议，再清理 IPC 和服务", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         // 装配产物带清理探针（bootstrap-core 把它们注册进关停钩子）
         const dispose = vi.fn(() => h.events.push("dispose:services"));
         const stopAdapters = vi.fn(async () => h.events.push("stop:adapters"));
@@ -484,10 +484,10 @@ describe("bootstrapWithCore：引导失败分支", () => {
 });
 
 describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅）", () => {
-    it("NAPUTO_QR_ONLY=1 → qrOnly:true 且不传 quickUin（跳过快速登录）", async () => {
+    it("NAPUKETTO_QR_ONLY=1 → qrOnly:true 且不传 quickUin（跳过快速登录）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_QR_ONLY", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_QR_ONLY", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -496,13 +496,13 @@ describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅�
         expect(opts?.["qrOnly"]).toBe(true);
         expect("quickUin" in (opts as Record<string, unknown>)).toBe(false);
         // 一次性标记：读取后删除，软重登/后续重试不再被残留标记强制扫码
-        expect(process.env["NAPUTO_QR_ONLY"]).toBeUndefined();
+        expect(process.env["NAPUKETTO_QR_ONLY"]).toBeUndefined();
         expect(process.env["NAPUKETTO_QR_ONLY"]).toBeUndefined();
     });
 
     it("登录回调 QR 阶段：非 IPC 模式 → stdout NAPUTO_QR 标记行（cli 终端渲染）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const chunks: string[] = [];
@@ -526,8 +526,8 @@ describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅�
 
     it("登录回调 QR 阶段：IPC 模式 → sendQr（不写 stdout 标记行）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const chunks: string[] = [];
@@ -547,9 +547,9 @@ describe("bootstrapWithCore：登录前置（qrOnly / QR 透出 / 账号横幅�
 });
 
 describe("bootstrapWithCore：NapukettoCore.create 选项折叠", () => {
-    it("NAPUTO_DATA_ROOT 是账号目录父级 → paths 拆成数据根 + 账号名（ctx.paths.root 为数据根）", async () => {
+    it("NAPUKETTO_DATA_ROOT 是账号目录父级 → paths 拆成数据根 + 账号名（ctx.paths.root 为数据根）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -561,9 +561,9 @@ describe("bootstrapWithCore：NapukettoCore.create 选项折叠", () => {
 
     it("[log] 段折叠进 create 选项（级别/格式/时间戳/颜色/文件）；IPC 模式 consoleLog:false", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_QUICK_UIN", "10001");
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_QUICK_UIN", "10001");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -584,7 +584,7 @@ describe("bootstrapWithCore：NapukettoCore.create 选项折叠", () => {
 
     it("非 IPC 模式 → 不传 consoleLog（cli 控制台输出保留）", async () => {
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -594,11 +594,11 @@ describe("bootstrapWithCore：NapukettoCore.create 选项折叠", () => {
 });
 
 describe("bootstrapWithCore：探测与录制相位", () => {
-    it("NAPUTO_PROBE=1 → 立即探测 + 35s 晚探测（napuketto-probe-late.json）", async () => {
+    it("NAPUKETTO_PROBE=1 → 立即探测 + 35s 晚探测（napuketto-probe-late.json）", async () => {
         vi.useFakeTimers();
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_PROBE", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_PROBE", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         const mod = await freshModule();
@@ -608,11 +608,11 @@ describe("bootstrapWithCore：探测与录制相位", () => {
         expect(h.probeCalls).toEqual([undefined, "napuketto-probe-late.json"]);
     });
 
-    it("NAPUTO_PROBE=1 但 probeRuntime 抛错 → 日志留痕不崩", async () => {
+    it("NAPUKETTO_PROBE=1 但 probeRuntime 抛错 → 日志留痕不崩", async () => {
         vi.useFakeTimers();
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_PROBE", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_PROBE", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core, {
             probeRuntime: (ctx: unknown, filename?: string) => {
@@ -628,12 +628,12 @@ describe("bootstrapWithCore：探测与录制相位", () => {
         expect(h.probeCalls).toEqual([undefined, "napuketto-probe-late.json"]);
     });
 
-    it("NAPUTO_LISTENER_RECORD=1 → 录制器挂起（先于探测），失败服务逐条留痕", async () => {
+    it("NAPUKETTO_LISTENER_RECORD=1 → 录制器挂起（先于探测），失败服务逐条留痕", async () => {
         vi.useFakeTimers();
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_LISTENER_RECORD", "1");
-        vi.stubEnv("NAPUTO_PROBE", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_LISTENER_RECORD", "1");
+        vi.stubEnv("NAPUKETTO_PROBE", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core, {
             startListenerRecording: () => {
@@ -654,11 +654,11 @@ describe("bootstrapWithCore：探测与录制相位", () => {
         expect(h.probeCalls).toEqual([undefined]);
     });
 
-    it("NAPUTO_LISTENER_RECORD=1 但 kernel 缺录制器 → 告警（kernel 过旧）不崩", async () => {
+    it("NAPUKETTO_LISTENER_RECORD=1 但 kernel 缺录制器 → 告警（kernel 过旧）不崩", async () => {
         vi.useFakeTimers();
         stubBootEnv();
-        vi.stubEnv("NAPUTO_SELF_HOST", "1");
-        vi.stubEnv("NAPUTO_LISTENER_RECORD", "1");
+        vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+        vi.stubEnv("NAPUKETTO_LISTENER_RECORD", "1");
         const { core } = fakeCore(LOGIN_RESULT);
         const kernel = fakeKernel(core);
         delete (kernel as unknown as Record<string, unknown>)["startListenerRecording"];

@@ -46,10 +46,10 @@ beforeEach(() => {
     h.acquireLock.mockReturnValue(true);
     h.bootstrap.mockResolvedValue(true);
     h.requestShutdown.mockResolvedValue();
-    vi.stubEnv("NAPUTO_IPC", "1");
-    vi.stubEnv("NAPUTO_WRAPPER_PATH", "synthetic-wrapper.node");
-    vi.stubEnv("NAPUTO_CFG_DIR", "fixture/10001");
-    vi.stubEnv("NAPUTO_DATA_ROOT", "fixture");
+    vi.stubEnv("NAPUKETTO_IPC", "1");
+    vi.stubEnv("NAPUKETTO_WRAPPER_PATH", "synthetic-wrapper.node");
+    vi.stubEnv("NAPUKETTO_CFG_DIR", "fixture/10001");
+    vi.stubEnv("NAPUKETTO_DATA_ROOT", "fixture");
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     vi.spyOn(process, "on").mockImplementation(() => process);
 });

@@ -30,7 +30,7 @@ services:
             - "${HOST_BIND:-127.0.0.1}:${ONEBOT_WS_PORT:-3001}:3001"
         environment:
             TZ: ${TZ:-Asia/Shanghai}
-            NAPKETTO_LOG_LEVEL: ${NAPKETTO_LOG_LEVEL:-info}
+            NAPUKETTO_LOG_LEVEL: ${NAPUKETTO_LOG_LEVEL:-info}
         volumes:
             # 必填：配置文件缺失时入口脚本会给出提示并以 78 退出
             - ./napuketto.toml:/app/napuketto.toml

@@ -63,7 +63,7 @@ nativeMediaPatch = true
 # # level = "debug"
 #
 # 环境变量覆盖（优先级高于本文件）：NAPUKETTO_LOG_LEVEL / NAPUKETTO_LOG_FORMAT /
-# NAPUKETTO_NO_BANNER（兼容旧拼写 NAPKETTO_LOG_LEVEL）。
+# NAPUKETTO_NO_BANNER。
 
 # ------------------------------------------------------------
 # 账号（至少一个，qq 必填）

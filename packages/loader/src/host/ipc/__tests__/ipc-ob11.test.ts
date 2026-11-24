@@ -198,8 +198,8 @@ describe("attachOb11IpcBridge", () => {
     });
 
     it("只把实际登录账号的媒体配置传给动态注入的动作桥", async () => {
-        const original = env.NAPKETTO_CONFIG_JSON;
-        env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+        const original = env.NAPUKETTO_CONFIG_JSON;
+        env.NAPUKETTO_CONFIG_JSON = JSON.stringify({
             accounts: [
                 { qq: "10002", onebot11: { media: { outboundPolicy: "public-only" } } },
                 {
@@ -222,7 +222,7 @@ describe("attachOb11IpcBridge", () => {
             });
             stop();
         } finally {
-            env.NAPKETTO_CONFIG_JSON = original;
+            env.NAPUKETTO_CONFIG_JSON = original;
         }
     });
 
@@ -245,8 +245,8 @@ describe("attachOb11IpcBridge", () => {
     });
 
     it("IPC 使用线上协议 schema 校验，非法模式返回配置错误", async () => {
-        const original = env.NAPKETTO_CONFIG_JSON;
-        env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+        const original = env.NAPUKETTO_CONFIG_JSON;
+        env.NAPUKETTO_CONFIG_JSON = JSON.stringify({
             accounts: [{ qq: "10001", onebot11: { media: { outboundPolicy: "typo" } } }],
         });
         const load = fakeImport();
@@ -263,7 +263,7 @@ describe("attachOb11IpcBridge", () => {
             ).rejects.toBeInstanceOf(ConfigError);
             expect(actions.size).toBe(0);
         } finally {
-            env.NAPKETTO_CONFIG_JSON = original;
+            env.NAPUKETTO_CONFIG_JSON = original;
         }
     });
 
@@ -274,14 +274,14 @@ describe("attachOb11IpcBridge", () => {
             request(req.headers.authorization);
             res.end("test media");
         });
-        const original = env.NAPKETTO_CONFIG_JSON;
+        const original = env.NAPUKETTO_CONFIG_JSON;
         try {
             await once(server.listen(0, "127.0.0.1"), "listening");
             const address = server.address();
             if (address === null || typeof address === "string")
                 throw new Error("Missing TCP port");
             for (const outboundPolicy of ["public-only", "compat"]) {
-                env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+                env.NAPUKETTO_CONFIG_JSON = JSON.stringify({
                     accounts: [
                         {
                             qq: "10001",
@@ -321,7 +321,7 @@ describe("attachOb11IpcBridge", () => {
                 }
             }
         } finally {
-            env.NAPKETTO_CONFIG_JSON = original;
+            env.NAPUKETTO_CONFIG_JSON = original;
             server.close();
             await once(server, "close");
             await rm(cfgDir, { recursive: true, force: true });
@@ -343,10 +343,10 @@ describe("attachOb11IpcBridge", () => {
             expect(await readFile(path, "utf8")).toBe("login account");
         });
         const services = { ...mockServices(), profileApi: { setHeader } };
-        const original = env.NAPKETTO_CONFIG_JSON;
+        const original = env.NAPUKETTO_CONFIG_JSON;
         try {
             for (const enabled of [false, true]) {
-                env.NAPKETTO_CONFIG_JSON = JSON.stringify({
+                env.NAPUKETTO_CONFIG_JSON = JSON.stringify({
                     accounts: [
                         { qq: "10002", onebot11: { media: { localMediaRoots: ["other"] } } },
                         {
@@ -382,7 +382,7 @@ describe("attachOb11IpcBridge", () => {
             }
             expect(setHeader).toHaveBeenCalledTimes(1);
         } finally {
-            env.NAPKETTO_CONFIG_JSON = original;
+            env.NAPUKETTO_CONFIG_JSON = original;
             await rm(dir, { recursive: true, force: true });
         }
     });

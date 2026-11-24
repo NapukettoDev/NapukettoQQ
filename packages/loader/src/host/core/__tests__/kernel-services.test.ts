@@ -3,11 +3,11 @@
  * cli 非 IPC 模式也落盘 logs/loader.log）。
  *
  * createKernelServices 对 kernel.createLogger 的传参断言：
- *   - IPC 模式（NAPUTO_IPC=1）：console=false（stdout 协议保护，2026-09-06
+ *   - IPC 模式（NAPUKETTO_IPC=1）：console=false（stdout 协议保护，2026-09-06
  *     事故根因，不可回退）+ file=<cfgDir>/logs/loader.log
- *   - cli 模式（NAPUTO_IPC≠1）：console=true + file 同路径（2026-09-10 前无
+ *   - cli 模式（NAPUKETTO_IPC≠1）：console=true + file 同路径（2026-09-10 前无
  *     file，poke/Buddy 校准数据丢失）
- *   - NAPUTO_CFG_DIR 未设：file 兜底 tmpdir()/napuketto-loader.log
+ *   - NAPUKETTO_CFG_DIR 未设：file 兜底 tmpdir()/napuketto-loader.log
  *
  * env.ts 是模块加载时的 process.env 快照——vi.stubEnv + vi.resetModules +
  * 每用例动态 import（与 bootstrap.test.ts 同套路）。
@@ -142,8 +142,8 @@ afterAll(() => {
 
 describe("createKernelServices logger 装配", () => {
     it("IPC 模式：console=false + file=<cfgDir>/logs/loader.log（stdout 协议保护不回退）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         await assemble();
         expect(loggerCalls).toHaveLength(1);
         expect(loggerCalls[0]?.console).toBe(false);
@@ -152,9 +152,9 @@ describe("createKernelServices logger 装配", () => {
         );
     });
 
-    it("cli 模式（NAPUTO_IPC≠1）：console=true + 同一 file 路径（2026-09-10 新增落盘）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "0");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+    it("cli 模式（NAPUKETTO_IPC≠1）：console=true + 同一 file 路径（2026-09-10 新增落盘）", async () => {
+        vi.stubEnv("NAPUKETTO_IPC", "0");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         await assemble();
         expect(loggerCalls).toHaveLength(1);
         expect(loggerCalls[0]?.console).toBe(true);
@@ -163,8 +163,8 @@ describe("createKernelServices logger 装配", () => {
         );
     });
 
-    it("NAPUTO_CFG_DIR 未设：file 兜底 tmpdir()/napuketto-loader.log", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
+    it("NAPUKETTO_CFG_DIR 未设：file 兜底 tmpdir()/napuketto-loader.log", async () => {
+        vi.stubEnv("NAPUKETTO_IPC", "1");
         await assemble();
         expect(loggerCalls[0]?.file).toBe(join(tmpdir(), "napuketto-loader.log"));
     });
@@ -172,8 +172,8 @@ describe("createKernelServices logger 装配", () => {
 
 describe("createKernelServices dispose 面（顺带回归：装配产物完整）", () => {
     it("dispose 清理五桥 + 两缓存", async () => {
-        vi.stubEnv("NAPUTO_IPC", "0");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "0");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
         const services = await createKernelServices(
             stubKernel(),
@@ -195,8 +195,8 @@ describe("createKernelServices dispose 面（顺带回归：装配产物完整�
 
 describe("createKernelServices 在线状态注册（2026-09-15 发现 I：半在线无推送修复）", () => {
     it("装配即注册在线状态，参数对齐 OB11 set_online_status 动作缺省（status=10）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         await assemble();
         const called = instances.filter((n) => n.setOnlineStatus.mock.calls.length > 0);
         expect(called).toHaveLength(1);
@@ -209,8 +209,8 @@ describe("createKernelServices 在线状态注册（2026-09-15 发现 I：半在
     });
 
     it("setOnlineStatus 拒绝不阻断装配（告警后继续，服务完整返回可用）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         failOnlineStatus = true;
         const { createKernelServices } = await import("../kernel-services.js");
         const services = await createKernelServices(stubKernel(), stubCtx(), {
@@ -225,8 +225,8 @@ describe("createKernelServices 在线状态注册（2026-09-15 发现 I：半在
 
 describe("createKernelServices 批次三通道与 ob11 子 logger", () => {
     it("ctx.wrapper.loginService 缺失 → Login 桥跳过（通道保留，dispose 面少一个）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "0");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "0");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
         const services = await createKernelServices(stubKernel(), stubCtx(), {
             uin: "10000",
@@ -242,8 +242,8 @@ describe("createKernelServices 批次三通道与 ob11 子 logger", () => {
     });
 
     it("logger.child 可用 → calibLogger = child({module:ob11})（级别随 [log.levels].ob11）", async () => {
-        vi.stubEnv("NAPUTO_IPC", "0");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "0");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
         const childCalls: Array<{
             bindings: Record<string, unknown>;
@@ -287,8 +287,8 @@ describe("createKernelServices 批次三通道与 ob11 子 logger", () => {
     });
 
     it("kernel 缺 createLogger（老版本）→ logger 兜底 undefined，calibLogger = 静默 logger", async () => {
-        vi.stubEnv("NAPUTO_IPC", "1");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "1");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
         const kernel = stubKernel() as unknown as Record<string, unknown>;
         delete kernel["createLogger"];
@@ -307,8 +307,8 @@ describe("createKernelServices 批次三通道与 ob11 子 logger", () => {
     });
 
     it("[log.file] 配置 → createLogger file 走 resolveLogFilePath 展开路径", async () => {
-        vi.stubEnv("NAPUTO_IPC", "0");
-        vi.stubEnv("NAPUTO_CFG_DIR", freshCfgDir());
+        vi.stubEnv("NAPUKETTO_IPC", "0");
+        vi.stubEnv("NAPUKETTO_CFG_DIR", freshCfgDir());
         const { createKernelServices } = await import("../kernel-services.js");
         const services = await createKernelServices(
             stubKernel(),

@@ -5,7 +5,7 @@
  *  - https GET 流式写文件（低内存占用，313MB 安装包不整载入内存）
  *  - 下载同时流式累加 sha256，完成后与清单比对（防链接漂移劫持 / 下载不完整）
  *  - 支持 302 重定向（QQ CDN 可能跳转）
- *  - NAPUTO_QQ_URL 环境变量可覆盖下载地址（用户拿到新链接时用）
+ *  - NAPUKETTO_QQ_URL 环境变量可覆盖下载地址（用户拿到新链接时用）
  *  - 出站 URL 统一经 normalizeDownloadUrl 归一化（绕过 CDN 边缘对 `/QQNTV2/`
  *    路径段的大小写敏感拦截，见 qq-releases.ts；否则清单里的官方 URL 必 403）
  */
@@ -30,7 +30,7 @@ export interface DownloadOptions {
     dest: string;
     /** 期望 sha256（十六进制小写）；缺省/空串 = 不校验（首次下载尚无参考值）。 */
     expectedSha256?: string;
-    /** 覆盖下载地址（缺省读 NAPUTO_QQ_URL）。 */
+    /** 覆盖下载地址（缺省读 NAPUKETTO_QQ_URL）。 */
     url?: string;
     /** 超时（毫秒，默认 60s 无数据则中断）。 */
     timeoutMs?: number;
@@ -108,11 +108,11 @@ function httpsGet(url: string, timeoutMs: number): Promise<IncomingMessage> {
  * 返回实际 sha256（无论是否校验），便于调用方回填清单。
  */
 export async function downloadFile(options: DownloadOptions): Promise<DownloadResult> {
-    const requested = options.url ?? process.env["NAPUTO_QQ_URL"];
+    const requested = options.url ?? process.env["NAPUKETTO_QQ_URL"];
     if (requested === undefined || requested === "") {
-        throw new DownloadError("下载地址为空：请设置 NAPUTO_QQ_URL 或提供清单 URL");
+        throw new DownloadError("下载地址为空：请设置 NAPUKETTO_QQ_URL 或提供清单 URL");
     }
-    // 唯一出站口，统一归一化（清单 URL / NAPUTO_QQ_URL / 未来调用方全覆盖）
+    // 唯一出站口，统一归一化（清单 URL / NAPUKETTO_QQ_URL / 未来调用方全覆盖）
     const url = normalizeDownloadUrl(requested);
     const timeoutMs = options.timeoutMs ?? 60_000;
     // 目标目录必须提前建好（createWriteStream 不自动建目录）

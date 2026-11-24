@@ -18,11 +18,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 type CliLoggerModule = typeof import("./logger.js");
 
 const ENV_KEYS = [
-    "NAPKETTO_CONFIG",
-    "NAPKETTO_CONFIG_JSON",
-    "NAPKETTO_DATA",
+    "NAPUKETTO_CONFIG",
+    "NAPUKETTO_CONFIG_JSON",
+    "NAPUKETTO_DATA",
     "NAPUKETTO_LOG_LEVEL",
-    "NAPKETTO_LOG_LEVEL",
+    "NAPUKETTO_LOG_LEVEL",
     "NAPUKETTO_LOG_FORMAT",
     "NAPUKETTO_LOG_COLORIZE",
     "NAPUKETTO_NO_BANNER",
@@ -82,7 +82,7 @@ describe("resolveCliLogConfig", () => {
                 "",
             ].join("\n"),
         );
-        const mod = await freshCliLogger({ NAPKETTO_CONFIG: configPath });
+        const mod = await freshCliLogger({ NAPUKETTO_CONFIG: configPath });
         const cfg = mod.resolveCliLogConfig();
         expect(cfg.level).toBe("warn");
         expect(cfg.format).toBe("single-line");
@@ -90,11 +90,11 @@ describe("resolveCliLogConfig", () => {
         expect(cfg.banner).toBe(false);
     });
 
-    it("内联配置生效：[log] 段取自 NAPKETTO_CONFIG_JSON（不读 toml）", async () => {
+    it("内联配置生效：[log] 段取自 NAPUKETTO_CONFIG_JSON（不读 toml）", async () => {
         const configPath = join(freshDir(), "不存在.toml");
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
-            NAPKETTO_CONFIG: configPath,
+            NAPUKETTO_CONFIG_JSON: JSON.stringify({ log: { level: "debug", banner: false } }),
+            NAPUKETTO_CONFIG: configPath,
         });
         const cfg = mod.resolveCliLogConfig();
         expect(cfg.level).toBe("debug");
@@ -105,7 +105,7 @@ describe("resolveCliLogConfig", () => {
     it("env 覆盖 toml（NAPUKETTO_LOG_LEVEL / LOG_FORMAT / NO_BANNER）", async () => {
         const configPath = writeToml('[log]\nlevel = "warn"\nbanner = true\n');
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG: configPath,
+            NAPUKETTO_CONFIG: configPath,
             NAPUKETTO_LOG_LEVEL: "debug",
             NAPUKETTO_LOG_FORMAT: "json",
             NAPUKETTO_NO_BANNER: "1",
@@ -117,7 +117,7 @@ describe("resolveCliLogConfig", () => {
     });
 
     it("配置缺失：回退缺省（info / banner true / format 自动）", async () => {
-        const mod = await freshCliLogger({ NAPKETTO_CONFIG: join(freshDir(), "不存在.toml") });
+        const mod = await freshCliLogger({ NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml") });
         const cfg = mod.resolveCliLogConfig();
         expect(cfg.level).toBe("info");
         expect(cfg.format).toBeUndefined();
@@ -127,7 +127,7 @@ describe("resolveCliLogConfig", () => {
     it("[log] 段非法：env 仍生效，缺省兜底不阻塞", async () => {
         const configPath = writeToml('[log]\nlevel = "verbose"\n');
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG: configPath,
+            NAPUKETTO_CONFIG: configPath,
             NAPUKETTO_LOG_LEVEL: "warn",
         });
         const cfg = mod.resolveCliLogConfig();
@@ -135,7 +135,7 @@ describe("resolveCliLogConfig", () => {
     });
 
     it("同一模块实例内缓存（二次调用返回同对象）", async () => {
-        const mod = await freshCliLogger({ NAPKETTO_CONFIG: join(freshDir(), "不存在.toml") });
+        const mod = await freshCliLogger({ NAPUKETTO_CONFIG: join(freshDir(), "不存在.toml") });
         expect(mod.resolveCliLogConfig()).toBe(mod.resolveCliLogConfig());
     });
 
@@ -143,7 +143,7 @@ describe("resolveCliLogConfig", () => {
         const base = freshDir();
         const configPath = join(base, "napuketto.toml");
         writeFileSync(configPath, '[log.file]\npath = "relative.log"\n', "utf8");
-        const mod = await freshCliLogger({ NAPKETTO_CONFIG: configPath });
+        const mod = await freshCliLogger({ NAPUKETTO_CONFIG: configPath });
         // 早期无参调用（缺省数据根）先写入缓存
         mod.resolveCliLogConfig();
         const dataRoot = join(base, "explicit-data-root");
@@ -208,8 +208,8 @@ describe("LazyCliLogger 懒构造", () => {
     it("json 格式：输出行可 JSON.parse，module=cli，debug 级别透传", async () => {
         const dir = freshDir();
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG: join(dir, "不存在.toml"),
-            NAPKETTO_DATA: dir,
+            NAPUKETTO_CONFIG: join(dir, "不存在.toml"),
+            NAPUKETTO_DATA: dir,
             NAPUKETTO_LOG_FORMAT: "json",
             NAPUKETTO_LOG_LEVEL: "debug",
         });
@@ -227,8 +227,8 @@ describe("LazyCliLogger 懒构造", () => {
     it("缺省 info 级别：debug 被过滤不输出", async () => {
         const dir = freshDir();
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG: join(dir, "不存在.toml"),
-            NAPKETTO_DATA: dir,
+            NAPUKETTO_CONFIG: join(dir, "不存在.toml"),
+            NAPUKETTO_DATA: dir,
             NAPUKETTO_LOG_FORMAT: "json",
         });
         const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -243,8 +243,8 @@ describe("LazyCliLogger 懒构造", () => {
         const dir = freshDir();
         const configPath = writeToml('[log.file]\npath = "custom-debug.log"\n');
         const mod = await freshCliLogger({
-            NAPKETTO_CONFIG: configPath,
-            NAPKETTO_DATA: dir,
+            NAPUKETTO_CONFIG: configPath,
+            NAPUKETTO_DATA: dir,
             NAPUKETTO_LOG_LEVEL: "debug",
         });
         const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

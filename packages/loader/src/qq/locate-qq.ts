@@ -2,8 +2,8 @@
  * 定位 QQ 原生文件（wrapper.node）来源（P0：多级来源纯定位，不下载）。
  *
  * 来源优先级（resolveQqFiles）：
- *   L0: NAPUTO_QQ_FILES / qqFilesDir —— 显式指定含 versions/ 结构的文件根（缓存/拷贝）
- *   L1: 本机 QQ 安装 —— NAPUTO_QQ_PATH / 注册表 / 常见路径（既有逻辑保留）
+ *   L0: NAPUKETTO_QQ_FILES / qqFilesDir —— 显式指定含 versions/ 结构的文件根（缓存/拷贝）
+ *   L1: 本机 QQ 安装 —— NAPUKETTO_QQ_PATH / 注册表 / 常见路径（既有逻辑保留）
  *   L2: 数据根缓存 <数据根>/qq-files/<版本> —— 下载解包产物（P1 落地后才有）
  */
 import { execFileSync } from "node:child_process";
@@ -138,7 +138,7 @@ export function locateQqPath(): string {
     if (viaCommon) {
         return viaCommon;
     }
-    throw new Error("未找到 QQ.exe（请先安装 QQ，或通过 NAPUTO_QQ_PATH 指定）");
+    throw new Error("未找到 QQ.exe（请先安装 QQ，或通过 NAPUKETTO_QQ_PATH 指定）");
 }
 
 /** ELF 魔数（Linux 原生 wrapper.node 校验，防误用 Windows PE 文件）。 */
@@ -185,7 +185,7 @@ function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
     if (process.platform === "linux" && !isElfFile(wrapperPath)) {
         throw new Error(
             `wrapper.node 不是 ELF（Linux 宿主不接受 Windows PE 安装）: ${wrapperPath}\n` +
-                "请指向 Linux deb 解包产物（官方 deb 或 /opt/QQ），或改用 NAPUTO_QQ_DIR",
+                "请指向 Linux deb 解包产物（官方 deb 或 /opt/QQ），或改用 NAPUKETTO_QQ_DIR",
         );
     }
     return {
@@ -199,7 +199,7 @@ function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstallInfo {
 
 /** 从 QQ.exe 路径推导安装目录，并探测当前版本（L1：本机安装）。 */
 export function resolveQqInstall(qqPath?: string): QqInstallInfo {
-    const qq = qqPath ?? process.env["NAPUTO_QQ_PATH"] ?? locateQqPath();
+    const qq = qqPath ?? process.env["NAPUKETTO_QQ_PATH"] ?? locateQqPath();
     // Windows 安装结构：<installDir>/versions/<版本>/resources/app/wrapper.node
     // ⚠️ dirname 跨平台：Linux/WSL 路径用正斜杠（lastIndexOf("\\") 会切错，2026-08-13 实测）；
     // 反斜杠 Windows 路径在 posix dirname 下不切分（切错目录），非 win32 先归一化——
@@ -252,7 +252,7 @@ export function resolveLinuxQqInstall(installDir: string): QqInstallInfo | null 
 }
 
 /**
- * L1b：Linux 本地安装探测（`NAPUTO_QQ_DIR` > `/opt/QQ`）。
+ * L1b：Linux 本地安装探测（`NAPUKETTO_QQ_DIR` > `/opt/QQ`）。
  *
  * 只在 Linux 生效（ADR-027 起 Linux 只有 ELF 宿主；Wine 分支已删除）。
  * `installDir` / `platform` 仅测试注入（缺省读 env 与当前平台）。
@@ -264,7 +264,8 @@ export function tryResolveLinuxLocalQq(
     if (platform !== "linux") {
         return null;
     }
-    const installDir = options.installDir ?? process.env["NAPUTO_QQ_DIR"] ?? LINUX_QQ_INSTALL_DIR;
+    const installDir =
+        options.installDir ?? process.env["NAPUKETTO_QQ_DIR"] ?? LINUX_QQ_INSTALL_DIR;
     return resolveLinuxQqInstall(installDir);
 }
 
@@ -275,12 +276,12 @@ export function tryResolveLinuxLocalQq(
  */
 export async function resolveQqFiles(options: ResolveQqFilesOptions = {}): Promise<QqInstallInfo> {
     // L0：显式文件根（参数 > 环境变量）
-    const explicitDir = options.qqFilesDir ?? process.env["NAPUTO_QQ_FILES"];
+    const explicitDir = options.qqFilesDir ?? process.env["NAPUKETTO_QQ_FILES"];
     if (explicitDir !== undefined && explicitDir !== "") {
         return resolveFromRoot(resolve(explicitDir), "cached");
     }
     // L1：本机安装（参数 > 环境变量 > 注册表/常见路径）
-    const qqPath = options.qqPath ?? process.env["NAPUTO_QQ_PATH"];
+    const qqPath = options.qqPath ?? process.env["NAPUKETTO_QQ_PATH"];
     if (qqPath !== undefined && qqPath !== "") {
         return resolveQqInstall(qqPath);
     }
@@ -311,7 +312,7 @@ export async function resolveQqFiles(options: ResolveQqFilesOptions = {}): Promi
         });
     }
     throw new Error(
-        "未找到 QQ 原生文件（wrapper.node）：请安装 QQ、设置 NAPUTO_QQ_PATH/NAPUTO_QQ_FILES，" +
+        "未找到 QQ 原生文件（wrapper.node）：请安装 QQ、设置 NAPUKETTO_QQ_PATH/NAPUKETTO_QQ_FILES，" +
             "或使用下载流程（ensureQqFiles）自动获取",
     );
 }
@@ -338,9 +339,9 @@ function tryResolveCached(dataRoot: string): QqInstallInfo | null {
 
 /** 7-Zip 官方归档或其 HTTPS 镜像。二者使用同一份归档摘要。 */
 export function linuxSevenZipUrl(): string {
-    const url = URL.parse(process.env["NAPUTO_7Z_URL"] ?? linuxSevenZip.archive.url);
+    const url = URL.parse(process.env["NAPUKETTO_7Z_URL"] ?? linuxSevenZip.archive.url);
     if (url?.protocol !== "https:") {
-        throw new Error("NAPUTO_7Z_URL 必须是有效的 HTTPS 地址");
+        throw new Error("NAPUKETTO_7Z_URL 必须是有效的 HTTPS 地址");
     }
     return url.href;
 }
@@ -359,7 +360,7 @@ export async function ensureLinuxSevenZip(
         throw new Error(
             `当前架构（${options.arch ?? process.arch}）没有可用的 7-Zip：内置 7zz 是 x86-64 二进制，` +
                 "无法在本机执行。请安装系统 7-Zip（Debian/Ubuntu: apt install 7zip 或 p7zip-full；" +
-                "Fedora: dnf install p7zip），或用 NAPUTO_7Z_PATH 指定可执行文件",
+                "Fedora: dnf install p7zip），或用 NAPUKETTO_7Z_PATH 指定可执行文件",
         );
     }
 
@@ -397,7 +398,7 @@ async function downloadLinuxSevenZip(cacheDir: string, exe: string): Promise<voi
         } catch (err) {
             const message = errorMessage(err);
             throw new Error(
-                `7z linux 解压失败: ${message}（需 tar + xz-utils；或设 NAPUTO_7Z_PATH 指定系统 7z）`,
+                `7z linux 解压失败: ${message}（需 tar + xz-utils；或设 NAPUKETTO_7Z_PATH 指定系统 7z）`,
                 { cause: err },
             );
         }

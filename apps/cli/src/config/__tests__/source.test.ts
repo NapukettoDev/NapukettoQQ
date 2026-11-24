@@ -1,5 +1,5 @@
 /**
- * source.test.ts：内联配置（NAPKETTO_CONFIG_JSON）与配置来源优先级单测
+ * source.test.ts：内联配置（NAPUKETTO_CONFIG_JSON）与配置来源优先级单测
  * （2026-10-25 嵌入式契约）。
  *
  * 覆盖：读取边角（未设置 / 空串 / 纯空白回退文件；键名精确访问）、内联校验错误
@@ -34,20 +34,20 @@ let tmp = "";
 
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-inline-test-"));
-    delete process.env["NAPKETTO_CONFIG_JSON"];
     delete process.env["NAPUKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
     for (const fn of Object.values(mocks.logger)) {
         fn.mockReset();
     }
 });
 
 afterEach(() => {
-    delete process.env["NAPKETTO_CONFIG_JSON"];
     delete process.env["NAPUKETTO_CONFIG_JSON"];
-    delete process.env["NAPKETTO_CONFIG"];
-    delete process.env["NAPKETTO_DATA"];
+    delete process.env["NAPUKETTO_CONFIG_JSON"];
+    delete process.env["NAPUKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_DATA"];
     if (tmp !== "") {
         rmSync(tmp, { recursive: true, force: true });
         tmp = "";
@@ -61,13 +61,13 @@ describe("readInlineConfigText 读取边角", () => {
 
     it("空串 / 纯空白 → undefined（回退文件形态）", () => {
         for (const value of ["", "   ", "\n\t "]) {
-            process.env["NAPKETTO_CONFIG_JSON"] = value;
+            process.env["NAPUKETTO_CONFIG_JSON"] = value;
             expect(readInlineConfigText()).toBeUndefined();
         }
     });
 
     it("非空文本原样返回", () => {
-        process.env["NAPKETTO_CONFIG_JSON"] = '  {"accounts":[]}  ';
+        process.env["NAPUKETTO_CONFIG_JSON"] = '  {"accounts":[]}  ';
         expect(readInlineConfigText()).toBe('  {"accounts":[]}  ');
     });
 });
@@ -79,7 +79,7 @@ describe("parseInlineConfig 校验", () => {
     });
 
     it("占位 qq → ConfigError，文案不含 toml 路径字样", () => {
-        process.env["NAPKETTO_CONFIG"] = join(tmp, "其他.toml");
+        process.env["NAPUKETTO_CONFIG"] = join(tmp, "其他.toml");
         try {
             parseInlineConfig(JSON.stringify(inlineDoc("123456")));
             expect.unreachable("应抛出 ConfigError");
@@ -117,8 +117,8 @@ describe("parseInlineConfig 校验", () => {
 describe("loadCliConfigWithSource 优先级矩阵", () => {
     it("内联与文件同时设置：内联生效，且不读、不生成任何 toml 文件", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG_JSON"] = JSON.stringify(inlineDoc("10086"));
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG_JSON"] = JSON.stringify(inlineDoc("10086"));
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         const { config, source, path } = await loadCliConfigWithSource({
             dataDir: tmp,
             onInfo: mocks.logger.info,
@@ -128,14 +128,14 @@ describe("loadCliConfigWithSource 优先级矩阵", () => {
         expect(path).toBeUndefined();
         // 内联模式零文件落盘：文件形态的 ensureConfigTemplate 不得触发
         expect(existsSync(cfgPath)).toBe(false);
-        expect(mocks.logger.info).toHaveBeenCalledWith("配置来源: inline（NAPKETTO_CONFIG_JSON）");
+        expect(mocks.logger.info).toHaveBeenCalledWith("配置来源: inline（NAPUKETTO_CONFIG_JSON）");
     });
 
     it("内联为空串：回退文件形态（读取已有 toml）", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
         writeFileSync(cfgPath, 'autoRestart = false\n[[accounts]]\nqq = "10001"\n');
-        process.env["NAPKETTO_CONFIG_JSON"] = "   ";
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG_JSON"] = "   ";
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         const { config, source, path } = await loadCliConfigWithSource({ dataDir: tmp });
         expect(source).toBe("file");
         expect(path).toBe(cfgPath);
@@ -145,23 +145,23 @@ describe("loadCliConfigWithSource 优先级矩阵", () => {
 
     // 仅 POSIX 可测——Windows 的 process.env 大小写不敏感，别名键无法与原名共存
     it.runIf(process.platform !== "win32")(
-        "大小写别名拼写（NAPKETTO_CONFIG_json）不识别 → 文件形态",
+        "大小写别名拼写（NAPUKETTO_CONFIG_json）不识别 → 文件形态",
         async () => {
             const cfgPath = join(tmp, "napuketto.toml");
             writeFileSync(cfgPath, '[[accounts]]\nqq = "10001"\n');
-            process.env["NAPKETTO_CONFIG_json"] = JSON.stringify(inlineDoc("10086"));
-            process.env["NAPKETTO_CONFIG"] = cfgPath;
+            process.env["NAPUKETTO_CONFIG_json"] = JSON.stringify(inlineDoc("10086"));
+            process.env["NAPUKETTO_CONFIG"] = cfgPath;
             const { source, config } = await loadCliConfigWithSource({ dataDir: tmp });
             expect(source).toBe("file");
             expect(config.accounts[0]?.qq).toBe("10001");
-            delete process.env["NAPKETTO_CONFIG_json"];
+            delete process.env["NAPUKETTO_CONFIG_json"];
         },
     );
 
     it("内联占位 qq → ConfigError，且文件形态的模板不被生成", async () => {
         const cfgPath = join(tmp, "napuketto.toml");
-        process.env["NAPKETTO_CONFIG_JSON"] = JSON.stringify(inlineDoc("123456"));
-        process.env["NAPKETTO_CONFIG"] = cfgPath;
+        process.env["NAPUKETTO_CONFIG_JSON"] = JSON.stringify(inlineDoc("123456"));
+        process.env["NAPUKETTO_CONFIG"] = cfgPath;
         await expect(loadCliConfigWithSource({ dataDir: tmp })).rejects.toThrow(ConfigError);
         expect(existsSync(cfgPath)).toBe(false);
     });

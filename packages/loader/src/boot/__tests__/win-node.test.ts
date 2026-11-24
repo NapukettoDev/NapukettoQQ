@@ -4,7 +4,7 @@
  * downloadFile / extractInstaller 经 vi.mock 拦截（不触网、不 spawn）；
  * 缓存与文件操作走真实临时目录。覆盖：
  *  - nodeZipUrl：nodejs.org dist 命名
- *  - 显式路径（参数 / NAPUTO_WIN_NODE_PATH）→ version "explicit"，不走下载
+ *  - 显式路径（参数 / NAPUKETTO_WIN_NODE_PATH）→ version "explicit"，不走下载
  *  - 缓存命中（<dataRoot>/runtime/win-node/<v>/node.exe 已存在）→ 不下载
  *  - 下载流：zip 下载 → 7z 解压（zip 内 node-<v>-win-x64/ 取 node.exe）→ 缓存 → zip 清理
  *  - zip 顶层无 node- 前缀目录 → 取 _zip/node.exe 直存形态
@@ -75,9 +75,9 @@ beforeEach(() => {
     h.extracts.length = 0;
     h.downloadError = null;
     h.unzipLayout = "nested";
-    delete process.env["NAPUTO_WIN_NODE_PATH"];
-    delete process.env["NAPUTO_WIN_NODE_VERSION"];
-    delete process.env["NAPUTO_WIN_NODE_URL"];
+    delete process.env["NAPUKETTO_WIN_NODE_PATH"];
+    delete process.env["NAPUKETTO_WIN_NODE_VERSION"];
+    delete process.env["NAPUKETTO_WIN_NODE_URL"];
 });
 
 afterEach(() => {
@@ -106,17 +106,17 @@ describe("ensureWinNode 显式路径与缓存", () => {
         expect(h.downloads).toHaveLength(0);
     });
 
-    it("NAPUTO_WIN_NODE_PATH 环境变量命中（解析为绝对路径）", async () => {
+    it("NAPUKETTO_WIN_NODE_PATH 环境变量命中（解析为绝对路径）", async () => {
         const exe = join(tmpRoot, "sys-node.exe");
         writeFileSync(exe, "");
-        vi.stubEnv("NAPUTO_WIN_NODE_PATH", exe);
+        vi.stubEnv("NAPUKETTO_WIN_NODE_PATH", exe);
         const info = await ensureWinNode({ dataRoot });
         expect(info.version).toBe("explicit");
         expect(info.exePath).toBe(exe);
     });
 
     it("显式路径不存在 → 跳过（与 ensureWinNode 下载路径一致）", async () => {
-        vi.stubEnv("NAPUTO_WIN_NODE_PATH", join(tmpRoot, "missing.exe"));
+        vi.stubEnv("NAPUKETTO_WIN_NODE_PATH", join(tmpRoot, "missing.exe"));
         const info = await ensureWinNode({ dataRoot });
         expect(info.version).toBe(VERSION);
         expect(h.downloads).toHaveLength(1);
@@ -158,8 +158,8 @@ describe("ensureWinNode 下载流", () => {
         );
     });
 
-    it("NAPUTO_WIN_NODE_URL 覆盖下载地址", async () => {
-        vi.stubEnv("NAPUTO_WIN_NODE_URL", "https://mirror.example.com/node.zip");
+    it("NAPUKETTO_WIN_NODE_URL 覆盖下载地址", async () => {
+        vi.stubEnv("NAPUKETTO_WIN_NODE_URL", "https://mirror.example.com/node.zip");
         await ensureWinNode({ dataRoot });
         expect(h.downloads[0]?.url).toBe("https://mirror.example.com/node.zip");
     });
@@ -188,8 +188,8 @@ describe("ensureWinNode 下载流", () => {
         expect(existsSync(zipPath)).toBe(false);
     });
 
-    it("版本优先级：参数 > NAPUTO_WIN_NODE_VERSION > 缺省 v24.16.0", async () => {
-        vi.stubEnv("NAPUTO_WIN_NODE_VERSION", "v22.0.0");
+    it("版本优先级：参数 > NAPUKETTO_WIN_NODE_VERSION > 缺省 v24.16.0", async () => {
+        vi.stubEnv("NAPUKETTO_WIN_NODE_VERSION", "v22.0.0");
         const viaEnv = await ensureWinNode({ dataRoot });
         expect(viaEnv.version).toBe("v22.0.0");
         const viaParam = await ensureWinNode({ dataRoot, version: "v20.0.0" });

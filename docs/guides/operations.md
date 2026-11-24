@@ -70,14 +70,14 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 | 开关 | 作用 |
 |---|---|
-| `NAPUTO_SMOKE=1` | 登录后真发/收一条消息自检 |
-| `NAPUTO_PROBE=1` | 启动时探测 session/service 方法面 |
-| `NAPUTO_IPC=1` | 以 IPC 模式运行（Koishi 适配器等外部驱动） |
+| `NAPUKETTO_SMOKE=1` | 登录后真发/收一条消息自检 |
+| `NAPUKETTO_PROBE=1` | 启动时探测 session/service 方法面 |
+| `NAPUKETTO_IPC=1` | 以 IPC 模式运行（Koishi 适配器等外部驱动） |
 | `NAPUKETTO_DIAG=1` | 启用 IPC `diag.*` 诊断动作（默认关闭；仅本地调试，按方法 allowlist） |
 | `NAPUKETTO_LOG_LEVEL=debug` | 调高日志级别（控制台与缺省文件级别） |
 
-`NAPUTO_SMOKE_PEER` 指定冒烟目标（`c2c:<uin>` / `group:<uin>`）。日志级别优先级：
-`NAPUKETTO_LOG_LEVEL` > 旧拼写 `NAPKETTO_LOG_LEVEL` > `[log].level`；显式 `[log.file].level` 不跟随。
+`NAPUKETTO_SMOKE_PEER` 指定冒烟目标（`c2c:<uin>` / `group:<uin>`）。日志级别优先级：
+`NAPUKETTO_LOG_LEVEL` > `[log].level`；显式 `[log.file].level` 不跟随。前缀唯一——历史拼写不再生效。
 诊断动作不进入常规动作表；未设置 `NAPUKETTO_DIAG` 时调用方收到 `NOT_FOUND`。启用后也只
 接受固定方法名与有限参数，破坏性实验改用 kernel 探测原语。启动日志不会打印环境变量值。
 
@@ -96,7 +96,7 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 ### stub 或 dlopen 失败
 
-- 确认 `packages/loader/native` 子模块已检出，或用 `--stub-dir` / `NAPUTO_STUB_DIR`
+- 确认 `packages/loader/native` 子模块已检出，或用 `--stub-dir` / `NAPUKETTO_STUB_DIR`
   指定含 `QQNT.dll` 的目录；stub 目录与 `wrapper.node` 所在目录会前置到 `PATH`。
 - 宿主必须是真正的 Node：Bun 等运行时符号绑定会失败，loader 会改用系统 `node.exe`
   或下载 Windows 版 Node。
@@ -104,14 +104,14 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 
 ### QQ 文件定位或下载失败
 
-- 定位优先级：`NAPUTO_QQ_FILES` → 本机安装（`NAPUTO_QQ_PATH` / 注册表 / 常见路径）→
-  `<数据根>/qq-files` 缓存 → 自动下载；下载失败先查网络与磁盘，可用 `NAPUTO_QQ_URL`
+- 定位优先级：`NAPUKETTO_QQ_FILES` → 本机安装（`NAPUKETTO_QQ_PATH` / 注册表 / 常见路径）→
+  `<数据根>/qq-files` 缓存 → 自动下载；下载失败先查网络与磁盘，可用 `NAPUKETTO_QQ_URL`
   指定安装包地址。
 - 官方 URL 的 `/QQNTV2/` 段会被 CDN 按大小写拦截，loader 已统一为 `/qqntv2/`；仍 403
   时更新 `packages/loader/qq-releases.json` 或跑 `tooling/qq-releases/update-qq-releases.ts`。
   追踪 issue 只代表 Windows 侧或配置解析失败；Linux deb 的旧版配置与下载失败只 warn。
 - 报 `无法从 major.node 解析 appid`：多为 QQ 文件不完整，重新下载，不要写死 appid。
-- 解包失败检查 `NAPUTO_7Z_PATH`；Linux 内置 `7zz`，回退下载需 `tar` + `xz-utils`。
+- 解包失败检查 `NAPUKETTO_7Z_PATH`；Linux 内置 `7zz`，回退下载需 `tar` + `xz-utils`。
 
 ### 收不到实时消息
 
@@ -138,7 +138,7 @@ stdout/stderr 并过滤原生噪音（`isNativeNoiseLine`）；IPC 模式 stdout
 ### Linux 原生宿主
 
 Linux 只有一条路线：标准 `node` + 最小 `.so` stub + 官方 ELF `wrapper.node`（`LD_PRELOAD=libnapuketto_stub.so:libgnutls.so.30`）。
-Wine 路径已删除，`NAPUTO_LINUX_NATIVE` 与 `NAPUTO_WINE` 均失效；机制见
+Wine 路径与其历史宿主开关已彻底删除（Linux 平台分支由 `process.platform` 判定）；机制见
 [loader 平台分支](../../packages/loader/docs/design.md#平台分支)。
 
 | 依赖 | 作用 | 缺失症状 |
@@ -151,13 +151,13 @@ Wine 路径已删除，`NAPUTO_LINUX_NATIVE` 与 `NAPUTO_WINE` 均失效；机�
 Ubuntu 24.04 的 gnutls 包名是 `libgnutls30t64`，Debian 12 是 `libgnutls30`；X11 需要
 `libx11-6`、`libx11-xcb1`、`libxext6`、`libxcb1`。排障顺序：
 
-- 报「Linux stub 未找到」→ 用 `NAPUTO_LINUX_STUB` 指向包内可用的 `.so`。
+- 报「Linux stub 未找到」→ 用 `NAPUKETTO_LINUX_STUB` 指向包内可用的 `.so`。
 - 报 gnutls 相关 → 安装系统包后重试（loader 会自动 preload）。
 - `dlopen` 报缺 `.so` → 按上表补齐系统库。
 - 仍失败 → `ldd <wrapper.node>` 对照上表的系统库补齐。
 
 `HOME` 与 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` / `XDG_STATE_HOME` 收敛到
-`<数据根>/home`（`NAPUTO_LINUX_HOME` 可覆盖，`XDG_RUNTIME_DIR` 不接管），崩溃记录在
+`<数据根>/home`（`NAPUKETTO_LINUX_HOME` 可覆盖，`XDG_RUNTIME_DIR` 不接管），崩溃记录在
 `<数据根>/home/.config/QQ/crash_files/`。当前只承诺 `linux/amd64`；arm64 未做交付验证。
 
 ### 上线前检查

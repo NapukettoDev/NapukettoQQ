@@ -101,8 +101,8 @@ function createBatch3Channels(
 function resolveServiceLogFile(logCfg: LogConfigLike | undefined): string {
     return logCfg?.file !== undefined
         ? resolveLogFilePath(logCfg.file.path)
-        : env.NAPUTO_CFG_DIR !== undefined
-          ? join(env.NAPUTO_CFG_DIR, "logs", "loader.log")
+        : env.NAPUKETTO_CFG_DIR !== undefined
+          ? join(env.NAPUKETTO_CFG_DIR, "logs", "loader.log")
           : join(tmpdir(), "napuketto-loader.log");
 }
 
@@ -142,7 +142,7 @@ export async function createKernelServices(
     // 2026-10-25 日志可配置化：级别/格式/时间戳/颜色接 [log] 段 + env
     //（boot 经 NAPUKETTO_LOG_FORMAT/COLORIZE 传播顶层控制台决策）；[log.file]
     // 配置时改写该独立 sink（否则沿用 loader.log）。
-    const ipcMode = isEnvEnabled(env.NAPUTO_IPC);
+    const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
     const logFile = resolveServiceLogFile(logCfg);
     const logger = kernel.createLogger?.(
         buildLoaderLoggerOptions(logCfg, !ipcMode, logFile, loginResult.uin),

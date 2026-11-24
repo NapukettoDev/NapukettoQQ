@@ -56,7 +56,7 @@ let tmpRoot = "";
 beforeEach(() => {
     tmpRoot = mkdtempSync(join(tmpdir(), "napuketto-linux-native-"));
     h.spawnCalls.length = 0;
-    delete process.env["NAPUTO_LINUX_HOME"];
+    delete process.env["NAPUKETTO_LINUX_HOME"];
 });
 
 afterEach(() => {
@@ -150,9 +150,9 @@ describe("launchLinuxNative：HOME/XDG 收敛", () => {
         expect(env[ENV.STUB_DIR]).toBe(stub);
     });
 
-    it("NAPUTO_LINUX_HOME 显式覆盖受管 HOME（调试/特殊部署）", async () => {
+    it("NAPUKETTO_LINUX_HOME 显式覆盖受管 HOME（调试/特殊部署）", async () => {
         const custom = join(tmpRoot, "custom-home");
-        vi.stubEnv("NAPUTO_LINUX_HOME", custom);
+        vi.stubEnv("NAPUKETTO_LINUX_HOME", custom);
         await withLinux(async () => {
             await launchSelfHost(baseOptions());
         });
@@ -167,20 +167,5 @@ describe("launchLinuxNative：HOME/XDG 收敛", () => {
             await launchSelfHost(withoutCwd);
         });
         expect(spawnedEnv()["HOME"]).toBe(join(tmpRoot, "data", "10001", "home"));
-    });
-
-    it("NAPUTO_LINUX_NATIVE=0 已退役：只播报一句，行为不变（不走 stub QQNT.dll 校验）", async () => {
-        const stages: string[] = [];
-        vi.stubEnv("NAPUTO_LINUX_NATIVE", "0");
-        await withLinux(async () => {
-            // 未传 stubDir（win32 分支会因缺 QQNT.dll 抛错）——能正常 spawn 即证明走了原生分支
-            await launchSelfHost(
-                baseOptions({
-                    onStage: (m) => stages.push(m),
-                }),
-            );
-        });
-        expect(stages.some((m) => m.includes("NAPUTO_LINUX_NATIVE=0 已失效"))).toBe(true);
-        expect(h.spawnCalls[0]?.command).toBe(process.execPath);
     });
 });

@@ -6,8 +6,8 @@
  *
  * env.ts 是模块加载时的 process.env 快照——vi.stubEnv + vi.resetModules + 动态
  * import 每用例取全新模块（与 ipc-sender.test.ts 同套路）。假 kernel 写临时
- * .mjs 文件（每用例独立文件，动态 import URL 不同不命中模块缓存）；NAPUTO_CFG_DIR
- * 指向临时目录使 log() 落盘无污染。全用例非 IPC 模式（NAPUTO_IPC 置空）——
+ * .mjs 文件（每用例独立文件，动态 import URL 不同不命中模块缓存）；NAPUKETTO_CFG_DIR
+ * 指向临时目录使 log() 落盘无污染。全用例非 IPC 模式（NAPUKETTO_IPC 置空）——
  * 跳过 ipc-server 启动，纯测结果信号。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -22,7 +22,7 @@ let kernelSeq = 0;
 /** 取全新 bootstrap 模块（隔离 env 快照与模块级状态）。 */
 async function freshBootstrap(): Promise<typeof import("../bootstrap.js")> {
     ensureTmpRoot();
-    vi.stubEnv("NAPUTO_CFG_DIR", tmpRoot);
+    vi.stubEnv("NAPUKETTO_CFG_DIR", tmpRoot);
     vi.resetModules();
     return await import("../bootstrap.js");
 }
@@ -44,11 +44,11 @@ function stubBootEnv(kernelSource: string): void {
     kernelSeq += 1;
     const kernelEntry = join(tmpRoot, `kernel-${kernelSeq}.mjs`);
     writeFileSync(kernelEntry, `export function dlopenWrapper() { return {}; }\n${kernelSource}`);
-    vi.stubEnv("NAPUTO_KERNEL_ENTRY", kernelEntry);
-    vi.stubEnv("NAPUTO_QQ_VERSION", "9.9.9-Test");
-    vi.stubEnv("NAPUTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
-    vi.stubEnv("NAPUTO_SELF_HOST", "1");
-    vi.stubEnv("NAPUTO_IPC", "");
+    vi.stubEnv("NAPUKETTO_KERNEL_ENTRY", kernelEntry);
+    vi.stubEnv("NAPUKETTO_QQ_VERSION", "9.9.9-Test");
+    vi.stubEnv("NAPUKETTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
+    vi.stubEnv("NAPUKETTO_SELF_HOST", "1");
+    vi.stubEnv("NAPUKETTO_IPC", "");
 }
 
 beforeEach(() => {
@@ -70,15 +70,15 @@ afterAll(() => {
 });
 
 describe("bootstrap() 结果信号（失败收敛 false）", () => {
-    it("NAPUTO_KERNEL_ENTRY 未设置 → false", async () => {
-        vi.stubEnv("NAPUTO_KERNEL_ENTRY", "");
+    it("NAPUKETTO_KERNEL_ENTRY 未设置 → false", async () => {
+        vi.stubEnv("NAPUKETTO_KERNEL_ENTRY", "");
         const mod = await freshBootstrap();
         expect(await mod.bootstrap(freshState())).toBe(false);
     });
 
     it("kernelEntry 指向不存在的文件（import 失败）→ false", async () => {
         ensureTmpRoot();
-        vi.stubEnv("NAPUTO_KERNEL_ENTRY", join(tmpRoot, "kernel-不存在.mjs"));
+        vi.stubEnv("NAPUKETTO_KERNEL_ENTRY", join(tmpRoot, "kernel-不存在.mjs"));
         const mod = await freshBootstrap();
         expect(await mod.bootstrap(freshState())).toBe(false);
     });
@@ -224,8 +224,8 @@ describe("bootstrap() 结果信号（失败收敛 false）", () => {
         expect(await mod.bootstrap(freshState())).toBe(true);
     });
 
-    it("探测模式（NAPUTO_PROBE=1）：fallback 路径 probeOnce 执行（probeRuntime 结果进日志）", async () => {
-        vi.stubEnv("NAPUTO_PROBE", "1");
+    it("探测模式（NAPUKETTO_PROBE=1）：fallback 路径 probeOnce 执行（probeRuntime 结果进日志）", async () => {
+        vi.stubEnv("NAPUKETTO_PROBE", "1");
         stubBootEnv(
             [
                 "export function resolveAppidQua() { return { appid: 537376818 }; }",

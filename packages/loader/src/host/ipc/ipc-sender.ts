@@ -1,7 +1,7 @@
 /**
  * ipc-sender.ts：IPC 消息发送封装（self-host 子进程 → koishi 插件）。
  *
- * 仅 NAPUTO_IPC=1 启用：stdout 专用于 JSON 行协议（stdin 收 action/control）。
+ * 仅 NAPUKETTO_IPC=1 启用：stdout 专用于 JSON 行协议（stdin 收 action/control）。
  * 非 IPC 模式（cli pnpm start）stdout 不输出协议行，零干扰。
  */
 
@@ -19,7 +19,7 @@ import {
     type IpcStatusPayload,
 } from "./ipc-types.js";
 
-/** IPC 模式开关（self-host.ts 在 env.NAPUTO_IPC=1 时 enable）。 */
+/** IPC 模式开关（self-host.ts 在 env.NAPUKETTO_IPC=1 时 enable）。 */
 let enabled = false;
 
 /** 最近一次 status payload 快照（control status 查询时重播）。

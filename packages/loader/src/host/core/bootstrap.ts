@@ -164,9 +164,9 @@ function hasAssemblyEntry(kernel: KernelLike): boolean {
 
 /** 动态 import kernel 入口（未注入 / 导入失败 / 无装配入口 → undefined，调用方收敛 false）。 */
 async function importKernel(): Promise<KernelLike | undefined> {
-    const kernelEntry = env.NAPUTO_KERNEL_ENTRY;
+    const kernelEntry = env.NAPUKETTO_KERNEL_ENTRY;
     if (!kernelEntry) {
-        log("bootstrap: NAPUTO_KERNEL_ENTRY not set");
+        log("bootstrap: NAPUKETTO_KERNEL_ENTRY not set");
         return undefined;
     }
     const rawKernel: unknown = await import(pathToFileURL(kernelEntry).href);
@@ -185,10 +185,10 @@ async function importKernel(): Promise<KernelLike | undefined> {
 /** bootEnv 归一化（env 快照 string | undefined → string）。 */
 function buildBootEnv(): BootstrapEnv {
     return {
-        qqVersion: env.NAPUTO_QQ_VERSION || "",
-        dataDir: env.NAPUTO_CFG_DIR || "",
-        dataRoot: env.NAPUTO_DATA_ROOT || "",
-        wrapperPath: env.NAPUTO_WRAPPER_PATH || "",
+        qqVersion: env.NAPUKETTO_QQ_VERSION || "",
+        dataDir: env.NAPUKETTO_CFG_DIR || "",
+        dataRoot: env.NAPUKETTO_DATA_ROOT || "",
+        wrapperPath: env.NAPUKETTO_WRAPPER_PATH || "",
     };
 }
 
@@ -226,7 +226,7 @@ function loadHostWrapper(kernel: KernelLike, path: string): Record<string, unkno
         return exports;
     } catch (err) {
         const code = getOwnProp(err, "code") === "INVALID_STATE" ? "INVALID_STATE" : "UNKNOWN";
-        if (isEnvEnabled(env.NAPUTO_IPC)) {
+        if (isEnvEnabled(env.NAPUKETTO_IPC)) {
             sendStatus("failed", "原生引导失败", { code, message: errMsg(err) });
         }
         throw err;
@@ -236,7 +236,7 @@ function loadHostWrapper(kernel: KernelLike, path: string): Record<string, unkno
 /**
  * 核心引导：import kernel → 装配 → 登录 → 替换 session → 等待就绪 → 协议装配。
  * @returns 引导是否完整完成（IPC 模式 = 协议服务装配成功；各失败路径静默收敛为
- *   false 而非抛错，具体原因记录在 NAPUTO_CFG_DIR 下 napuketto-boot.log——
+ *   false 而非抛错，具体原因记录在 NAPUKETTO_CFG_DIR 下 napuketto-boot.log——
  *   调用方 self-host 依此决定 ready/failed 与进程去留）。唯一例外：配置校验
  *   失败（ConfigError 契约）重抛，self-host 以 78 区分配置未就绪与运行时崩溃。
  */
@@ -248,7 +248,7 @@ export async function bootstrap(state: SharedState, ipc?: IpcServerOptions): Pro
         }
         const bootEnv = buildBootEnv();
         if (state.wrapperExports === null) {
-            if (isEnvEnabled(env.NAPUTO_IPC)) {
+            if (isEnvEnabled(env.NAPUKETTO_IPC)) {
                 sendStatus("dlopening");
             }
             state.wrapperExports = loadHostWrapper(kernel, bootEnv.wrapperPath);

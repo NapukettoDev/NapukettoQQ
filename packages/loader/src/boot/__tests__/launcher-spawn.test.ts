@@ -126,7 +126,7 @@ beforeEach(() => {
     h.syncResults.clear();
     h.winNode = { exePath: "C:\\runtime\\win-node\\node.exe", version: "v24.16.0" };
     h.ensureWinNodeCalls = 0;
-    delete process.env["NAPUTO_WIN_NODE_PATH"];
+    delete process.env["NAPUKETTO_WIN_NODE_PATH"];
 });
 
 afterEach(() => {
@@ -178,7 +178,7 @@ describe("launchSelfHost 前置校验", () => {
         expect(h.spawnCalls).toHaveLength(0);
     });
 
-    it("stub QQNT.dll 缺失 → 报错并提示 --stub-dir/NAPUTO_STUB_DIR", async () => {
+    it("stub QQNT.dll 缺失 → 报错并提示 --stub-dir/NAPUKETTO_STUB_DIR", async () => {
         // 平台钉死 win32：Linux 上会先走原生 ELF 分支（不校验 QQNT.dll），断言不成立
         await withPlatform("win32", async () => {
             const options = baseOptions({ stubDir: join(tmpRoot, "no-stub") });
@@ -228,7 +228,7 @@ describe("launchSelfHost win32 分支", () => {
             adapterEntry: join(tmpRoot, "adapter.mjs"),
             networkEntry: join(tmpRoot, "network.mjs"),
             configPath: join(tmpRoot, "napuketto.toml"),
-            extraEnv: { NAPUTO_DATA_ROOT: tmpRoot },
+            extraEnv: { NAPUKETTO_DATA_ROOT: tmpRoot },
             cwd: join(tmpRoot, "data"),
         });
         // 平台钉死 win32：isLinux() 为 false 才走本分支（不真实执行任何外部二进制——
@@ -250,7 +250,7 @@ describe("launchSelfHost win32 分支", () => {
             expect(env[ENV.ADAPTER_ENTRY]).toBe(join(tmpRoot, "adapter.mjs"));
             expect(env[ENV.NETWORK_ENTRY]).toBe(join(tmpRoot, "network.mjs"));
             expect(env[ENV.CONFIG_PATH]).toBe(join(tmpRoot, "napuketto.toml"));
-            expect(env["NAPUTO_DATA_ROOT"]).toBe(tmpRoot);
+            expect(env["NAPUKETTO_DATA_ROOT"]).toBe(tmpRoot);
             expect(env[ENV.STUB_DIR]).toBe(stubDir);
             // PATH 前置 stub 目录与 wrapper.node 目录（win32 原样；真实 PATH 仅为
             // 尾部透传，不参与断言——跨平台形态差异不碰）

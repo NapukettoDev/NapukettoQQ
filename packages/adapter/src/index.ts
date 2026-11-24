@@ -8,7 +8,7 @@
  * 重要（路径契约，勿删）：
  * 1. `package.json` 的 `"."` 子路径需要真实文件存在，`import.meta.resolve()` /
  *    `createRequire().resolve()` 才解析得到本包（外部消费方据此定位 dist）；
- * 2. cli 把解析结果注入 `NAPUTO_ADAPTER_ENTRY`，loader 再按 `index.mjs` →
+ * 2. cli 把解析结果注入 `NAPUKETTO_ADAPTER_ENTRY`，loader 再按 `index.mjs` →
  *    `core|onebot11|satori|kurobot|milky/index.mjs` 字符串替换推出各协议入口
  *    （见 loader `assemble-protocols.ts` / `ipc-ob11.ts` 的 `INDEX_MJS_RE`）。
  *

@@ -7,63 +7,57 @@
  *  - 对象字面量成员允许 CONSTANT_CASE（biome 配置），键是字面量 → env.XXX 点访问合法
  *  - 快照语义：引导进程内环境变量不变（launcher spawn 前注入完毕），取一次即可
  *
- * 前缀统一（2026-11）：读取侧优先 `NAPUKETTO_*`，回退旧名 `NAPUTO_*` / `NAPKETTO_*`；
- * 属性名保留旧形态仅为兼容包内既有调用点（值已是新前缀优先的解析结果）。
+ * 前缀唯一（2026-11）：只读规范前缀 `NAPUKETTO_*`，不做旧拼写别名兼容，属性名与环境
+ * 变量名一一对应。唯一例外是闭源 stub 硬编码的原生契约键 `NAPUTO_MEDIA_PATCH_STATUS`
+ * （禁止改名）。
  */
 const env = {
     /** kernel 入口（.mjs，bootstrap 动态 import）。 */
-    NAPUTO_KERNEL_ENTRY:
-        process.env["NAPUKETTO_KERNEL_ENTRY"] ?? process.env["NAPUTO_KERNEL_ENTRY"],
+    NAPUKETTO_KERNEL_ENTRY: process.env["NAPUKETTO_KERNEL_ENTRY"],
     /** QQ 版本号（appid 解析 / 协议装配用）。 */
-    NAPUTO_QQ_VERSION: process.env["NAPUKETTO_QQ_VERSION"] ?? process.env["NAPUTO_QQ_VERSION"],
+    NAPUKETTO_QQ_VERSION: process.env["NAPUKETTO_QQ_VERSION"],
     /** 配置目录（数据根，日志 / 协议配置兜底）。 */
-    NAPUTO_CFG_DIR: process.env["NAPUKETTO_CFG_DIR"] ?? process.env["NAPUTO_CFG_DIR"],
+    NAPUKETTO_CFG_DIR: process.env["NAPUKETTO_CFG_DIR"],
     /** wrapper.node 绝对路径（dlopen 目标）。 */
-    NAPUTO_WRAPPER_PATH:
-        process.env["NAPUKETTO_WRAPPER_PATH"] ?? process.env["NAPUTO_WRAPPER_PATH"],
+    NAPUKETTO_WRAPPER_PATH: process.env["NAPUKETTO_WRAPPER_PATH"],
     /** adapter 包入口（协议装配用）。 */
-    NAPUTO_ADAPTER_ENTRY:
-        process.env["NAPUKETTO_ADAPTER_ENTRY"] ?? process.env["NAPUTO_ADAPTER_ENTRY"],
+    NAPUKETTO_ADAPTER_ENTRY: process.env["NAPUKETTO_ADAPTER_ENTRY"],
     /** network 包入口（协议装配用）。 */
-    NAPUTO_NETWORK_ENTRY:
-        process.env["NAPUKETTO_NETWORK_ENTRY"] ?? process.env["NAPUTO_NETWORK_ENTRY"],
+    NAPUKETTO_NETWORK_ENTRY: process.env["NAPUKETTO_NETWORK_ENTRY"],
     /** 自建宿主标记（=1：标准 node + stub 引导，launcher 注入）。 */
-    NAPUTO_SELF_HOST: process.env["NAPUKETTO_SELF_HOST"] ?? process.env["NAPUTO_SELF_HOST"],
+    NAPUKETTO_SELF_HOST: process.env["NAPUKETTO_SELF_HOST"],
     /** stub QQNT.dll 目录（launcher 注入，self-host 诊断用）。 */
-    NAPUTO_STUB_DIR: process.env["NAPUKETTO_STUB_DIR"] ?? process.env["NAPUTO_STUB_DIR"],
+    NAPUKETTO_STUB_DIR: process.env["NAPUKETTO_STUB_DIR"],
     /** 强制指定快速登录账号（防风控账号挂起）。 */
-    NAPUTO_QUICK_UIN: process.env["NAPUKETTO_QUICK_UIN"] ?? process.env["NAPUTO_QUICK_UIN"],
+    NAPUKETTO_QUICK_UIN: process.env["NAPUKETTO_QUICK_UIN"],
     /** 强制扫码登录（=1：跳过快速登录直接 QR；koishi 面板「扫码登录」重启路径，一次性）。 */
-    NAPUTO_QR_ONLY: process.env["NAPUKETTO_QR_ONLY"] ?? process.env["NAPUTO_QR_ONLY"],
+    NAPUKETTO_QR_ONLY: process.env["NAPUKETTO_QR_ONLY"],
     /** 显式 IPC 诊断动作开关（=1/true；默认关闭，仅本地调试）。 */
-    NAPUTO_DIAG: process.env["NAPUKETTO_DIAG"] ?? process.env["NAPUTO_DIAG"],
+    NAPUKETTO_DIAG: process.env["NAPUKETTO_DIAG"],
     /** 收发消息冒烟自检开关（=1 触发）。 */
-    NAPUTO_SMOKE: process.env["NAPUKETTO_SMOKE"] ?? process.env["NAPUTO_SMOKE"],
+    NAPUKETTO_SMOKE: process.env["NAPUKETTO_SMOKE"],
     /** IPC 子进程模式（=1：koishi 插件驱动——stdout 走 JSON 行协议，stdin 收 action/control）。 */
-    NAPUTO_IPC: process.env["NAPUKETTO_IPC"] ?? process.env["NAPUTO_IPC"],
+    NAPUKETTO_IPC: process.env["NAPUKETTO_IPC"],
     /** 冒烟目标 peer（c2c:<uin> / group:<uin>，缺省发给自己）。 */
-    NAPUTO_SMOKE_PEER: process.env["NAPUKETTO_SMOKE_PEER"] ?? process.env["NAPUTO_SMOKE_PEER"],
+    NAPUKETTO_SMOKE_PEER: process.env["NAPUKETTO_SMOKE_PEER"],
     /** 运行时探测开关（=1 触发 probeRuntime）。 */
-    NAPUTO_PROBE: process.env["NAPUKETTO_PROBE"] ?? process.env["NAPUTO_PROBE"],
+    NAPUKETTO_PROBE: process.env["NAPUKETTO_PROBE"],
     /** listener 录制器开关（=1 触发 startListenerRecording，先于探测挂起——批次三前置）。 */
-    NAPUTO_LISTENER_RECORD:
-        process.env["NAPUKETTO_LISTENER_RECORD"] ?? process.env["NAPUTO_LISTENER_RECORD"],
+    NAPUKETTO_LISTENER_RECORD: process.env["NAPUKETTO_LISTENER_RECORD"],
     /** 全局 TOML 配置显式路径（优先级最高）。 */
-    NAPKETTO_CONFIG: process.env["NAPUKETTO_CONFIG"] ?? process.env["NAPKETTO_CONFIG"],
-    /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPKETTO_CONFIG 文件，2026-10-25）。 */
-    NAPKETTO_CONFIG_JSON:
-        process.env["NAPUKETTO_CONFIG_JSON"] ?? process.env["NAPKETTO_CONFIG_JSON"],
+    NAPUKETTO_CONFIG: process.env["NAPUKETTO_CONFIG"],
+    /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPUKETTO_CONFIG 文件，2026-10-25）。 */
+    NAPUKETTO_CONFIG_JSON: process.env["NAPUKETTO_CONFIG_JSON"],
     /** 数据根（kernel 数据目录，cleanCache 用）。 */
-    NAPKETTO_DATA: process.env["NAPUKETTO_DATA"] ?? process.env["NAPKETTO_DATA"],
+    NAPUKETTO_DATA: process.env["NAPUKETTO_DATA"],
     /** 数据根（launcher 注入，停止哨兵目录解析用）。 */
-    NAPUTO_DATA_ROOT: process.env["NAPUKETTO_DATA_ROOT"] ?? process.env["NAPUTO_DATA_ROOT"],
+    NAPUKETTO_DATA_ROOT: process.env["NAPUKETTO_DATA_ROOT"],
     /**
      * 入站图片自动下载补丁状态文件路径（launcher 注入；stub 后台线程写 JSON，2026-11-14）。
-     * 原生二进制硬编码读 `NAPUTO_MEDIA_PATCH_STATUS`：写入侧恒保留原生键，读取侧
-     * 双读（新前缀优先），保证闭源 native 契约零破坏。
+     * 原生二进制硬编码读 `NAPUTO_MEDIA_PATCH_STATUS`：属性名与环境变量名一致，
+     * 不设新前缀别名（闭源 native 契约零破坏）。
      */
-    NAPUTO_MEDIA_PATCH_STATUS:
-        process.env["NAPUKETTO_MEDIA_PATCH_STATUS"] ?? process.env["NAPUTO_MEDIA_PATCH_STATUS"],
+    NAPUTO_MEDIA_PATCH_STATUS: process.env["NAPUTO_MEDIA_PATCH_STATUS"],
 };
 
 /**
@@ -75,14 +69,13 @@ export function isEnvEnabled(val: string | undefined): boolean {
 }
 
 /**
- * 读取并消费一次性扫码标记（`NAPUTO_QR_ONLY` / `NAPUKETTO_QR_ONLY`）。
+ * 读取并消费一次性扫码标记（`NAPUKETTO_QR_ONLY`）。
  *
- * 该标记只对本次登录生效：读取后立即从 `process.env` 删除新旧拼写，避免后续软重登、
+ * 该标记只对本次登录生效：读取后立即从 `process.env` 删除，避免后续软重登、
  * 重试或同一宿主内其他代码再次读到，也减少该标记在原生子进程环境中的停留时间。
  */
 export function consumeQrOnlyMarker(): boolean {
-    const enabled = isEnvEnabled(env.NAPUTO_QR_ONLY);
-    delete process.env["NAPUTO_QR_ONLY"];
+    const enabled = isEnvEnabled(env.NAPUKETTO_QR_ONLY);
     delete process.env["NAPUKETTO_QR_ONLY"];
     return enabled;
 }

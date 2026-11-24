@@ -141,11 +141,11 @@ beforeEach(() => {
     writeFileSync(join(adapterDir, "core", "index.mjs"), CORE_MJS, "utf8");
     writeFileSync(join(tmpRoot, "network", "index.mjs"), NETWORK_MJS, "utf8");
     // 环境快照：入口指向假模块
-    vi.stubEnv("NAPUTO_ADAPTER_ENTRY", join(adapterDir, "index.mjs"));
-    vi.stubEnv("NAPUTO_NETWORK_ENTRY", join(tmpRoot, "network", "index.mjs"));
-    vi.stubEnv("NAPUTO_QQ_VERSION", "9.9.33-51802");
-    vi.stubEnv("NAPUTO_CFG_DIR", join(tmpRoot, "account"));
-    vi.stubEnv("NAPKETTO_DATA", tmpRoot);
+    vi.stubEnv("NAPUKETTO_ADAPTER_ENTRY", join(adapterDir, "index.mjs"));
+    vi.stubEnv("NAPUKETTO_NETWORK_ENTRY", join(tmpRoot, "network", "index.mjs"));
+    vi.stubEnv("NAPUKETTO_QQ_VERSION", "9.9.33-51802");
+    vi.stubEnv("NAPUKETTO_CFG_DIR", join(tmpRoot, "account"));
+    vi.stubEnv("NAPUKETTO_DATA", tmpRoot);
     // 全局记录清零
     (globalThis as Record<string, unknown>)["__fakeAdapters"] = [];
     (globalThis as Record<string, unknown>)["__fakePathWrappers"] = [];
@@ -219,9 +219,12 @@ function fakeServices(): KernelServices {
 
 const LOGIN = { uin: "10001", uid: "u1", nick: "测试号" };
 
-/** 按账号段注入内联配置（NAPKETTO_CONFIG_JSON）。 */
+/** 按账号段注入内联配置（NAPUKETTO_CONFIG_JSON）。 */
 function stubInlineConfig(account: Record<string, unknown>): void {
-    vi.stubEnv("NAPKETTO_CONFIG_JSON", JSON.stringify({ accounts: [{ qq: "10001", ...account }] }));
+    vi.stubEnv(
+        "NAPUKETTO_CONFIG_JSON",
+        JSON.stringify({ accounts: [{ qq: "10001", ...account }] }),
+    );
 }
 
 /** 按 kind 找假 adapter。 */
@@ -231,8 +234,8 @@ function adapterOf(kind: string): FakeAdapterRecord["adapter"] | undefined {
 
 describe("assembleOb11AndSatori", () => {
     it("入口未注入 → 返回 no-op 停止函数，不触发 import", async () => {
-        vi.stubEnv("NAPUTO_ADAPTER_ENTRY", "");
-        vi.stubEnv("NAPUTO_NETWORK_ENTRY", "");
+        vi.stubEnv("NAPUKETTO_ADAPTER_ENTRY", "");
+        vi.stubEnv("NAPUKETTO_NETWORK_ENTRY", "");
         const assemble = await freshAssemble();
         const stop = await assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN);
         expect(fakeAdapters()).toHaveLength(0);
@@ -353,7 +356,7 @@ describe("assembleOb11AndSatori", () => {
     });
 
     it("network 入口损坏（文件缺失）→ import 失败抛出（不吞错）", async () => {
-        vi.stubEnv("NAPUTO_NETWORK_ENTRY", join(tmpRoot, "network", "missing.mjs"));
+        vi.stubEnv("NAPUKETTO_NETWORK_ENTRY", join(tmpRoot, "network", "missing.mjs"));
         const assemble = await freshAssemble();
         await expect(
             assemble.assembleOb11AndSatori(fakeKernel(), fakeServices(), LOGIN),

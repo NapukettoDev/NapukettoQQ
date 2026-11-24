@@ -212,9 +212,9 @@ canonical `video`（`path`、可选 `thumbPath` / `width` / `height` / `duration
 
 ### listener 录制器
 
-`probe-listener.ts` 是探测工具而非运行路径：`NAPUTO_LISTENER_RECORD=1` 时由 loader
+`probe-listener.ts` 是探测工具而非运行路径：`NAPUKETTO_LISTENER_RECORD=1` 时由 loader
 bootstrap 在探测之前挂上 Proxy 万能监听器，把**原生实际调用的回调名**逐行写入
-`NAPUTO_CFG_DIR/napuketto-listener-record.jsonl`。用途是给未接线事件补回调证据；它与业务
+`NAPUKETTO_CFG_DIR/napuketto-listener-record.jsonl`。用途是给未接线事件补回调证据；它与业务
 bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evidence.md](./evidence.md)。
 
 ### 平台参数
@@ -224,7 +224,7 @@ bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evid
   `resolveAppidQua()` 优先内置 qua，解析不到才用 `buildQua` 拼（Linux 用 `_` 连接版本）。
 - `buildEngineConfig` / `buildSessionConfig` 接受显式 `platform` 覆盖；`use_xlog` 在非
   Windows 打开。appid 唯一来源是 `major.node` 动态解析，失败显式抛错，不回退过期值。
-- `resolveQqUserDataRoot`：Linux 直接用数据根（`NAPUTO_DATA_ROOT` 或 `attachWrapper` 的
+- `resolveQqUserDataRoot`：Linux 直接用数据根（`NAPUKETTO_DATA_ROOT` 或 `attachWrapper` 的
   `env.dataRoot`）；Windows 走官方 `getNTUserDataInfoConfig()` + `Tencent Files` 兜底。
   `resolveQqGlobalPath` 统一拼 `<数据根>/nt_qq/global`，不读写 `$HOME`。
 - 调试入口注入 `NAPUKETTO_SANDBOX_ROOT` 时，Windows 与 Linux 都使用已校验的沙箱数据根。
@@ -279,7 +279,7 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
 
 ## 跨包契约
 
-- **loader 装配**：loader 动态 import kernel（`NAPUTO_KERNEL_ENTRY`），登录成功后调
+- **loader 装配**：loader 动态 import kernel（`NAPUKETTO_KERNEL_ENTRY`），登录成功后调
   `createKernelServices`：建 5 条通道 + 桥、群/好友缓存、各 Api、自身信息；软重登前调
   `dispose()` 注销桥与缓存订阅。IPC 模式经 `forwardChannel`（通道 `onAny`）把事件转成
   IPC 消息，协议模式由 adapter 直接订阅。
@@ -307,7 +307,7 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
   主动维护、查询惰性回填。群精华列表的 diff / 首帧 baseline 与串行同步器归
   `cache/essence-cache.ts`（ADR-028），协议层只消费回调结果。
 - **类型层只来自运行时探测**：未实证字段保持 `待探测校准`，不得凭猜测补字段或改枚举值。
-- **探测产物增量落盘**：探测与录制产物写 `NAPUTO_CFG_DIR`，可中途崩溃后定位；公共文档只写
+- **探测产物增量落盘**：探测与录制产物写 `NAPUKETTO_CFG_DIR`，可中途崩溃后定位；公共文档只写
   符号名与方法名，不写逆向地址。
 - **桥只透传**：不得在原生回调里做重活或改写 payload；耗时逻辑订阅通道后异步处理。
 - **登录悬挂即丢弃**：超时只做失败语义，不尝试取消底层 promise。

@@ -3,9 +3,9 @@
  *
  * 注入链路打通后（2026-08-05），wrapper exports 是 QQ 已注册的单例。
  * 本模块在 **QQ 主进程内**反射枚举 session / service 的真实方法名与返回形状，
- * 产出 JSON 到 NAPUTO_CFG_DIR/napuketto-probe.json，作为 types/services/ 的权威来源。
+ * 产出 JSON 到 NAPUKETTO_CFG_DIR/napuketto-probe.json，作为 types/services/ 的权威来源。
  *
- * 用法：boot.cjs 在 NAPUTO_PROBE=1 时于 startNapuketto 后调用 probeRuntime(ctx)。
+ * 用法：boot.cjs 在 NAPUKETTO_PROBE=1 时于 startNapuketto 后调用 probeRuntime(ctx)。
  * 产物是研究工具数据，类型层据此补全（自研描述，非移植）。
  *
  * 工具拆分（2026-08-08 FTA 优化）：方法枚举/安全调用 → probe-utils.ts；
@@ -322,7 +322,7 @@ function probeServiceGetter(session: unknown, getter: string): unknown {
 
 /**
  * 探测 wrapper 运行时：dump session 方法与各 service 方法名到 JSON。
- * 返回探测结果对象；同时写文件（NAPUTO_CFG_DIR/<file>，默认 napuketto-probe.json）。
+ * 返回探测结果对象；同时写文件（NAPUKETTO_CFG_DIR/<file>，默认 napuketto-probe.json）。
  * 服务枚举逐项增量落盘（persist）——活 session 上原生崩溃时文件保留断点。
  */
 export function probeRuntime(
@@ -347,8 +347,7 @@ export function probeRuntime(
 /** 探测结果落盘（增量与最终共用；最终写入后记 probeFile 路径）。 */
 function writeProbeFile(result: Record<string, unknown>, file: string): void {
     try {
-        const dir =
-            process.env["NAPUKETTO_CFG_DIR"] ?? process.env["NAPUTO_CFG_DIR"] ?? process.cwd();
+        const dir = process.env["NAPUKETTO_CFG_DIR"] ?? process.cwd();
         mkdirSync(dir, { recursive: true });
         const full = join(dir, file);
         writeFileSync(full, JSON.stringify(result, null, 2), "utf8");

@@ -91,9 +91,9 @@ async function untilLaunched(): Promise<void> {
 beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "napuketto-boot-test-"));
     child = makeFakeChild();
-    delete process.env["NAPUTO_STUB_DIR"];
+    delete process.env["NAPUKETTO_STUB_DIR"];
     delete process.env[SUPERVISOR_CHILD_ENV];
-    process.env["NAPKETTO_CONFIG"] = join(tmp, "napuketto.toml");
+    process.env["NAPUKETTO_CONFIG"] = join(tmp, "napuketto.toml");
     resetSignalHandlers();
     exitCodeBefore = process.exitCode as number | undefined;
     process.exitCode = undefined;
@@ -145,9 +145,9 @@ afterEach(() => {
     offSpy.mockRestore();
     stdoutSpy.mockRestore();
     process.exitCode = exitCodeBefore as number | undefined;
-    delete process.env["NAPUTO_STUB_DIR"];
+    delete process.env["NAPUKETTO_STUB_DIR"];
     delete process.env[SUPERVISOR_CHILD_ENV];
-    delete process.env["NAPKETTO_CONFIG"];
+    delete process.env["NAPUKETTO_CONFIG"];
     rmSync(tmp, { recursive: true, force: true });
 });
 

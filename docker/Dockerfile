@@ -135,8 +135,8 @@ RUN node -v \
 # 配置与数据根显式钉在 /app：容器内没有 package.json，cli 的项目根探测不会命中，
 # 必须用环境变量指定（配置优先级见 docs/guides/configuration.md §1、§2）。
 ENV NODE_ENV=production \
-    NAPKETTO_CONFIG=/app/napuketto.toml \
-    NAPKETTO_DATA=/app/.napuketto \
+    NAPUKETTO_CONFIG=/app/napuketto.toml \
+    NAPUKETTO_DATA=/app/.napuketto \
     LANG=C.UTF-8 \
     TZ=Asia/Shanghai
 
@@ -146,7 +146,7 @@ EXPOSE 3000 3001
 # 健康 = 至少一个账号的 boot 进程存活（supervisor 会按 autoRestart 重启崩溃账号）。
 # 只看 supervisor 存活没有意义：配置校验失败（exit 78）时它也会常驻。
 HEALTHCHECK --interval=60s --timeout=5s --start-period=180s --retries=3 \
-    CMD node -e "const fs=require('node:fs');const root=process.env.NAPKETTO_DATA||'/app/.napuketto';let ok=false;try{for(const n of fs.readdirSync(root)){try{const s=JSON.parse(fs.readFileSync(root+'/'+n+'/runtime.json','utf8'));if(s.status==='running'){try{process.kill(s.pid,0);ok=true}catch{}}}catch{}}}catch{}process.exit(ok?0:1)"
+    CMD node -e "const fs=require('node:fs');const root=process.env.NAPUKETTO_DATA||'/app/.napuketto';let ok=false;try{for(const n of fs.readdirSync(root)){try{const s=JSON.parse(fs.readFileSync(root+'/'+n+'/runtime.json','utf8'));if(s.status==='running'){try{process.kill(s.pid,0);ok=true}catch{}}}catch{}}}catch{}process.exit(ok?0:1)"
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["napuketto"]

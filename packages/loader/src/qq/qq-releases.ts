@@ -8,7 +8,7 @@
  * .github/workflows/update-qq-releases.yml（每日 cron + 手动触发）调用
  * tooling/qq-releases/update-qq-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
  * 解析最新版 + 下载安装包计算 sha256 + 解析安装包内部版本目录后更新本清单
- * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUTO_QQ_URL
+ * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUKETTO_QQ_URL
  * 可运行时覆盖下载地址（用户拿到新链接时用）。
  *
  * 形状 / 常量 / 纯函数在 `qq-release-manifest.ts`：那个文件必须保持零内部依赖，
@@ -145,10 +145,10 @@ export function latestRelease(
 }
 
 /**
- * 解析实际下载 URL：NAPUTO_QQ_URL 环境变量覆盖 > 清单 URL。
+ * 解析实际下载 URL：NAPUKETTO_QQ_URL 环境变量覆盖 > 清单 URL。
  * 供 downloadFile 使用（也支持按版本查询，当前固定取最新）。
  */
 export function resolveDownloadUrl(release: QqReleaseEntry): string {
-    const override = process.env["NAPUTO_QQ_URL"];
+    const override = process.env["NAPUKETTO_QQ_URL"];
     return override !== undefined && override !== "" ? override : release.url;
 }
