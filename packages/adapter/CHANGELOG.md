@@ -1,5 +1,12 @@
 # @napuketto/adapter
 
+## 0.23.1
+
+### Patch Changes
+
+- Updated dependencies [b6124d4]
+  - @napuketto/kernel@0.19.0
+
 ## 0.23.0
 
 ### Minor Changes
