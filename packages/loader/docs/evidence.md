@@ -258,3 +258,9 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
   存活探测保留。
 - 剩余条件：未在真实 koishi 驱动上验证诊断关闭时前端收到 `NOT_FOUND` 的提示路径；未实测
   Windows 组策略/代理客户端注入的额外变量。Bugly 外传仍为未证实报告主张，未做抓包复核。
+- **`getRichMeidaTmpPath` 拼写复核（2026-11-25）**：QQNT `9.9.37-54395` 的
+  `resources/app/wrapper.node` 中 `getRichMeidaTmpPath` 出现 5 次（含
+  `GetAllRichMeidaTmpPath` 日志串），`getRichMediaTmpPath` 出现 0 次——该拼写是原生侧
+  既有命名而非 loader 笔误，故 `diag.richMediaTmpPaths` 保持原名。复核命令：
+  `findstr /M /C:"getRichMeidaTmpPath" wrapper.node`（正拼写命令无输出）。登录态探针
+  （`NAPUKETTO_PROBE=1`）仍需真实账号环境，本次未执行。
