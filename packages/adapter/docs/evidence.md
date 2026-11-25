@@ -358,7 +358,7 @@ loader，再消费公开的 `ProtocolMediaConfig` 与 `media.localMediaRoots`。
 | 编号 | 当前验证及改动 |
 | --- | --- |
 | H-08 | [kernel 群请求](../../kernel/src/apis/group-notify.ts) 将序号、群号、类型和队列作为审批引用。[OB11 动作](../src/onebot11/action/group/notify.ts)、[Milky 动作](../src/milky/action/group-notice.ts) 和 [Satori 动作](../src/satori/action/guild.ts) 以命中的队列实际审批。测试覆盖两队列内的邀请和申请、旧 seq 重名、无匹配及原生报错。 |
-| H-09 | [Canonical 转换](../../kernel/src/codec/message-element.ts) 区分引用的 UID、UIN 与原生消息 ID。缺目标的提及保留为文本。Satori 私聊消息将会话对端与发送者分别投影。 |
+| H-09 | [Canonical 转换](../../kernel/src/native/message-codec.ts) 区分引用的 UID、UIN 与原生消息 ID。缺目标的提及保留为文本。Satori 私聊消息将会话对端与发送者分别投影。 |
 | H-10 | [Satori 分页](../src/satori/action/message.ts) 排除锚点并独立处理页内顺序与续页方向，确认还有历史才发令牌。相同数据以 asc/desc、包含/排除锚点的原生桩连续翻三页。 |
 | M-10 上游 | [IPC 公开接口与邀请样例](../../loader/docs/design.md#ipc-群请求与好友身份) 供任务 11 使用。邀请当前登录账号、管理员待审的邀请和主动申请各有独立类型。审批回传账号及完整引用。 |
 | M-11 上游 | [OB11 notice](../src/onebot11/helper/notice.ts) 区分消息作者与撤回操作者，仅在同会话原生 ID 已登记时关联 OB11 ID。灰条 ID 和 seq 以字符串保留。群临时消息保留子类型，临时会话 poke 可保留载荷中现有字段提供的来源群号。 |

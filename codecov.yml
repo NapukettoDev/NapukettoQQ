@@ -31,6 +31,6 @@ ignore:
   - "**/index.ts"
   - "**/types.ts"
   - "**/types/**"
-  - "packages/kernel/src/wrapper/probe/**"
-  - "packages/kernel/src/wrapper/wrapper-adapters.ts"
+  - "packages/kernel/src/native/probe/**"
+  - "packages/kernel/src/native/wrapper/wrapper-adapters.ts"
   - "apps/cli/src/cli/program.ts"

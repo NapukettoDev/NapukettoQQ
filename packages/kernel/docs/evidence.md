@@ -5,7 +5,7 @@
 
 ## 探针与复现命令
 
-两条路径：进程内反射探测（`packages/kernel/src/wrapper/probe/`）与经 loader IPC 的按名调用
+两条路径：进程内反射探测（`packages/kernel/src/native/probe/`）与经 loader IPC 的按名调用
 （`diag.*`）。探针脚本一律临时、不入库，可复现入口都在下面。
 
 ### IPC 调用与探测手法
@@ -49,7 +49,7 @@ arguments`），argc 不符时只断言、无副作用；NAPI 方法挂在实例
 | 仪器面 | Msg、Group、RecentContact、BdhUpload、OnlineStatus、Lock、FileAssistant、Buddy、ProfileLike、NodeMisc + LoginService |
 | 注册方法 | 精确名 `addKernel<简称>Listener` 优先，回退 `/^add(Kernel)?\w*Listener$/` |
 
-原理（`src/wrapper/probe/probe-listener.ts`）：原生 listener 是普通 JS 对象 + NAPI 按名反射
+原理（`src/native/probe/probe-listener.ts`）：原生 listener 是普通 JS 对象 + NAPI 按名反射
 回调，`createRecordingListener` 用 Proxy `get` 返回记录函数（同时记录原生查过的名字），
 `has` / `ownKeys` 也记录以判定「按名 Get」还是「枚举发现」；记录函数只序列化入参，绝不
 反向调用原生；非字符串键（Symbol）放行默认行为。录制器与业务 bridge 并存（多监听各自独立
@@ -61,7 +61,7 @@ id），软重登后随旧 session 失效，重录须重启进程。
 
 ### 运行时探测产物
 
-`probeRuntime(ctx)`（`src/wrapper/probe/probe.ts`，`NAPUTO_PROBE=1` 时 loader 调用）输出
+`probeRuntime(ctx)`（`src/native/probe/probe.ts`，`NAPUTO_PROBE=1` 时 loader 调用）输出
 `NAPUTO_CFG_DIR/napuketto-probe.json`：session 枚举、各 `get*Service` 方法面、engine 调用、
 loginService 形状，`types/services/` 以该产物为权威来源。时序坑：probe 内 `getMainSession`
 写回会把空壳主 session 毒化进 `ctx.session`（`session-resolver.ts`），录制器须先于探测取服务。

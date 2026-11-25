@@ -157,15 +157,25 @@
         "packages/kernel/src/apis/msg/**",
         "packages/kernel/src/apis/group/**",
         "packages/kernel/src/apis/social/**",
-        "packages/kernel/src/apis/media-web/**",
+        // 媒体 / Web 语义 API（2026-11 五段式扁平重构：apis/media-web/ 拆平为 4 个文件，
+        // 豁免口径与上方 apis 子域一致——公开方法被 adapter/loader 跨包消费）。
+        "packages/kernel/src/apis/rich-media.ts",
+        "packages/kernel/src/apis/flash-transfer.ts",
+        "packages/kernel/src/apis/ticket.ts",
+        "packages/kernel/src/apis/web.ts",
+        // 新分层 barrel（2026-11 扁平重构）：native/ 与 runtime/ 是目录公共面，
+        // 只做显式具名 re-export，包门面 src/index.ts 只转发被消费部分，
+        // fallow 静态分析看不到跨 barrel 链（与上方 kernel 各 barrel 同根因）。
+        "packages/kernel/src/native/index.ts",
+        "packages/kernel/src/runtime/index.ts",
         // 事件桥（2026-11-01 批次三新增两桥同根因）：register/unregister 被
         // loader KernelLike 跨包调用（动态 import 装配），fallow 静态图跨不过
         // 包边界。存量三桥（Msg/Group/Buddy）为基线继承不报。
-        "packages/kernel/src/bridge/recent-contact-bridge.ts",
-        "packages/kernel/src/bridge/login-bridge.ts",
+        "packages/kernel/src/native/bridge/recent-contact-bridge.ts",
+        "packages/kernel/src/native/bridge/login-bridge.ts",
         // MsgBridge：批次三补转发 onFileMsgCome 触达该文件，存量 register/unregister
         // 位移翻成「本次引入」（同上方桥根因）。
-        "packages/kernel/src/bridge/msg-bridge.ts",
+        "packages/kernel/src/native/bridge/msg-bridge.ts",
         "packages/loader/src/host/ipc/index.ts",
         // 测试文件（**/*.test.ts）：单包目录下跑 fallow 时 vitest 入口检测不到，
         // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经

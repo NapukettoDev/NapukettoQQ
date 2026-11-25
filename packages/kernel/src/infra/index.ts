@@ -2,7 +2,7 @@
  * kernel 基础设施层公共出口（ADR-007/009/012/016）
  *
  * 错误 / 路径 / 日志 / 配置四件套。全 kernel 层共享，最底层——
- * 禁止反向依赖 apis / bridge / core 等业务模块（依赖方向硬约束）。
+ * 禁止反向依赖 native / apis / runtime 等上层模块（依赖方向硬约束）。
  */
 export type { ConfigFormat, ConfigOptions, ConfigSchema } from "./config.js";
 export { CONFIG_FILE_MODE, ConfigBase, parseToml, stringifyToml } from "./config.js";

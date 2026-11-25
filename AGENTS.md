@@ -36,7 +36,7 @@ Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人�
 - **异步与状态**：开启 `noFloatingPromises`（异步必 `await` 或 `.catch`）；
   业务抛类型化错误（如 `KernelError`），禁止静默吞错；日志统一走 `pino`（严禁打印凭证）；
   `kernel` 无全局单例（状态由 `CoreContext` 或装配层持有）。
-- **运行时类型探测**：`services/listeners/entities` 类型必须由 `kernel/src/wrapper/probe/` 加载 `wrapper.node` 反射观察产出，严禁盲猜或抄袭。
+- **运行时类型探测**：`services/listeners/entities` 类型必须由 `kernel/src/native/probe/` 加载 `wrapper.node` 反射观察产出，严禁盲猜或抄袭。
 - **扩展协议**：在 `packages/adapter` 新增目录并复用 core 框架，严禁为此修改 `network` 或 `kernel`。
 
 ## 开发工作流（省上下文模式）
