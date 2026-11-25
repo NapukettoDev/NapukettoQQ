@@ -6,10 +6,10 @@
  * 返回停止函数（进程退出时清理）。
  */
 
+import { getErrorMessage, isCallable } from "../../internal/type-guards.js";
 import { env, isEnvEnabled } from "../env.js";
-import { isCallable } from "../type-guards.js";
 import type { CoreLike, KernelServices } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 import {
     createIpcActions,
     type IpcActionHandler,
@@ -111,7 +111,7 @@ export function attachIpcServices(
             try {
                 stop();
             } catch (err) {
-                log(`ipc-bootstrap: 事件通道退订失败: ${errMsg(err)}`);
+                log(`ipc-bootstrap: 事件通道退订失败: ${getErrorMessage(err)}`);
             }
         }
         // 移除并入的动作表条目（软重登重装配清理，2026-09-08）：点分命名与
@@ -135,7 +135,7 @@ export function attachIpcServices(
                 doubt,
                 notifies,
                 () => active && readReadySelf() === self,
-            ).catch((err: unknown) => log(`ipc: 群请求转发失败: ${errMsg(err)}`));
+            ).catch((err: unknown) => log(`ipc: 群请求转发失败: ${getErrorMessage(err)}`));
         });
         forwardChannel(services.friendChannel, stops);
         forwardChannel(services.recentContactChannel, stops);
@@ -162,7 +162,7 @@ async function publishGroupRequests(
         try {
             uinMap = await services.groupApi.uidToUin([...uids]);
         } catch (err) {
-            log(`ipc: 群请求发起人 UID 转换失败: ${errMsg(err)}`);
+            log(`ipc: 群请求发起人 UID 转换失败: ${getErrorMessage(err)}`);
         }
     }
     if (!canSend()) {

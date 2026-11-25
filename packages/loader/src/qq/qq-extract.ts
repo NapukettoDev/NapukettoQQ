@@ -23,8 +23,8 @@ import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { getErrorCode } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
+import { getErrorCode } from "../internal/type-guards.js";
 import type { QqInstallInfo } from "./qq-types.js";
 import { findBundledSevenZip } from "./seven-zip-assets.js";
 

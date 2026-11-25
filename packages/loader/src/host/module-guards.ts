@@ -7,7 +7,7 @@
  * 守卫收窄，失败走显式错误（不静默）。
  */
 
-import { hasCallableProp, hasMethodSurface, isRecord } from "../type-guards.js";
+import { hasCallableProp, hasMethodSurface, isRecord } from "../internal/type-guards.js";
 import type {
     AdapterCoreModuleLike,
     KernelLike,
@@ -16,7 +16,7 @@ import type {
     NetworkModuleLike,
     Ob11ModuleLike,
     SatoriModuleLike,
-} from "../types.js";
+} from "./types.js";
 
 /** kernel 模块：至少提供一条装配入口（startNapuketto / NapukettoCore.create）。 */
 export function isKernelModule(val: unknown): val is KernelLike {

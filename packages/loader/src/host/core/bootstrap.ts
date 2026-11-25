@@ -18,14 +18,14 @@
  */
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { getErrorMessage, getOwnProp, hasCallableProp } from "../../internal/type-guards.js";
 import { isShuttingDown } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import { type IpcServerOptions, sendStatus } from "../ipc/index.js";
-import { getOwnProp, hasCallableProp } from "../type-guards.js";
+import { isKernelModule } from "../module-guards.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
-import { convergeBootstrapFailure, errMsg, log, type SharedState } from "../util.js";
+import { convergeBootstrapFailure, log, type SharedState } from "../util.js";
 import { type BootstrapEnv, bootstrapWithCore, probeOnce } from "./bootstrap-core.js";
-import { isKernelModule } from "./module-guards.js";
 
 /** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
  * 「请下载最新版」；major.node 解析的 537376818 成功）。自研，参考 NapCat 思路。
@@ -227,7 +227,7 @@ function loadHostWrapper(kernel: KernelLike, path: string): Record<string, unkno
     } catch (err) {
         const code = getOwnProp(err, "code") === "INVALID_STATE" ? "INVALID_STATE" : "UNKNOWN";
         if (isEnvEnabled(env.NAPUKETTO_IPC)) {
-            sendStatus("failed", "原生引导失败", { code, message: errMsg(err) });
+            sendStatus("failed", "原生引导失败", { code, message: getErrorMessage(err) });
         }
         throw err;
     }

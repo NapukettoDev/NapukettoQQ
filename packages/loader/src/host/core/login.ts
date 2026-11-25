@@ -6,8 +6,9 @@
  * 快速登录 → QR 回退（doLogin）。由 bootstrap.ts import。
  */
 
+import { getErrorMessage } from "../../internal/type-guards.js";
 import type { CoreContextLike, CoreLike, KernelLike, LoginResultLike } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 
 /** 登录账号选择的目标引用（bootstrap.ts 构造 { targetUin: undefined }）。 */
 export interface LoginTargetRef {
@@ -47,7 +48,7 @@ export async function pickLoginAccount(
             log("登录列表暂不可用（boot 阶段未 initConfig），由登录流程自动选择账号");
         }
     } catch (listErr) {
-        log(`bootstrap: 获取登录列表失败: ${errMsg(listErr)}`);
+        log(`bootstrap: 获取登录列表失败: ${getErrorMessage(listErr)}`);
     }
 }
 
@@ -63,11 +64,11 @@ export async function doLogin(
         return await core.login(opts);
     } catch (loginErr) {
         // 快速登录失败 → QR 回退（二维码写缓存目录，boot 日志提示）
-        log(`bootstrap: 快速登录失败（${errMsg(loginErr)}），尝试 QR 登录`);
+        log(`bootstrap: 快速登录失败（${getErrorMessage(loginErr)}），尝试 QR 登录`);
         try {
             return await core.login({ ...opts, qrFallback: true });
         } catch (qrErr) {
-            log(`bootstrap: QR 登录也失败: ${errMsg(qrErr)}`);
+            log(`bootstrap: QR 登录也失败: ${getErrorMessage(qrErr)}`);
             return null;
         }
     }

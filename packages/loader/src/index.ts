@@ -31,6 +31,7 @@ export {
 } from "./boot/launcher.js";
 export type { WinNodeInfo } from "./boot/win-node.js";
 export { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "./boot/win-node.js";
+export { QR_LINE_PREFIX } from "./host/constants.js";
 export type {
     IpcActionMessage,
     IpcActionPayload,
@@ -98,7 +99,6 @@ export {
     ipcStatusPayloadSchema,
     isNativeNoiseLine,
 } from "./host/ipc/index.js";
-export { QR_LINE_PREFIX } from "./host/types.js";
 export type { InstanceLockCheck, InstanceLockInfo } from "./lifecycle/instance-lock.js";
 export {
     acquireInstanceLock,

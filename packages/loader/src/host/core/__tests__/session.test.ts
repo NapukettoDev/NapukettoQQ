@@ -11,7 +11,7 @@
  *  - probeSessionMethods：方法面枚举、session 缺失、原型枚举抛错
  *
  * host/util 的 log 经 vi.mock 替换为内存收集器（session.ts 的探测输出可断言），
- * 其余导出（errMsg 等）透传真实实现。
+ * 其余导出（log 之外）透传真实实现。
  */
 // biome-ignore-all lint/style/useNamingConvention: 对象键名为 kernel/wrapper 导出面（PascalCase 类名），必须原样保留
 

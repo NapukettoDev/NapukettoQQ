@@ -9,9 +9,9 @@
  * workspace 依赖——见 types.ts 注释）。错误码提取用宽松结构判断。
  */
 import { z } from "zod";
-import { getErrorCode, isRecord } from "../type-guards.js";
+import { getErrorCode, getErrorMessage, isRecord } from "../../internal/type-guards.js";
 import type { GroupNotifyApiLike, MsgApiLike } from "../types.js";
-import { errorMessage, log } from "../util.js";
+import { log } from "../util.js";
 import { type IpcDiagnosticContext, registerDiagnosticActions } from "./ipc-diagnostics.js";
 import { IpcRespondToGroupRequestParamsSchema } from "./ipc-types.js";
 
@@ -367,7 +367,7 @@ export async function callIpcAction(
     } catch (err) {
         // 诊断（2026-08-09）：错误消息传回 koishi 会丢堆栈，先落 boot 日志
         // 便于定位真实错误位置（QQ 原生内部抛错时消息难以反查）。
-        const message = errorMessage(err);
+        const message = getErrorMessage(err);
         const stack = err instanceof Error && err.stack !== undefined ? err.stack : "";
         log(`[ipc] action=${action} 失败: ${message}\n${stack}`);
         return { ok: false, error: { code: errorCodeOf(err), message } };

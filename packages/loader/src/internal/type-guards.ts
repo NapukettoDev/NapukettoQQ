@@ -1,9 +1,13 @@
 /**
- * loader 本地运行时类型守卫（零内部依赖）
+ * loader 本地运行时类型守卫（零内部依赖；2026-11-25 由 host/ 下沉到 internal/）
  *
  * loader 编译期只依赖 zod（运行期动态 import kernel），因此不能复用
  * `@napuketto/kernel` 的守卫实现。这里提供同语义的最小集合，供动态 import
  * 结果、IPC 参数、原生反射对象收窄——禁止调用点再用 `as` 强转。
+ *
+ * 分层：internal/ 是最底层（boot / lifecycle / qq / host 都可依赖），因此
+ * `getErrorMessage` 是**唯一**错误信息提取口径；此前的 `host/util.ts#errMsg`
+ * 已删除，调用点统一改为 `getErrorMessage`。
  */
 
 /** 判断未知值是否为非 null、非数组的普通对象 Record。 */

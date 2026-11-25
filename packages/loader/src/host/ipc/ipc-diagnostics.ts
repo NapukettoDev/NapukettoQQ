@@ -9,8 +9,13 @@
  *  - `diag.richMediaTmpPaths` 只读枚举，不再触发 setters 等副作用；更激进的实验应使用
  *    kernel 自己的探针原语，不扩大 IPC 面。
  */
-import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../type-guards.js";
-import { errorMessage } from "../util.js";
+import {
+    getErrorMessage,
+    getOwnProp,
+    hasCallableProp,
+    isCallable,
+    isRecord,
+} from "../../internal/type-guards.js";
 
 /** 诊断上下文（由 IPC 装配注入；未注入的目标返回可读错误）。 */
 export interface IpcDiagnosticContext {
@@ -149,7 +154,7 @@ async function callDiagnosticMethod(
         const result = await fn.apply(obj, call.args);
         return { ok: true, ret: result };
     } catch (err) {
-        return { ok: false, err: errorMessage(err) };
+        return { ok: false, err: getErrorMessage(err) };
     }
 }
 
@@ -169,7 +174,7 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
             try {
                 tmp[name] = await fn.call(svc);
             } catch (err) {
-                tmp[name] = `调用失败: ${errorMessage(err)}`;
+                tmp[name] = `调用失败: ${getErrorMessage(err)}`;
             }
         } else {
             tmp[name] = "方法缺失";

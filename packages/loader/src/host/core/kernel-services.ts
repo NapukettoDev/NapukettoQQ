@@ -8,6 +8,7 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getErrorMessage } from "../../internal/type-guards.js";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import { defaultLogConfig, resolveLogFilePath } from "../log-config.js";
@@ -21,7 +22,7 @@ import type {
     LoggerLike,
     LoginResultLike,
 } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 
 export type { KernelServices } from "../types.js";
 
@@ -122,7 +123,7 @@ async function registerOnlineStatus(msgApi: KernelServices["msgApi"]): Promise<v
         });
         log("bootstrap: 在线状态已注册（setStatus status=10）");
     } catch (statusErr) {
-        log(`bootstrap: 在线状态注册失败（实时消息推送可能不可用）: ${errMsg(statusErr)}`);
+        log(`bootstrap: 在线状态注册失败（实时消息推送可能不可用）: ${getErrorMessage(statusErr)}`);
     }
 }
 
@@ -167,7 +168,7 @@ export async function createKernelServices(
             try {
                 stop();
             } catch (err) {
-                log(`bootstrap: kernel 服务清理失败: ${errMsg(err)}`);
+                log(`bootstrap: kernel 服务清理失败: ${getErrorMessage(err)}`);
             }
         }
     };

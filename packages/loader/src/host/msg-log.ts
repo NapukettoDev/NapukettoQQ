@@ -14,9 +14,9 @@
  *    IPC 模式 logger 落文件 JSON，写 plain（colored 仅终端用）
  */
 
-import { getOwnProp, isCallable } from "./type-guards.js";
+import { getErrorMessage, getOwnProp, isCallable } from "../internal/type-guards.js";
 import type { CanonicalElementLike, EventChannelLike, KernelLike, LoggerLike } from "./types.js";
-import { errMsg, forEachRawMessage, log } from "./util.js";
+import { forEachRawMessage, log } from "./util.js";
 
 /** 终端 ANSI 颜色（消息日志颜色分层，2026-08-07 用户定稿）。 */
 const ANSI = {
@@ -124,7 +124,7 @@ export function setupMsgLogging(
                 // cli 终端保持彩色（colorize 由 kernel-services 按渲染决策传入）
                 logger?.debug(colorize ? colored : plain);
             } catch (e) {
-                const line2 = `接收消息（解析失败: ${errMsg(e)}）`;
+                const line2 = `接收消息（解析失败: ${getErrorMessage(e)}）`;
                 log(line2);
                 logger?.warn(line2);
             }

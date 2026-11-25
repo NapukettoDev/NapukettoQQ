@@ -7,8 +7,8 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isRecord } from "../host/type-guards.js";
 import { packageRoot } from "./package-root.js";
+import { isRecord } from "./type-guards.js";
 
 /**
  * 读取本包版本号；失败（发布产物缺 package.json / 解析异常）兜底 "0.0.0"。

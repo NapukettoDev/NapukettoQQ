@@ -17,10 +17,11 @@
  * 的真实状态收敛）。
  */
 
+import { getErrorMessage } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { sendLogin, sendQr, sendStatus } from "../ipc/index.js";
 import type { CoreLike, LoginResultLike } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 
 /**
  * control login 抢占引用（2026-09-08）：初始登录竞速期间，control login
@@ -141,7 +142,7 @@ async function softReloginAndReport(
 ): Promise<void> {
     control.beginAssembly();
     const ok = await deps.reassemble(loginResult).catch((err: unknown) => {
-        log(`relogin: 软重登重装配异常: ${errMsg(err)}`);
+        log(`relogin: 软重登重装配异常: ${getErrorMessage(err)}`);
         return false;
     });
     if (isShuttingDown()) {
@@ -237,9 +238,9 @@ export function createLoginControlHandler(
                 await dispatchLoginSuccess(result, control, deps);
             })
             .catch((err) => {
-                log(`bootstrap: control login 失败: ${errMsg(err)}`);
+                log(`bootstrap: control login 失败: ${getErrorMessage(err)}`);
                 if (isCurrent()) {
-                    sendLogin("failed", undefined, errMsg(err));
+                    sendLogin("failed", undefined, getErrorMessage(err));
                 }
             })
             .finally(() => {

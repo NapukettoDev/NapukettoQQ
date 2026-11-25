@@ -7,9 +7,9 @@
  * 由 bootstrap.ts import（纯函数，无状态）。
  */
 
-import { hasCallableProp } from "../type-guards.js";
+import { getErrorMessage, hasCallableProp } from "../../internal/type-guards.js";
 import type { CoreContextLike, KernelLike } from "../types.js";
-import { errMsg, log, type SharedState } from "../util.js";
+import { log, type SharedState } from "../util.js";
 
 /** 候选 session 项。 */
 export interface SessionCandidate {
@@ -59,7 +59,7 @@ function describeSession(s: unknown): string {
         const svc = hasCallableProp(s, "getMsgService") ? s.getMsgService() : null;
         return `id=${id} msgSvc=${svc !== null && svc !== undefined ? "READY" : "null"}`;
     } catch (e) {
-        return `id=? msgSvc=断言(${errMsg(e).slice(0, 60)})`;
+        return `id=? msgSvc=断言(${getErrorMessage(e).slice(0, 60)})`;
     }
 }
 
@@ -92,7 +92,7 @@ export function startSessionProbe(
             }
             log(`BOOT: session 探测: ${out.join(" | ")}`);
         } catch (e) {
-            log(`BOOT: session 探测失败: ${errMsg(e)}`);
+            log(`BOOT: session 探测失败: ${getErrorMessage(e)}`);
         }
     }, 5000);
     // 探测定时器不阻塞进程自然退出
@@ -117,7 +117,7 @@ export function probeSessionMethods(ctx: CoreContextLike): void {
             );
         }
     } catch (e) {
-        log(`bootstrap: session 探测失败: ${errMsg(e)}`);
+        log(`bootstrap: session 探测失败: ${getErrorMessage(e)}`);
     }
 }
 
@@ -137,7 +137,7 @@ export function collectCandidateSessions(
             if (ms) candidates.push({ s: ms, tag: "getMainSession(nt_x)" });
         }
     } catch (e) {
-        log(`bootstrap: getMainSession 失败: ${errMsg(e)}`);
+        log(`bootstrap: getMainSession 失败: ${getErrorMessage(e)}`);
     }
     // B: vehicle 激活的 session（注册 key="Session"，对象有效但未 init）
     try {
@@ -146,7 +146,7 @@ export function collectCandidateSessions(
             if (got) candidates.push({ s: got, tag: "getNT(Session)" });
         }
     } catch (e) {
-        log(`bootstrap: getNTWrapperSession 失败: ${errMsg(e)}`);
+        log(`bootstrap: getNTWrapperSession 失败: ${getErrorMessage(e)}`);
     }
     // C: get()（单例表默认项）
     try {
@@ -155,7 +155,7 @@ export function collectCandidateSessions(
             if (got) candidates.push({ s: got, tag: "get()" });
         }
     } catch (e) {
-        log(`bootstrap: get() 失败: ${errMsg(e)}`);
+        log(`bootstrap: get() 失败: ${getErrorMessage(e)}`);
     }
     // D: Proxy 捕获的 QQ session（V1 兼容）
     if (state.qqSession) candidates.push({ s: state.qqSession, tag: "qqSession" });

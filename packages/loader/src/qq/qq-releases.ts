@@ -18,8 +18,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { isRecord } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
+import { isRecord } from "../internal/type-guards.js";
 import type { QqReleaseEntry, QqReleasesFile } from "./qq-release-manifest.js";
 import { QQ_RELEASES_SCHEMA, releaseArch, releasePlatform } from "./qq-release-manifest.js";
 

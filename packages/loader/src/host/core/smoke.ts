@@ -15,10 +15,10 @@
  * adapter/network，单独验证 kernel 业务链路）。
  */
 
+import { getErrorMessage, getOwnProp } from "../../internal/type-guards.js";
 import { env } from "../env.js";
-import { getOwnProp } from "../type-guards.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
-import { errMsg, forEachRawMessage, log } from "../util.js";
+import { forEachRawMessage, log } from "../util.js";
 
 /** 冒烟测试默认等待（毫秒）。 */
 const SMOKE_SETTLE_MS = 5000;
@@ -113,7 +113,7 @@ export async function runSmokeTest(
                     receivedText = texts;
                 }
             } catch (e) {
-                log(`smoke: onRecvMsg 解析失败: ${errMsg(e)}`);
+                log(`smoke: onRecvMsg 解析失败: ${getErrorMessage(e)}`);
             }
             log(
                 `smoke: 📥 onRecvMsg 收到 #${received}（msgId=${getOwnProp(m, "msgId") ?? "?"} seq=${getOwnProp(m, "msgSeq") ?? "?"} text="${receivedText}"）`,
@@ -131,7 +131,7 @@ export async function runSmokeTest(
         sentMsgId = msgId;
         log(`smoke: ✅ 发送成功 msgId=${msgId}（content="${content}"）`);
     } catch (e) {
-        log(`smoke: ❌ 发送失败: ${errMsg(e)}`);
+        log(`smoke: ❌ 发送失败: ${getErrorMessage(e)}`);
     }
 
     // 等消息回显（自己发的消息 QQ 会通过 onRecvMsg 回传；不依赖则靠落库验证兜底）
@@ -155,7 +155,7 @@ export async function runSmokeTest(
             }
         }
     } catch (e) {
-        log(`smoke: 落库验证失败: ${errMsg(e)}`);
+        log(`smoke: 落库验证失败: ${getErrorMessage(e)}`);
     }
 
     // 收尾：注销监听（防重复回调）
@@ -163,7 +163,7 @@ export async function runSmokeTest(
         bridge.unregister();
         log("smoke: ✅ MsgBridge 已注销");
     } catch (e) {
-        log(`smoke: 注销失败（忽略）: ${errMsg(e)}`);
+        log(`smoke: 注销失败（忽略）: ${getErrorMessage(e)}`);
     }
 
     const ok = sentMsgId !== "" && (received > 0 || landed);

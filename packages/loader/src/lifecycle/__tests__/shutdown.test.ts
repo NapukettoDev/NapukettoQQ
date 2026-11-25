@@ -12,8 +12,8 @@ import process from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const log = vi.hoisted(() => vi.fn());
-vi.mock("../../host/util.js", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("../../host/util.js")>()),
+vi.mock("../../internal/boot-log.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../internal/boot-log.js")>()),
     log,
 }));
 

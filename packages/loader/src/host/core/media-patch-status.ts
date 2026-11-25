@@ -14,10 +14,9 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-
+import { getErrorMessage, isRecord } from "../../internal/type-guards.js";
 import { env } from "../env.js";
-import { isRecord } from "../type-guards.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 
 /** stub 状态 JSON（宽容解析：字段缺省容忍，版本字段不校验）。 */
 export interface MediaPatchStatus {
@@ -66,7 +65,7 @@ export function readMediaPatchStatus(path?: string): MediaPatchStatus | undefine
             ...(typeof parsed["tick"] === "number" ? { tick: parsed["tick"] } : {}),
         };
     } catch (e) {
-        log(`[media-patch] 状态文件解析失败（忽略）: ${errMsg(e)}`);
+        log(`[media-patch] 状态文件解析失败（忽略）: ${getErrorMessage(e)}`);
         return undefined;
     }
 }

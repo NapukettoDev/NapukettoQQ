@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { isRecord, parseJsonWithGuard } from "../host/type-guards.js";
-import { log } from "../host/util.js";
+import { log } from "../internal/boot-log.js";
+import { isRecord, parseJsonWithGuard } from "../internal/type-guards.js";
 import {
     CMDLINE_PROBE_SUPPORTED,
     isValidPid,

@@ -16,8 +16,8 @@ import { type StdioOptions, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import process from "node:process";
-import { getErrorCode, getErrorMessage } from "../host/type-guards.js";
 import { packageRoot } from "../internal/package-root.js";
+import { getErrorCode, getErrorMessage } from "../internal/type-guards.js";
 import type { QqInstallInfo } from "../qq/locate-qq.js";
 import {
     applyPathEnv,

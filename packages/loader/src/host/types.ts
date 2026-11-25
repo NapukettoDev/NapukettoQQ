@@ -5,30 +5,33 @@
  * loader 运行时通过 file:// 动态 import kernel，编译期不建立 workspace 依赖，
  * 因此这里用「最小接口」描述 kernel 的契约（类型层自研，与 kernel 实现解耦，
  * 由运行时行为实证维护，勿臆造成员）。
+ *
+ * ⚠️ 本文件是**纯类型文件**（2026-11-25 分层约束）：0 运行时导出。运行时常量见
+ * `constants.ts`，动态协议模块接口见 `protocol-types.ts`。改这里不要加值。
  */
-
-import type { IpcGroupRequest } from "./ipc/ipc-types.js";
-
-/** Windows 反斜杠（file:// URL 化时替换）。 */
-export const BACKSLASH_RE = /\\/g;
-
-/** adapter 入口 index.mjs 后缀（子路径导出替换用）。 */
-export const INDEX_MJS_RE = /index\.mjs$/;
 
 /**
- * 协议键（账号内配置段名 = adapter 子路径名，2026-11-18 表驱动单一来源）：
- * 协议段提取、子路径校验与装配顺序都从这里派生，避免四协议各写一遍。
+ * 群请求引用最小面（与 ipc/ipc-types.ts 的 `IpcGroupRequest.request` 结构兼容）。
+ *
+ * 结构兼容定义（而非 `import type { IpcGroupRequest }`）的原因：host/ 是 ipc/ 的
+ * 上游，反向引用会制造 `host <-> host/ipc` 类型环。字段面由 ipc 侧 zod schema
+ * 校验，两侧形状一致由单测与类型赋值双向守卫。
  */
-export const PROTOCOL_KEYS = ["onebot11", "satori", "kurobot", "milky"] as const;
+export interface GroupRequestRefLike {
+    seq: string;
+    groupCode: string;
+    /** 请求类型（邀请 / 被邀请入群 / 主动申请）。 */
+    kind: "invitation" | "invited_join_request" | "join_request";
+    doubt: boolean;
+}
 
-/** 协议键字面量联合。 */
-export type ProtocolKey = (typeof PROTOCOL_KEYS)[number];
-
-/**
- * QR 透出标记行前缀（loader bootstrap-core 非 IPC 模式输出 stdout，
- * cli 解析后终端渲染二维码；loader 与 apps/cli 共享单一来源）。
- */
-export const QR_LINE_PREFIX = "NAPUTO_QR ";
+/** 群请求最小面（= `IpcGroupRequest` 去掉 `selfUin` / `initiatorUin`）。 */
+export interface GroupRequestLike {
+    request: GroupRequestRefLike;
+    initiatorUid?: string;
+    targetUid?: string;
+    comment?: string;
+}
 
 /** adapter core 子路径最小面（ProtocolConfig 框架，动态 import）。 */
 export interface AdapterCoreModuleLike {
@@ -152,12 +155,9 @@ export interface FriendApiLike {
 
 /** 群请求语义 API。可选方法允许宿主用旧 kernel 装配其他业务。 */
 export interface GroupNotifyApiLike {
-    getPendingGroupRequests?(
-        doubt: boolean,
-        notifies: unknown,
-    ): Omit<IpcGroupRequest, "selfUin" | "initiatorUin">[];
+    getPendingGroupRequests?(doubt: boolean, notifies: unknown): GroupRequestLike[];
     respondToRequest?(
-        request: IpcGroupRequest["request"],
+        request: GroupRequestRefLike,
         approve: boolean,
         reason?: string,
     ): Promise<void>;

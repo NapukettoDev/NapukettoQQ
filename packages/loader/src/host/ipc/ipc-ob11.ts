@@ -13,11 +13,12 @@
  * fail-soft：装配失败回滚到纯 kernel 动作面，不阻断登录链路。
  */
 import { join } from "node:path";
+import { getErrorMessage, isRecord } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
-import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../core/module-guards.js";
+import { BACKSLASH_RE, INDEX_MJS_RE } from "../constants.js";
 import { env } from "../env.js";
 import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
-import { isRecord } from "../type-guards.js";
+import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../module-guards.js";
 import type {
     AdapterCoreModuleLike,
     CoreContextLike,
@@ -26,8 +27,7 @@ import type {
     NetworkModuleLike,
     Ob11ModuleLike,
 } from "../types.js";
-import { BACKSLASH_RE, INDEX_MJS_RE } from "../types.js";
-import { ConfigError, errMsg, log } from "../util.js";
+import { ConfigError, log } from "../util.js";
 import type { IpcActionHandler } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
 
@@ -251,10 +251,10 @@ export async function attachOb11IpcBridge(
         try {
             stop();
         } catch (cleanupError) {
-            log(`ipc-ob11: OB11 动作桥回滚失败: ${errMsg(cleanupError)}`);
+            log(`ipc-ob11: OB11 动作桥回滚失败: ${getErrorMessage(cleanupError)}`);
         }
         if (err instanceof ConfigError) throw err;
-        log(`ipc-ob11: OB11 动作桥装配失败（降级纯 kernel 动作面）: ${errMsg(err)}`);
+        log(`ipc-ob11: OB11 动作桥装配失败（降级纯 kernel 动作面）: ${getErrorMessage(err)}`);
         return noop;
     }
 }

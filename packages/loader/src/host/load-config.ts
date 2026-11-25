@@ -15,11 +15,11 @@
  */
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { getErrorMessage, isRecord } from "../internal/type-guards.js";
+import { PROTOCOL_KEYS, type ProtocolKey } from "./constants.js";
 import { env } from "./env.js";
-import { isRecord } from "./type-guards.js";
-import type { KernelLike, ProtocolKey } from "./types.js";
-import { PROTOCOL_KEYS } from "./types.js";
-import { ConfigError, errMsg, log } from "./util.js";
+import type { KernelLike } from "./types.js";
+import { ConfigError, log } from "./util.js";
 
 /** 协议段表（协议键 → 宽松段对象；装配时 zod 校验）。 */
 type SectionMap = Record<ProtocolKey, Record<string, unknown>>;
@@ -61,7 +61,7 @@ export function parseProtocolSeed(
     try {
         return schema.parse(section);
     } catch (error) {
-        const detail = errMsg(error).replace(/\s+/g, " ").trim();
+        const detail = getErrorMessage(error).replace(/\s+/g, " ").trim();
         throw new ConfigError(`协议配置 ${label} 段校验失败: ${detail}`, { cause: error });
     }
 }
@@ -108,7 +108,7 @@ export function readInlineConfigDoc(): Record<string, unknown> | undefined {
         log("bootstrap: 内联配置不是 JSON 对象（回退文件形态）");
         return undefined;
     } catch (e) {
-        log(`bootstrap: 内联配置 JSON 解析失败（回退文件形态）: ${errMsg(e)}`);
+        log(`bootstrap: 内联配置 JSON 解析失败（回退文件形态）: ${getErrorMessage(e)}`);
         return undefined;
     }
 }
@@ -150,7 +150,7 @@ export function loadProtocolSections(kernel: KernelLike, uin?: string): Protocol
         const parsed = kernel.parseToml(raw);
         sections = extractSections(parsed["accounts"], uin);
     } catch (e) {
-        log(`bootstrap: 全局配置读取失败（用默认 ob11/satori 配置）: ${errMsg(e)}`);
+        log(`bootstrap: 全局配置读取失败（用默认 ob11/satori 配置）: ${getErrorMessage(e)}`);
     }
     return { cfgFile, ...sectionFields(sections) };
 }

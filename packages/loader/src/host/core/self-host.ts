@@ -1,4 +1,5 @@
 /** 标准 Node 自建宿主入口。加载与激活原生模块由 kernel 负责。 */
+import { getErrorMessage } from "../../internal/type-guards.js";
 import {
     acquireInstanceLock,
     checkInstanceLock,
@@ -21,7 +22,7 @@ import {
     shouldSendGenericBootFailed,
     startIpcServer,
 } from "../ipc/index.js";
-import { bootstrapExitCode, createState, errMsg, log, logFatal } from "../util.js";
+import { bootstrapExitCode, createState, log, logFatal } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";
 
@@ -62,7 +63,7 @@ process.once("beforeExit", (code) => {
 });
 
 process.on("unhandledRejection", (reason: unknown) => {
-    log(`[self-host] unhandledRejection: ${errMsg(reason)}`);
+    log(`[self-host] unhandledRejection: ${getErrorMessage(reason)}`);
 });
 
 async function failBoot(message: string, code: number, errorCode: string): Promise<void> {
@@ -109,7 +110,7 @@ async function main(): Promise<void> {
 void main().catch(async (err: unknown) => {
     const code = bootstrapExitCode(err);
     await failBoot(
-        `bootstrap 失败: ${errMsg(err)}`,
+        `bootstrap 失败: ${getErrorMessage(err)}`,
         code,
         code === 78 ? "INVALID_PARAM" : "UNKNOWN",
     );

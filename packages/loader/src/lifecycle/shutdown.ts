@@ -17,10 +17,12 @@
  * 退出码契约：0 = 请求式正常退出；非 0 = 引导失败/运行时致命。taskkill /F
  * 兜底仍产出 code 1，宿主应优先用哨兵通道。
  */
+
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { errMsg, log } from "../host/util.js";
+import { log } from "../internal/boot-log.js";
+import { getErrorMessage } from "../internal/type-guards.js";
 
 /** 哨兵文件名（置于数据根）。 */
 export const STOP_SENTINEL_FILENAME = "napuketto.stop";
@@ -226,7 +228,7 @@ async function drainShutdown(reason: string, exitCode: number): Promise<void> {
                 try {
                     await runShutdownHook(hook, phase);
                 } catch (err) {
-                    log(`[self-host] 关停阶段 ${phase} 异常: ${errMsg(err)}`);
+                    log(`[self-host] 关停阶段 ${phase} 异常: ${getErrorMessage(err)}`);
                 }
             }
         }

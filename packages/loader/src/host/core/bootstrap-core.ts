@@ -6,7 +6,9 @@
  */
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
+import { getErrorMessage, hasCallableProp } from "../../internal/type-guards.js";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
+import { QR_LINE_PREFIX } from "../constants.js";
 import { consumeQrOnlyMarker, env, isEnvEnabled } from "../env.js";
 import {
     attachIpcServices,
@@ -18,15 +20,8 @@ import {
     startIpcServer,
 } from "../ipc/index.js";
 import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-config.js";
-import { hasCallableProp } from "../type-guards.js";
-import {
-    type CoreContextLike,
-    type CoreLike,
-    type KernelLike,
-    type LoginResultLike,
-    QR_LINE_PREFIX,
-} from "../types.js";
-import { errMsg, log, type SharedState } from "../util.js";
+import type { CoreContextLike, CoreLike, KernelLike, LoginResultLike } from "../types.js";
+import { log, type SharedState } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
 import { doLogin, type LoginTargetRef, pickLoginAccount } from "./login.js";
 import { startProtocols } from "./protocols.js";
@@ -74,7 +69,7 @@ function probeCreatedSession(state: SharedState, ctx: CoreContextLike): void {
             `BOOT: create().getMsgService=${svc !== null && svc !== undefined ? "ready" : "null"} qqSession.getMsgService=${qsReady ? "ready" : "null"}`,
         );
     } catch (e) {
-        log(`BOOT: create() 探测失败: ${errMsg(e)}`);
+        log(`BOOT: create() 探测失败: ${getErrorMessage(e)}`);
     }
 }
 
@@ -198,7 +193,7 @@ async function activateSession(
         });
         log("bootstrap: 激活 session init + start 完成");
     } catch (initErr) {
-        log(`bootstrap: 激活 session init 失败: ${errMsg(initErr)}`);
+        log(`bootstrap: 激活 session init 失败: ${getErrorMessage(initErr)}`);
     }
 }
 
@@ -208,7 +203,7 @@ async function waitSessionReady(kernel: KernelLike, ctx: CoreContextLike): Promi
         await kernel.waitSessionReady(ctx, { timeoutMs: 30000 });
         log("bootstrap: QQ session 就绪（getMsgService 可用）");
     } catch (readyErr) {
-        log(`bootstrap: 等待 session 就绪失败: ${errMsg(readyErr)}`);
+        log(`bootstrap: 等待 session 就绪失败: ${getErrorMessage(readyErr)}`);
     }
 }
 
@@ -225,7 +220,7 @@ async function runSmokeIfEnabled(
         const ok = await runSmokeTest(kernel, ctx, loginResult);
         log(`bootstrap: 冒烟自检${ok ? "通过" : "未完全通过"}（见上文 smoke 日志）`);
     } catch (smokeErr) {
-        log(`bootstrap: 冒烟自检异常: ${errMsg(smokeErr)}`);
+        log(`bootstrap: 冒烟自检异常: ${getErrorMessage(smokeErr)}`);
     }
 }
 
@@ -240,7 +235,7 @@ export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
             `bootstrap: probe done, session=${probe.session ? "ok" : "null"}, services=${Object.keys(probe.services ?? {}).length}`,
         );
     } catch (e) {
-        log(`bootstrap: probe error: ${errMsg(e)}`);
+        log(`bootstrap: probe error: ${getErrorMessage(e)}`);
     }
 }
 
@@ -269,7 +264,7 @@ function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): vo
             }
         }
     } catch (e) {
-        log(`bootstrap: listener-record error: ${errMsg(e)}`);
+        log(`bootstrap: listener-record error: ${getErrorMessage(e)}`);
     }
 }
 
@@ -289,7 +284,7 @@ function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
                 `bootstrap: probe-late done, session=${late.session ? "ok" : "null"}, services=${Object.keys(late.services ?? {}).length}`,
             );
         } catch (e2) {
-            log(`bootstrap: probe-late error: ${errMsg(e2)}`);
+            log(`bootstrap: probe-late error: ${getErrorMessage(e2)}`);
         }
     }, 35000);
     // 晚探测定时器不阻塞进程自然退出

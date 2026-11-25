@@ -4,15 +4,15 @@
  * loader 不静态依赖 kernel（运行期动态 import），ConfigError 契约按错误名
  * （name="ConfigError"）复刻：isConfigError 对 kernel 同名错误与 loader 复刻类
  * 都命中；bootstrapExitCode 是 self-host 退出码决策的唯一出口（78 / 1）。
- * 另覆盖 errMsg / forEachRawMessage（引导公共工具）。
+ * 另覆盖 getErrorMessage / forEachRawMessage（引导公共工具）。
  */
 import { describe, expect, it, vi } from "vitest";
+import { getErrorMessage } from "../../internal/type-guards.js";
 import {
     bootLogPath,
     bootstrapExitCode,
     ConfigError,
     convergeBootstrapFailure,
-    errMsg,
     forEachRawMessage,
     isConfigError,
     logFatal,
@@ -94,24 +94,24 @@ describe("convergeBootstrapFailure（2026-10-25 吞异常修复）", () => {
     });
 });
 
-describe("errMsg（错误信息提取，保留 JS 原语义）", () => {
+describe("getErrorMessage（错误信息提取，保留 JS 原语义）", () => {
     it("Error → message", () => {
-        expect(errMsg(new Error("boom"))).toBe("boom");
+        expect(getErrorMessage(new Error("boom"))).toBe("boom");
     });
 
     it("带 message 的非 Error 对象 → message", () => {
-        expect(errMsg({ message: "原生断言" })).toBe("原生断言");
+        expect(getErrorMessage({ message: "原生断言" })).toBe("原生断言");
     });
 
     it("无 message 对象 / 字符串 / 数字 → String(e)", () => {
-        expect(errMsg({})).toBe("[object Object]");
-        expect(errMsg("裸字符串")).toBe("裸字符串");
-        expect(errMsg(42)).toBe("42");
+        expect(getErrorMessage({})).toBe("[object Object]");
+        expect(getErrorMessage("裸字符串")).toBe("裸字符串");
+        expect(getErrorMessage(42)).toBe("42");
     });
 
     it("null / undefined → String(e)", () => {
-        expect(errMsg(null)).toBe("null");
-        expect(errMsg(undefined)).toBe("undefined");
+        expect(getErrorMessage(null)).toBe("null");
+        expect(getErrorMessage(undefined)).toBe("undefined");
     });
 });
 

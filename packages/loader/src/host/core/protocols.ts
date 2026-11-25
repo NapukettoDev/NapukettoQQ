@@ -8,10 +8,11 @@
  *    kernel 服务），返回 KernelServices 由 bootstrap 装配 ipc-server。
  *  - 非 IPC（cli pnpm start）：照旧装配 OB11/Satori 网络传输。
  */
+import { getErrorMessage } from "../../internal/type-guards.js";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import type { CoreContextLike, KernelLike, LogConfigLike, LoginResultLike } from "../types.js";
-import { errMsg, isConfigError, log, logFatal } from "../util.js";
+import { isConfigError, log, logFatal } from "../util.js";
 import { assembleOb11AndSatori } from "./assemble-protocols.js";
 import { createKernelServices, type KernelServices } from "./kernel-services.js";
 
@@ -55,7 +56,7 @@ export async function startProtocols(
         if (isConfigError(e)) {
             throw e;
         }
-        logFatal(`bootstrap: 协议装配失败: ${errMsg(e)}`);
+        logFatal(`bootstrap: 协议装配失败: ${getErrorMessage(e)}`);
         return null;
     } finally {
         unregister();

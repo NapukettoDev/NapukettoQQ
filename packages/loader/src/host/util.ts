@@ -1,54 +1,16 @@
 /**
- * util.ts：引导公共工具（日志 + 共享状态）。
+ * util.ts：引导公共工具（配置错误契约 + 共享状态）。
  * 2026-08-07 阶段 2：由 runtime/boot-util.js TS 化（零语义改动）。
+ * 2026-11-25 分层重构：文件日志下沉 `internal/boot-log.ts`（lifecycle/qq 需要它但
+ * 不得反向依赖 host/），本文件只做 re-export 兼容既有调用点；`errMsg` 别名删除，
+ * 错误提取统一走 `internal/type-guards.ts#getErrorMessage`。
  * 由 self-host.ts 及各拆分模块 import（CJS bundle，运行在自建宿主引导进程内）。
  */
-import { appendFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import process from "node:process";
-import { env } from "./env.js";
-import { getErrorMessage } from "./type-guards.js";
 
-/** boot 日志路径（NAPUKETTO_CFG_DIR 下，与 stub 验证日志同目录）。 */
-const LOG_PATH = env.NAPUKETTO_CFG_DIR
-    ? join(env.NAPUKETTO_CFG_DIR, "napuketto-boot.log")
-    : join(tmpdir(), "napuketto-boot.log");
+import { bootLogPath, log, logFatal } from "../internal/boot-log.js";
+import { getErrorMessage } from "../internal/type-guards.js";
 
-/** 追加一行 boot 日志（失败静默，不阻塞引导）。 */
-export function log(msg: string): void {
-    try {
-        appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${msg}\n`);
-    } catch {
-        // ignore
-    }
-}
-
-/** boot 日志路径（致命错误提示 / 排障用）。 */
-export function bootLogPath(): string {
-    return LOG_PATH;
-}
-
-/**
- * 致命引导错误输出（issue #144）：写 napuketto-boot.log，并同步到 stderr。
- *
- * 此前致命失败只落 boot 日志，Docker / 终端只看到 code=1 而没有任何原因。
- * 严禁写 stdout：IPC 模式（NAPUKETTO_IPC=1）stdout 专用于 JSON 行协议，写入会撕裂
- * 协议行；stderr 是独立通道，cli/boot.ts 的 forwardChildOutput 与 supervisor
- * 都会逐行转发（非 IPC / IPC 两种宿主都可见）。
- */
-export function logFatal(msg: string): void {
-    log(msg);
-    process.stderr.write(`[napuketto] ${msg}\n[napuketto] 详细日志: ${LOG_PATH}\n`);
-}
-
-/** 错误信息提取（保留 JS 原语义：message 存在用 message，否则用错误对象本身）。 */
-export function errorMessage(e: unknown): string {
-    return getErrorMessage(e);
-}
-
-/** @deprecated 使用 `errorMessage`（全仓统一命名）。 */
-export const errMsg = errorMessage;
+export { bootLogPath, log, logFatal };
 
 /**
  * 配置校验失败标记错误（2026-10-25 嵌入式退出码契约）。
@@ -85,7 +47,7 @@ export function convergeBootstrapFailure(e: unknown, phase: string): false {
     if (isConfigError(e)) {
         throw e;
     }
-    logFatal(`bootstrap: ${phase}: ${errMsg(e)}`);
+    logFatal(`bootstrap: ${phase}: ${getErrorMessage(e)}`);
     return false;
 }
 

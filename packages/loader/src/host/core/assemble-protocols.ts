@@ -5,15 +5,26 @@
  * 统一走 importSubpathModule 校验；可选协议（satori/kurobot/milky）仅在账号段非空时
  * 才 `import()` 对应子路径——未启用协议零加载、零实例化。
  */
+
 import { join } from "node:path";
+import { getErrorMessage } from "../../internal/type-guards.js";
 import {
     isShuttingDown,
     registerShutdownHook,
     requestShutdown,
     runShutdownHook,
 } from "../../lifecycle/shutdown.js";
+import { BACKSLASH_RE, INDEX_MJS_RE, type ProtocolKey } from "../constants.js";
 import { env } from "../env.js";
 import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
+import {
+    isAdapterCoreModule,
+    isKurobotModule,
+    isMilkyModule,
+    isNetworkModule,
+    isOb11Module,
+    isSatoriModule,
+} from "../module-guards.js";
 import type {
     AdapterCoreModuleLike,
     KernelLike,
@@ -23,17 +34,8 @@ import type {
     NetworkModuleLike,
     SatoriModuleLike,
 } from "../types.js";
-import { BACKSLASH_RE, INDEX_MJS_RE, type ProtocolKey } from "../types.js";
-import { errMsg, log } from "../util.js";
+import { log } from "../util.js";
 import type { KernelServices } from "./kernel-services.js";
-import {
-    isAdapterCoreModule,
-    isKurobotModule,
-    isMilkyModule,
-    isNetworkModule,
-    isOb11Module,
-    isSatoriModule,
-} from "./module-guards.js";
 
 /** 可选协议 adapter 生命周期最小面（start/stop）。 */
 interface AdapterHandle {
@@ -220,7 +222,7 @@ async function stopAdapters(adapters: AdapterHandle[]): Promise<void> {
                 try {
                     await adapter.stop();
                 } catch (err) {
-                    log(`bootstrap: 协议关停失败: ${errMsg(err)}`);
+                    log(`bootstrap: 协议关停失败: ${getErrorMessage(err)}`);
                 }
             }),
     );
@@ -473,7 +475,7 @@ export async function assembleOb11AndSatori(
         return stop;
     } catch (e) {
         // 抛给 startProtocols 判引导失败（见函数头注释；不再吞错 fail-soft）
-        log(`bootstrap: 协议装配失败: ${errMsg(e)}`);
+        log(`bootstrap: 协议装配失败: ${getErrorMessage(e)}`);
         await runShutdownHook(stop, "protocols");
         throw e;
     } finally {
