@@ -22,6 +22,7 @@ import { localMediaBaseDir, parseProtocolSeed } from "../runtime/load-config.js"
 import { hasSection } from "../runtime/module-loader.js";
 import type {
     AdapterCoreModuleLike,
+    AdapterLifecycleLike,
     KurobotModuleLike,
     MilkyModuleLike,
     NetworkModuleLike,
@@ -30,11 +31,8 @@ import type {
 import type { KernelLike } from "../runtime/types.js";
 import type { KernelServices } from "./kernel-services.js";
 
-/** 可选协议 adapter 生命周期最小面（start/stop）。 */
-export interface AdapterHandle {
-    start(): Promise<unknown>;
-    stop(): Promise<void>;
-}
+/** 可选协议 adapter 生命周期最小面（start/stop；= protocol-types 的同一契约）。 */
+export type AdapterHandle = AdapterLifecycleLike;
 
 /** 可选协议装配的公共依赖（广播器 / 配置框架 / seed 来源 / kernel 服务）。 */
 export interface OptionalAssemblyDeps {
