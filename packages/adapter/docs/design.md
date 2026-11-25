@@ -90,7 +90,7 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   `warn`；纯解析兜底（鉴权 URL fail-closed、`file://` 剥前缀）→ `debug` 或映射语义
   注释。logger 经构造注入（`MilkyApi.logger` / `OneBotApi.logger`），纯翻译函数体内
   不引 logger；保留项：sysmsg `decodeText` 三态与 satori 翻译层（无 logger 基建）。
-- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `internal/__tests__/stub.ts`
+- 测试桩强类型化：禁止对桩对象 `as unknown as` 暴力强转，统一经 `tests/internal/stub.ts`
   的 `stub<T>`/`stubList<T>` 与各协议 `test-support.ts` 强类型工厂。豁免：私有字段
   窥视、故意畸形输入、私有 internals 断言；碎片测试（`*-branches`/`*-extra`）并入
   主测试文件，不新增。

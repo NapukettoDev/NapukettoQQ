@@ -44,7 +44,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
 | `src/index.ts` | 上述全部 | 公开包门面，只做 re-export |
 | `src/silk-worker.mts` | — | 随包构建的私有 Worker 入口，执行同步 WASM 编解码 |
-| `src/__tests__/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
+| `tests/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
 
 ### 下载地址的归一化与兼容性
 
@@ -134,6 +134,6 @@ Forwarded 和 X-Forwarded-*，调用者设置会被忽略。头名匹配不区�
 
 ## 测试布局
 
-单元测试统一放 `src/__tests__/`（与 kernel/adapter 等包一致，避免测试文件与源码
-同层平铺）。测试通过根 `vitest.config.ts` 的 `packages/*/src/**/*.test.ts` 发现，
-相对导入下沉一层后仍保留 NodeNext 的 `.js` 后缀（`../audio.js`）。
+单元测试统一放包根 `tests/`（镜像 `src/` 子目录结构，避免测试文件与源码同层平铺）。
+测试通过根 `vitest.config.ts` 的 `packages/*/tests/**/*.test.ts` 发现，相对导入
+仍保留 NodeNext 的 `.js` 后缀（如 `../src/audio.js`）。

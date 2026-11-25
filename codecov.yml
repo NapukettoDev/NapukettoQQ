@@ -25,6 +25,7 @@ ignore:
   - "**/node_modules/**"
   - "**/dist/**"
   - "**/__tests__/**"
+  - "**/tests/**"
   - "**/*.test.ts"
   - "**/*.test-d.ts"
   - "**/*.d.ts"

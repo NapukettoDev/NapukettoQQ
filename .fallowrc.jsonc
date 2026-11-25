@@ -181,17 +181,20 @@
         // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经
         // 根 vitest.config.ts 的 runner 执行，不是死代码——豁免 unused-file 判定
         // （保留复杂度/CRAP 检查，同 health.thresholdOverrides 精神）。
-        "packages/kernel/src/**/*.test.ts",
-        "packages/adapter/src/**/*.test.ts",
+        "packages/kernel/tests/**/*.test.ts",
+        "packages/adapter/tests/**/*.test.ts",
+        // 过渡期：loader 尚未迁移，测试仍在 src/__tests__/ 下。
         "packages/loader/src/**/*.test.ts",
-        "packages/network/src/**/*.test.ts",
-        "packages/media/src/**/*.test.ts",
+        "packages/network/tests/**/*.test.ts",
+        "packages/media/tests/**/*.test.ts",
         "apps/**/*.test.ts",
         "tooling/**/*.test.ts",
         // 测试目录整体豁免（2026-11 覆盖率门禁降噪）：删掉纯覆盖率凑数单测后，
-        // `__tests__/test-support.ts` / `stub.ts` 中部分导出可能不再被外部引用，
+        // `tests/` 下的 `test-support.ts` / `stub.ts` 中部分导出可能不再被外部引用，
         // 不豁免会让 CI 的 `fallow audit --base` 增量门禁误报 unused-export /
         // unused-file。测试支撑不是发布产物，也不参与死代码治理。
+        "**/tests/**",
+        // 过渡期保留：loader 的 __tests__ 目录待后续阶段迁移。
         "**/__tests__/**"
     ],
     // 测试文件豁免大函数检查（fallow 官方推荐）：长 describe/it 块会被误计为
