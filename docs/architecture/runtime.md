@@ -85,7 +85,7 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 | L0 | `NAPUKETTO_QQ_FILES` / `qqFilesDir` | 显式文件根，结构 `<root>/versions/<版本>/resources/app/wrapper.node` |
 | L1 | 本机 QQ 安装 | `--qq-path` / `NAPUKETTO_QQ_PATH` > 注册表 > 常见安装路径 |
 | L2 | 数据根缓存 | `<数据根>/qq-files/<版本>/`（下载解包产物） |
-| 兜底 | 自动下载 | `packages/loader/qq-releases.json` 当前平台条目 → 下载 → sha256 → 7z 解包 |
+| 兜底 | 自动下载 | `packages/loader/releases.json` 当前平台条目 → 下载 → sha256 → 7z 解包 |
 
 - **不内置腾讯二进制**：安装包只在运行时下载到数据根；清单条目按 `platform` / `arch` 过滤，
   避免 Windows 选中 Linux deb。
@@ -93,7 +93,7 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
   `wrapper.node` / `major.node` / `*.so*` / `sharp-lib/` 到同一缓存布局。
 - 下载 URL 经 `normalizeDownloadUrl` 归一化：腾讯 CDN 边缘 WAF 对 `/QQNTV2/` 大小写敏感，
   请求前转小写 `/qqntv2/`。
-- 清单由 `.github/workflows/update-qq-releases.yml` 维护；`NAPUKETTO_7Z_PATH` 可覆盖解包工具。
+- 清单由 `.github/workflows/update-releases.yml` 维护；`NAPUKETTO_7Z_PATH` 可覆盖解包工具。
 ## 登录与 session
 
 `NapukettoCore.login`：

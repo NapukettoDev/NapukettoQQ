@@ -1,11 +1,11 @@
 /**
  * manifests/seven-zip.ts：内置 7-Zip 资产清单读取与摘要校验。
  *
- * ⚠️ 零 TS 源码相对 import：`tooling/qq-releases/update-qq-releases.ts` 由 `node`
+ * ⚠️ 零 TS 源码相对 import：`tooling/releases/update-releases.ts` 由 `node`
  * 直接执行（CI 定时任务与本地兜底共用，无构建、无 tsconfig），Node 的类型剥离
  * 不会把 `./x.js` 说明符改写成 `./x.ts`。这里只依赖 node 内置模块与静态 JSON
  * 资产（`../../../assets/7zip/manifest.json`）；守卫见
- * `tooling/qq-releases/update-qq-releases.import.test.ts`。
+ * `tooling/releases/update-releases.import.test.ts`。
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";

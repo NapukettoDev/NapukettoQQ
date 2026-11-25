@@ -48,11 +48,11 @@
             "source": "package.json"
         }
     ],
-    // 已复核的重复块（2026-10-21）：tooling 下两个可直接执行的脚本（update-qq-releases /
+    // 已复核的重复块（2026-10-21）：tooling 下两个可直接执行的脚本（update-releases /
     // release-npm）共用同一段「被直接执行时跑 main」的入口 guard（15 行命令行样板）。
     // 它是 node: CLI 的惯用样板，不是可抽取的业务逻辑。键格式 <fingerprint>:<实例数>，
     // 内容或实例数一变就会重新上报，逼人重新复核。
-    // 2026-11-10：update-qq-releases 增加 Linux 段后指纹变化（b7712e81），复核后仍豁免。
+    // 2026-11-10：update-releases 增加 Linux 段后指纹变化（b7712e81），复核后仍豁免。
     "duplicates": {
         "ignoredClones": [
             "dup:b7712e81:2"

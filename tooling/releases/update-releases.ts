@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * update-qq-releases.ts：qq-releases.json 自动维护脚本（CI 定时/手动与本地共用，纯 Node 零第三方依赖）。
+ * update-releases.ts：releases.json 自动维护脚本（CI 定时/手动与本地共用，纯 Node 零第三方依赖）。
  *
  * 用法（从项目根）：
- *   node tooling/qq-releases/update-qq-releases.ts            # 抓最新版 → 下载 → sha256 → 更新清单
- *   node tooling/qq-releases/update-qq-releases.ts --dry-run  # 只打印计划，不下载、不写清单
+ *   node tooling/releases/update-releases.ts            # 抓最新版 → 下载 → sha256 → 更新清单
+ *   node tooling/releases/update-releases.ts --dry-run  # 只打印计划，不下载、不写清单
  *
  * 数据源（2026-08-13 实测修正）：im.qq.com 新版为 Vite SPA——HTML 壳仅 ~7KB，
  * 下载链接由前端运行时抓取 rainbow 配置 JSON（下载页同源数据）。设计文档 §2.2 旧
@@ -35,9 +35,9 @@
  *     Windows 侧已算好的更新照常落盘。
  *
  * ⚠️ 执行方式约束：本文件在 CI 与本地都由 `node` 直接跑（类型剥离，无构建、无 tsconfig），
- * 所以它只能依赖 `packages/loader/src/qq/manifests/qq-releases.ts` 这类**零相对 import** 的
+ * 所以它只能依赖 `packages/loader/src/artifacts/manifests/releases.ts` 这类**零相对 import** 的
  * 模块——Node 不会把 `./x.js` 说明符改写成 `./x.ts`。守卫：同目录
- * update-qq-releases.import.test.ts。
+ * update-releases.import.test.ts。
  *
  * ⚠️ 下载 URL 归一化（2026-10-07，issue #6 根因）：官方 rainbow 给出的
  * `ntDownloadX64Url` 形如 `.../qqfile/QQNTV2/...`，腾讯 CDN 边缘 WAF 对字面量
@@ -58,16 +58,16 @@ import type {
     QqReleaseArch,
     QqReleaseEntry,
     QqReleasesFile,
-} from "../../packages/loader/src/qq/manifests/qq-releases.ts";
+} from "../../packages/loader/src/artifacts/manifests/releases.ts";
 import {
     normalizeDownloadUrl,
     releasePlatform,
-} from "../../packages/loader/src/qq/manifests/qq-releases.ts";
-import { findBundledSevenZip } from "../../packages/loader/src/qq/manifests/seven-zip.ts";
+} from "../../packages/loader/src/artifacts/manifests/releases.ts";
+import { findBundledSevenZip } from "../../packages/loader/src/artifacts/manifests/seven-zip.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");
-const MANIFEST_PATH = join(REPO_ROOT, "packages", "loader", "qq-releases.json");
+const MANIFEST_PATH = join(REPO_ROOT, "packages", "loader", "releases.json");
 const SEVEN_ZIP_DIR = join(REPO_ROOT, "packages", "loader", "assets", "7zip");
 
 const USER_AGENT = "napuketto-releases/1.0";
@@ -134,12 +134,12 @@ interface WindowsRelease {
 
 /** 打印信息（noConsole 只放行 console.log）。 */
 function info(message: string): void {
-    console.log(`[update-qq-releases] ${message}`);
+    console.log(`[update-releases] ${message}`);
 }
 
 /** 打印错误到 stderr。 */
 function warn(message: string): void {
-    process.stderr.write(`[update-qq-releases] ⚠ ${message}\n`);
+    process.stderr.write(`[update-releases] ⚠ ${message}\n`);
 }
 
 /** 解析命令行参数。 */
@@ -799,21 +799,21 @@ function loadManifest(): QqReleasesFile {
     try {
         parsed = JSON.parse(raw);
     } catch (err) {
-        throw new Error(`qq-releases.json 解析失败: ${String(err)}`);
+        throw new Error(`releases.json 解析失败: ${String(err)}`);
     }
     if (!isRecord(parsed)) {
-        throw new Error("qq-releases.json 结构不合法（顶层必须是对象）");
+        throw new Error("releases.json 结构不合法（顶层必须是对象）");
     }
     const schema = parsed["schema"];
     const known = parsed["known"];
     if (schema !== 2 || !Array.isArray(known) || known.length === 0) {
-        throw new Error("qq-releases.json 结构不合法（需 schema=2 且 known 非空数组）");
+        throw new Error("releases.json 结构不合法（需 schema=2 且 known 非空数组）");
     }
     const entries: QqReleaseEntry[] = [];
     for (const item of known) {
         if (!isReleaseEntry(item)) {
             throw new Error(
-                `qq-releases.json 结构不合法（known 含非法条目: ${JSON.stringify(item)?.slice(0, 120)}）`,
+                `releases.json 结构不合法（known 含非法条目: ${JSON.stringify(item)?.slice(0, 120)}）`,
             );
         }
         entries.push(item);
@@ -938,7 +938,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
         })
         .catch((err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
-            process.stderr.write(`[update-qq-releases] ❌ ${message}\n`);
+            process.stderr.write(`[update-releases] ❌ ${message}\n`);
             process.exitCode = 1;
         });
 }

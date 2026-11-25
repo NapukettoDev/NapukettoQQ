@@ -22,9 +22,9 @@ import {
     type TipGroupElement,
     TipGroupElementType,
 } from "@napuketto/kernel";
-import { firstUntranslatedGrayTip } from "../../../internal/qq/gray-tip.js";
-import { toUnixSeconds } from "../../../internal/qq/raw-message.js";
-import { toUin } from "../../../internal/qq/uid-uin.js";
+import { firstUntranslatedGrayTip } from "../../../internal/domain/gray-tip.js";
+import { toUnixSeconds } from "../../../internal/domain/raw-message.js";
+import { toUin } from "../../../internal/domain/uid-uin.js";
 import type {
     FriendNudgeData,
     GroupDisbandData,

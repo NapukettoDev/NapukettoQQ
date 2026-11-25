@@ -1,10 +1,10 @@
-name: update-qq-releases
+name: update-releases
 
-# qq-releases.json 自动维护：每日 cron + 手动触发。
-# 脚本 tooling/qq-releases/update-qq-releases.ts 与本地共用（纯 Node 零第三方依赖）：
+# releases.json 自动维护：每日 cron + 手动触发。
+# 脚本 tooling/releases/update-releases.ts 与本地共用（纯 Node 零第三方依赖）：
 #   抓取 QQ 官方下载配置（rainbow pcConfig.json，im.qq.com 新版 SPA 的数据源）
 #   → 解析最新版号与下载链接 → 下载安装包计算 sha256 → 用内置 7-Zip 解析安装包
-#   内部版本目录名（含构建号）→ 更新 qq-releases.json（保留历史、按版本递增）。
+#   内部版本目录名（含构建号）→ 更新 releases.json（保留历史、按版本递增）。
 # Linux（2026-11-10 起）：同一脚本还会抓官方 linuxConfig.js，按 x64 deb 的 URL 变化
 #   更新 platform=linux / arch / coreVersion / sha256（版本取自 deb 内
 #   resources/app/package.json）。arm64 暂不自动登记（等真机验证，见
@@ -16,7 +16,7 @@ name: update-qq-releases
 # 2026-10-07 已定位并修复：拦截规则区分大小写且不回源，源站大小写不敏感，
 # 脚本改为请求小写 `/qqntv2/` 路径段（normalizeDownloadUrl），见 tooling 头注释。
 # 失败仍在追踪 issue 上评论报警（按标题去重，issue 不存在则创建），
-# 本地跑 tooling/qq-releases/update-qq-releases.ts 兜底更新清单。
+# 本地跑 tooling/releases/update-releases.ts 兜底更新清单。
 #
 # 2026-11-11 修正（issue #100）：CDN 边缘曾把 linuxConfig.js 缓存成旧版（3.2.33，
 # 源站已是 3.2.35），旧 deb 早已下架 → 下载 404 → 异常冒到 main，整次运行判失败并
@@ -25,7 +25,7 @@ name: update-qq-releases
 # 清单本身真失败**，Linux 附加条目不会再刷出这条 issue。
 # 另：脚本由 node 直接执行 TS（无构建），依赖链必须保持「零相对 import」——
 # 2026-11-11 的分组重构曾让本地兜底命令 ERR_MODULE_NOT_FOUND，守卫见
-# tooling/qq-releases/update-qq-releases.import.test.ts。
+# tooling/releases/update-releases.import.test.ts。
 #
 # 为什么提 PR 用 App token 而不是 github.token（2026-11-04 修复，run 41818514612）：
 # 此前用 `github.token` 提 PR，本仓一直提不出来——仓库设置
@@ -85,20 +85,20 @@ jobs:
               with:
                   node-version: 24
 
-            - name: 更新 qq-releases.json
+            - name: 更新 releases.json
               id: update
               continue-on-error: true
-              run: node tooling/qq-releases/update-qq-releases.ts
+              run: node tooling/releases/update-releases.ts
 
             - name: 失败则在追踪 issue 报警（去重，不刷红 CI）
               if: steps.update.outcome == 'failure'
               uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
               with:
                   script: |
-                      const title = "chore(loader): qq-releases 自动更新失败（需本地兜底）";
+                      const title = "chore(loader): releases 自动更新失败（需本地兜底）";
                       const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
                       const body = [
-                          `update-qq-releases 于 ${new Date().toISOString()} 更新失败。`,
+                          `update-releases 于 ${new Date().toISOString()} 更新失败。`,
                           `运行日志: ${runUrl}`,
                           ``,
                           `脚本已对下载 URL 做路径段归一化（\`/QQNTV2/\` → \`/qqntv2/\`），`,
@@ -110,8 +110,8 @@ jobs:
                           `Linux 侧（附加条目）的旧版配置会被防降级跳过、单架构下载失败只写 warn，`,
                           `不会触发这条告警——到这里说明 Windows 侧或配置解析真的失败了。`,
                           ``,
-                          `兜底方式：本地跑 \`node tooling/qq-releases/update-qq-releases.ts\`，`,
-                          `把变更后的 packages/loader/qq-releases.json 提交上来。`,
+                          `兜底方式：本地跑 \`node tooling/releases/update-releases.ts\`，`,
+                          `把变更后的 packages/loader/releases.json 提交上来。`,
                       ].join("\n");
                       const { data: issues } = await github.rest.issues.listForRepo({
                           owner: context.repo.owner,
@@ -154,11 +154,11 @@ jobs:
               with:
                   # 用 App token 而非 github.token，理由见文首「为什么提 PR 用 App token」。
                   token: ${{ steps.app-token.outputs.token }}
-                  commit-message: "chore(loader): 更新 qq-releases.json 到最新 QQ 版本"
-                  branch: chore/qq-releases-update
+                  commit-message: "chore(loader): 更新 releases.json 到最新 QQ 版本"
+                  branch: chore/releases-update
                   delete-branch: true
-                  title: "chore(loader): 自动更新 qq-releases.json"
+                  title: "chore(loader): 自动更新 releases.json"
                   body: |
-                      由 update-qq-releases workflow 自动生成。
+                      由 update-releases workflow 自动生成。
                       解析 QQ 官方下载配置 + 下载安装包计算 sha256 + 解析版本目录。
                       请核对版本号与 sha256 后合并。

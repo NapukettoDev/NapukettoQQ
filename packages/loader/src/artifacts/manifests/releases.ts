@@ -1,12 +1,12 @@
 /**
- * manifests/qq-releases.ts：版本清单的形状、常量与纯函数（**零内部依赖**）。
+ * manifests/releases.ts：版本清单的形状、常量与纯函数（**零内部依赖**）。
  *
- * 为什么单独拆出来：`tooling/qq-releases/update-qq-releases.ts` 由 `node` 直接执行
+ * 为什么单独拆出来：`tooling/releases/update-releases.ts` 由 `node` 直接执行
  * （CI 定时任务与本地兜底共用，无构建、无 tsconfig），而 Node 的类型剥离不会把
  * `./x.js` 说明符改写成 `./x.ts`。本文件一旦出现任何**相对 import**，那条命令就会
  * `ERR_MODULE_NOT_FOUND`（源码分组重构后真实踩过一次，vitest 会重写说明符所以单测
  * 全绿）。因此这里只放类型、常量、纯函数与 node 内置类型，不碰文件系统、不引本包模块；
- * 守卫见 `tooling/qq-releases/update-qq-releases.import.test.ts`。
+ * 守卫见 `tooling/releases/update-releases.import.test.ts`。
  *
  * 清单读取（fs + 包根）与查询在 releases.ts。
  */

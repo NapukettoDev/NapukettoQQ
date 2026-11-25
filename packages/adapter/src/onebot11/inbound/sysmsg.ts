@@ -8,15 +8,15 @@
  * 未识别 / 提取失败落校准路径，不广播半成品。
  */
 
-import { truncRaw } from "../../internal/infra/log.js";
 import {
     narrowSysMsgBlobs,
     processSysMsgBlob,
     type SysMsgEnvelope,
     type SysMsgField,
     type SysMsgRecognition,
-} from "../../internal/qq/sysmsg.js";
-import { MS_TO_SEC } from "../../internal/qq/uid-uin.js";
+} from "../../internal/domain/sysmsg.js";
+import { MS_TO_SEC } from "../../internal/domain/uid-uin.js";
+import { truncRaw } from "../../internal/infra/log.js";
 import type { Ob11EventPipelineDeps } from "../api/onebot-api.js";
 import type { Ob11Enrichment } from "../enrichment.js";
 import type { OB11NoticeEvent } from "../event/index.js";

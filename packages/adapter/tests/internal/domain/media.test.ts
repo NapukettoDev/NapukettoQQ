@@ -11,8 +11,8 @@ import { copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ensureSilk } from "../../../src/internal/domain/media.js";
 import { withMediaScope } from "../../../src/internal/infra/media-cache.js";
-import { ensureSilk } from "../../../src/internal/qq/media.js";
 
 vi.mock("node:fs/promises", async (original) => {
     const fs = await original<typeof import("node:fs/promises")>();

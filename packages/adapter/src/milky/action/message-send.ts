@@ -8,7 +8,7 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { errorMessage, isRecord, kernelError } from "@napuketto/kernel";
 import { type ZodType, z } from "zod";
-import { prepareImageElements } from "../../internal/qq/media.js";
+import { prepareImageElements } from "../../internal/domain/media.js";
 import type { MilkyApi } from "../api.js";
 import { resolveUriToPath } from "../helper/message/media-uri.js";
 import {

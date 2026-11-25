@@ -7,7 +7,7 @@
  */
 import type { CanonicalElement, RawMessage } from "@napuketto/kernel";
 import { ChatType, errorMessage } from "@napuketto/kernel";
-import { resolveUidToUinWithFallback } from "../internal/qq/uid-uin.js";
+import { resolveUidToUinWithFallback } from "../internal/domain/uid-uin.js";
 import type { MilkyApi } from "./api.js";
 import type { ReceiveTranslateContext } from "./helper/event/translate.js";
 import { toGroupEntity, toGroupMemberEntity } from "./helper/message/entities.js";

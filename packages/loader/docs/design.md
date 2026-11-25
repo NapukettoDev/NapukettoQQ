@@ -8,9 +8,9 @@
 
 ```text
 launchSelfHost（调用进程）
-  ├─ qq/      L0–L2 定位 → 版本清单 → 下载(https + sha256) → 解包(7z / 7zz) → 缓存
-  ├─ boot/    平台分支：win32 PE stub ｜ linux .so + LD_PRELOAD
-  └─ spawn    标准 node 跑 self-host.cjs，env 注入 NAPUKETTO_*
+  ├─ artifacts/ L0–L2 定位 → 版本清单 → 下载(https + sha256) → 解包(7z / 7zz) → 缓存
+  ├─ boot/      平台分支：win32 PE stub ｜ linux .so + LD_PRELOAD
+  └─ spawn      标准 node 跑 self-host.cjs，env 注入 NAPUKETTO_*
 self-host（宿主子进程）
   ├─ lifecycle/ 实例锁 → 停止哨兵 / 信号
   ├─ 动态 import kernel → dlopenWrapper → activateO3MiscService
@@ -29,10 +29,10 @@ src/
   contract/       跨进程契约：ipc-schema（zod 单一来源）· native-noise（原生噪音行判定）
                   · constants（PROTOCOL_KEYS / QR_LINE_PREFIX）
   lifecycle/      进程治理：instance-lock · pid-cmdline · shutdown（停止哨兵 + 关停钩子）
-  qq/             产物链：install-probe（装在哪）→ manifests/qq-releases（清单形状）
+  artifacts/      产物链：install-probe（装在哪）→ manifests/releases（清单形状）
                   → releases（清单读取/查询）→ download（https + sha256）
                   → seven-zip（7z 定位/执行）→ extract（解包/提取）→ locate（多级来源管线）
-    manifests/    零 TS 源码相对 import（供 node 直跑的 tooling/qq-releases 脚本引用）
+    manifests/    零 TS 源码相对 import（供 node 直跑的 tooling/releases 脚本引用）
   boot/           宿主装配：env-keys（键表 + 读写原语）→ launch-env（白名单策略）
                   → linux-native / win-node（平台 node 与 stub 解析）→ launcher
   host/           宿主进程内运行时（CJS bundle 入口 host/self-host.ts）
@@ -48,7 +48,7 @@ src/
 分层红线（0 循环依赖，文件级与目录级同时成立）：
 
 - `shared/` 0 内部依赖；`contract/` 只允许内部互引（`native-noise.ts → ipc-schema.ts`）。
-- `lifecycle/`、`qq/` 只依赖 `shared/`；`boot/` 只依赖 `qq/`、`contract/`、`shared/`；
+- `lifecycle/`、`artifacts/` 只依赖 `shared/`；`boot/` 只依赖 `artifacts/`、`contract/`、`shared/`；
   三者都不得反向依赖 `host/`。
 - `host/` 内部严格单向：`runtime ← ipc ← auth ← bootstrap ← self-host`，且
   `runtime ← protocols ← bootstrap`；`ipc/` 不依赖 `protocols/`、`auth/`、`bootstrap/`，
@@ -67,7 +67,7 @@ L0–L2 全失败 → 自动下载解包；autoDownload=false 时直接报错
 ```
 
 - 版本选择：`latestRelease` 先按 `platform`/`arch` 过滤再取末条；`version` 既是缓存目录名
-  也是 `app_version`，Linux 另记 `coreVersion`（清单 schema 2，`qq-releases.json` 为纯文本）。
+  也是 `app_version`，Linux 另记 `coreVersion`（清单 schema 2，`releases.json` 为纯文本）。
 - 下载：Node 内置 `https` + `crypto`，流式 sha256、302 最多 5 跳、60s 无数据超时。
   收到 HTTP 200 才打开目标文件，流关闭后检查文件大小与摘要。`NAPUKETTO_QQ_URL` 覆盖清单
   URL，QQ 安装包临时文件带 pid + 时间戳保证并发隔离。
@@ -354,7 +354,7 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 ## 关键取舍与不变量
 
 1. **不内置腾讯二进制**：npm 包、镜像、仓库都不得含 `wrapper.node`、`QQNT.dll`、官方
-   安装包（含压缩/编码形态）；只放自研 stub 与纯文本 `qq-releases.json`。
+   安装包（含压缩/编码形态）；只放自研 stub 与纯文本 `releases.json`。
 2. **零磁盘篡改**：只读加载 `wrapper.node`，绝不改写 QQ 安装目录任何文件；升级/卸载
    零残留。
 3. **Windows/Linux 各一条路线**：Windows 用 PE stub `QQNT.dll`；Linux 用原生 ELF +

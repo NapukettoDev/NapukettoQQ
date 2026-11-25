@@ -1,7 +1,7 @@
 /**
  * boot-log.ts：引导进程文件日志（shared 最底层，零内部依赖）。
  *
- * lifecycle/ 与 qq/ 需要错误留痕，但不得反向依赖 host/ 分组（依赖方向红线），
+ * lifecycle/ 与 artifacts/ 需要错误留痕，但不得反向依赖 host/ 分组（依赖方向红线），
  * 因此日志能力下沉到 shared/。日志本身的落点与格式保持原样：
  * `NAPUKETTO_CFG_DIR/napuketto-boot.log`（缺失时落系统临时目录），失败静默。
  *

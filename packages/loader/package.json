@@ -40,7 +40,7 @@
         "assets/7zip",
         "native/prebuilt/linux-x64",
         "native/prebuilt/win32-x64",
-        "qq-releases.json"
+        "releases.json"
     ],
     "main": "./dist/index.mjs",
     "types": "./dist/index.d.mts",

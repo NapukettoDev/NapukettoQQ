@@ -1,5 +1,5 @@
 /**
- * update-qq-releases.test.ts：qq-releases.json 自动维护脚本单测。
+ * update-releases.test.ts：releases.json 自动维护脚本单测。
  *
  * 脚本无导出——main 由「直接执行」判定触发（process.argv[1] 指向本模块路径
  * 后动态 import）。node:https / global fetch / execFile（7z）/ 清单读写全部
@@ -36,7 +36,7 @@ vi.mock("node:child_process", async (importOriginal) => {
     return { ...actual, execFile: mocks.execFile };
 });
 
-// 清单读写分流：仅拦截脚本自己的 MANIFEST_PATH（<仓根>/packages/loader/qq-releases.json，
+// 清单读写分流：仅拦截脚本自己的 MANIFEST_PATH（<仓根>/packages/loader/releases.json，
 // 与被测模块同一解析方式），其余（安装包临时文件）走真实 fs——真实清单零读写
 let manifestPath = "";
 let manifestContent: string | undefined;
@@ -84,7 +84,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 /** 被测模块文件路径（同时用作 argv[1] 触发直接执行判定）。 */
-const MODULE_PATH = fileURLToPath(new URL("./update-qq-releases.ts", import.meta.url));
+const MODULE_PATH = fileURLToPath(new URL("./update-releases.ts", import.meta.url));
 
 /** 官方 rainbow 配置夹具（URL 含 QQNTV2 大写段，验证下载归一化）。 */
 function rainbowConfig(url: string): string {
@@ -258,9 +258,9 @@ let tmp: string;
 beforeEach(() => {
     vi.resetModules();
     tmp = mkdtempSync(join(tmpdir(), "nk-qqrel-test-"));
-    // 与被测模块的 MANIFEST_PATH 同口径解析（REPO_ROOT/packages/loader/qq-releases.json），
+    // 与被测模块的 MANIFEST_PATH 同口径解析（REPO_ROOT/packages/loader/releases.json），
     // 读写均被拦截 → 真实清单文件零触碰
-    manifestPath = join(dirname(MODULE_PATH), "..", "..", "packages", "loader", "qq-releases.json");
+    manifestPath = join(dirname(MODULE_PATH), "..", "..", "packages", "loader", "releases.json");
     manifestContent = undefined;
     memFiles.clear();
     writtenManifests = [];
@@ -295,7 +295,7 @@ describe("官方配置获取与解析", () => {
             { status: 500, body: "" },
             { status: 404, body: "" },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(1);
         expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("官方下载配置解析失败"));
@@ -321,7 +321,7 @@ describe("官方配置获取与解析", () => {
         ) => {
             cb(new Error("7z unavailable"));
         }) as never);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);
@@ -341,7 +341,7 @@ describe("官方配置获取与解析", () => {
             ],
         });
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toEqual([]);
@@ -357,7 +357,7 @@ describe("清单比对与 dry-run", () => {
     it("URL 未变 → no-op（清单已是最新），不下载不写", async () => {
         manifestContent = fixtureManifest(OFFICIAL_URL);
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toEqual([]);
@@ -368,7 +368,7 @@ describe("清单比对与 dry-run", () => {
         manifestContent = fixtureManifest("https://old.example/qq.exe");
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
         process.argv = ["node", MODULE_PATH, "--dry-run"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(mocks.httpsGet).not.toHaveBeenCalled();
@@ -381,7 +381,7 @@ describe("清单比对与 dry-run", () => {
     it("清单结构不合法（schema 非 2）→ 抛错退出 1，不写清单", async () => {
         manifestContent = JSON.stringify({ schema: 3, known: [] });
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(1);
         expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("结构不合法"));
@@ -391,7 +391,7 @@ describe("清单比对与 dry-run", () => {
     it("清单 known 含非对象条目（null）→ 抛错退出 1，不写清单", async () => {
         manifestContent = JSON.stringify({ schema: 2, known: [null] });
         stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(1);
         expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("结构不合法"));
@@ -411,7 +411,7 @@ describe("下载与版本解析、清单落盘", () => {
         ) => {
             cb(null, "Date   Time   Attr   Name\n  Files\\versions\\9.99.91-777777\\wrapper.node");
         }) as never);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);
@@ -458,7 +458,7 @@ describe("下载与版本解析、清单落盘", () => {
         ) => {
             cb(new Error("7z missing"));
         }) as never);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);
@@ -482,7 +482,7 @@ describe("下载与版本解析、清单落盘", () => {
                 cb(null, "Files\\versions\\9.99.91-777777\\x.node");
             }) as never);
             downloadBehaviors = ["error", "error", "ok"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -501,7 +501,7 @@ describe("下载与版本解析、清单落盘", () => {
             manifestContent = fixtureManifest("https://old.example/qq.exe");
             stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
             downloadBehaviors = ["error", "error", "error"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -522,7 +522,7 @@ describe("下载与版本解析、清单落盘", () => {
             manifestContent = fixtureManifest("https://old.example/qq.exe");
             stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
             downloadBehaviors = ["truncated", "truncated", "truncated"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.advanceTimersByTimeAsync(5_000);
             await pumpRealIo();
@@ -552,7 +552,7 @@ describe("下载传输边角", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["redirect", "ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -589,7 +589,7 @@ describe("下载传输边角", () => {
         ];
         vi.useFakeTimers();
         try {
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -611,7 +611,7 @@ describe("下载传输边角", () => {
             manifestContent = fixtureManifest("https://old.example/qq.exe");
             stubConfigFetch([{ status: 200, body: rainbowConfig(OFFICIAL_URL) }]);
             downloadBehaviors = ["http403", "http403", "http403"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -635,7 +635,7 @@ describe("下载传输边角", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok-no-length"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -656,7 +656,7 @@ describe("下载传输边角", () => {
         downloadBehaviors = ["error-string", "error-string", "ok"];
         vi.useFakeTimers();
         try {
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -687,7 +687,7 @@ describe("版本解析与清单合并边角", () => {
         process.env["NAPUKETTO_7Z_PATH"] = MODULE_PATH; // 存在的文件即可（execFile 已 mock）
         try {
             downloadBehaviors = ["ok"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await pumpRealIo();
             expect(process.exitCode).toBe(0);
@@ -717,7 +717,7 @@ describe("版本解析与清单合并边角", () => {
             Buffer.from("tail"),
         ]);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -744,7 +744,7 @@ describe("版本解析与清单合并边角", () => {
             cb(null, "Files\\versions\\8.8.8-11111\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -768,7 +768,7 @@ describe("版本解析与清单合并边角", () => {
         // utf16le "9.99.91-" 后无数字 → scanEncoding 返回 null → 全候选落空
         installerBuf = Buffer.concat([Buffer.from("9.99.91-abc", "utf16le")]);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(1);
@@ -803,7 +803,7 @@ describe("版本解析与清单合并边角", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -839,7 +839,7 @@ describe("官方配置结构变体", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -868,7 +868,7 @@ describe("官方配置结构变体", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -902,7 +902,7 @@ describe("官方配置结构变体", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -927,7 +927,7 @@ describe("官方配置结构变体", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await pumpRealIo();
         await pumpRealIo();
         expect(process.exitCode).toBe(0);
@@ -1059,7 +1059,7 @@ describe("Linux（deb）条目自动维护", () => {
         );
         stubLinuxSevenZip();
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);
@@ -1120,7 +1120,7 @@ describe("Linux（deb）条目自动维护", () => {
             cb(null, "Files\\versions\\9.99.91-777777\\x.node");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         const saved = JSON.parse(writtenManifests[0] as string) as {
@@ -1135,7 +1135,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) },
             { status: 200, body: linuxConfig() },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(0);
@@ -1183,7 +1183,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) },
             { status: 200, body: linuxConfig() },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(0);
@@ -1202,7 +1202,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) },
             { status: 200, body: linuxConfig() },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(0);
@@ -1254,7 +1254,7 @@ describe("Linux（deb）条目自动维护", () => {
             cb(err ?? null, "", "");
         }) as never);
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
     }
 
@@ -1355,7 +1355,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) },
             { status: 200, body: linuxConfig(noCoreUrl) },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(warned("无法解析 QQNT 核心版本")).toBe(true);
@@ -1392,7 +1392,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) },
             { status: 200, body: body as string },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(warned("Linux 官方配置结构不符")).toBe(true);
@@ -1414,7 +1414,7 @@ describe("Linux（deb）条目自动维护", () => {
             { status: 200, body: rainbowConfig(OFFICIAL_URL) }, // Windows URL 未变 → no-op
             { status: 200, body: linuxConfig(staleDeb, LINUX_ARM_DEB, "3.2.33") },
         ]);
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(mocks.httpsGet).not.toHaveBeenCalled();
@@ -1464,7 +1464,7 @@ describe("Linux（deb）条目自动维护", () => {
             }) as never);
             // 第 1 次给 Windows 安装包；Linux deb 连续 3 次非 200（与 404 同路径：重试穷尽后抛错）
             downloadBehaviors = ["ok", "http403", "http403", "http403"];
-            await import("./update-qq-releases.ts");
+            await import("./update-releases.ts");
             await pumpRealIo();
             await vi.runAllTimersAsync();
             await pumpRealIo();
@@ -1494,7 +1494,7 @@ describe("Linux（deb）条目自动维护", () => {
         ]);
         stubLinuxSevenZip();
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);
@@ -1548,7 +1548,7 @@ describe("Linux（deb）条目自动维护", () => {
             }
         });
         downloadBehaviors = ["ok"];
-        await import("./update-qq-releases.ts");
+        await import("./update-releases.ts");
         await untilExit();
         expect(process.exitCode).toBe(0);
         expect(writtenManifests).toHaveLength(1);

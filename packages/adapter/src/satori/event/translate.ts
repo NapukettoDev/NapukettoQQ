@@ -11,9 +11,9 @@
  * 收方向 ID 空间：uid → uin 批量转换（deps.uidToUin，与消息翻译同依赖）。
  */
 import { ChatType, GrayTipSubType, type RawMessage, TipGroupElementType } from "@napuketto/kernel";
-import { collectGrayTipUids } from "../../internal/qq/gray-tip.js";
-import { toUnixSeconds } from "../../internal/qq/raw-message.js";
-import { MS_TO_SEC, toUinString } from "../../internal/qq/uid-uin.js";
+import { collectGrayTipUids } from "../../internal/domain/gray-tip.js";
+import { toUnixSeconds } from "../../internal/domain/raw-message.js";
+import { MS_TO_SEC, toUinString } from "../../internal/domain/uid-uin.js";
 import { type SatoriTranslateDeps, toSatoriMessage, toUser } from "../helper/index.js";
 import type { Channel, Guild, GuildMember, Message, User } from "../types/index.js";
 

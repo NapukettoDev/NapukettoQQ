@@ -8,7 +8,7 @@
  *  - shared/    最底层工具（boot-log / data-root / package / type-guards）
  *  - contract/  跨进程契约（IPC schema / 原生噪音判定 / 协议键与 QR 标记）
  *  - lifecycle/ 进程治理（单实例锁 / cmdline 探活 / 优雅关停）
- *  - qq/        腾讯产物获取链（manifests/ 为零源码依赖的版本清单层）
+ *  - artifacts/ 腾讯产物获取链（manifests/ 为零源码依赖的版本清单层）
  *  - boot/      宿主进程装配与拉起（launcher / linux-native / win-node）
  *  - host/      自建宿主进程内运行时（入口 host/self-host.ts）
  *
@@ -19,6 +19,40 @@
  * 本包不再编译 C++ 组件，业务层 100% 走 NAPI。
  */
 
+export type { DownloadOptions, DownloadResult } from "./artifacts/download.js";
+export { DownloadError, downloadFile } from "./artifacts/download.js";
+export type { ExtractOptions } from "./artifacts/extract.js";
+export {
+    clearCacheVersion,
+    extractDebInstaller,
+    extractInstaller,
+    extractLinuxWrapperFiles,
+    extractWrapperFiles,
+    isLinuxRuntimeFile,
+} from "./artifacts/extract.js";
+export { locateQqPath, resolveQqInstall } from "./artifacts/install-probe.js";
+export { ensureQqFiles, QQ_FILES_DIR_NAME, resolveQqFiles } from "./artifacts/locate.js";
+export type {
+    QqReleaseArch,
+    QqReleaseEntry,
+    QqReleasePlatform,
+    QqReleasesFile,
+} from "./artifacts/manifests/releases.js";
+export {
+    QQ_RELEASES_SCHEMA,
+    releaseArch,
+    releasePlatform,
+} from "./artifacts/manifests/releases.js";
+export type { LatestReleaseOptions } from "./artifacts/releases.js";
+export {
+    latestRelease,
+    loadQqReleases,
+    QqReleasesError,
+    resolveDownloadUrl,
+} from "./artifacts/releases.js";
+export type { SevenZipResult } from "./artifacts/seven-zip.js";
+export { ensureLinuxSevenZip, findSevenZip, linuxSevenZipUrl } from "./artifacts/seven-zip.js";
+export type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./artifacts/types.js";
 export { ENV } from "./boot/env-keys.js";
 export type { LaunchOptions, LaunchResult } from "./boot/launcher.js";
 export { defaultStubDir, launchSelfHost } from "./boot/launcher.js";
@@ -130,33 +164,3 @@ export {
     writeAccountStopSentinel,
     writeStopSentinel,
 } from "./lifecycle/shutdown.js";
-export type { DownloadOptions, DownloadResult } from "./qq/download.js";
-export { DownloadError, downloadFile } from "./qq/download.js";
-export type { ExtractOptions } from "./qq/extract.js";
-export {
-    clearCacheVersion,
-    extractDebInstaller,
-    extractInstaller,
-    extractLinuxWrapperFiles,
-    extractWrapperFiles,
-    isLinuxRuntimeFile,
-} from "./qq/extract.js";
-export { locateQqPath, resolveQqInstall } from "./qq/install-probe.js";
-export { ensureQqFiles, QQ_FILES_DIR_NAME, resolveQqFiles } from "./qq/locate.js";
-export type {
-    QqReleaseArch,
-    QqReleaseEntry,
-    QqReleasePlatform,
-    QqReleasesFile,
-} from "./qq/manifests/qq-releases.js";
-export { QQ_RELEASES_SCHEMA, releaseArch, releasePlatform } from "./qq/manifests/qq-releases.js";
-export type { LatestReleaseOptions } from "./qq/releases.js";
-export {
-    latestRelease,
-    loadQqReleases,
-    QqReleasesError,
-    resolveDownloadUrl,
-} from "./qq/releases.js";
-export type { SevenZipResult } from "./qq/seven-zip.js";
-export { ensureLinuxSevenZip, findSevenZip, linuxSevenZipUrl } from "./qq/seven-zip.js";
-export type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./qq/types.js";

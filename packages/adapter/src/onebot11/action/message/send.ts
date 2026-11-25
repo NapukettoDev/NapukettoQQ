@@ -12,13 +12,13 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { ChatType, errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
-import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
-import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
 import {
     ensureSilk,
     prepareImageElements,
     prepareVideoElements,
-} from "../../../internal/qq/media.js";
+} from "../../../internal/domain/media.js";
+import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
+import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     applySendContext,

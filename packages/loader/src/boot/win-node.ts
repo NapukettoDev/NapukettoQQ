@@ -20,8 +20,8 @@ import { existsSync, mkdirSync } from "node:fs";
 import { copyFile, readdir, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import process from "node:process";
-import { downloadFile } from "../qq/download.js";
-import { extractInstaller } from "../qq/extract.js";
+import { downloadFile } from "../artifacts/download.js";
+import { extractInstaller } from "../artifacts/extract.js";
 import { resolveDataRoot } from "../shared/data-root.js";
 import { LINE_SPLIT } from "./linux-native.js";
 

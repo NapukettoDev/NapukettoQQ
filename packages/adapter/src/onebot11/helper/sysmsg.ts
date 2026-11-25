@@ -17,8 +17,8 @@ import {
     recognizeSysMsg as recognizeSysMsgCore,
     type SysMsgKindRule,
     type SysMsgRecognition,
-} from "../../internal/qq/sysmsg.js";
-import { NUMERIC_RE } from "../../internal/qq/uid-uin.js";
+} from "../../internal/domain/sysmsg.js";
+import { NUMERIC_RE } from "../../internal/domain/uid-uin.js";
 import type { OB11GroupCardNoticeEvent, OB11NoticeEvent } from "../event/index.js";
 
 export type {
@@ -26,13 +26,13 @@ export type {
     SysMsgField,
     SysMsgKindRule,
     SysMsgRecognition,
-} from "../../internal/qq/sysmsg.js";
+} from "../../internal/domain/sysmsg.js";
 export {
     decodeProtoTree,
     extractSysMsgEnvelope,
     narrowSysMsgBlobs,
     toHex,
-} from "../../internal/qq/sysmsg.js";
+} from "../../internal/domain/sysmsg.js";
 
 /** OB11 识别规则：kind 收窄为 OB11 notice 种类、事件体为 OB11NoticeEvent。 */
 export type SysMsgKindRuleOB11 = SysMsgKindRule<OB11NoticeEvent>;
