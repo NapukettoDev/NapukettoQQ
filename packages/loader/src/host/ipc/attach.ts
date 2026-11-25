@@ -1,16 +1,17 @@
 /**
- * attach.ts：IPC 模式装配（bootstrap-core 调用）。
+ * attach.ts：IPC 模式装配（bootstrap/core 调用）。
  *
  * 职责：登录前创建登录期动作表（login.refreshQr 可达）+ 启动 stdin 服务端；
  * 登录后把 kernel 服务动作并入同一张表 + 事件通道转发（onAny → event 消息）。
  * 返回停止函数（进程退出时清理）。
  */
 
-import { getErrorMessage, isCallable } from "../../internal/type-guards.js";
-import { env, isEnvEnabled } from "../env.js";
-import type { KernelServices } from "../service-types.js";
-import type { CoreLike } from "../types.js";
-import { log } from "../util.js";
+import { IpcGroupRequestSchema } from "../../contract/ipc-schema.js";
+import { log } from "../../shared/boot-log.js";
+import { getErrorMessage, isCallable } from "../../shared/type-guards.js";
+import { env, isEnvEnabled } from "../runtime/env.js";
+import type { KernelServices } from "../runtime/service-types.js";
+import type { CoreLike } from "../runtime/types.js";
 import {
     createIpcActions,
     type IpcActionHandler,
@@ -18,7 +19,6 @@ import {
     registerLoginRefreshAction,
 } from "./actions.js";
 import { readReadySelf, sendEvent } from "./sender.js";
-import { IpcGroupRequestSchema } from "./types.js";
 
 /** 订阅事件通道 → event 消息转发（事件名 "Service/method" 拆分）。 */
 function forwardChannel(
@@ -47,7 +47,7 @@ function forwardChannel(
 
 /**
  * 登录期动作表：只含 login.refreshQr（依赖 core.refreshQr，不依赖 session 服务）。
- * bootstrap-core 在登录前用它启动 IPC 服务端——登录中前端即可刷新二维码。
+ * bootstrap/core 在登录前用它启动 IPC 服务端——登录中前端即可刷新二维码。
  */
 export function createIpcActionsForCore(core: CoreLike): Map<string, IpcActionHandler> {
     const actions = new Map<string, IpcActionHandler>();
@@ -59,7 +59,7 @@ export function createIpcActionsForCore(core: CoreLike): Map<string, IpcActionHa
 
 /**
  * 把 kernel 服务动作并入共享动作表 + 事件通道转发（登录成功后调用）。
- * 返回停止函数（清理事件转发订阅；stdin 服务端由 bootstrap-core 独立管理）。
+ * 返回停止函数（清理事件转发订阅；stdin 服务端由 bootstrap/core 独立管理）。
  *
  * 诊断动作默认不注册；`options.diagnostics` 缺省读 `NAPUKETTO_DIAG`（显式本地调试）。
  */

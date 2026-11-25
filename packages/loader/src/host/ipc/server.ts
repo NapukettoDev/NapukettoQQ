@@ -11,17 +11,17 @@
  *  - 心跳：定期发 ping（koishi 插件探活）
  */
 import type { Readable } from "node:stream";
-import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
-import { log } from "../util.js";
-import { callIpcAction, type IpcActionHandler } from "./actions.js";
-import { decodeIpcMessage } from "./codec.js";
-import { readReadySelf, replayStatus, sendPing, sendPong, sendResult } from "./sender.js";
 import {
     DEFAULT_MAX_IPC_LINE_BYTES,
     DEFAULT_MAX_PENDING_REQUESTS,
     type IpcActionMessage,
     type IpcControlPayload,
-} from "./types.js";
+} from "../../contract/ipc-schema.js";
+import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
+import { log } from "../../shared/boot-log.js";
+import { callIpcAction, type IpcActionHandler } from "./actions.js";
+import { decodeIpcMessage } from "./codec.js";
+import { readReadySelf, replayStatus, sendPing, sendPong, sendResult } from "./sender.js";
 
 /** 心跳间隔（毫秒）。 */
 const HEARTBEAT_INTERVAL_MS = 15_000;

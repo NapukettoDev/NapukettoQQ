@@ -6,8 +6,8 @@
  * 不崩通道。
  */
 
+import { type IpcMessage, ipcMessageSchema } from "../../contract/ipc-schema.js";
 import { toJsonSafe } from "./json-safe.js";
-import { type IpcMessage, ipcMessageSchema } from "./types.js";
 
 /** 编码为 JSON 行（追加换行）。Map/Set 先规整为可序列化形态（见 json-safe.ts）。 */
 export function encodeIpcMessage(message: IpcMessage): string {

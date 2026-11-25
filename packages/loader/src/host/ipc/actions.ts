@@ -6,17 +6,17 @@
  * 其余动作随 koishi 插件 actions.ts 轮次按需扩充。
  *
  * ⚠️ 不自研 kernel 依赖（loader 运行时 file:// 动态 import kernel，编译期不建
- * workspace 依赖——见 types.ts 注释）。错误码提取统一走 internal/type-guards。
+ * workspace 依赖——见 runtime/types.ts 注释）。错误码提取统一走 shared/type-guards。
  *
  * 2026-11-25 P1：Peer / at 归一化拆到 `at-resolver.ts`，本文件只剩动作定义与调用。
  */
 import { z } from "zod";
-import { getErrorCode, getErrorMessage } from "../../internal/type-guards.js";
-import type { GroupNotifyApiLike, MsgApiLike } from "../types.js";
-import { log } from "../util.js";
+import { IpcRespondToGroupRequestParamsSchema } from "../../contract/ipc-schema.js";
+import { log } from "../../shared/boot-log.js";
+import { getErrorCode, getErrorMessage } from "../../shared/type-guards.js";
+import type { GroupNotifyApiLike, MsgApiLike } from "../runtime/types.js";
 import { resolveAtElements, toPeer, type UinToUid } from "./at-resolver.js";
 import { type IpcDiagnosticContext, registerDiagnosticActions } from "./diagnostics.js";
-import { IpcRespondToGroupRequestParamsSchema } from "./types.js";
 
 export type { IpcPeer } from "./at-resolver.js";
 export { DIAGNOSTIC_ACTION_NAMES } from "./diagnostics.js";

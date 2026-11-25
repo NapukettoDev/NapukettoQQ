@@ -35,7 +35,7 @@
  *     Windows 侧已算好的更新照常落盘。
  *
  * ⚠️ 执行方式约束：本文件在 CI 与本地都由 `node` 直接跑（类型剥离，无构建、无 tsconfig），
- * 所以它只能依赖 `packages/loader/src/qq/qq-release-manifest.ts` 这类**零相对 import** 的
+ * 所以它只能依赖 `packages/loader/src/qq/manifests/qq-releases.ts` 这类**零相对 import** 的
  * 模块——Node 不会把 `./x.js` 说明符改写成 `./x.ts`。守卫：同目录
  * update-qq-releases.import.test.ts。
  *
@@ -58,12 +58,12 @@ import type {
     QqReleaseArch,
     QqReleaseEntry,
     QqReleasesFile,
-} from "../../packages/loader/src/qq/qq-release-manifest.ts";
+} from "../../packages/loader/src/qq/manifests/qq-releases.ts";
 import {
     normalizeDownloadUrl,
     releasePlatform,
-} from "../../packages/loader/src/qq/qq-release-manifest.ts";
-import { findBundledSevenZip } from "../../packages/loader/src/qq/seven-zip-assets.ts";
+} from "../../packages/loader/src/qq/manifests/qq-releases.ts";
+import { findBundledSevenZip } from "../../packages/loader/src/qq/manifests/seven-zip.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../..");

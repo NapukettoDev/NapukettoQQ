@@ -10,7 +10,7 @@
  * 拆分原因：这两段是 actions 里唯一与「动作表注册」无关的纯逻辑，独立后
  * 动作表只剩动作定义，且 at 归一化可单独做单测（不构造整张动作表）。
  */
-import { isRecord } from "../../internal/type-guards.js";
+import { isRecord } from "../../shared/type-guards.js";
 
 /** 宽松 Peer 最小面（kernel Peer：chatType + peerUid）。 */
 export interface IpcPeer {

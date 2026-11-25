@@ -60,7 +60,7 @@ stub QQNT.dll（PATH 前置）/ libnapuketto_stub.so（LD_PRELOAD）
 
 ### 宿主内引导
 
-`self-host.cjs`（`src/host/core/self-host.ts` 打成单文件 CJS bundle）：
+`self-host.cjs`（`src/host/self-host.ts` 打成单文件 CJS bundle）：
 
 1. `NAPUKETTO_IPC=1` 时启用 JSON 行 IPC 并上报 `booting`；随后原子获取账号目录实例锁，失败即退出。
 2. 校验 `NAPUKETTO_WRAPPER_PATH`，动态 import kernel 后调用其 `dlopenWrapper` 加载并校验原生导出。

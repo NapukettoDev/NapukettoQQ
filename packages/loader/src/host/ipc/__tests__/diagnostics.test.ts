@@ -10,7 +10,7 @@
  *  - `diag.richMediaTmpPaths` 只读枚举（成功 / 抛错 / 缺失三分支，不触发 setter）。
  */
 import { describe, expect, it, vi } from "vitest";
-import { isRecord } from "../../../internal/type-guards.js";
+import { isRecord } from "../../../shared/type-guards.js";
 import {
     DIAGNOSTIC_ACTION_NAMES,
     type DiagnosticActionHandler,

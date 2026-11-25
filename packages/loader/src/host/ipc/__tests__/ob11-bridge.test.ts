@@ -8,9 +8,9 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { env } from "../../env.js";
-import type { KernelServices } from "../../service-types.js";
-import { ConfigError } from "../../util.js";
+import { env } from "../../runtime/env.js";
+import { ConfigError } from "../../runtime/errors.js";
+import type { KernelServices } from "../../runtime/service-types.js";
 import { callIpcAction, type IpcActionHandler } from "../actions.js";
 import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ob11-bridge.js";
 

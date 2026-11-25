@@ -9,7 +9,7 @@
  * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，运行时下载到
  * <数据根>/runtime/win-node/，可被 NAPUKETTO_WIN_NODE_PATH 覆盖）。
  *
- * 设计文档「平台分支」。与 qq-download.ts 同构：https 下载 + 解压 + 缓存幂等。
+ * 设计文档「平台分支」。与 download.ts 同构：https 下载 + 解压 + 缓存幂等。
  *
  * 2026-11-25 P1：launcher.ts 里的宿主 node 探测链（isNodeExecutable / findSystemNode /
  * resolveWinHostNode / resolveHostNodePath）并入本文件——「Windows 版 node 从哪来」
@@ -20,9 +20,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { copyFile, readdir, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import process from "node:process";
-import { resolveDataRoot } from "../internal/data-root.js";
-import { downloadFile } from "../qq/qq-download.js";
-import { extractInstaller } from "../qq/qq-extract.js";
+import { downloadFile } from "../qq/download.js";
+import { extractInstaller } from "../qq/extract.js";
+import { resolveDataRoot } from "../shared/data-root.js";
 import { LINE_SPLIT } from "./linux-native.js";
 
 /** 目标 Windows node.exe 可执行文件名（zip 内）。 */

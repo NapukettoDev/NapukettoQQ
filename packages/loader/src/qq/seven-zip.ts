@@ -1,12 +1,12 @@
 /**
  * seven-zip.ts：7-Zip 可执行文件定位 / 获取 / 执行（唯一实现，2026-11-25 从
- * locate-qq.ts 与 qq-extract.ts 收拢）。
+ * locate.ts 与 extract.ts 收拢）。
  *
  * 两个来源原本各写一半：定位侧（Linux 内置 7zz + 数据根缓存 + 官方下载）与执行侧
  * （探测顺序 NAPUKETTO_7Z_PATH > 内置资产 > 系统 PATH + spawn 7z 并包装失败信息）。
  * 合成一个模块后，解包链只有一条 7z 语义来源。
  *
- * ⚠️ `seven-zip-assets.ts` 不并入：那个文件被 tooling/qq-releases 的脚本用 node
+ * ⚠️ `manifests/seven-zip.ts` 不并入：那个文件被 tooling/qq-releases 的脚本用 node
  * 直接执行（类型剥离，零相对 import 红线），本文件可自由 import。
  */
 import { execFile, execFileSync } from "node:child_process";
@@ -14,16 +14,16 @@ import { existsSync, mkdirSync } from "node:fs";
 import { chmod, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { resolveDataRoot } from "../internal/data-root.js";
-import { packageRoot } from "../internal/package-root.js";
-import { getErrorCode, getErrorMessage } from "../internal/type-guards.js";
-import { downloadFile } from "./qq-download.js";
+import { resolveDataRoot } from "../shared/data-root.js";
+import { packageRoot } from "../shared/package.js";
+import { getErrorCode, getErrorMessage } from "../shared/type-guards.js";
+import { downloadFile } from "./download.js";
 import {
     assertSevenZipHash,
     findBundledSevenZip,
     linuxSevenZip,
     matchesSevenZipHash,
-} from "./seven-zip-assets.js";
+} from "./manifests/seven-zip.js";
 
 /** 7-Zip 可执行文件来源。 */
 export interface SevenZipResult {
@@ -110,7 +110,7 @@ export function findSevenZip(
 
 /**
  * 运行 7z 子命令（失败抛带 stderr 与安装指引的错误）。
- * 供 extractInstaller / extractDebInstaller 共用（解包动作留在 qq-extract.ts）。
+ * 供 extractInstaller / extractDebInstaller 共用（解包动作留在 extract.ts）。
  */
 export async function runSevenZip(
     sevenZip: string,

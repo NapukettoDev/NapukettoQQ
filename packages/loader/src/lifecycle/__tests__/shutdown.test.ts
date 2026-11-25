@@ -27,8 +27,8 @@ import {
 } from "../shutdown.js";
 
 const log = vi.hoisted(() => vi.fn());
-vi.mock("../../internal/boot-log.js", async (importOriginal) => ({
-    ...(await importOriginal<typeof import("../../internal/boot-log.js")>()),
+vi.mock("../../shared/boot-log.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../shared/boot-log.js")>()),
     log,
 }));
 

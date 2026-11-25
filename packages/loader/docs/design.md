@@ -2,7 +2,7 @@
 
 > `@napuketto/loader` 管 QQ 原生文件的定位/下载/解包、stub 校验、自建宿主拉起、实例锁与
 > IPC 通道；不管协议语义与业务 API（那在 kernel/adapter）。源码入口
-> [`../src/index.ts`](../src/index.ts)，子进程入口 [`../src/host/core/self-host.ts`](../src/host/core/self-host.ts)。
+> [`../src/index.ts`](../src/index.ts)，子进程入口 [`../src/host/self-host.ts`](../src/host/self-host.ts)。
 
 ## 核心机制
 
@@ -14,7 +14,7 @@ launchSelfHost（调用进程）
 self-host（宿主子进程）
   ├─ lifecycle/ 实例锁 → 停止哨兵 / 信号
   ├─ 动态 import kernel → dlopenWrapper → activateO3MiscService
-  └─ host/core  kernel 动态 import → 登录 → session → 协议装配 ｜ IPC
+  └─ host/     kernel 动态 import → 登录 → session → 协议装配 ｜ IPC
 ```
 
 ### 目录结构（依赖单向向下）
@@ -24,27 +24,38 @@ self-host（宿主子进程）
 ```text
 src/
   index.ts        对外唯一出口（exports / files 契约；只做具名转发，不承载逻辑）
-  internal/       最底层：type-guards（错误提取/收窄）· boot-log · data-root · package-root
+  shared/         最底层：type-guards（错误提取/收窄）· boot-log · data-root
+                  · package（包根定位 + 版本元数据）
+  contract/       跨进程契约：ipc-schema（zod 单一来源）· native-noise（原生噪音行判定）
+                  · constants（PROTOCOL_KEYS / QR_LINE_PREFIX）
   lifecycle/      进程治理：instance-lock · pid-cmdline · shutdown（停止哨兵 + 关停钩子）
-  qq/             产物链：install-probe（装在哪）→ qq-releases（版本清单）→ qq-download
-                  → seven-zip（7z 定位/执行）→ qq-extract（解包/提取）→ locate-qq（多级来源管线）
+  qq/             产物链：install-probe（装在哪）→ manifests/qq-releases（清单形状）
+                  → releases（清单读取/查询）→ download（https + sha256）
+                  → seven-zip（7z 定位/执行）→ extract（解包/提取）→ locate（多级来源管线）
+    manifests/    零 TS 源码相对 import（供 node 直跑的 tooling/qq-releases 脚本引用）
   boot/           宿主装配：env-keys（键表 + 读写原语）→ launch-env（白名单策略）
                   → linux-native / win-node（平台 node 与 stub 解析）→ launcher
-  host/           宿主进程内运行时（CJS bundle 入口 host/core/self-host.ts）
-    constants.ts / types.ts / protocol-types.ts / service-types.ts   常量与类型分层（types 纯类型，0 运行时导出）
-    module-loader.ts / module-guards.ts                             file:// 动态 import 与导出面收窄（唯一实现）
-    env.ts / load-config.ts / log-config.ts / msg-log.ts / util.ts
-    core/         self-host · bootstrap(-core/-probe) · login · session · relogin · kernel-services · protocols · optional-protocols
-    ipc/          actions · at-resolver · attach · ob11-bridge · codec · diagnostics · sender · server · types
+  host/           宿主进程内运行时（CJS bundle 入口 host/self-host.ts）
+    runtime/      子进程共享基础：env · errors · state · load-config · log-config
+                  · module-loader / module-guards · protocol-types / service-types / types（纯类型）
+    bootstrap/    引导与观测：bootstrap · core · probe · smoke · media-patch-status
+    auth/         登录与会话状态机：login · relogin · session
+    protocols/    协议与服务装配：protocols · kernel-services · msg-log · assemble-ob11 · optional
+    ipc/          IPC 进程边界：actions · at-resolver · attach · codec · diagnostics
+                  · json-safe · ob11-bridge · sender · server（不设 barrel）
 ```
 
-分层红线（由静态 import 检查守护，`docs/evidence.md` 记录口径）：
+分层红线（0 循环依赖，文件级与目录级同时成立）：
 
-- `internal/` 不依赖任何其他分组；`lifecycle/` `qq/` `boot/` 不得反向依赖 `host/`。
-- `host/ipc/` 不得依赖 `host/core/`（IPC 面只消费 host 根的公共类型）；`host/types.ts`
-  只放 kernel 契约类型，运行时常量进 `constants.ts`。
+- `shared/` 0 内部依赖；`contract/` 只允许内部互引（`native-noise.ts → ipc-schema.ts`）。
+- `lifecycle/`、`qq/` 只依赖 `shared/`；`boot/` 只依赖 `qq/`、`contract/`、`shared/`；
+  三者都不得反向依赖 `host/`。
+- `host/` 内部严格单向：`runtime ← ipc ← auth ← bootstrap ← self-host`，且
+  `runtime ← protocols ← bootstrap`；`ipc/` 不依赖 `protocols/`、`auth/`、`bootstrap/`，
+  `protocols/` 不依赖 `auth/`、`bootstrap/`、`ipc/`。
+- `runtime/types.ts` / `runtime/protocol-types.ts` / `runtime/service-types.ts` 保持纯类型
+  （0 运行时导出）；纯类型层不新增统一的 `types.ts` 桶。
 - `host/ipc/` 不设 barrel：内部引用直引具体文件，避免公共面与实现漂移。
-- 目录级循环依赖为 0（`core → ipc` 单向；`service-types.ts` 落在 host 根供两侧共享）。
 
 ### QQ 文件来源与管线
 
@@ -323,7 +334,7 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 ## 跨包契约
 
 - 编译期只依赖 zod；kernel / adapter / network 一律运行期 `import(file://…)`，接口面在
-  `../src/host/types.ts`（kernel 契约）、`protocol-types.ts`（动态模块导出面）与各模块内
+  `../src/host/runtime/types.ts`（kernel 契约）、`../src/host/runtime/protocol-types.ts`（动态模块导出面）与各模块内
   声明最小面，不新增 workspace 依赖（依赖方向红线）。
 - `NAPUKETTO_KERNEL_ENTRY` 指向 kernel 构建产物；loader 只用其语义化能力
   （`NapukettoCore` / `startNapuketto`、`resolveAppidQua`、`quickLogin`、

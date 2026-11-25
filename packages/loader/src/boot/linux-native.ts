@@ -16,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import process from "node:process";
-import { packageRoot } from "../internal/package-root.js";
+import { packageRoot } from "../shared/package.js";
 
 /** 行拆分（ldconfig -p / which 输出兼容）。 */
 export const LINE_SPLIT = /\r?\n/;
