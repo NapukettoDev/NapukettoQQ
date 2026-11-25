@@ -1,66 +1,45 @@
-# build outputs (monorepo)
-**/lib/
-**/dist/
-
-# local / temp
-external/
-
-# koishi 适配器 submodule（独立仓库，自带工具链；主仓库 biome/tsc 均跳过）
-apps/koishi-plugin-adapter/
-
-# dependencies
+# Dependencies
 node_modules/
-# 本仓只用 pnpm（lockfile = pnpm-lock.yaml）；npm 命令（view/trust/publish）可用，
-# 但若误跑 npm install，别让包管理器分歧产生的 lock 混进仓库
 package-lock.json
 yarn.lock
 
-# logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# 全局配置文件（项目根 napuketto.toml，含账号/协议配置，不入库）
-napuketto.toml
-# 例外：create 脚手架的配置模板需入库（模板为 .tmpl 后缀，不匹配上方规则）
-!apps/create/templates/*.tmpl
-
-# 数据根（项目根/.napuketto，账号目录/日志/缓存/QQ 数据，2026-08-08 起默认在项目根）
-.napuketto/
-
-# typescript build info
+# Build Outputs
 **/*.tsbuildinfo
-
-# tool caches
-.eslintcache
-
-# test coverage
+**/dist/
+**/lib/
 coverage/
 
-# OS / IDE
-.DS_Store
-.idea/
-.VSCodeCounter
-.vscode/*.local.json
-.vscode/*.code-workspace
-
-# Visual Studio
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-
-# QQ 运行产物（登录态数据库，勿提交）
-*.db
-
-# 归档区
-archive/
-
-# token
-.npmrc
-
-# 一些缓存？
+# Caches
+.eslintcache
 .fallow/
 .pnpm-store/
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime & Config
+*.db
+.napuketto/
+napuketto.toml
+!apps/create/templates/*.tmpl
+
+# Secrets
+.npmrc
+
+# Workspace & Submodules
 .repo/
+archive/
+external/
+
+# IDE & Editors
+*.njsproj
+*.ntvs*
+*.sln
+*.suo
+.idea/
+.vscode/*.code-workspace
+.vscode/*.local.json
+.VSCodeCounter

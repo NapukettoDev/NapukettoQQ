@@ -1,17 +1,48 @@
 {
-    // fallow 配置：仅豁免已确认的误报源，不放松重复/复杂度阈值。
-    "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-    // 静态分析不可达的手动脚本 / 子进程入口
-    "entry": [
-        "tooling/wine/wine-smoke.ts",
-        "tooling/wine/wine-login-smoke.ts",
-        // 由 smoke.mjs 通过 spawnSync 拉起（真 dlopen）
-        "tooling/linux-native-smoke/dlopen-check.cjs"
-    ],
+    // fallow 配置：只豁免已核实的误报；重复/复杂度取「偶发不拦、成规模才拦」口径。
+    "$schema": "./node_modules/fallow/schema.json",
+    // 锁死最低 fallow 版本，对齐单段 * glob 语义并防止旧版 CLI 漂移
+    "minimumVersion": "3.44.0",
     // 私有 Git Submodule（Native Bypass 载具），不纳入主仓分析
     "ignorePatterns": [
         "packages/loader/native/**"
     ],
+    // 门禁严苛度：复杂度仅告警不阻断，越层依赖硬拦截（对齐 AGENTS.md）
+    "rules": {
+        "complexity-cyclomatic": "warn",
+        "complexity-cognitive": "warn",
+        "complexity-crap": "warn",
+        "boundary-violation": "error"
+    },
+    // 只拦 3 处以上、达到一定体量的重复，排除测试文件的 mock/fixture 样板
+    "duplicates": {
+        "minOccurrences": 3,
+        "minLines": 8,
+        "minTokens": 50,
+        "ignore": [
+            "**/tests/**",
+            "**/__tests__/**",
+            "**/*.test.*"
+        ]
+    },
+    // 与 vitest coverage.exclude 同口径：测试 / 工具脚本 / 纯门面 / 探针无业务逻辑
+    "health": {
+        "ignore": [
+            "**/tests/**",
+            "**/__tests__/**",
+            "**/*.test.*",
+            "**/*.test-d.*",
+            "**/*.d.ts",
+            "**/index.ts",
+            "**/types.ts",
+            "**/types/**",
+            "tooling/**",
+            "packages/kernel/src/native/probe/**",
+            "packages/kernel/src/native/wrapper/wrapper-adapters.ts",
+            "apps/cli/src/cli/program.ts",
+            "apps/cli/src/cli/version.ts"
+        ]
+    },
     // 系统自带可执行文件（glibc），非 npm 包提供
     "ignoreBinaries": [
         "ldconfig"
@@ -19,42 +50,16 @@
     // 动态解析 / 运行时读取 package.json 的依赖
     "ignoreDependencies": [
         "@napuketto/network", // cli/boot.ts 通过 import.meta.resolve 动态加载
-        "@napuketto/adapter", // 同上
         "@napuketto/cli" // create-napuketto/scaffold.ts 读取自身依赖范围
     ],
-    // 根 package.json 前瞻性 override（pnpm 尚未支持 peer 覆盖，见 pnpm-workspace.yaml）
-    "ignoreDependencyOverrides": [
-        {
-            "package": "@typescript-eslint/*>typescript",
-            "source": "package.json"
-        }
-    ],
-    // tooling/update-releases 与 release-npm 的 15 行 CLI 入口样板
-    // TODO: 抽出 tooling/shared/run-cli.ts 后可移除此块
-    "duplicates": {
-        "ignoredClones": [
-            "dup:b7712e81:2"
-        ]
-    },
-    // 精确导出豁免：预留接口 & 供下游复用的公共守卫
+    // 本文件已使用的导出不再报未使用（省掉 isOB11MessageSegment / isRawMessage 手写豁免）
+    "ignoreExportsUsedInFile": true,
+    // 精确导出豁免：仅保留真正对外预留的接口（host 侧日志转发接线补齐后移除）
     "ignoreExports": [
         {
-            // TODO(P5): host 侧日志转发接线补齐后移除
             "file": "packages/loader/src/host/ipc/sender.ts",
             "exports": [
                 "sendLog"
-            ]
-        },
-        {
-            "file": "packages/adapter/src/onebot11/helper/codec/segment.ts",
-            "exports": [
-                "isOB11MessageSegment"
-            ]
-        },
-        {
-            "file": "packages/adapter/src/shared/raw-message.ts",
-            "exports": [
-                "isRawMessage"
             ]
         }
     ],
@@ -89,48 +94,246 @@
                 "*"
             ]
         }
-        // 若事件桥抽出了公共接口，可取消下方注释并删除 ignoreFindings 中的 *-bridge.ts
-        // { "implements": "EventBridge", "members": ["register", "unregister"] }
     ],
-    // 死代码检查豁免（保留复杂度/重复/CRAP 检查）
+    // 死代码豁免：仅保留跨包 / 多态静态图追不到的误报，优先用目录或后缀模式
     "ignoreFindings": [
-        // 1. 抽象骨架与注册表（多态/反射调用，静态分析追不到）
-        "packages/adapter/src/core/framework/base-action.ts",
-        "packages/adapter/src/core/framework/base-protocol-adapter.ts",
-        "packages/adapter/src/core/framework/action-registry.ts",
-        "packages/adapter/src/satori/action/base-action.ts",
-        "packages/adapter/src/milky/action/base-action.ts",
-        // 2. 协议公共 barrel 与协议规范面（跨 barrel 链 / 外部消费）
-        "packages/adapter/src/onebot11/action/index.ts",
-        "packages/adapter/src/onebot11/event/index.ts",
-        "packages/adapter/src/onebot11/helper/index.ts",
-        "packages/adapter/src/onebot11/helper/codec/index.ts",
-        "packages/adapter/src/satori/helper/index.ts",
-        "packages/adapter/src/satori/helper/element/index.ts",
-        "packages/adapter/src/satori/helper/ids.ts",
+        // 协议 barrel：跨包按子路径消费，静态图只看到 re-export 未被引用
+        "packages/adapter/src/onebot11/**/index.ts",
+        "packages/adapter/src/satori/**/index.ts",
+        // Satori 协议规范面（类型 + 废弃别名）供下游按协议文档消费
         "packages/adapter/src/satori/types/**",
-        // 3. kernel 公共门面、语义 API 与事件桥（跨包动态装配 / 跨 barrel 链）
+        "packages/adapter/src/satori/action/base-action.ts",
+        // kernel 公共门面与跨包语义 API（反射 / 动态装配调用）
         "packages/kernel/src/types/index.ts",
-        "packages/kernel/src/types/services/index.ts",
-        "packages/kernel/src/types/listeners/index.ts",
-        "packages/kernel/src/infra/index.ts",
         "packages/kernel/src/native/index.ts",
-        "packages/kernel/src/runtime/index.ts",
         "packages/kernel/src/apis/**",
         "packages/kernel/src/native/bridge/*-bridge.ts",
-        // 4. 测试文件与测试支撑（由根 vitest runner 执行，不参与死代码治理）
-        "**/tests/**",
-        "**/__tests__/**",
-        "**/*.test.*"
+        // 测试支撑由根 vitest 执行，不参与死代码治理
+        "**/tests/**"
     ],
-    // 放宽测试文件的大函数阈值，保留复杂度/认知/CRAP 检查
-    "health": {
-        "thresholdOverrides": [
+    // 架构分层边界（对齐 AGENTS.md 单向依赖约束 + adapter 四协议隔离）
+    "boundaries": {
+        "zones": [
+            // 测试文件放在最前，避免跨层单测（如 framework/__tests__/auth.test.ts）触发误报
             {
-                "files": [
-                    "**/*.test.*"
-                ],
-                "maxUnitSize": 200
+                "name": "tests",
+                "patterns": [
+                    "**/tests/**",
+                    "**/__tests__/**",
+                    "**/*.test.*",
+                    "**/*.test-d.*"
+                ]
+            },
+            // 底层三包：互不依赖
+            {
+                "name": "kernel",
+                "patterns": [
+                    "packages/kernel/src/**"
+                ]
+            },
+            {
+                "name": "media",
+                "patterns": [
+                    "packages/media/src/**"
+                ]
+            },
+            {
+                "name": "network",
+                "patterns": [
+                    "packages/network/src/**"
+                ]
+            },
+            // 启动层：编译期不依赖其他内部包（运行期动态加载）
+            {
+                "name": "loader",
+                "patterns": [
+                    "packages/loader/src/**"
+                ]
+            },
+            // 协议层内部细分：framework / internal / 四套独立协议 / 包入口
+            {
+                "name": "adapter-framework",
+                "patterns": [
+                    "packages/adapter/src/framework/**"
+                ]
+            },
+            {
+                "name": "adapter-internal",
+                "patterns": [
+                    "packages/adapter/src/internal/**"
+                ]
+            },
+            {
+                "name": "adapter-onebot11",
+                "patterns": [
+                    "packages/adapter/src/onebot11/**"
+                ]
+            },
+            {
+                "name": "adapter-satori",
+                "patterns": [
+                    "packages/adapter/src/satori/**"
+                ]
+            },
+            {
+                "name": "adapter-milky",
+                "patterns": [
+                    "packages/adapter/src/milky/**"
+                ]
+            },
+            {
+                "name": "adapter-kurobot",
+                "patterns": [
+                    "packages/adapter/src/kurobot/**"
+                ]
+            },
+            {
+                "name": "adapter-entry",
+                "patterns": [
+                    "packages/adapter/src/index.ts"
+                ]
+            },
+            // 应用层
+            {
+                "name": "cli",
+                "patterns": [
+                    "apps/cli/src/**"
+                ]
+            },
+            {
+                "name": "create",
+                "patterns": [
+                    "apps/create/src/**"
+                ]
+            }
+        ],
+        "rules": [
+            // 底层与 loader 禁止引用任何其他内部 zone
+            {
+                "from": "kernel",
+                "allow": []
+            },
+            {
+                "from": "media",
+                "allow": []
+            },
+            {
+                "from": "network",
+                "allow": []
+            },
+            {
+                "from": "loader",
+                "allow": []
+            },
+            // adapter 公共骨架与内部域不能反向依赖具体协议
+            {
+                "from": "adapter-framework",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media"
+                ]
+            },
+            {
+                "from": "adapter-internal",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media",
+                    "adapter-framework"
+                ]
+            },
+            // 四套协议彼此隔离，只能向下依赖底层三包 + framework + internal
+            {
+                "from": "adapter-onebot11",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media",
+                    "adapter-framework",
+                    "adapter-internal"
+                ]
+            },
+            {
+                "from": "adapter-satori",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media",
+                    "adapter-framework",
+                    "adapter-internal"
+                ]
+            },
+            {
+                "from": "adapter-milky",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media",
+                    "adapter-framework",
+                    "adapter-internal"
+                ]
+            },
+            {
+                "from": "adapter-kurobot",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "media",
+                    "adapter-framework",
+                    "adapter-internal"
+                ]
+            },
+            {
+                "from": "adapter-entry",
+                "allow": [
+                    "adapter-framework",
+                    "adapter-internal",
+                    "adapter-onebot11",
+                    "adapter-satori",
+                    "adapter-milky",
+                    "adapter-kurobot"
+                ]
+            },
+            // 应用层单向向下
+            {
+                "from": "cli",
+                "allow": [
+                    "kernel",
+                    "network",
+                    "loader",
+                    "adapter-entry",
+                    "adapter-framework",
+                    "adapter-onebot11",
+                    "adapter-satori",
+                    "adapter-milky",
+                    "adapter-kurobot"
+                ]
+            },
+            {
+                "from": "create",
+                "allow": [
+                    "cli"
+                ]
+            },
+            // 测试文件允许访问全部 zone
+            {
+                "from": "tests",
+                "allow": [
+                    "kernel",
+                    "media",
+                    "network",
+                    "loader",
+                    "adapter-framework",
+                    "adapter-internal",
+                    "adapter-onebot11",
+                    "adapter-satori",
+                    "adapter-milky",
+                    "adapter-kurobot",
+                    "adapter-entry",
+                    "cli",
+                    "create"
+                ]
             }
         ]
     }

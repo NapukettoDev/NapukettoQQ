@@ -45,7 +45,7 @@
         "test:watch": "vitest",
         "test:quiet": "vitest run --reporter=dot --silent=true",
         "test:coverage": "vitest run --coverage",
-        "test:health": "vitest run --coverage && pnpm dlx fallow health --coverage coverage/coverage-final.json",
+        "test:health": "vitest run --coverage && pnpm exec fallow health --coverage coverage/coverage-final.json",
         "changeset": "changeset",
         "release": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts",
         "release:dryrun": "pnpm release:version && pnpm release:build && node tooling/release/release-npm.ts --dry-run",
