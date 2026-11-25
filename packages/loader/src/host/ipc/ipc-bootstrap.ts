@@ -8,7 +8,8 @@
 
 import { getErrorMessage, isCallable } from "../../internal/type-guards.js";
 import { env, isEnvEnabled } from "../env.js";
-import type { CoreLike, KernelServices } from "../types.js";
+import type { KernelServices } from "../service-types.js";
+import type { CoreLike } from "../types.js";
 import { log } from "../util.js";
 import {
     createIpcActions,

@@ -12,33 +12,32 @@
  *  - linux：标准 Linux node + stub `.so`（`LD_PRELOAD`）直跑官方 Linux `wrapper.node`
  *  - Wine 分支已退役（不再有 Windows 版 `node.exe` / `Z:\` 路径转换 / Wine 宿主开关）
  */
-import { type StdioOptions, spawn, spawnSync } from "node:child_process";
+import { type StdioOptions, spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import { packageRoot } from "../internal/package-root.js";
 import { getErrorCode, getErrorMessage } from "../internal/type-guards.js";
 import type { QqInstallInfo } from "../qq/locate-qq.js";
+import { ENV } from "./env-keys.js";
 import {
     applyPathEnv,
     buildLaunchEnv,
-    ENV,
     type LaunchLogOptions,
     windowsSandboxProfile,
 } from "./launch-env.js";
 import {
     defaultLinuxStubPath,
-    LINE_SPLIT,
     linuxHomeEnv,
     linuxPreload,
     resolveGnutls,
     resolveLinuxHome,
     resolveLinuxNode,
 } from "./linux-native.js";
-import { ensureWinNode } from "./win-node.js";
+import { resolveHostNodePath } from "./win-node.js";
 
+export { ENV } from "./env-keys.js";
 export type { LaunchLogOptions } from "./launch-env.js";
-export { ENV } from "./launch-env.js";
 
 export interface LaunchOptions {
     /** QQ 安装信息（qqPath/version/wrapperPath）。 */
@@ -256,112 +255,6 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
         process.stderr.write(`[napuketto-loader] Linux 原生宿主启动失败: ${err.message}\n`);
     });
     return child;
-}
-
-/**
- * 解析宿主 node 可执行（win32）：标准 node 宿主直接用自身（返回 undefined，调用方
- * 回退 process.execPath）；非 node 宿主（koishi CE 等 Bun 运行时，execPath=bun.exe）
- * 必须解析真 node——wrapper.node 的符号由 stub QQNT.dll 绑定到 node.exe，bun.exe
- * 进程内无此模块，LoadLibrary 报 1114「DLL 初始化例程失败」（2026-09-05 实测）。
- */
-async function resolveHostNodePath(options: LaunchOptions): Promise<string | undefined> {
-    if (isNodeExecutable(process.execPath)) {
-        return undefined;
-    }
-    return resolveWinHostNode({
-        ...(options.winNodePath !== undefined ? { explicitPath: options.winNodePath } : {}),
-        ...(options.cwd !== undefined ? { dataRoot: options.cwd } : {}),
-        ...(options.onStage !== undefined ? { onStage: options.onStage } : {}),
-    });
-}
-
-/** 可执行文件名是否 node（win32 宿主判定；node.exe / node 两种形态）。 */
-export function isNodeExecutable(execPath: string): boolean {
-    // 反斜杠 Windows 路径先归一化：posix basename 不认 `\` 分隔符，整个字符串
-    // 当文件名比对恒 false（CI ubuntu 门禁实测挂过）
-    const name = basename(execPath.replaceAll("\\", "/")).toLowerCase();
-    return name === "node.exe" || name === "node";
-}
-
-/** 系统 node 探测结果（win32，PATH 解析 + 可执行校验）。 */
-export interface SystemNodeInfo {
-    exePath: string;
-    version: string;
-}
-
-/** 探测系统 PATH 上的 node（win32；where node 首条 + --version 校验可执行）。 */
-export function findSystemNode(): SystemNodeInfo | undefined {
-    const probe = spawnSync("where", ["node"], {
-        stdio: "pipe",
-        encoding: "utf8",
-        windowsHide: true,
-    });
-    if (probe.status !== 0 || !probe.stdout) {
-        return undefined;
-    }
-    const first = probe.stdout
-        .split(LINE_SPLIT)
-        .map((line) => line.trim())
-        .find((line) => line !== "");
-    if (first === undefined || !existsSync(first)) {
-        return undefined;
-    }
-    const ver = spawnSync(first, ["--version"], {
-        stdio: "pipe",
-        encoding: "utf8",
-        windowsHide: true,
-    });
-    const version = ver.status === 0 ? ver.stdout.trim() : "";
-    if (!version.startsWith("v")) {
-        return undefined;
-    }
-    return { exePath: resolve(first), version };
-}
-
-/** resolveWinHostNode 测试注入面（探测/下载替换为假实现）。 */
-export interface WinHostNodeResolvers {
-    findSystemNode?: () => SystemNodeInfo | undefined;
-    ensureWinNode?: typeof ensureWinNode;
-}
-
-/**
- * win32 非 node 宿主时解析真 node.exe：显式覆盖（winNodePath 参数 /
- * NAPUKETTO_WIN_NODE_PATH）> 系统 PATH node（离线可用，免下载）> ensureWinNode
- * 下载（缓存幂等）。显式路径不存在时静默跳过（与 ensureWinNode 行为一致）。
- */
-export async function resolveWinHostNode(
-    options: {
-        explicitPath?: string;
-        dataRoot?: string;
-        onStage?: (message: string) => void;
-    },
-    resolvers: WinHostNodeResolvers = {},
-): Promise<string | undefined> {
-    const findSystem = resolvers.findSystemNode ?? findSystemNode;
-    const ensure = resolvers.ensureWinNode ?? ensureWinNode;
-
-    const explicit = options.explicitPath ?? process.env["NAPUKETTO_WIN_NODE_PATH"];
-    if (explicit !== undefined && explicit !== "" && existsSync(explicit)) {
-        const exePath = resolve(explicit);
-        options.onStage?.(`使用显式指定 node：${exePath}`);
-        return exePath;
-    }
-
-    options.onStage?.(
-        `当前宿主非 node（${basename(process.execPath)}），解析 Windows 版 node.exe…`,
-    );
-
-    const sys = findSystem();
-    if (sys !== undefined) {
-        options.onStage?.(`系统 node ${sys.version}：${sys.exePath}`);
-        return sys.exePath;
-    }
-
-    const winNode = await ensure({
-        ...(options.dataRoot !== undefined ? { dataRoot: options.dataRoot } : {}),
-    });
-    options.onStage?.(`Windows 版 node.exe 就绪：${winNode.exePath}（${winNode.version}）`);
-    return winNode.exePath;
 }
 
 /**

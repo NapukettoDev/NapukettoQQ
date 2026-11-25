@@ -4,6 +4,9 @@
  * 登录成功后创建：消息/群事件通道 + 桥 + 缓存 + kernel 各 Api + 自身信息。
  * IPC 模式（koishi 插件）经此拿服务装配 ipc-server；非 IPC（cli）经此拿服务
  * 装配 OB11/Satori 适配器。
+ *
+ * 服务集合类型 `KernelServices` 定义在 `host/service-types.ts`（装配产物契约，
+ * IPC 层也要引用；放在本文件会让 ipc/ → core/ 形成目录级循环）。
  */
 
 import { tmpdir } from "node:os";
@@ -13,18 +16,18 @@ import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.j
 import { env, isEnvEnabled } from "../env.js";
 import { defaultLogConfig, resolveLogFilePath } from "../log-config.js";
 import { type ReceiveLogFilter, setupMsgLogging } from "../msg-log.js";
+import type { KernelServices } from "../service-types.js";
 import type {
     CoreContextLike,
     EventChannelLike,
     KernelLike,
-    KernelServices,
     LogConfigLike,
     LoggerLike,
     LoginResultLike,
 } from "../types.js";
 import { log } from "../util.js";
 
-export type { KernelServices } from "../types.js";
+export type { KernelServices } from "../service-types.js";
 
 /** 静默 logger（kernel.createLogger 不可用时的兜底）。 */
 const NOOP_LOGGER: LoggerLike = {

@@ -24,18 +24,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { packageRoot } from "../../internal/package-root.js";
-import type { QqInstallInfo } from "../locate-qq.js";
 import {
-    ensureLinuxSevenZip,
-    ensureQqFiles,
     LINUX_QQ_INSTALL_DIR,
     locateQqPath,
-    QQ_FILES_DIR_NAME,
     resolveLinuxQqInstall,
-    resolveQqFiles,
     tryResolveLinuxLocalQq,
-} from "../locate-qq.js";
+} from "../install-probe.js";
+import type { QqInstallInfo } from "../locate-qq.js";
+import { ensureQqFiles, QQ_FILES_DIR_NAME, resolveQqFiles } from "../locate-qq.js";
 import { latestRelease, loadQqReleases } from "../qq-releases.js";
+import { ensureLinuxSevenZip } from "../seven-zip.js";
 
 /** mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {

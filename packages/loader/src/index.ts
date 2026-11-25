@@ -15,22 +15,17 @@
  * 本包不再编译 C++ 组件，业务层 100% 走 NAPI。
  */
 
-export type {
-    LaunchOptions,
-    LaunchResult,
-    SystemNodeInfo,
-    WinHostNodeResolvers,
-} from "./boot/launcher.js";
+export type { LaunchOptions, LaunchResult } from "./boot/launcher.js";
+export { defaultStubDir, ENV, launchSelfHost } from "./boot/launcher.js";
+export type { SystemNodeInfo, WinHostNodeResolvers, WinNodeInfo } from "./boot/win-node.js";
 export {
-    defaultStubDir,
-    ENV,
+    ensureWinNode,
     findSystemNode,
     isNodeExecutable,
-    launchSelfHost,
+    nodeZipUrl,
     resolveWinHostNode,
-} from "./boot/launcher.js";
-export type { WinNodeInfo } from "./boot/win-node.js";
-export { ensureWinNode, nodeZipUrl, WIN_NODE_DIR_NAME } from "./boot/win-node.js";
+    WIN_NODE_DIR_NAME,
+} from "./boot/win-node.js";
 export { QR_LINE_PREFIX } from "./host/constants.js";
 export type {
     IpcActionMessage,
@@ -130,26 +125,18 @@ export {
     writeAccountStopSentinel,
     writeStopSentinel,
 } from "./lifecycle/shutdown.js";
+export { locateQqPath, resolveQqInstall } from "./qq/install-probe.js";
 export type { QqFileSource, QqInstallInfo, ResolveQqFilesOptions } from "./qq/locate-qq.js";
-export {
-    ensureLinuxSevenZip,
-    ensureQqFiles,
-    linuxSevenZipUrl,
-    locateQqPath,
-    QQ_FILES_DIR_NAME,
-    resolveQqFiles,
-    resolveQqInstall,
-} from "./qq/locate-qq.js";
+export { ensureQqFiles, QQ_FILES_DIR_NAME, resolveQqFiles } from "./qq/locate-qq.js";
 export type { DownloadOptions, DownloadResult } from "./qq/qq-download.js";
 export { DownloadError, downloadFile } from "./qq/qq-download.js";
-export type { ExtractOptions, SevenZipResult } from "./qq/qq-extract.js";
+export type { ExtractOptions } from "./qq/qq-extract.js";
 export {
     clearCacheVersion,
     extractDebInstaller,
     extractInstaller,
     extractLinuxWrapperFiles,
     extractWrapperFiles,
-    findSevenZip,
     isLinuxRuntimeFile,
 } from "./qq/qq-extract.js";
 export type {
@@ -168,3 +155,5 @@ export {
     releasePlatform,
     resolveDownloadUrl,
 } from "./qq/qq-releases.js";
+export type { SevenZipResult } from "./qq/seven-zip.js";
+export { ensureLinuxSevenZip, findSevenZip, linuxSevenZipUrl } from "./qq/seven-zip.js";

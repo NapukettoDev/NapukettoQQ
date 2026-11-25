@@ -17,16 +17,15 @@
  *
  * 提取目标（与安装目录同构，resolveFromRoot 可直接消费）：
  *   <数据根>/qq-files/<版本>/versions/<版本>/resources/app/   ← *.node + *.dll
+ *
+ * 2026-11-25 P1 拆分：7-Zip 探测与执行（findSevenZip / runSevenZip）下沉
+ * `seven-zip.ts`，本文件只留解包编排与文件提取（解包错误文案仍由 runSevenZip 统一）。
  */
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import process from "node:process";
-import { packageRoot } from "../internal/package-root.js";
-import { getErrorCode } from "../internal/type-guards.js";
 import type { QqInstallInfo } from "./qq-types.js";
-import { findBundledSevenZip } from "./seven-zip-assets.js";
+import { findSevenZip, runSevenZip } from "./seven-zip.js";
 
 /** resources/app 下需要提取的文件扩展名（.node 原生模块 + .dll 依赖）。 */
 const EXTRACT_EXTENSIONS = new Set([".node", ".dll"]);
@@ -55,14 +54,6 @@ const LINUX_APP_CANDIDATES = [
     ["resources", "app"],
 ] as const;
 
-/** 7-Zip 可执行文件来源。 */
-export interface SevenZipResult {
-    /** 7z 可执行文件绝对路径。 */
-    exe: string;
-    /** 来源说明（内置资产 / 系统 / 环境变量）。 */
-    source: string;
-}
-
 /** 提取选项。 */
 export interface ExtractOptions {
     /** 安装包绝对路径。 */
@@ -75,75 +66,6 @@ export interface ExtractOptions {
     sevenZipPath?: string;
 }
 
-/**
- * 内置 7z 资产是否适用于当前平台/架构。
- *
- * 内置 `assets/7zip/7zz` 是 **x86-64 ELF**（`e_machine=0x3e`），`7z.exe` 是 x64 PE。
- * 在 Linux arm64 上 exec 会直接 `cannot execute`（2026-11-10 在 arm64 容器实测）——
- * 因此 Linux 非 x64 一律回退到系统 7-Zip（`7zz` / `7z`），不碰内置资产。
- */
-export function bundledSevenZipSupported(
-    platform: NodeJS.Platform = process.platform,
-    arch: string = process.arch,
-): boolean {
-    return platform !== "linux" || arch === "x64";
-}
-
-/** 在 PATH 里找系统 7-Zip（`7zz` 优先、其次 `7z`）；找不到返回 null。 */
-export function findSystemSevenZip(
-    pathValue: string = process.env["PATH"] ?? "",
-    platform: NodeJS.Platform = process.platform,
-): string | null {
-    const delimiter = platform === "win32" ? ";" : ":";
-    const names = platform === "win32" ? ["7z.exe"] : ["7zz", "7z"];
-    for (const dir of pathValue.split(delimiter)) {
-        if (dir === "") {
-            continue;
-        }
-        for (const name of names) {
-            const candidate = join(dir, name);
-            if (existsSync(candidate)) {
-                return candidate;
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * 探测 7z 可执行文件：
- *   NAPUKETTO_7Z_PATH 环境变量 > 内置资产（Windows assets/7zip/7z.exe、Linux
- *   assets/7zip/7zz——2026-08-14 治本，静态二进制已打进发布包；**仅 x64 Linux 可用**）
- *   > 系统 PATH 7z。
- *
- * `platform` / `arch` 参数仅测试注入（缺省取 process）。
- */
-export function findSevenZip(
-    platform: NodeJS.Platform = process.platform,
-    arch: string = process.arch,
-): SevenZipResult {
-    const envPath = process.env["NAPUKETTO_7Z_PATH"];
-    if (envPath !== undefined && envPath !== "" && existsSync(envPath)) {
-        return { exe: envPath, source: "环境变量 NAPUKETTO_7Z_PATH" };
-    }
-    // 内置资产：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
-    if (
-        (platform === "win32" || platform === "linux") &&
-        bundledSevenZipSupported(platform, arch)
-    ) {
-        const bundled = findBundledSevenZip(join(packageRoot(), "assets", "7zip"), platform);
-        if (bundled !== null) {
-            return { exe: bundled, source: "内置资产 assets/7zip" };
-        }
-    }
-    // 系统 PATH（Windows 装了 7-Zip 有 7z.exe；Linux p7zip-full / 7zip 提供 7z）
-    const system = findSystemSevenZip(process.env["PATH"] ?? "", platform);
-    if (system !== null) {
-        return { exe: system, source: "系统 PATH" };
-    }
-    return { exe: "7z", source: "系统 PATH" };
-}
-
 /** 解包安装包到指定目录（spawn 7z x，失败抛错）。 */
 export async function extractInstaller(
     installerPath: string,
@@ -154,41 +76,6 @@ export async function extractInstaller(
     await mkdir(destDir, { recursive: true });
     await runSevenZip(sevenZip, ["x", installerPath, `-o${destDir}`, "-y"], {
         hint: "（QQ 安装包是 NSIS 格式，需完整版 7z 而非 7za）",
-    });
-}
-
-/** 7z 执行失败时的附加提示。 */
-interface SevenZipFailureHint {
-    /** 未找到可执行文件时的额外说明（安装指引）。 */
-    hint?: string;
-}
-
-/** 运行 7z 子命令（失败抛带 stderr 与安装指引的错误）。 */
-async function runSevenZip(
-    sevenZip: string,
-    args: readonly string[],
-    options: SevenZipFailureHint = {},
-): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-        execFile(sevenZip, args, { maxBuffer: 64 * 1024 * 1024 }, (err, _stdout, stderr) => {
-            if (err === null) {
-                resolve();
-                return;
-            }
-            const code = getErrorCode(err);
-            const installHint =
-                code === "ENOENT"
-                    ? `未找到 7z 可执行文件: ${sevenZip}\n` +
-                      "（Windows 请安装 7-Zip 或用 NAPUKETTO_7Z_PATH 指定；" +
-                      "Linux 自动下载失败时请安装 p7zip-full 或用 NAPUKETTO_7Z_PATH 指定）"
-                    : "";
-            reject(
-                new Error(
-                    `7z 解包失败: ${args.join(" ")}\n${stderr.trim()}\n` +
-                        `${installHint}${options.hint ?? ""}`,
-                ),
-            );
-        });
     });
 }
 

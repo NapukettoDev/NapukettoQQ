@@ -17,11 +17,15 @@
  * 的真实状态收敛）。
  */
 
+import process from "node:process";
 import { getErrorMessage } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
+import { QR_LINE_PREFIX } from "../constants.js";
+import { env, isEnvEnabled } from "../env.js";
 import { sendLogin, sendQr, sendStatus } from "../ipc/index.js";
 import type { CoreLike, LoginResultLike } from "../types.js";
 import { log } from "../util.js";
+import type { LoginTargetRef } from "./login.js";
 
 /**
  * control login 抢占引用（2026-09-08）：初始登录竞速期间，control login
@@ -131,6 +135,46 @@ export function forwardIpcLoginProgress(progress: LoginProgressLike): void {
     if (isLoginState(progress.state) && progress.state !== "logged_in") {
         sendLogin(progress.state, progress.selfInfo, progress.message);
     }
+}
+
+/**
+ * 登录参数（NAPUKETTO_QUICK_UIN 强制指定 / ref 目标 / qrOnly 强制扫码 / 默认）。
+ *
+ * 2026-11-25 从 bootstrap-core.ts 迁入：登录进度回调（QR 透出）与 control login
+ * 共用同一套 `LoginProgressLike` + `forwardIpcLoginProgress` 语义，放在这里后
+ * 引导主流程只剩编排。
+ */
+export function buildLoginOpts(
+    Appid: string | number,
+    forcedUin: string | undefined,
+    ref: LoginTargetRef,
+    qrOnly: boolean,
+    isCurrent: () => boolean,
+): Record<string, unknown> {
+    const quickUin = qrOnly ? undefined : (forcedUin ?? ref.targetUin);
+    const opts: Record<string, unknown> = {
+        appid: Appid,
+        initTimeoutMs: 20000,
+        ...(quickUin !== undefined ? { quickUin } : {}),
+        ...(qrOnly ? { qrOnly: true } : {}),
+    };
+    const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
+    // 登录进度回调：QR 阶段透出二维码数据（cli 终端渲染 / koishi IPC 转发共用）。
+    //  - IPC 模式：走 JSON 行协议 sendQr/sendLogin（koishi 插件驱动，不变）
+    //  - cli 自建宿主模式：QR 数据以 NAPUTO_QR 标记行输出 stdout，由 cli
+    //    forwardFiltered 解析后用 uqr 编码渲染终端二维码（qr.ts；png 落盘由 kernel 完成）
+    opts["onLoginProgress"] = (progress: LoginProgressLike) => {
+        if (!isCurrent()) {
+            return;
+        }
+        if (ipcMode) {
+            forwardIpcLoginProgress(progress);
+        } else if (progress.qr !== undefined) {
+            const { pngBase64, qrcodeUrl } = progress.qr;
+            process.stdout.write(`${QR_LINE_PREFIX}${JSON.stringify({ pngBase64, qrcodeUrl })}\n`);
+        }
+    };
+    return opts;
 }
 
 /** ready 态软重登：重装配 → 成功重播 ready/logged_in，失败交失败处理。 */

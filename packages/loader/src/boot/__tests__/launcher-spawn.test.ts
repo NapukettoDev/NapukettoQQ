@@ -5,13 +5,8 @@ import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { packageRoot } from "../../internal/package-root.js";
 import type { QqInstallInfo } from "../../qq/locate-qq.js";
-import {
-    defaultStubDir,
-    ENV,
-    isNodeExecutable,
-    type LaunchOptions,
-    launchSelfHost,
-} from "../launcher.js";
+import { defaultStubDir, ENV, type LaunchOptions, launchSelfHost } from "../launcher.js";
+import { isNodeExecutable } from "../win-node.js";
 
 /** 默认 self-host 入口（与 launcher 的 packageRoot 推导一致；存在才跑该用例）。 */
 const DEFAULT_SELF_HOST_ENTRY = join(packageRoot(), "dist", "host", "self-host.cjs");
@@ -64,7 +59,11 @@ vi.mock("node:child_process", () => ({
     }),
 }));
 
-vi.mock("../win-node.js", () => ({
+// 2026-11-25：宿主 node 解析链整体并入 win-node.ts，launcher 经 resolveHostNodePath 使用；
+// 这里保留 ensureWinNode 替身（防用例意外触网），其余导出透传真实实现
+// （findSystemNode 走 node:child_process 替身 → where 探测结果由 h.syncResults 控制）。
+vi.mock("../win-node.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../win-node.js")>()),
     ensureWinNode: vi.fn(async () => {
         h.ensureWinNodeCalls += 1;
         if (h.winNode instanceof Error) {
@@ -326,7 +325,7 @@ describe("findSystemNode / isNodeExecutable（补充分支）", () => {
     });
 
     it("where 失败 / 输出空 / 路径不存在 → undefined", async () => {
-        const { findSystemNode } = await import("../launcher.js");
+        const { findSystemNode } = await import("../win-node.js");
         h.syncResults.set("where", { status: 1 });
         expect(findSystemNode()).toBeUndefined();
         h.syncResults.set("where", { status: 0, stdout: "" });
@@ -336,7 +335,7 @@ describe("findSystemNode / isNodeExecutable（补充分支）", () => {
     });
 
     it("node --version 非 v 前缀 / 探测失败 → undefined", async () => {
-        const { findSystemNode } = await import("../launcher.js");
+        const { findSystemNode } = await import("../win-node.js");
         const sysNode = join(tmpRoot, "fake-node.exe");
         writeFileSync(sysNode, "");
         h.syncResults.set("where", { status: 0, stdout: `${sysNode}\n` });
@@ -347,7 +346,7 @@ describe("findSystemNode / isNodeExecutable（补充分支）", () => {
     });
 
     it("正常探测：首条 + --version → resolve 绝对路径", async () => {
-        const { findSystemNode } = await import("../launcher.js");
+        const { findSystemNode } = await import("../win-node.js");
         const sysNode = join(tmpRoot, "node.exe");
         writeFileSync(sysNode, "");
         h.syncResults.set("where", {

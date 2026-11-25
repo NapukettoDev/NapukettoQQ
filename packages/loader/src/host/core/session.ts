@@ -1,14 +1,23 @@
 /**
- * session.ts：session 选择与就绪探测（2026-08-07 阶段 1 从 boot-bootstrap.js 拆分，
+ * session.ts：session 选择、激活与就绪探测（2026-08-07 阶段 1 从 boot-bootstrap.js 拆分，
  * 阶段 2 TS 化，零语义改动）。
  *
  * 职责：候选 session 收集（QQ 主 session → vehicle 激活 session → get() → qqSession）、
- * 最佳 session 选择（READY 优先）、session 有效性判断、就绪探测（5s 间隔定时器）。
- * 由 bootstrap.ts import（纯函数，无状态）。
+ * 最佳 session 选择（READY 优先）、session 有效性判断、就绪探测（5s 间隔定时器），
+ * 以及登录后的「替换 → 激活（先 init 后 start）→ 等就绪」编排（2026-11-25 从
+ * bootstrap-core.ts 拆入，行为零变更）。
  */
 
+import { join } from "node:path";
 import { getErrorMessage, hasCallableProp } from "../../internal/type-guards.js";
-import type { CoreContextLike, KernelLike } from "../types.js";
+import { env, isEnvEnabled } from "../env.js";
+import type {
+    BootstrapEnv,
+    CoreContextLike,
+    CoreLike,
+    KernelLike,
+    LoginResultLike,
+} from "../types.js";
 import { log, type SharedState } from "../util.js";
 
 /** 候选 session 项。 */
@@ -173,4 +182,129 @@ export function pickBestSession(candidates: SessionCandidate[]): SessionCandidat
         if (ready) return c; // READY 直接用
     }
     return bestValid;
+}
+
+/**
+ * 探测：create() 与捕获的 QQ session 关系（确认 create() 是否干扰 QQ）。
+ * 纯观测（NAPUKETTO 引导日志），不改任何状态。
+ */
+export function probeCreatedSession(state: SharedState, ctx: CoreContextLike): void {
+    try {
+        const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"];
+        const created = hasCallableProp(S2, "create") ? S2.create() : null;
+        log(
+            `BOOT: create()===qqSession? ${created === state.qqSession} | create()===ctx.session? ${created === ctx.session} | qqSession===ctx.session? ${state.qqSession === ctx.session}`,
+        );
+        const svc = hasCallableProp(created, "getMsgService") ? created.getMsgService() : null;
+        const qs = state.qqSession;
+        const qsReady =
+            hasCallableProp(qs, "getMsgService") &&
+            qs.getMsgService() !== null &&
+            qs.getMsgService() !== undefined;
+        log(
+            `BOOT: create().getMsgService=${svc !== null && svc !== undefined ? "ready" : "null"} qqSession.getMsgService=${qsReady ? "ready" : "null"}`,
+        );
+    } catch (e) {
+        log(`BOOT: create() 探测失败: ${getErrorMessage(e)}`);
+    }
+}
+
+/** V2 登录后替换 session：优先 QQ 主 session，其次 vehicle 单例表；自建宿主例外。 */
+export function replaceSession(
+    kernel: KernelLike,
+    core: CoreLike,
+    state: SharedState,
+    ctx: CoreContextLike,
+): SessionCandidate | null {
+    // 自建宿主（NAPUKETTO_SELF_HOST）例外：无 QQ 主进程/vehicle/qqSession 捕获，
+    // 且 getMainSession 内部会先 startupSession.start()——与「先 init 后 start」
+    // 顺序冲突（HANDOVER-V9 实证）；登录前 createSession 创建的配套 session
+    // （ctx.session + ctx.startupSession）才是正确激活目标。
+    const isSelfHost = isEnvEnabled(env.NAPUKETTO_SELF_HOST);
+    if (isSelfHost) {
+        return null;
+    }
+    const candidates = collectCandidateSessions(state, kernel, ctx);
+    const chosen = pickBestSession(candidates);
+    if (chosen && chosen.s !== ctx.session) {
+        core.setSession(chosen.s);
+        log(
+            `bootstrap: 已替换 session（来源=${chosen.tag}，msgSvc=${isSessionUsable(chosen.s) ? "READY" : "null"}）`,
+        );
+    } else if (chosen) {
+        log(`bootstrap: 候选 session 与 ctx.session 相同（${chosen.tag}）`);
+    } else {
+        log("bootstrap: 无有效候选 session（保留 kernel 自建 session）");
+    }
+    return chosen;
+}
+
+/**
+ * 激活目标 session（先 init 后 startupSession.start，HANDOVER-V6 三要素）。
+ * 自建宿主无候选时对 kernel 自建 session 走 NapCat 激活。
+ */
+export async function activateSession(
+    kernel: KernelLike,
+    state: SharedState,
+    ctx: CoreContextLike,
+    chosen: SessionCandidate | null,
+    loginResult: LoginResultLike,
+    Appid: string | number,
+    bootEnv: BootstrapEnv,
+): Promise<void> {
+    const activateTarget: SessionCandidate = chosen ?? {
+        s: ctx.session,
+        tag: "kernel 自建 session",
+    };
+    if (!activateTarget.s || isSessionUsable(activateTarget.s)) {
+        return;
+    }
+    log(`bootstrap: 激活 session（${activateTarget.tag}，先 init 后 startupSession.start）...`);
+    try {
+        // session 数据目录指向 QQ 真实数据目录（数据根/nt_qq/global，HANDOVER-V6 三要素之三）：
+        // cfgDir 下 init 的 onOpentelemetryInit 不触发（p0-kernel-flow 实证——accountPath 必须是 nt_qq/global）。
+        const qqDataRoot =
+            typeof kernel.resolveQqUserDataRoot === "function"
+                ? kernel.resolveQqUserDataRoot(
+                      state.wrapperExports,
+                      bootEnv.dataRoot !== "" ? { dataRoot: bootEnv.dataRoot } : {},
+                  )
+                : null;
+        const accountPath =
+            qqDataRoot && typeof kernel.resolveQqGlobalPath === "function"
+                ? kernel.resolveQqGlobalPath(qqDataRoot)
+                : bootEnv.dataDir || ".";
+        // 设备指纹 guid：loginService.getMachineGuid()（kernel 原生反射，反风控）。
+        const machineGuid =
+            typeof kernel.readMachineGuid === "function"
+                ? kernel.readMachineGuid(ctx.loginService)
+                : "";
+        const sessionConfig = kernel.buildSessionConfig({
+            appid: Appid,
+            fullVersion: bootEnv.qqVersion || "",
+            selfUin: loginResult.uin,
+            selfUid: loginResult.uid,
+            accountPath,
+            downloadPath: join(accountPath, "NapCat", "temp"),
+            machineGuid,
+        });
+        const listener = kernel.createLifecycleSessionListener();
+        // initAndStartSession 已修正：先 session.init 再 startupSession.start()
+        await kernel.initAndStartSession(ctx, sessionConfig, listener, {
+            timeoutMs: 20000,
+        });
+        log("bootstrap: 激活 session init + start 完成");
+    } catch (initErr) {
+        log(`bootstrap: 激活 session init 失败: ${getErrorMessage(initErr)}`);
+    }
+}
+
+/** 等 session 就绪（getMsgService 非 null）——init 完成后才有。 */
+export async function waitSessionReady(kernel: KernelLike, ctx: CoreContextLike): Promise<void> {
+    try {
+        await kernel.waitSessionReady(ctx, { timeoutMs: 30000 });
+        log("bootstrap: QQ session 就绪（getMsgService 可用）");
+    } catch (readyErr) {
+        log(`bootstrap: 等待 session 就绪失败: ${getErrorMessage(readyErr)}`);
+    }
 }

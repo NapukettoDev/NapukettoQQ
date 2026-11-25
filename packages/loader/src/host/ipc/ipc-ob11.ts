@@ -15,18 +15,12 @@
 import { join } from "node:path";
 import { getErrorMessage, isRecord } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
-import { BACKSLASH_RE, INDEX_MJS_RE } from "../constants.js";
 import { env } from "../env.js";
 import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
-import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "../module-guards.js";
-import type {
-    AdapterCoreModuleLike,
-    CoreContextLike,
-    KernelLike,
-    KernelServices,
-    NetworkModuleLike,
-    Ob11ModuleLike,
-} from "../types.js";
+import { importFileUrl, loadOb11BridgeModules } from "../module-loader.js";
+import type { Ob11ModuleLike } from "../protocol-types.js";
+import type { KernelServices } from "../service-types.js";
+import type { CoreContextLike, KernelLike } from "../types.js";
 import { ConfigError, log } from "../util.js";
 import type { IpcActionHandler } from "./ipc-actions.js";
 import { sendEvent } from "./ipc-sender.js";
@@ -59,42 +53,6 @@ export interface Ob11BridgeDeps {
     importModule?: (url: string) => Promise<unknown>;
     emitEvent?: (service: string, name: string, args: unknown[]) => void;
     env?: Ob11BridgeEnv;
-}
-
-/** 动态 import（file:// URL；全动态表达式，打包器不静态解析）。 */
-async function importFileUrl(url: string): Promise<unknown> {
-    return import(url);
-}
-
-/** OB11 桥依赖的已校验模块面。 */
-interface Ob11BridgeModules {
-    network: NetworkModuleLike;
-    adapter: Ob11ModuleLike;
-    adapterCore: AdapterCoreModuleLike;
-}
-
-/** 动态 import 并校验 network / onebot11 / core 三个模块（失败抛出）。 */
-async function loadOb11BridgeModules(
-    importModule: (url: string) => Promise<unknown>,
-    e: Ob11BridgeEnv & { adapterEntry: string; networkEntry: string },
-): Promise<Ob11BridgeModules> {
-    const toUrl = (p: string): string => `file://${p.replace(BACKSLASH_RE, "/")}`;
-    const rawNetwork: unknown = await importModule(toUrl(e.networkEntry));
-    if (!isNetworkModule(rawNetwork)) {
-        throw new Error(`Invalid @napuketto/network module exports at ${e.networkEntry}`);
-    }
-    // adapter 子路径导出（ADR-014）：onebot11 面 / core 框架各走各的入口
-    const onebot11Entry = e.adapterEntry.replace(INDEX_MJS_RE, "onebot11/index.mjs");
-    const coreEntry = e.adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs");
-    const rawAdapter: unknown = await importModule(toUrl(onebot11Entry));
-    if (!isOb11Module(rawAdapter)) {
-        throw new Error(`Invalid @napuketto/adapter/onebot11 exports at ${onebot11Entry}`);
-    }
-    const rawAdapterCore: unknown = await importModule(toUrl(coreEntry));
-    if (!isAdapterCoreModule(rawAdapterCore)) {
-        throw new Error(`Invalid @napuketto/adapter/core exports at ${coreEntry}`);
-    }
-    return { network: rawNetwork, adapter: rawAdapter, adapterCore: rawAdapterCore };
 }
 
 /** 确认动态载入的 adapter 认识该字段，再从主配置注入账号策略。 */

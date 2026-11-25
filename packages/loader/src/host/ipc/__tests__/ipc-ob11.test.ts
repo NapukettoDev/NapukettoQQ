@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { env } from "../../env.js";
-import type { KernelServices } from "../../types.js";
+import type { KernelServices } from "../../service-types.js";
 import { ConfigError } from "../../util.js";
 import { callIpcAction, type IpcActionHandler } from "../ipc-actions.js";
 import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ipc-ob11.js";

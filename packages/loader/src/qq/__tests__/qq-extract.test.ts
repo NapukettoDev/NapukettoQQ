@@ -12,16 +12,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { packageRoot } from "../../internal/package-root.js";
 import {
-    bundledSevenZipSupported,
     clearCacheVersion,
     extractDebInstaller,
     extractInstaller,
     extractLinuxWrapperFiles,
     extractWrapperFiles,
-    findSevenZip,
-    findSystemSevenZip,
     isLinuxRuntimeFile,
 } from "../qq-extract.js";
+import { bundledSevenZipSupported, findSevenZip, findSystemSevenZip } from "../seven-zip.js";
 
 /** execFile mock 记录（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {

@@ -21,7 +21,8 @@ vi.mock("node:child_process", async (importOriginal) => {
     return { ...actual, spawn: spawnMock };
 });
 
-import { applyPathEnv, buildLaunchEnv, ENV, type LaunchEnvInput } from "../launch-env.js";
+import { ENV } from "../env-keys.js";
+import { applyPathEnv, buildLaunchEnv, type LaunchEnvInput } from "../launch-env.js";
 import { type LaunchOptions, launchSelfHost } from "../launcher.js";
 
 let tmp = "";

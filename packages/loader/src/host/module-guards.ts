@@ -10,13 +10,13 @@
 import { hasCallableProp, hasMethodSurface, isRecord } from "../internal/type-guards.js";
 import type {
     AdapterCoreModuleLike,
-    KernelLike,
     KurobotModuleLike,
     MilkyModuleLike,
     NetworkModuleLike,
     Ob11ModuleLike,
     SatoriModuleLike,
-} from "./types.js";
+} from "./protocol-types.js";
+import type { KernelLike } from "./types.js";
 
 /** kernel 模块：至少提供一条装配入口（startNapuketto / NapukettoCore.create）。 */
 export function isKernelModule(val: unknown): val is KernelLike {

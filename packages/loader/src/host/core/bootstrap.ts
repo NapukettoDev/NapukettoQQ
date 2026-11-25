@@ -23,9 +23,10 @@ import { isShuttingDown } from "../../lifecycle/shutdown.js";
 import { env, isEnvEnabled } from "../env.js";
 import { type IpcServerOptions, sendStatus } from "../ipc/index.js";
 import { isKernelModule } from "../module-guards.js";
-import type { CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
+import type { BootstrapEnv, CoreContextLike, KernelLike, LoginResultLike } from "../types.js";
 import { convergeBootstrapFailure, log, type SharedState } from "../util.js";
-import { type BootstrapEnv, bootstrapWithCore, probeOnce } from "./bootstrap-core.js";
+import { bootstrapWithCore } from "./bootstrap-core.js";
+import { probeOnce } from "./bootstrap-probe.js";
 
 /** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
  * 「请下载最新版」；major.node 解析的 537376818 成功）。自研，参考 NapCat 思路。
