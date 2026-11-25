@@ -115,7 +115,9 @@ async function downloadWithRetry(
 function find7z(): string {
     const env = process.env["NAPUKETTO_7Z_PATH"];
     if (env && existsSync(env)) return env;
-    return findBundledSevenZip(SEVEN_ZIP_DIR, process.platform === "win32" ? "win32" : "linux") ?? "7z";
+    return (
+        findBundledSevenZip(SEVEN_ZIP_DIR, process.platform === "win32" ? "win32" : "linux") ?? "7z"
+    );
 }
 
 async function run7z(args: string[], maxBuffer = 16 * 1024 * 1024): Promise<string> {
@@ -132,6 +134,17 @@ async function run7z(args: string[], maxBuffer = 16 * 1024 * 1024): Promise<stri
     }
 }
 
+/** 从 `start` 起按 `step` 读取连续 ASCII 数字，遇到非数字即停（utf16le 按 2 字节对齐）。 */
+function readDigits(buf: Buffer, start: number, step: number, utf16: boolean): string {
+    let build = "";
+    for (let p = start; p + step <= buf.length; p += step) {
+        const c = utf16 ? buf.readUInt16LE(p) : (buf[p] ?? 0);
+        if (c < 0x30 || c > 0x39) break;
+        build += String.fromCharCode(c);
+    }
+    return build;
+}
+
 function scanVersionInFile(filePath: string, marketing: string): string | null {
     const buf = readFileSync(filePath);
     for (const encoding of ["utf16le", "ascii"] as const) {
@@ -139,13 +152,8 @@ function scanVersionInFile(filePath: string, marketing: string): string | null {
             const needle = Buffer.from(`${marketing}${sep}`, encoding);
             const idx = buf.indexOf(needle);
             if (idx < 0) continue;
-            const step = encoding === "utf16le" ? 2 : 1;
-            let build = "";
-            for (let p = idx + needle.length; p + step <= buf.length; p += step) {
-                const c = encoding === "utf16le" ? buf.readUInt16LE(p) : (buf[p] ?? 0);
-                if (c < 0x30 || c > 0x39) break;
-                build += String.fromCharCode(c);
-            }
+            const utf16 = encoding === "utf16le";
+            const build = readDigits(buf, idx + needle.length, utf16 ? 2 : 1, utf16);
             if (build) return `${marketing}-${build}`;
         }
     }
@@ -168,7 +176,10 @@ async function resolveVersion(installerPath: string, marketing: string): Promise
 function compareVersions(a: string, b: string): number {
     const parse = (v: string) => {
         const [m = "", bld = "0"] = v.split("-");
-        return { p: m.split(".").map((x) => Number.parseInt(x, 10) || 0), b: Number.parseInt(bld, 10) || 0 };
+        return {
+            p: m.split(".").map((x) => Number.parseInt(x, 10) || 0),
+            b: Number.parseInt(bld, 10) || 0,
+        };
     };
     const [pa, pb] = [parse(a), parse(b)];
     for (let i = 0; i < Math.max(pa.p.length, pb.p.length); i += 1) {
@@ -197,7 +208,12 @@ function mergeEntry(known: QqReleaseEntry[], entry: QqReleaseEntry): QqReleaseEn
     return sortEntries([...known.filter((x) => !same(x)), { ...entry, appid }]);
 }
 
-function skipReason(label: string, cur: QqReleaseEntry | undefined, marketing: string, url: string): string | null {
+function skipReason(
+    label: string,
+    cur: QqReleaseEntry | undefined,
+    marketing: string,
+    url: string,
+): string | null {
     if (!cur) return null;
     if (cur.url === url) return `${label} 已是最新（${cur.version}），URL 未变，跳过`;
     if (compareVersions(marketing, cur.version.split("-")[0] ?? cur.version) < 0) {
@@ -228,27 +244,40 @@ function loadManifest(): QqReleasesFile {
     } catch (err) {
         throw new Error(`releases.json 解析失败: ${String(err)}`);
     }
-    if (!isRec(parsed) || parsed["schema"] !== 2 || !Array.isArray(parsed["known"]) || parsed["known"].length === 0) {
+    if (
+        !isRec(parsed) ||
+        parsed["schema"] !== 2 ||
+        !Array.isArray(parsed["known"]) ||
+        parsed["known"].length === 0
+    ) {
         throw new Error("releases.json 结构不合法（需 schema=2 且 known 非空数组）");
     }
     const bad = parsed["known"].find((item) => !isEntry(item));
     if (bad !== undefined) {
-        throw new Error(`releases.json 结构不合法（known 含非法条目: ${JSON.stringify(bad)?.slice(0, 120)}）`);
+        throw new Error(
+            `releases.json 结构不合法（known 含非法条目: ${JSON.stringify(bad)?.slice(0, 120)}）`,
+        );
     }
     return { schema: 2, known: parsed["known"] as QqReleaseEntry[] };
+}
+
+/** 从 pcConfig.json 的形状里取出 Windows 段（字段缺失或营销版本不合法即视为该源不可用）。 */
+function parseWindowsBlock(raw: unknown): WinRel | null {
+    const win = isRec(raw) && isRec(raw["Windows"]) ? raw["Windows"] : null;
+    if (!win) return null;
+    const version = str(win, "version");
+    const updateDate = typeof win["updateDate"] === "string" ? win["updateDate"] : null;
+    const x64Url = typeof win["ntDownloadX64Url"] === "string" ? win["ntDownloadX64Url"] : null;
+    if (!version || !MARKETING_RE.test(version) || updateDate === null || x64Url === null)
+        return null;
+    return { marketingVersion: version, updateDate, x64Url };
 }
 
 async function fetchWindowsRelease(): Promise<WinRel | null> {
     for (const url of PC_CONFIG_URLS) {
         try {
-            const raw: unknown = JSON.parse(await fetchText(url));
-            const win = isRec(raw) && isRec(raw["Windows"]) ? raw["Windows"] : null;
-            const version = win ? str(win, "version") : null;
-            const updateDate = win && typeof win["updateDate"] === "string" ? win["updateDate"] : null;
-            const x64Url = win && typeof win["ntDownloadX64Url"] === "string" ? win["ntDownloadX64Url"] : null;
-            if (version && MARKETING_RE.test(version) && updateDate !== null && x64Url !== null) {
-                return { marketingVersion: version, updateDate, x64Url };
-            }
+            const rel = parseWindowsBlock(JSON.parse(await fetchText(url)));
+            if (rel) return rel;
             warn(`配置结构解析失败: ${url}`);
         } catch (err) {
             warn(`配置抓取失败: ${url}（${errMsg(err)}）`);
@@ -260,13 +289,18 @@ async function fetchWindowsRelease(): Promise<WinRel | null> {
 async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Promise<Step> {
     const rel = await fetchWindowsRelease();
     if (!rel) throw new Error("官方下载配置解析失败（页面结构可能已变），未更新清单");
-    info(`官方最新: 版本=${rel.marketingVersion} 日期=${rel.updateDate}\n[update-releases] 下载 URL: ${rel.x64Url}`);
+    info(
+        `官方最新: 版本=${rel.marketingVersion} 日期=${rel.updateDate}\n[update-releases] 下载 URL: ${rel.x64Url}`,
+    );
     const dlUrl = normalizeDownloadUrl(rel.x64Url);
     if (dlUrl !== rel.x64Url) info(`请求 URL 归一化: ${dlUrl}`);
 
     const latest = sortEntries(manifest.known.filter((e) => releasePlatform(e) === "win32")).at(-1);
     const skip = skipReason("清单", latest, rel.marketingVersion, rel.x64Url);
-    if (skip) return (info(skip), { entries: manifest.known, changed: false });
+    if (skip) {
+        info(skip);
+        return { entries: manifest.known, changed: false };
+    }
     if (dryRun) {
         info(`[dry-run] 将新增/更新条目: ${rel.marketingVersion}-<构建号>（URL=${rel.x64Url}）`);
         return { entries: manifest.known, changed: false };
@@ -279,11 +313,19 @@ async function updateWindowsStep(manifest: QqReleasesFile, dryRun: boolean): Pro
         const sha256 = await downloadWithRetry(dlUrl, exe);
         info(`sha256: ${sha256}`);
         const version = await resolveVersion(exe, rel.marketingVersion);
-        if (!version) throw new Error(`无法从安装包解析版本目录名（营销版本=${rel.marketingVersion}），未更新清单`);
+        if (!version)
+            throw new Error(
+                `无法从安装包解析版本目录名（营销版本=${rel.marketingVersion}），未更新清单`,
+            );
         info(`✅ Windows 条目: ${version}`);
         return {
             entries: mergeEntry(manifest.known, {
-                version, url: rel.x64Url, sha256, appid: 0, source: "official", buildDate: rel.updateDate,
+                version,
+                url: rel.x64Url,
+                sha256,
+                appid: 0,
+                source: "official",
+                buildDate: rel.updateDate,
             }),
             changed: true,
         };
@@ -296,7 +338,10 @@ async function fetchLinuxRelease(): Promise<LinuxRel | null> {
     try {
         const match = LINUX_PARAMS_RE.exec(await fetchText(LINUX_CONFIG_URL));
         const obj: unknown = match?.[1] ? JSON.parse(match[1]) : null;
-        const deb = (v: unknown) => (isRec(v) && typeof v["deb"] === "string" && v["deb"].startsWith("https://") ? v["deb"] : null);
+        const deb = (v: unknown) =>
+            isRec(v) && typeof v["deb"] === "string" && v["deb"].startsWith("https://")
+                ? v["deb"]
+                : null;
         const version = isRec(obj) ? str(obj, "version") : null;
         const updateDate = isRec(obj) ? str(obj, "updateDate") : null;
         const x64Deb = isRec(obj) ? deb(obj["x64DownloadUrl"]) : null;
@@ -316,18 +361,85 @@ async function debClientVersion(debPath: string, workDir: string): Promise<strin
     const [d0, d1, d2] = [join(workDir, "d0"), join(workDir, "d1"), join(workDir, "d2")] as const;
     await run7z(["x", debPath, `-o${d0}`, "-y"]);
     const payload = [join(d0, "data.tar.xz"), join(d0, "data.tar")].find(existsSync);
-    if (!payload) return (warn("deb 内未找到 data.tar(.xz)"), null);
+    if (!payload) {
+        warn("deb 内未找到 data.tar(.xz)");
+        return null;
+    }
     await run7z(["x", payload, `-o${d1}`, "-y"]);
     const dataTar = join(d1, "data.tar");
-    if (!existsSync(dataTar)) return (warn("deb 载荷内未找到 data.tar"), null);
+    if (!existsSync(dataTar)) {
+        warn("deb 载荷内未找到 data.tar");
+        return null;
+    }
     await run7z(["e", dataTar, LINUX_PKG_JSON, `-o${d2}`, "-y"]);
     const pkgPath = join(d2, "package.json");
-    if (!existsSync(pkgPath)) return (warn(`deb 内未找到 ${LINUX_PKG_JSON}`), null);
+    if (!existsSync(pkgPath)) {
+        warn(`deb 内未找到 ${LINUX_PKG_JSON}`);
+        return null;
+    }
     try {
         const parsed: unknown = JSON.parse(readFileSync(pkgPath, "utf8"));
         return isRec(parsed) ? str(parsed, "version") : null;
     } catch {
-        return (warn("deb 内 package.json 解析失败"), null);
+        warn("deb 内 package.json 解析失败");
+        return null;
+    }
+}
+
+/** 单个 Linux 架构的更新：返回待合并条目；跳过（原因已 info/warn）返回 null。 */
+async function updateLinuxArch(
+    arch: QqReleaseArch,
+    rel: LinuxRel,
+    entries: QqReleaseEntry[],
+    dryRun: boolean,
+): Promise<QqReleaseEntry | null> {
+    const url = arch === "arm64" ? rel.arm64Deb : rel.x64Deb;
+    const cur = sortEntries(
+        entries.filter((e) => releasePlatform(e) === "linux" && (e.arch ?? "x64") === arch),
+    ).at(-1);
+    const skip = skipReason(`Linux ${arch}`, cur, rel.marketingVersion, url);
+    if (skip) {
+        info(skip);
+        return null;
+    }
+    const coreVersion = CORE_VERSION_RE.exec(url)?.[1] ?? null;
+    if (!coreVersion) {
+        warn(`Linux ${arch} URL 无法解析 QQNT 核心版本，跳过：${url}`);
+        return null;
+    }
+    if (dryRun) {
+        info(`[dry-run] 将更新 Linux ${arch} 条目（core=${coreVersion}，URL=${url}）`);
+        return null;
+    }
+
+    let tmp: string | undefined;
+    try {
+        tmp = mkdtempSync(join(tmpdir(), `napuketto-linux-${arch}-`));
+        const debPath = join(tmp, "qq.deb");
+        info(`Linux ${arch}：下载 deb 并计算 sha256…`);
+        const sha256 = await downloadWithRetry(normalizeDownloadUrl(url), debPath);
+        const version = await debClientVersion(debPath, tmp);
+        if (!version) {
+            warn(`Linux ${arch} 无法从 deb 解析客户端版本，跳过该架构`);
+            return null;
+        }
+        info(`Linux ${arch} 版本: ${version}（core ${coreVersion}），sha256: ${sha256}`);
+        return {
+            version,
+            platform: "linux",
+            arch,
+            coreVersion,
+            url,
+            sha256,
+            appid: cur?.appid ?? 0,
+            source: "official",
+            buildDate: rel.updateDate,
+        };
+    } catch (err) {
+        warn(`Linux ${arch} 处理失败（${errMsg(err)}），跳过该架构`);
+        return null;
+    } finally {
+        if (tmp) await rm(tmp, { recursive: true, force: true });
     }
 }
 
@@ -339,33 +451,10 @@ async function updateLinuxStep(known: QqReleaseEntry[], dryRun: boolean): Promis
     let entries = known;
     let changed = false;
     for (const arch of LINUX_ARCHES) {
-        const url = arch === "arm64" ? rel.arm64Deb : rel.x64Deb;
-        const cur = sortEntries(entries.filter((e) => releasePlatform(e) === "linux" && (e.arch ?? "x64") === arch)).at(-1);
-        const skip = skipReason(`Linux ${arch}`, cur, rel.marketingVersion, url);
-        if (skip) { info(skip); continue; }
-        const coreVersion = CORE_VERSION_RE.exec(url)?.[1] ?? null;
-        if (!coreVersion) { warn(`Linux ${arch} URL 无法解析 QQNT 核心版本，跳过：${url}`); continue; }
-        if (dryRun) { info(`[dry-run] 将更新 Linux ${arch} 条目（core=${coreVersion}，URL=${url}）`); continue; }
-
-        let tmp: string | undefined;
-        try {
-            tmp = mkdtempSync(join(tmpdir(), `napuketto-linux-${arch}-`));
-            const debPath = join(tmp, "qq.deb");
-            info(`Linux ${arch}：下载 deb 并计算 sha256…`);
-            const sha256 = await downloadWithRetry(normalizeDownloadUrl(url), debPath);
-            const version = await debClientVersion(debPath, tmp);
-            if (!version) { warn(`Linux ${arch} 无法从 deb 解析客户端版本，跳过该架构`); continue; }
-            info(`Linux ${arch} 版本: ${version}（core ${coreVersion}），sha256: ${sha256}`);
-            entries = mergeEntry(entries, {
-                version, platform: "linux", arch, coreVersion, url, sha256,
-                appid: cur?.appid ?? 0, source: "official", buildDate: rel.updateDate,
-            });
-            changed = true;
-        } catch (err) {
-            warn(`Linux ${arch} 处理失败（${errMsg(err)}），跳过该架构`);
-        } finally {
-            if (tmp) await rm(tmp, { recursive: true, force: true });
-        }
+        const entry = await updateLinuxArch(arch, rel, entries, dryRun);
+        if (!entry) continue;
+        entries = mergeEntry(entries, entry);
+        changed = true;
     }
     return { entries, changed };
 }
@@ -379,7 +468,11 @@ async function main(argv: readonly string[]): Promise<number> {
         return { entries: win.entries, changed: false };
     });
     if (win.changed || linux.changed) {
-        writeFileSync(MANIFEST_PATH, `${JSON.stringify({ schema: manifest.schema, known: linux.entries }, null, 4)}\n`, "utf8");
+        writeFileSync(
+            MANIFEST_PATH,
+            `${JSON.stringify({ schema: manifest.schema, known: linux.entries }, null, 4)}\n`,
+            "utf8",
+        );
         info(`✅ 已更新清单（共 ${linux.entries.length} 条，Windows 在前、Linux 在后）`);
     } else {
         info("清单无需更新");
@@ -389,7 +482,9 @@ async function main(argv: readonly string[]): Promise<number> {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     main(process.argv.slice(2))
-        .then((code) => { process.exitCode = code; })
+        .then((code) => {
+            process.exitCode = code;
+        })
         .catch((err: unknown) => {
             process.stderr.write(`[update-releases] ❌ ${errMsg(err)}\n`);
             process.exitCode = 1;
