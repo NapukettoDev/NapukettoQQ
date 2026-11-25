@@ -20,7 +20,8 @@ import { isRecord } from "../../../src/shared/type-guards.js";
 
 type DiagnosticActionName = (typeof DIAGNOSTIC_ACTION_NAMES)[number];
 
-/** `enumerateTmpPaths` 固定枚举的 6 个 0 参方法（与 diagnostics.ts 对表）。 */
+/** `enumerateTmpPaths` 固定枚举的 6 个 0 参方法（与 diagnostics.ts 对表；
+ * `getRichMeidaTmpPath` 为原生侧既有拼写，见 docs/evidence.md）。 */
 const TMP_PATH_METHODS = [
     "getPicTmpPath",
     "getRichMeidaTmpPath",
@@ -96,28 +97,32 @@ describe("诊断动作注册表", () => {
 });
 
 describe("目标未注入 / 服务缺失", () => {
-    it("session 未注入：各诊断动作返回可读错误", async () => {
-        const actions = diagActionsOf({});
-        expect(await callDiag(actions, "diag.richMediaTmpPaths")).toEqual({
-            error: "session 未注入（IPC 上下文缺 session）",
-        });
-        for (const name of [
-            "diag.flashCall",
-            "diag.sessionCall",
-            "diag.richMediaCall",
-            "diag.msgServiceCall",
-        ] as const) {
-            expect(await callDiag(actions, name, { method: "__methods" })).toEqual({
+    it("session 未注入（undefined / null 同口径）：各诊断动作返回可读错误", async () => {
+        for (const session of [undefined, null]) {
+            const actions = diagActionsOf({ session });
+            expect(await callDiag(actions, "diag.richMediaTmpPaths")).toEqual({
                 error: "session 未注入",
             });
+            for (const name of [
+                "diag.flashCall",
+                "diag.sessionCall",
+                "diag.richMediaCall",
+                "diag.msgServiceCall",
+            ] as const) {
+                expect(await callDiag(actions, name, { method: "__methods" })).toEqual({
+                    error: "session 未注入",
+                });
+            }
         }
     });
 
-    it("engine 未注入：engineCall 返回可读错误（不进入反射）", async () => {
-        const actions = diagActionsOf({});
-        expect(await callDiag(actions, "diag.engineCall", { method: "initLog" })).toEqual({
-            error: "engine 未注入",
-        });
+    it("engine 未注入（undefined / null 同口径）：engineCall 返回可读错误（不进入反射）", async () => {
+        for (const engine of [undefined, null]) {
+            const actions = diagActionsOf({ engine });
+            expect(await callDiag(actions, "diag.engineCall", { method: "initLog" })).toEqual({
+                error: "engine 未注入",
+            });
+        }
     });
 
     it("util 未注入 / util 实例为 null：utilCall 返回可读错误", async () => {
@@ -137,42 +142,64 @@ describe("目标未注入 / 服务缺失", () => {
         });
     });
 
-    it("服务 getter 缺失 / 返回 null：flash、richMedia、msgService 返回可读错误", async () => {
-        // 现状：getter 本身缺失时 serviceOf 统一报「session 未注入」（见报告可疑点）
+    it("服务 getter 缺失：明确报「session 已注入但缺少 X()」", async () => {
         const missingGetter = diagActionsOf({ session: {} });
-        for (const name of [
-            "diag.flashCall",
-            "diag.richMediaCall",
-            "diag.msgServiceCall",
-        ] as const) {
-            expect(await callDiag(missingGetter, name, { method: "__methods" })).toEqual({
-                error: "session 未注入",
-            });
-        }
-
-        const nullServices = diagActionsOf({
-            session: {
-                getFlashTransferService: () => null,
-                getRichMediaService: () => null,
-                getMsgService: () => null,
-            },
+        expect(await callDiag(missingGetter, "diag.flashCall", { method: "__methods" })).toEqual({
+            error: "session 已注入但缺少 getFlashTransferService()",
         });
-        expect(await callDiag(nullServices, "diag.flashCall", { method: "__methods" })).toEqual({
-            error: "flash 服务为 null",
-        });
-        expect(await callDiag(nullServices, "diag.richMediaCall", { method: "__methods" })).toEqual(
-            { error: "richMedia 服务为 null" },
-        );
         expect(
-            await callDiag(nullServices, "diag.msgServiceCall", { method: "__methods" }),
-        ).toEqual({ error: "msgService 服务为 null" });
+            await callDiag(missingGetter, "diag.richMediaCall", { method: "__methods" }),
+        ).toEqual({ error: "session 已注入但缺少 getRichMediaService()" });
+        expect(
+            await callDiag(missingGetter, "diag.msgServiceCall", { method: "__methods" }),
+        ).toEqual({ error: "session 已注入但缺少 getMsgService()" });
     });
 
-    it("sessionCall 目标为 null：落到 validate 兜底（结构化错误，不抛）", async () => {
-        const actions = diagActionsOf({ session: null });
-        expect(await callDiag(actions, "diag.sessionCall", { method: "__methods" })).toEqual({
-            error: "target object is not a record",
-        });
+    it("服务 getter 返回 null / undefined：报「X 服务为 null」（与 getter 缺失区分）", async () => {
+        for (const nil of [null, undefined]) {
+            const nullServices = diagActionsOf({
+                session: {
+                    getFlashTransferService: () => nil,
+                    getRichMediaService: () => nil,
+                    getMsgService: () => nil,
+                },
+            });
+            expect(await callDiag(nullServices, "diag.flashCall", { method: "__methods" })).toEqual(
+                {
+                    error: "flash 服务为 null",
+                },
+            );
+            expect(
+                await callDiag(nullServices, "diag.richMediaCall", { method: "__methods" }),
+            ).toEqual({ error: "richMedia 服务为 null" });
+            expect(
+                await callDiag(nullServices, "diag.msgServiceCall", { method: "__methods" }),
+            ).toEqual({ error: "msgService 服务为 null" });
+        }
+    });
+
+    it("sessionCall / engineCall 目标为 null：按未注入处理（中文，不落英文兜底）", async () => {
+        expect(
+            await callDiag(diagActionsOf({ session: null }), "diag.sessionCall", {
+                method: "__methods",
+            }),
+        ).toEqual({ error: "session 未注入" });
+        expect(
+            await callDiag(diagActionsOf({ engine: null }), "diag.engineCall", {
+                method: "initLog",
+            }),
+        ).toEqual({ error: "engine 未注入" });
+    });
+
+    it("目标不是对象（如数字）：validate 返回中文兜底错误", async () => {
+        expect(
+            await callDiag(diagActionsOf({ session: 42 }), "diag.sessionCall", {
+                method: "__methods",
+            }),
+        ).toEqual({ error: "目标对象不可反射" });
+        expect(
+            await callDiag(diagActionsOf({ engine: 42 }), "diag.engineCall", { method: "initLog" }),
+        ).toEqual({ error: "目标对象不可反射" });
     });
 });
 
@@ -462,27 +489,66 @@ describe("参数边界与错误结构化", () => {
 });
 
 describe("diag.richMediaTmpPaths 只读枚举", () => {
-    it("session 为 null → 与 undefined 同样的可读错误", async () => {
-        expect(await callDiag(diagActionsOf({ session: null }), "diag.richMediaTmpPaths")).toEqual({
-            error: "session 未注入（IPC 上下文缺 session）",
-        });
+    it("session 为 undefined / null → 统一「session 未注入」", async () => {
+        for (const session of [undefined, null]) {
+            expect(await callDiag(diagActionsOf({ session }), "diag.richMediaTmpPaths")).toEqual({
+                error: "session 未注入",
+            });
+        }
     });
 
-    it("服务 getter 缺失 / 返回 null → 占位，不抛", async () => {
+    it("getter 缺失 / 服务返回 null：与 serviceOf 同口径，不再模糊占位", async () => {
         expect(await callDiag(diagActionsOf({ session: {} }), "diag.richMediaTmpPaths")).toEqual({
-            richMediaService: "null",
-            flashService: "null",
+            richMediaService: "session 已注入但缺少 getRichMediaService()",
+            flashService: "session 已注入但缺少 getFlashTransferService()",
         });
         const nullServices = diagActionsOf({
             session: {
                 getRichMediaService: () => null,
-                getFlashTransferService: () => null,
+                getFlashTransferService: () => undefined,
             },
         });
         expect(await callDiag(nullServices, "diag.richMediaTmpPaths")).toEqual({
-            richMediaService: "null",
-            flashService: "null",
+            richMediaService: "richMedia 服务为 null",
+            flashService: "flash 服务为 null",
         });
+    });
+
+    it("getter 部分存在：逐服务给出各自状态", async () => {
+        const svc = reflectiveTarget({ getPicTmpPath: () => "C:/tmp/pic" });
+        const value = expectRecord(
+            await callDiag(
+                diagActionsOf({ session: { getRichMediaService: () => svc } }),
+                "diag.richMediaTmpPaths",
+            ),
+        );
+        expect(value["richMediaTmpPaths"]).toEqual({
+            getPicTmpPath: "C:/tmp/pic",
+            getRichMeidaTmpPath: "方法缺失",
+            getPttTmpPath: "方法缺失",
+            getVideoTmpPath: "方法缺失",
+            getFileTmpPath: "方法缺失",
+            getTransferingTmpPath: "方法缺失",
+        });
+        expect(value["flashService"]).toBe("session 已注入但缺少 getFlashTransferService()");
+    });
+
+    it("与 diag.richMediaCall 的错误文案保持一致", async () => {
+        const missingGetter = diagActionsOf({ session: {} });
+        const richMediaCall = expectRecord(
+            await callDiag(missingGetter, "diag.richMediaCall", { method: "__methods" }),
+        );
+        const tmpPaths = expectRecord(await callDiag(missingGetter, "diag.richMediaTmpPaths"));
+        expect(tmpPaths["richMediaService"]).toBe(richMediaCall["error"]);
+
+        const nullServices = diagActionsOf({
+            session: { getRichMediaService: () => null, getFlashTransferService: () => null },
+        });
+        const nullCall = expectRecord(
+            await callDiag(nullServices, "diag.richMediaCall", { method: "__methods" }),
+        );
+        const nullTmpPaths = expectRecord(await callDiag(nullServices, "diag.richMediaTmpPaths"));
+        expect(nullTmpPaths["richMediaService"]).toBe(nullCall["error"]);
     });
 
     it("成功 / 抛错 / 方法缺失三分支，且不触发 setter", async () => {

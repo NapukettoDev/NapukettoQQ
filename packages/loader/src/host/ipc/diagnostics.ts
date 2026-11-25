@@ -108,7 +108,7 @@ function validateDiagnosticCall(
     allowed: ReadonlySet<string>,
 ): DiagnosticCall {
     if ((typeof obj !== "object" && typeof obj !== "function") || obj === null) {
-        return { ok: false, value: { error: "target object is not a record" } };
+        return { ok: false, value: { error: "目标对象不可反射" } };
     }
     const method = typeof params["method"] === "string" ? params["method"] : "";
     if (method === "") {
@@ -163,6 +163,7 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
     const tmp: Record<string, unknown> = {};
     for (const name of [
         "getPicTmpPath",
+        // 原生侧拼写即 getRichMeidaTmpPath（非 loader 笔误；wrapper.node 实测见 docs/evidence.md）。
         "getRichMeidaTmpPath",
         "getPttTmpPath",
         "getVideoTmpPath",
@@ -186,37 +187,37 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
 /** 诊断主流程：session → 富媒体服务 + 闪传服务的方法面与临时路径（只读）。 */
 async function runRichMediaDiag(session: unknown): Promise<Record<string, unknown>> {
     if (session === undefined || session === null) {
-        return { error: "session 未注入（IPC 上下文缺 session）" };
+        return { error: "session 未注入" };
     }
     const out: Record<string, unknown> = {};
-    const svc = hasCallableProp(session, "getRichMediaService")
-        ? session.getRichMediaService()
-        : null;
-    if (svc !== null && svc !== undefined) {
-        out["richMediaTmpPaths"] = await enumerateTmpPaths(svc);
-        out["richMediaMethods"] = methodNamesOf(svc);
+    // 与 serviceOf 同口径：区分「session 未注入」「getter 缺失」「服务返回 null」。
+    const rich = serviceOf(session, "getRichMediaService", "richMedia");
+    if (!rich.ok) {
+        out["richMediaService"] = rich.error;
     } else {
-        out["richMediaService"] = "null";
+        out["richMediaTmpPaths"] = await enumerateTmpPaths(rich.target);
+        out["richMediaMethods"] = methodNamesOf(rich.target);
     }
-    const flash = hasCallableProp(session, "getFlashTransferService")
-        ? session.getFlashTransferService()
-        : null;
-    if (flash !== null && flash !== undefined) {
-        out["flashMethods"] = methodNamesOf(flash);
+    const flash = serviceOf(session, "getFlashTransferService", "flash");
+    if (!flash.ok) {
+        out["flashService"] = flash.error;
     } else {
-        out["flashService"] = "null";
+        out["flashMethods"] = methodNamesOf(flash.target);
     }
     return out;
 }
 
-/** 取 session 上的服务（getter 缺失 / 返回 null 时给出可读错误）。 */
+/** 取 session 上的服务（session 未注入 / getter 缺失 / 返回 null 时给出可读错误）。 */
 function serviceOf(
     session: unknown,
     getter: "getRichMediaService" | "getMsgService" | "getFlashTransferService",
     label: string,
 ): { ok: true; target: unknown } | { ok: false; error: string } {
-    if (!hasCallableProp(session, getter)) {
+    if (session === undefined || session === null) {
         return { ok: false, error: "session 未注入" };
+    }
+    if (!hasCallableProp(session, getter)) {
+        return { ok: false, error: `session 已注入但缺少 ${getter}()` };
     }
     const target = session[getter]();
     if (target === null || target === undefined) {
@@ -241,14 +242,14 @@ export function registerDiagnosticActions(
     });
 
     actions.set("diag.sessionCall", async (params) => {
-        if (ctx.session === undefined) {
+        if (ctx.session === undefined || ctx.session === null) {
             return { error: "session 未注入" };
         }
         return callDiagnosticMethod(ctx.session, params, ALLOWED_METHODS.session);
     });
 
     actions.set("diag.engineCall", async (params) => {
-        if (ctx.engine === undefined) {
+        if (ctx.engine === undefined || ctx.engine === null) {
             return { error: "engine 未注入" };
         }
         return callDiagnosticMethod(ctx.engine, params, ALLOWED_METHODS.engine);
