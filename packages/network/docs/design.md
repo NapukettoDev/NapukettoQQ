@@ -110,12 +110,12 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 
 ## 测试布局
 
-单元测试统一放 `src/__tests__/`（与 kernel / media / adapter 一致，避免与源码
-同层平铺），由根 `vitest.config.ts` 的 `packages/*/src/**/*.test.ts` 发现，
-相对导入下沉一层后保留 NodeNext 的 `.js` 后缀（`../sse.js`）。
+单元测试统一放包根 `tests/`（镜像 `src/` 子目录结构，避免与源码同层平铺），
+由根 `vitest.config.ts` 的 `packages/*/tests/**/*.test.ts` 发现，相对导入
+保留 NodeNext 的 `.js` 后缀（如 `../src/sse.js`）。
 
 | 测试 | 覆盖 |
 | :--- | :--- |
-| `src/__tests__/sse.test.ts` | SSE 帧格式（`event:` / `data:` / 空行）、事件名缺省、断开退订、`close` 后 `send` 静默——纯逻辑，无端口 |
-| `src/__tests__/http-server-stream.test.ts` | 真实端口（`127.0.0.1`）集成：`onRawRequest` 短路返回 SSE 流、`onUpgrade` 同端口完成 WS 握手、常规 JSON 路由不受影响、鉴权仍先于 `onRawRequest` |
-| `src/__tests__/http-server-lifecycle.test.ts` | 真实端口：活跃 SSE/WS/普通请求关闭、无响应关闭握手、半截请求体与未承接升级回收、断开后的迟到响应 |
+| `tests/sse.test.ts` | SSE 帧格式（`event:` / `data:` / 空行）、事件名缺省、断开退订、`close` 后 `send` 静默——纯逻辑，无端口 |
+| `tests/http-server-stream.test.ts` | 真实端口（`127.0.0.1`）集成：`onRawRequest` 短路返回 SSE 流、`onUpgrade` 同端口完成 WS 握手、常规 JSON 路由不受影响、鉴权仍先于 `onRawRequest` |
+| `tests/http-server-lifecycle.test.ts` | 真实端口：活跃 SSE/WS/普通请求关闭、无响应关闭握手、半截请求体与未承接升级回收、断开后的迟到响应 |

@@ -7,7 +7,12 @@
     },
     "files": {
         "ignoreUnknown": false,
-        "includes": ["**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}", "tooling/**/*.{ts,js,mjs}"]
+        "includes": [
+            "**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
+            "packages/*/tests/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
+            "apps/*/tests/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
+            "tooling/**/*.{ts,js,mjs}"
+        ]
     },
     "formatter": {
         "enabled": true,
@@ -97,10 +102,7 @@
     },
     "overrides": [
         {
-            "includes": [
-                "packages/adapter/src/framework/**",
-                "!packages/adapter/src/framework/__tests__/**"
-            ],
+            "includes": ["packages/adapter/src/framework/**"],
             "linter": {
                 "rules": {
                     "style": {
@@ -131,8 +133,8 @@
         },
         {
             "includes": [
-                "packages/kernel/src/runtime/login/__tests__/login.test.ts",
-                "packages/kernel/src/runtime/login/__tests__/quick-login.test.ts"
+                "packages/kernel/tests/runtime/login/login.test.ts",
+                "packages/kernel/tests/runtime/login/quick-login.test.ts"
             ],
             "linter": {
                 "rules": {
@@ -143,11 +145,7 @@
             }
         },
         {
-            "includes": [
-                "packages/kernel/src/types/**",
-                "packages/kernel/src/infra/**",
-                "!packages/kernel/src/**/__tests__/**"
-            ],
+            "includes": ["packages/kernel/src/types/**", "packages/kernel/src/infra/**"],
             "linter": {
                 "rules": {
                     "style": {
@@ -167,7 +165,7 @@
             }
         },
         {
-            "includes": ["packages/kernel/src/native/**", "!packages/kernel/src/**/__tests__/**"],
+            "includes": ["packages/kernel/src/native/**"],
             "linter": {
                 "rules": {
                     "style": {
@@ -187,7 +185,7 @@
             }
         },
         {
-            "includes": ["packages/kernel/src/apis/**", "!packages/kernel/src/**/__tests__/**"],
+            "includes": ["packages/kernel/src/apis/**"],
             "linter": {
                 "rules": {
                     "style": {
@@ -207,7 +205,13 @@
             }
         },
         {
-            "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/__tests__/**"],
+            "includes": [
+                "**/*.test.ts",
+                "**/*.test.tsx",
+                "**/*.spec.ts",
+                "**/__tests__/**",
+                "**/tests/**"
+            ],
             "linter": {
                 "rules": {
                     "performance": {

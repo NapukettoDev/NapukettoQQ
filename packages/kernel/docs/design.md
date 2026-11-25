@@ -7,7 +7,7 @@
 
 ## 模块分层（Flat 5-Tier Runtime）
 
-全部业务源码目录深度 ≤ 2 层（`__tests__/` 随所属模块就近放置，不计入层深），依赖严格单向：
+全部业务源码目录深度 ≤ 2 层（包根 `tests/` 镜像 `src/` 子目录结构，不计入层深），依赖严格单向：
 
 | 层 | 目录 | 职责 | 允许依赖 |
 |---|---|---|---|
@@ -23,8 +23,8 @@
   message-codec，`src/index.ts` 只转发，`native/` 内部严格无环。
 - `apis/` 严禁依赖 `runtime/`（`login/`、`cache/` 与装配文件），保证语义 API 无状态、可单测。
 - DAG 由 `biome.json` 的 `style/noRestrictedImports` overrides 静态锁死（L0 禁 `native`/
-  `apis`/`runtime`，L1 禁 `apis`/`runtime`，L2 禁 `runtime`）；`__tests__/` 豁免——测试可以
-  用上层实现作夹具，`src/index.ts` 作为唯一出口只做 re-export。
+  `apis`/`runtime`，L1 禁 `apis`/`runtime`，L2 禁 `runtime`）；测试不在分层目录内（包根
+  `tests/`），可用上层实现作夹具，`src/index.ts` 作为唯一出口只做 re-export。
 
 ## 核心机制
 
