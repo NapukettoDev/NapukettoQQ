@@ -1,13 +1,7 @@
 /**
- * 运行时反射探测的序列化工具（从 probe.ts 拆分，2026-08-08 FTA 优化）
- *
- * - serialize：深度受限序列化（BigInt 转字符串，Map/Set/Promise 展开，循环引用防护）
- * - tryShape：解析 service getter 返回形状
- *
- * 字节串保真（2026-11-01 首录教训）：onRecvSysMsg 的 wire bytes 与 grayTip 的
- * jsonGrayTipElement 是批次三（sysmsg 识别表 / reaction）的样本来源——TypedArray
- * 与字节形态普通数组转 base64 全量保留（截断上限放宽），数字数组/深对象不再
- * 20 项 / 4 层截断（上限提至 64 / 8）。
+ * 运行时反射探测的序列化工具：serialize（深度受限、BigInt 转字符串、Map/Set/Promise 展开、
+ * 循环引用防护）与 tryShape。字节串必须保真：sysmsg / grayTip 的 wire bytes 是识别表与 reaction
+ * 的样本来源，故 TypedArray 与字节形态数组转 base64 保留，数字数组 / 深对象上限 64 项 / 8 层。
  */
 import { getOwnProp, hasCallableProp, isCallable, isRecord } from "../../infra/type-guards.js";
 

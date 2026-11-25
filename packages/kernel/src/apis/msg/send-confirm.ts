@@ -1,6 +1,5 @@
 /**
- * 发送确认状态机 + msgId 时间戳生成（从 `apis/msg.ts` 拆出）
- *
+ * 发送确认状态机 + msgId 时间戳生成。
  * sendMsg 的返回值不可信（result 可能为 5 但事件仍成功），发送结果以
  * `Msg/onMsgInfoListUpdate` 事件的 sendStatus 为准。
  */
@@ -21,7 +20,7 @@ const SEND_CONFIRM_TIMEOUT_MS = 15_000;
  * 拒绝或覆盖。严格单调递增保证进程内唯一。
  */
 export class MsgIdSequencer {
-    /** 上次生成 msgId 的时间（单调递增，2026-08-07 防同毫秒并发碰撞）。 */
+    /** 上次生成 msgId 的时间（单调递增，防同毫秒并发碰撞）。 */
     private lastMsgTime = 0;
 
     next(): string {

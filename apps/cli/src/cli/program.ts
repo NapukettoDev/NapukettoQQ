@@ -1,8 +1,6 @@
 /**
- * commander 装配层：全局选项、banner、子命令注册、默认动作分发。
- *
- * 从 index.ts 拆出（2026-10-25 模块收拢）：只做 CLI 契约适配（参数/帮助/输出/
- * 退出码），用例实现见 commands/。禁止在此写业务逻辑。
+ * commander 装配层：全局选项、banner、子命令注册、默认动作分发。只做 CLI 契约适配
+ * （参数/帮助/输出/退出码），禁止在此写业务逻辑；用例实现见 commands/。
  */
 import process from "node:process";
 import { resolveDataRoot } from "@napuketto/kernel";
@@ -41,7 +39,7 @@ function rootDataDir(program: Command): { dataDir?: string } {
     return dataDir === undefined ? {} : { dataDir };
 }
 
-/** 注册 config 子命令（init/list/apply，P6；-d 复用主命令 option）。 */
+/** 注册 config 子命令（init/list/apply；-d 复用主命令 option）。 */
 function registerConfigCommands(program: Command): void {
     const configCmd = program.command("config").description("全局配置管理（napuketto.toml）");
     configCmd
@@ -82,7 +80,7 @@ function registerConfigCommands(program: Command): void {
                 handleActionError(err);
             }
         });
-    // config validate（2026-10-25）：宿主拉起前预检；exit 0 合法 / 78 校验失败
+    // config validate：宿主拉起前预检；exit 0 合法 / 78 校验失败
     // （与运行时同一校验器与错误文案）/ 1 用法错误。纯只读（文件缺失不落模板）。
     configCmd
         .command("validate")
@@ -110,7 +108,7 @@ function registerConfigCommands(program: Command): void {
         });
 }
 
-/** 注册 supervisor 子命令（读主配置 accounts 批量拉起，P6；-d / --qq-path 复用主命令 option）。 */
+/** 注册 supervisor 子命令（读主配置 accounts 批量拉起；-d / --qq-path 复用主命令 option）。 */
 function registerSupervisorCommand(program: Command): void {
     program
         .command("supervisor")
@@ -143,7 +141,7 @@ function opsAction(
     };
 }
 
-/** 注册运维子命令（status/stop/restart，2026-09-08 T8；-q 复用主命令 option）。 */
+/** 注册运维子命令（status/stop/restart；-q 复用主命令 option）。 */
 function registerOpsCommands(program: Command): void {
     program
         .command("status")

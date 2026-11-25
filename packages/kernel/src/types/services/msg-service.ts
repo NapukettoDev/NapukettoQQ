@@ -1,9 +1,7 @@
 /**
- * NodeIKernelMsgService：消息服务接口面（自研描述，非移植）
- *
- * 依据：getMsgService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，
- * 自研描述其形状，零复制实现）。
- * 只收录 apis/msg 当前需要的方法；其余 200+ 方法按需探测后补齐。
+ * NodeIKernelMsgService：消息服务接口面（自研描述，非移植）。
+ * 依据 getMsgService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，零复制）；
+ * 只收录 apis/msg 当前需要的方法，其余 200+ 方法按需探测后补齐。
  */
 import type {
     FaceElement,
@@ -58,7 +56,7 @@ export interface SendMessageElement {
     picElement?: PicElement;
     pttElement?: PttElement;
     videoElement?: VideoElement;
-    /** ARK 卡片（小程序/分享卡片）；bytesData 为卡片 JSON 字符串（与接收侧 RawElement 同字段名，2026-10-25 实测）。 */
+    /** ARK 卡片（小程序/分享卡片）；bytesData 为卡片 JSON 字符串（与接收侧 RawElement 同字段名，实测）。 */
     arkElement?: { bytesData: string };
     /** 文件（upload_private/group_file；字段值待探测校准，pic/ptt 同款发送链）。 */
     fileElement?: FileElement;
@@ -100,8 +98,8 @@ export interface NodeIKernelMsgService {
         ids: string[],
     ): Promise<GeneralCallResult & { msgList?: RawMessage[] }>;
     /**
-     * 富媒体主动下载（get_record 语音下载，2026-09-08 B1 实测：单参数对象，
-     * resolve undefined——结果只能经重拉消息元素观察；参数残缺时静默 no-op 不抛错；
+     * 富媒体主动下载（get_record 语音下载，实测：单参数对象，resolve undefined
+     * ——结果只能经重拉消息元素观察；参数残缺时静默 no-op 不抛错；
      * transferStatus=2 已下载态调用为 no-op，详见 kernel design.md §5）。
      */
     downloadRichMedia(param: {

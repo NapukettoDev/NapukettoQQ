@@ -1,16 +1,6 @@
 /**
- * launcher：自建宿主引导（2026-08-07 唯一路线）——spawn node 跑 self-host.cjs。
- *
- * 历史（V1/路线 B 事实链，已归档 archive/）：
- *  1. wrapper.node 只能在 QQ 定制版 Electron 里注册（实测纯 Node/普通 Electron 均 self-register 失败）
- *  2. QQ 是打包应用，禁 NODE_OPTIONS（实测 stderr）
- *  → 旧方案：NapukettoBootMain.exe 启动 QQ + 注入 NapukettoWinBootHook.dll（已废弃）
- *  → 现方案：stub 转发宿主符号 → 标准 node 直接 dlopen wrapper.node（自建宿主）
- *
- * 平台分支（ADR-027，2026-11-14）：
- *  - win32：本机 node + PE stub `QQNT.dll`（非 node 宿主如 Bun 时先解析真 `node.exe`）
- *  - linux：标准 Linux node + stub `.so`（`LD_PRELOAD`）直跑官方 Linux `wrapper.node`
- *  - Wine 分支已退役（不再有 Windows 版 `node.exe` / `Z:\` 路径转换 / Wine 宿主开关）
+ * launcher：自建宿主引导——spawn 标准 node 跑 self-host.cjs。
+ * win32 走 PE stub `QQNT.dll`，linux 走 `LD_PRELOAD` stub `.so`；Wine 路径已完全退役。
  */
 import { type StdioOptions, spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -52,13 +42,13 @@ export interface LaunchOptions {
     adapterEntry?: string;
     /** network 入口（.mjs，协议装配用）。 */
     networkEntry?: string;
-    /** 自建宿主：标准 node + stub QQNT.dll 直接引导，不拉起 QQ（2026-08-07 唯一路线）。 */
+    /** 自建宿主：标准 node + stub QQNT.dll 直接引导，不拉起 QQ。 */
     selfHost?: boolean;
     /** stub QQNT.dll 目录（PATH 前置，转发 napi_*、uv_* 符号到 node.exe）。 */
     stubDir?: string;
     /** Linux 原生 stub `.so` 路径（缺省 native/prebuilt/linux-x64/libnapuketto_stub.so）。 */
     linuxStubPath?: string;
-    /** 强制指定快速登录账号（注入 NAPUKETTO_QUICK_UIN；cli `-q <uin>` 透传，2026-08-07）。 */
+    /** 强制指定快速登录账号（注入 NAPUKETTO_QUICK_UIN；cli `-q <uin>` 透传）。 */
     quickUin?: string;
     /** 强制扫码登录（注入 NAPUKETTO_QR_ONLY；跳过快速登录直接 QR，koishi 面板「扫码登录」用）。 */
     qrOnly?: boolean;
@@ -72,7 +62,7 @@ export interface LaunchOptions {
     /** IPC 子进程模式（=1：stdout 走 JSON 行协议 + stdin 收 action/control，koishi 插件驱动）。 */
     ipc?: boolean;
     /**
-     * 入站图片自动下载补丁（issue #105，私有 native/ stub 组件）开关。
+     * 入站图片自动下载补丁（私有 native/ stub 组件）开关。
      * true（缺省）/ undefined = 启用并注入状态文件路径；false = 注入
      * NAPUTO_DISABLE_MEDIA_PATCH=1 killswitch（stub 跳过全部内存操作）。
      */
@@ -86,7 +76,7 @@ export interface LaunchOptions {
      *
      * ⚠️ 必须指向数据根（~/.napuketto）：QQ 原生层在账号上下文就绪前会
      * fallback 到进程 cwd 落盘（如频道库 guild1.db），不指定则污染调用方
-     * 目录（实测写入项目根，guild1.db 08-07）。cli 传 dataRoot 根治。
+     * 目录（实测写入项目根，GPro 模块初始化早于账号上下文）。cli 传 dataRoot 根治。
      */
     cwd?: string;
     /**
@@ -102,8 +92,8 @@ export interface LaunchOptions {
      */
     extraEnv?: Record<string, string>;
     /**
-     * 阶段回调（stub 校验 / node 解析下载 / spawn 提示，2026-08-23 起——首次下载
-     * 313MB 安装包与解析宿主 node 全程静默的坑）。调用方接 logger.info。
+     * 阶段回调（stub 校验 / node 解析下载 / spawn 提示）——首次下载 313MB 安装包与解析宿主 node
+     * 全程静默会让用户以为没生效。调用方接 logger.info。
      */
     onStage?: (message: string) => void;
 }
@@ -118,11 +108,10 @@ export interface LaunchResult {
 /**
  * 启动自建宿主（路线 A）：spawn node 直接跑 self-host.cjs，不拉起 QQ / 不注入。
  *
- * 关键（HANDOVER-V7 技术数据）：Windows 版 `wrapper.node` 从 QQNT.dll 导入 99 符号
- * （napi_*×40 + uv_*×56 + qq_magic×1 + v8/node mangled×2）——标准 node 无这些宿主
- * 符号，必须 PATH 前置 stub QQNT.dll 目录（转发到 node.exe）+ QQ resources\app
- * （wrapper.node 同目录依赖 DLL）才能 dlopen 成功。Linux 版 `wrapper.node` 是 ELF，
- * 宿主符号由官方 node 的全局符号表直接解析，stub `.so` 只补 3 个缺失符号（LD_PRELOAD）。
+ * ⚠️ Windows 版 `wrapper.node` 从 QQNT.dll 导入 99 符号（napi_*×40 + uv_*×56 + qq_magic×1 +
+ * v8/node mangled×2）——标准 node 没有这些宿主符号，必须 PATH 前置 stub QQNT.dll 目录（转发到
+ * node.exe）+ QQ resources\app（wrapper.node 同目录依赖 DLL）才能 dlopen 成功。Linux 版
+ * `wrapper.node` 是 ELF，宿主符号由官方 node 的全局符号表直接解析，stub `.so` 只补 3 个缺失符号。
  */
 export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResult> {
     const selfHostPath =
@@ -164,7 +153,7 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
 
     // 标准 node 直接跑入口（不拉起 QQ，不注入）
     // cwd 显式指向数据根（cli 传入）：QQ 原生层 fallback 落盘（guild1.db 等）
-    // 不再污染项目根目录（实测 08-07，GPro 模块初始化早于账号上下文）。
+    // 不再污染项目根目录（GPro 模块初始化早于账号上下文）。
     if (options.cwd !== undefined) {
         mkdirSync(options.cwd, { recursive: true });
     }
@@ -179,9 +168,9 @@ export async function launchSelfHost(options: LaunchOptions): Promise<LaunchResu
         windowsHide: false,
     });
 
-    // ⚠️ spawn error 兜底（2026-08-23 WSL 生产事故）：子进程命令不存在时 Node 异步
-    // emit 'error'（ENOENT），无监听者 = EventEmitter 默认 throw →
-    // uncaughtException → 整个宿主进程（koishi）崩溃。预检已覆盖常见场景，
+    // ⚠️ spawn error 兜底（生产事故实证）：子进程命令不存在时 Node 异步 emit 'error'
+    // （ENOENT），无监听者 = EventEmitter 默认 throw → uncaughtException →
+    // 整个宿主进程（koishi）崩溃。预检已覆盖常见场景，
     // 这里防漏网并输出可读信息，绝不让宿主进程崩掉。
     child.once("error", (err) => {
         const code = getErrorCode(err);
@@ -230,8 +219,8 @@ function launchLinuxNative(options: LaunchOptions, selfHostPath: string): Return
         options.onStage?.("诊断动作已启用（仅本地调试；diag.* 按方法 allowlist 执行）");
     }
     mkdirSync(resolve(options.cfgDir), { recursive: true });
-    // HOME/XDG 收敛（Stage 3c）：Bugly 的崩溃处理器只认 $HOME，改它才能把
-    // `.config/QQ/crash_files/` 收进数据根（strace 实测，2026-11-09）。
+    // HOME/XDG 收敛：Bugly 的崩溃处理器只认 $HOME，改它才能把
+    // `.config/QQ/crash_files/` 收进数据根（strace 实测）。
     const home = resolveLinuxHome({
         dataRoot: options.cwd,
         cfgDir: options.cfgDir,

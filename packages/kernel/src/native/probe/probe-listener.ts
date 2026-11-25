@@ -1,17 +1,7 @@
 /**
- * listener 录制器（批次三前置探测，docs/protocols/milky.md §0.8.1、本包 design.md §10）
- *
- * 动机：无源事件缺的不是方法名而是回调证据——现有 bridge 只注册已知回调名，
- * 原生 listener 回调面之外的派发行为从未被观测。原理：原生 listener 是普通
- * JS 对象 + NAPI 按名反射回调（MsgBridge 模式），用 Proxy get 陷阱构造万能
- * 监听器，原生调什么记什么，不需要预先知道回调名。
- *
- * 开关：NAPUKETTO_LISTENER_RECORD=1（loader bootstrap 挂起，位置与 runProbePhase 相邻）。
- * 产物：NAPUKETTO_CFG_DIR/napuketto-listener-record.jsonl（JSONL 追加，注册过程
- * 逐行落盘，原生崩溃保留断点定位肇事服务）。
- *
- * 安全边界：记录函数只序列化入参后回调 onEvent，绝不反向调用原生；录制器与
- * 业务 bridge 并存（addKernelXListener 多监听各自独立 id），不干扰协议链路。
+ * listener 录制器（开关 NAPUKETTO_LISTENER_RECORD=1）：原生 listener 是普通 JS 对象 + NAPI 按名
+ * 反射回调，故用 Proxy 陷阱构造万能监听器，调什么记什么、无需预知回调名；产物写到
+ * NAPUKETTO_CFG_DIR/<file>.jsonl 逐行追加。记录只序列化入参、绝不反向调用原生，与 bridge 并存。
  */
 
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -72,9 +62,8 @@ function serviceShortName(getter: string): string {
 /**
  * 从服务方法面选 listener 注册方法：精确名 `addKernel<简称>Listener` 优先——
  * MsgService 另有 addKernelMsgImportToolListener / MsgNotify / MsgQuery /
- * TempChatSig 四个 add*Listener，正则按字母序会误选 ImportTool（2026-11-01
- * 首录实锤：真 listener 没挂上，Msg 回调面零捕获）；无精确名回退正则（裸
- * addListener 服务）。
+ * TempChatSig 四个 add*Listener，正则按字母序会误选 ImportTool（首录实锤：
+ * 真 listener 没挂上，Msg 回调面零捕获）；无精确名回退正则（裸 addListener 服务）。
  */
 function findAddMethod(service: unknown, shortName: string): string | null {
     const methods = listMethods(service);
@@ -144,7 +133,7 @@ export function createRecordingListener(
  *
  * ⚠️ 调用时序约束：必须在任何探测（probeRuntime / getMainSession）之前调用——
  * resolveMainFromStartup 会把空壳主 session 写回 ctx.session（session-resolver.ts），
- * 空壳的 service getter 函数仍在但调用返回 null（late probe 61/63 null 的根因）。
+ * 而空壳的 service getter 函数仍在、调用却返回 null。
  */
 export function startListenerRecording(
     ctx: WrapperContext,

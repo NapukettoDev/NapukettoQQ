@@ -1,8 +1,6 @@
 /**
- * 富媒体发送的文件 IO 原语（从 `apis/msg/media-prep.ts` 拆出）
- *
- * stat / md5 摘要：错误统一映射为 INVALID_PARAM（ADR-009），摘要按流式读取避免
- * 大文件整块进内存，并校验读取期间文件大小不变。
+ * 富媒体发送的文件 IO 原语：stat / md5 摘要，错误统一映射为 INVALID_PARAM（ADR-009）；
+ * 摘要按流式读取避免大文件整块进内存，并校验读取期间文件大小不变。
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";

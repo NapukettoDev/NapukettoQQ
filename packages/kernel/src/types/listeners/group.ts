@@ -1,9 +1,7 @@
 /**
- * Listener 接口层（运行时探测产物 + 公开资料作说明书，ADR-003 / ADR-006）
- *
- * GroupListener：群服务（GroupService）的原生回调监听接口。
- * 签名依据 wrapper 外部契约自研描述（零复制）——事件名约定 `${Service}/${method}`，由 event-channel 编译期推导。
- * 用 type 别名（非 interface）：满足 ListenerShape（Record<string, unknown>）约束。
+ * GroupListener：群服务（GroupService）的原生回调监听接口（运行时探测产物 + 公开资料作说明书，
+ * ADR-003 / ADR-006）。签名依据 wrapper 外部契约自研描述（零复制）；事件名约定
+ * `${Service}/${method}` 由 event-channel 编译期推导，用 type 别名以满足 ListenerShape 约束。
  */
 import type {
     Group,
@@ -66,7 +64,7 @@ export type GroupListener = {
     /** 群禁言成员列表变化。 */
     onShutUpMemberListChanged: (groupCode: string, members: ShutUpGroupMember[]) => void;
     /**
-     * 群精华列表变化（OB11 group_essence 候选源，2026-09-10 接线）。
+     * 群精华列表变化（OB11 group_essence 候选源）。
      * 证据：wrapper.node 9.9.33-52230 字符串——小写名位于 listener 反射字符串簇，
      * 与已知 onMemberListChange/onBuddyReqChange 交错（同一字符串表页）；
      * API 族旁证 addGroupEssence/getGroupLatestEssenceList。

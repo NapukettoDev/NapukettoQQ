@@ -1,14 +1,7 @@
 /**
- * at-resolver.ts：IPC 动作入参 → Peer / at 元素归一化（2026-11-25 从 actions.ts 拆出）。
- *
- * 两件事：
- *  1. `toPeer`：宽松 params → kernel Peer（chatType + peerUid）；缺 peerUid 时用
- *     peerUin 经 uin→uid 转换；群聊 peerUid 直接用群号（不走用户 uinToUid）。
- *  2. `resolveAtElements`：发送前把 at.target 的 QQ 号（uin）归一化成 uid，并按群成员
- *     缓存补 display（否则 QQ 侧解析 at 失败，表现为「@号后面为空」）。
- *
- * 拆分原因：这两段是 actions 里唯一与「动作表注册」无关的纯逻辑，独立后
- * 动作表只剩动作定义，且 at 归一化可单独做单测（不构造整张动作表）。
+ * at-resolver.ts：IPC 动作入参 → Peer / at 元素归一化（纯逻辑，与动作表注册无关，可单独单测）。
+ * toPeer：params → kernel Peer；群聊 peerUid 直接用群号，不走 uinToUid（那是用户 uin → uid，传群号属非法调用）。
+ * resolveAtElements：发送前把 at.target 的 uin 转 uid 并按群成员缓存补 display，否则 QQ 侧 @ 后显示为空。
  */
 import { isRecord } from "../../shared/type-guards.js";
 
@@ -40,14 +33,7 @@ export interface AtResolveContext {
  *
  * ⚠️ 群聊（chatType=2）peerUid 直接用群号（kernel Peer 定义「群号 / 用户 uid」，
  * OB11 resolve-peer 同构），**不走 uinToUid**——getUidByUins 是「用户 uin → uid」
- * 转换，传群号属非法调用。
- *
- * ⚠️ 归因更正（2026-08-20）：2026-08-09 把 `Cannot read properties of undefined
- * (reading 'service')` 归因为「传群号给 getUidByUins」是**误判**。真因是
- * ipc/attach.ts 把类方法 `GroupApi.uinToUid` 摘成裸函数注入丢了 this（读
- * undefined 的 service）。当时群聊改直通恰好绕开了这条路径，于是「群聊修好了」，
- * 而私聊仍然必炸——直到 2026-08-20 才在 ipc/attach.ts 处 bind 根治。
- * 群聊直通的行为本身仍然正确（上面第一条），保留。
+ * 转换，传群号属非法调用。这条直通与 uinToUid 的 this 绑定问题无关，行为保留。
  */
 export async function toPeer(
     params: Record<string, unknown>,
@@ -148,15 +134,13 @@ async function normalizeAtElement(
 }
 
 /**
- * 发送前 at 目标归一化（P2-19 同构：OB11 协议层 at.qq uin → uid 后才进 kernel）。
+ * 发送前 at 目标归一化（与 OB11 协议层同构：at.qq 的 uin 先转 uid 才进 kernel）。
  *
- * 背景（koishi-plugin-adapter-napuketto issue #1「无法 @ 指定群成员」）：
- * koishi 调用方给的 at.target 是 QQ 号（uin——session.userId 即 senderUin），
- * 而 NT 的 at 目标契约是 uid（写入 TEXT `atNtUid`；数字 uin 才进 `atUid`，非数字
- * 会被 wrapper 归零成 `"0"`，issue #192）。不转则 QQ 解析 at 失败，只能回退显示
- * content 兜底 "@" → 表现为「@号后面为空」。群聊才有 at 语义，私聊/临时会话跳过。
+ * koishi 调用方给的 at.target 是 QQ 号（uin——session.userId 即 senderUin），而 NT 的 at 目标契约是 uid
+ * （写入 TEXT `atNtUid`；数字 uin 才进 `atUid`，非数字会被 wrapper 归零成 `"0"`）。不转则 QQ 解析 at 失败，
+ * 只能回退显示 content 兜底 "@" → 表现为「@号后面为空」。群聊才有 at 语义，私聊/临时会话跳过。
  *
- * 归一化：uin 批量 uinToUid → uid（u_ 前缀直通不转）；有 groupCache.getMember
+ * 归一化：uin 批量 uinToUid → uid（`u_` 前缀直通不转）；有 groupCache.getMember
  * 时补 display（群成员昵称，kernel toSendElements 用它作 TEXT content，
  * 避免 @ 后无显示名）。转换失败/缺注入：保留原元素（不阻塞发送，保底）。
  */

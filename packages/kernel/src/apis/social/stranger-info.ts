@@ -1,11 +1,7 @@
 /**
- * 陌生人信息扁平化纯函数（get_stranger_info 的数据映射部分）
- *
- * 2026-08-08 从 profile.ts 拆出：NAPI 会话依赖（ProfileApi）与纯映射分离，
- * 纯函数可独立单测（stranger-info.test.ts 基线锁定宽松取值行为）。
- *
- * 宽松取值：优先 info（uid 完整详情），字段缺失回退 byUin（uin 初查详情），
- * 两份都缺给默认值——字段缺失是 QQ 详情接口的常态，不能抛错。
+ * 陌生人信息扁平化纯函数（get_stranger_info 的数据映射部分，纯函数可独立单测）。
+ * 宽松取值：优先 info（uid 完整详情），字段缺失回退 byUin（uin 初查详情），两份都缺给默认值
+ * ——字段缺失是 QQ 详情接口的常态，不能抛错。
  */
 import type { UserDetailInfoByUin } from "../../types/index.js";
 

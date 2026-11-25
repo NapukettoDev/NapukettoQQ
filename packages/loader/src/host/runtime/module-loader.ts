@@ -1,17 +1,7 @@
 /**
- * module-loader.ts：file:// 动态模块加载与导出面守卫（唯一实现，2026-11-25）。
- *
- * 背景：loader 编译期不依赖 adapter / network / kernel，全部运行期 `import(file://…)`。
- * 此前 assemble-ob11.ts 与 ipc/ob11-bridge.ts 各写了一份「反斜杠转正 + 拼子路径 +
- * 守卫收窄 + 报错文案」的逻辑——两份实现容易在错误文案与守卫顺序上漂移。
- * 本模块是这条链路的单一来源：
- *
- *  - `toFileUrl`：Windows 反斜杠 → 正斜杠的 file:// 前缀（**不用 pathToFileURL**：
- *    既有产物契约与报错文案按这个形态断言，改动属行为变更）
- *  - `subpathEntry`：adapter 入口 `index.mjs` → `<subpath>/index.mjs`（ADR-014 子路径导出）
- *  - `importNetworkModule` / `importSubpathModule`：导入 + 守卫 + 统一报错
- *  - `importOptionalModule`：账号段为空时**零加载**（ADR-014 按需加载）
- *  - `loadOb11BridgeModules`：IPC 模式下 OB11 动作桥的三模块装配（可注入 import 便于单测）
+ * module-loader.ts：file:// 动态模块加载与导出面守卫的唯一实现。
+ * loader 编译期不依赖 adapter / network / kernel，全部运行期 `import(file://…)`；本模块统一负责
+ * URL 化（不用 pathToFileURL）、子路径入口替换、守卫收窄与报错文案，避免各调用点漂移。
  */
 import type { ProtocolKey } from "../../contract/constants.js";
 import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "./module-guards.js";
@@ -23,7 +13,10 @@ const BACKSLASH_RE = /\\/g;
 /** adapter 入口 index.mjs 后缀（子路径导出替换用）。 */
 const INDEX_MJS_RE = /index\.mjs$/;
 
-/** file:// URL 化（Windows 反斜杠转正斜杠）。 */
+/**
+ * file:// URL 化（Windows 反斜杠转正斜杠）。
+ * ⚠️ 不用 pathToFileURL：既有产物契约与报错文案按这个形态断言，改动属行为变更。
+ */
 function toFileUrl(p: string): string {
     return `file://${p.replace(BACKSLASH_RE, "/")}`;
 }

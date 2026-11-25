@@ -1,8 +1,6 @@
 /**
- * 群公告（announcements）子域（从 `apis/group.ts` 拆出）
- *
- * getGroupBulletin / publishGroupBulletin / deleteGroupBulletin / uploadGroupBulletinPic
- * 的参数形状均待探测校准，宽松解包与错误语义保持原样。
+ * 群公告（announcements）子域：getGroupBulletin / publishGroupBulletin /
+ * deleteGroupBulletin / uploadGroupBulletinPic 的参数形状均待探测校准。
  */
 import { errorMessage, isKernelError, isRecord, kernelError } from "../../infra/index.js";
 import type { GroupBulletin, NodeIKernelGroupService } from "../../types/index.js";

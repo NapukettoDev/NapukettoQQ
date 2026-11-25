@@ -1,8 +1,6 @@
 /**
- * GroupApi 的原始响应守卫与解析（从 `apis/group.ts` 拆出）
- *
- * 原生 wrapper 返回形状在探测期不稳定：这里集中做形状收窄与宽松提取，
- * 业务方法只消费解析结果（错误仍由调用方抛 KernelError）。
+ * GroupApi 的原始响应守卫与解析：原生 wrapper 返回形状不稳定，这里集中做形状收窄
+ * 与宽松提取，业务方法只消费解析结果（错误仍由调用方抛 KernelError）。
  */
 import { hasNumberProp, hasStringProp, isRecord, kernelError } from "../../infra/index.js";
 import type { GroupBulletin, GroupDetailInfo, GroupMember } from "../../types/index.js";

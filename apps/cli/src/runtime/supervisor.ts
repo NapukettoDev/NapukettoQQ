@@ -1,12 +1,7 @@
 /**
- * supervisor：多账号子进程编排（P6，2026-08-05；2026-08-07 自建宿主唯一）
- *
- * 多账号走多进程（ADR-015）：每账号一个独立子进程（node <入口> -q <uin>
- * --data-dir <dataRoot> [--stub-dir <dir>]，复用单账号 runSingleAccount 零改动），
- * 本模块作为父进程：
- *   - 拉起：主配置 accounts（supervisor 子命令）或显式 -q 列表
- *   - 守护：账号异常退出且 autoRestart → 延迟重启
- *   - 信号转发：SIGINT/SIGTERM → 停止全部子进程 → 父进程退出
+ * supervisor：多账号走多进程（ADR-015）——每账号一个独立子进程（`node <入口> -q <uin> --data-dir <dataRoot>`），
+ * 复用单账号 runSingleAccount。本模块作为父进程负责拉起（主配置 accounts 或显式 -q 列表）、守护重启
+ * （异常退出且 autoRestart → 延迟重启）与信号转发（SIGINT/SIGTERM → 停止全部子进程 → 父进程退出）。
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
@@ -42,7 +37,7 @@ const EXIT_POLL_MS = 100;
 /** 子进程优雅退出时限（毫秒）：哨兵/信号后子进程自行停止，超时强杀兜底。 */
 const FORCE_EXIT_MS = 8000;
 /**
- * 短生命周期崩溃阈值（毫秒，issue #144）：运行不足该时长的退出视为「连续秒退」，
+ * 短生命周期崩溃阈值（毫秒）：运行不足该时长的退出视为「连续秒退」，
  * 重启延迟按 `restartDelayMs * 2^n` 指数退避，避免登录后立刻崩溃时高频循环重登
  * 触发 QQ 风控；稳定运行超过该时长后退避计数清零。
  */
@@ -51,7 +46,7 @@ const SHORT_LIVED_CRASH_MS = 30_000;
 const MAX_RESTART_DELAY_MS = 60_000;
 
 /**
- * 计算下一次守护重启延迟（issue #144）。
+ * 计算下一次守护重启延迟。
  * @param baseDelayMs 配置的首次重启延迟（restartDelayMs）
  * @param consecutiveFailures 连续短生命周期失败次数（从 1 起）
  */
@@ -60,7 +55,6 @@ export function computeRestartDelayMs(baseDelayMs: number, consecutiveFailures: 
     return Math.min(baseDelayMs * 2 ** exponent, MAX_RESTART_DELAY_MS);
 }
 
-/** supervisor 选项。 */
 export interface SupervisorOptions {
     /** 数据根目录。 */
     dataDir?: string;
@@ -198,7 +192,7 @@ function writeAccountExited(
 }
 
 /**
- * 守护重启编排（issue #144）：短生命周期崩溃按指数退避，稳定运行超过阈值后
+ * 守护重启编排：短生命周期崩溃按指数退避，稳定运行超过阈值后
  * 计数清零（恢复配置的基础延迟）。日志始终带连续失败次数与下次重启延迟。
  */
 function scheduleRestart(
@@ -256,7 +250,7 @@ function handleAccountExit(
     ctx.children.delete(acct.qq);
     logger.info({ qq: acct.qq, code, signal: signal ?? "none" }, "账号退出");
     if (code === EXIT_CONFIG_INVALID) {
-        // 配置校验失败（2026-10-25 退出码契约）：配置不修，重启无意义——
+        // 配置校验失败（退出码契约）：配置不修，重启无意义——
         // 不进守护重启，落 runtime exited 供 status 消费。
         logger.error({ qq: acct.qq, code }, "账号因配置校验失败退出（78），不自动重启");
         writeAccountExited(ctx, acct, child, code, restartCount);
@@ -282,10 +276,10 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
     const restartCount = ctx.restartCounts.get(acct.qq) ?? 0;
     // 新一轮生命周期：清掉上一次退出的记录（空闲收尾只看「当前」退出码）。
     ctx.exitedCodes.delete(acct.qq);
-    // 引导细节（2026-10-25 级别重分配）：账号上线由子进程登录日志报告，此处降 debug
+    // 引导细节：账号上线由子进程登录日志报告，此处降 debug
     logger.debug({ qq: acct.qq, pid: process.pid, restartCount }, "启动账号");
     const args = childArgs(ctx, acct);
-    // stdio 管道化（2026-09-08 T8）：逐行前缀转发（多账号输出可辨别），
+    // stdio 管道化：逐行前缀转发（多账号输出可辨别），
     // 替代 inherit——结构化状态（runtime.json：pid/启动时间/重启计数）同步落盘。
     // env：banner 由 supervisor 统一打（每树至多一次），子进程注入 NO_BANNER；
     // 渲染决策（format/colorize）按本进程最终控制台形态传播（子进程 stdout 恒 pipe）；
@@ -329,7 +323,7 @@ function startAccount(ctx: SupervisorCtx, acct: CliAccountConfig): void {
     });
 }
 
-/** 停止全部子进程，全部退出后父进程退出（2026-10-25 优雅化）。
+/** 停止全部子进程，全部退出后父进程退出。
  *
  * 优雅路径：写停止哨兵（all）→ 子进程链（boot / self-host）自行有序退出 →
  * 全部退出后 exit 0（退出码契约：0 = 请求式正常退出）。超时（FORCE_EXIT_MS）
@@ -453,7 +447,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         exitedCodes,
         onSettled: maybeFinish,
         isFinished: () => finished,
-        // 入站图片自动下载补丁 killswitch（issue #105）：config.nativeMediaPatch=false
+        // 入站图片自动下载补丁 killswitch：config.nativeMediaPatch=false
         // 时注入（子进程 -q 直跑继承，launchSelfHost 不再覆盖——同名 env 优先级见 launcher）。
         childEnv: {
             ...effectiveConsoleEnv(logCfg),

@@ -1,13 +1,7 @@
 /**
- * QQ 安装目录探测（ADR-018）
- *
- * wrapper.node 路径随 QQ 版本变化：`<安装目录>/versions/<版本>/resources/app/wrapper.node`。
- * 加载前必须知道版本（登录握手参数 appid/qua 与版本强相关）。
- *
- * 已实测确认（2026-08-05，QQ 9.9.31-49919）：
- * - 目录结构：versions/<9.9.31-49919>/resources/app/wrapper.node
- * - 版本信息在 versions/<版本>/resources/app/package.json（name=qq-chat / version / buildVersion）
- * - wrapper.node 是 C++ ABI 模块（非 N-API），导出 INTSessionShell 等符号
+ * QQ 安装目录探测（ADR-018）：wrapper.node 在 `<安装目录>/versions/<版本>/resources/app/`，
+ * 加载前必须知道版本（appid/qua 与版本强相关）；版本信息读同目录 package.json。
+ * wrapper.node 是 C++ ABI 模块（非 N-API），导出 INTSessionShell 等符号。
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -88,9 +82,9 @@ export interface QqVersionInfo {
     buildVersion: string;
     /** wrapper.node 绝对路径。 */
     wrapperPath: string;
-    /** 登录握手参数（P1 探测脚本产出，暂为空串）。 */
+    /** 登录握手参数（探测脚本产出，暂为空串）。 */
     appid: string;
-    /** 登录握手参数（P1 探测脚本产出，暂为空串）。 */
+    /** 登录握手参数（探测脚本产出，暂为空串）。 */
     qua: string;
 }
 

@@ -1,22 +1,6 @@
 /**
- * launch-env.ts：自建宿主子进程环境构造（唯一入口）。
- *
- * 历史（H-06）：launcher 曾直接 `{ ...process.env }` 展开父进程环境，把无关凭据、
- * 加载器注入变量（`NODE_OPTIONS` / `LD_PRELOAD` / `LD_LIBRARY_PATH`）与任意部署私有
- * 值带进承载 QQ 原生模块的子进程。本模块改为显式白名单：
- *
- *  1. 平台基础变量（系统路径 / 临时目录 / 区域设置）
- *  2. 明确透传的部署策略（代理、私有 CA、主配置、调试沙箱）
- *  3. 子进程日志覆盖（可选公开契约，值不写日志）
- *  4. 用户控制标记（仅规范前缀 `NAPUKETTO_*` 透传，不识别旧拼写）
- *  5. `extraEnv`（调用方显式逃生口）
- *  6. 强类型 `LaunchOptions` 字段（最终生效，`false` 删除继承标记）
- *
- * 平台差异：Windows 环境变量名大小写不敏感，写入 `PATH` 等键前先删同名异体，避免
- * `Path` / `PATH` 双份；Linux 的 `LD_PRELOAD` 由 launcher 独占写入，父进程的预加载
- * 变量不进入白名单。
- *
- * 2026-11-25 P1 拆分：键表与跨平台读写原语下沉 `env-keys.ts`，本文件只留环境**策略**。
+ * 自建宿主子进程环境构造唯一入口：显式白名单，禁止 `{ ...process.env }` 把无关凭据与加载器注入变量带进子进程。
+ * Windows 下 `Path`/`PATH` 是同一变量，写入前先删同名异体；Linux 的 `LD_PRELOAD` 由 launcher 独占写入。
  */
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";

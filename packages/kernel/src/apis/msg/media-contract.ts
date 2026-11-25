@@ -1,9 +1,7 @@
 /**
- * 富媒体发送契约值（从 `apis/msg.ts` 拆出，只抽常量不改值）
- *
- * PIC / PTT / VIDEO 的固定字段值均为实测调通的 wrapper 发送契约；发送方向固定，
- * 改值会破坏富媒体发送。`picType` 由 `image-meta.ts` 的 `resolvePicType` 按
- * MIME/扩展名映射，不在此硬编码。
+ * 富媒体发送契约值：PIC / PTT / VIDEO 的固定字段值均为实测调通的 wrapper 发送契约，
+ * 发送方向固定，改值会破坏富媒体发送。`picType` 由 `image-meta.ts` 的 `resolvePicType`
+ * 按 MIME/扩展名映射，不在此硬编码。
  */
 
 /** PIC 元素发送契约值。 */
@@ -31,12 +29,12 @@ export const PTT_AI_VOICE_TYPE = 0;
 export const PTT_WAVE_AMPLITUDES = [0, 18, 9, 23, 16, 17, 16, 15, 44, 17, 24, 20, 14, 15, 17];
 
 /**
- * VIDEO 元素发送契约值（2026-10-17 收向实测字段 + 发送实测调通）。
+ * VIDEO 元素发送契约值（收向实测字段 + 发送实测调通）。
  *
  * 依据：历史视频消息 `getLatestDbMsgs` 的 videoElement 实测快照（fileFormat /
  * busiType / subBusiType / storeID / original / videoFrom / sourceVideoCodecFormat
- * 均为实测出现的取值）。2026-10-17 18:12 自建宿主实测调通：`sendMsg` 成功
- * （sendStatus 2/3，群内可播放）；关键坑是**缩略图目标路径必须用视频 md5**。
+ * 均为实测出现的取值）；自建宿主实测 `sendMsg` 成功（sendStatus 2/3，群内可播放），
+ * 关键坑是**缩略图目标路径必须用视频 md5**。
  */
 export const VIDEO_FILE_FORMAT = 0;
 export const VIDEO_BUSI_TYPE = 0;

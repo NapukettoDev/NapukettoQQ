@@ -1,9 +1,6 @@
 /**
  * codec.ts：IPC 消息编解码（JSON 行协议，与 koishi 插件侧 src/ipc/codec.ts 对齐）。
- *
- * 每行一条 JSON 消息，`\n` 结尾。解码用 ipcMessageSchema.safeParse 校验：
- * 非法行 / 空行 / v 不匹配 / type 未知 / payload 形状非法 → null，调用方忽略，
- * 不崩通道。
+ * 每行一条 JSON、`\n` 结尾；解码走 ipcMessageSchema.safeParse，非法行/空行/版本或形状不符 → null，不崩通道。
  */
 
 import { type IpcMessage, ipcMessageSchema } from "../../contract/ipc-schema.js";

@@ -1,14 +1,7 @@
 /**
- * actions.ts：IPC 动作表（koishi 动作 → kernel API）。
- *
- * 协议契约：动作名点分域（`msg.sendMessage` 等），params 宽松透传。
- * 本轮实现 koishi Bot 核心动作（发消息/撤回/历史/已读/列表/self）；
- * 其余动作随 koishi 插件 actions.ts 轮次按需扩充。
- *
- * ⚠️ 不自研 kernel 依赖（loader 运行时 file:// 动态 import kernel，编译期不建
- * workspace 依赖——见 runtime/types.ts 注释）。错误码提取统一走 shared/type-guards。
- *
- * 2026-11-25 P1：Peer / at 归一化拆到 `at-resolver.ts`，本文件只剩动作定义与调用。
+ * actions.ts：IPC 动作表（koishi 动作 → kernel API，动作名点分域，params 宽松透传）。
+ * ⚠️ 不自研 kernel 依赖：loader 靠 file:// 动态 import kernel，编译期不建 workspace 依赖；错误码统一走 shared/type-guards。
+ * Peer / at 归一化在 at-resolver.ts；诊断动作默认不注册（见 diagnostics.ts）。
  */
 import { z } from "zod";
 import { IpcRespondToGroupRequestParamsSchema } from "../../contract/ipc-schema.js";
@@ -200,7 +193,7 @@ export async function callIpcAction(
         const value = await handler(params ?? {});
         return { ok: true, value };
     } catch (err) {
-        // 诊断（2026-08-09）：错误消息传回 koishi 会丢堆栈，先落 boot 日志
+        // 错误消息传回 koishi 会丢堆栈，先落 boot 日志
         // 便于定位真实错误位置（QQ 原生内部抛错时消息难以反查）。
         const message = getErrorMessage(err);
         const stack = err instanceof Error && err.stack !== undefined ? err.stack : "";

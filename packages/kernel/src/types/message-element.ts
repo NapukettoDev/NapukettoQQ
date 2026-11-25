@@ -1,11 +1,7 @@
 /**
- * canonical 消息元素模型（协议无关，ADR-008 延伸）
- *
- * 描述 QQ 消息的事实结构，是各协议翻译层的公共中间表示。
- *
- * 本文件只做**类型声明**（无 `node:fs` / `infra` 运行时依赖）；运行时转换函数
- * （`picLocalCandidates` / `toCanonicalElements` / `toSendElements`）在
- * `native/message-codec.ts`，经 `native/index.ts` 对外。
+ * canonical 消息元素模型（协议无关，ADR-008 延伸）：描述 QQ 消息的事实结构，是各协议
+ * 翻译层的公共中间表示。本文件只做**类型声明**（无 `node:fs` / `infra` 运行时依赖），
+ * 运行时转换函数在 `native/message-codec.ts`，经 `native/index.ts` 对外。
  */
 
 /** 协议无关的规范消息元素。 */

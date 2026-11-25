@@ -1,17 +1,7 @@
 /**
- * 控制台消息日志（从 protocols.ts 拆分，2026-08-08 FTA 优化）
- *
- * 收到消息打印到控制台（NapCat 同款）。独立订阅，不干扰 adapter 的 OB11 翻译广播；
- * 解析纯函数无副作用（ADR-008）。高频业务日志调用点直接传**纯字符串**（不传对象），
- * 纯字符串裸传即单行渲染，避免对象属性多行展开刷屏；boot 文件日志保留（引导期诊断）。
- *
- * 格式（2026-08-07 用户定稿）：`loader | 接收 <- 群聊 [群124010257] [用户3054108135]： 内容`
- *  - 剥离群名/用户名，只保留 ID（横向精简）：群聊显示 [群uin] + [用户uin]，
- *    私聊只显示 [用户对端uin]（会话即用户，避免重复）
- *  - 前缀灰色（背景噪音）、群 ID 青色、用户 ID 绿色、内容默认色（视觉焦点）
- *  - 内容内换行补 4 空格缩进，避免多行文本顶格破坏队形
- *  - console 版带 ANSI（logger），boot 文件版纯文本（log），互不污染；
- *    IPC 模式 logger 落文件 JSON，写 plain（colored 仅终端用）
+ * 控制台消息日志：收到消息打印到控制台（NapCat 同款），独立订阅、不干扰 adapter 的 OB11 翻译广播；解析纯函数无副作用。
+ * 格式 `loader | 接收 <- 群聊 [群124010257] [用户3054108135]： 内容`：只留 ID、前缀灰/群 ID 青/用户 ID 绿，内容内换行补 4 空格。
+ * console 版带 ANSI、boot 文件版纯文本；IPC 模式 logger 落文件 JSON 故写 plain（colored 仅终端用）。
  */
 
 import { log } from "../../shared/boot-log.js";
@@ -24,7 +14,7 @@ import type {
     LoggerLike,
 } from "../runtime/types.js";
 
-/** 终端 ANSI 颜色（消息日志颜色分层，2026-08-07 用户定稿）。 */
+/** 终端 ANSI 颜色（消息日志颜色分层）。 */
 const ANSI = {
     gray: "\u001b[90m",
     cyan: "\u001b[36m",
@@ -91,7 +81,7 @@ function formatMessageLog(kernel: KernelLike, msg: unknown): MessageLogLine {
 }
 
 /**
- * 接收行绑定过滤 holder（2026-10-25 P1-7）：kurobot 适配器握手（hello_ack /
+ * 接收行绑定过滤 holder：kurobot 适配器握手（hello_ack /
  * bindings_updated）后填充 current；[log].unboundReceive=false 时 setupMsgLogging
  * 消费——未绑定频道的群消息接收行不打（私聊无绑定概念，恒放行）。
  * null = 无绑定信息（kurobot 未启用/未握手），不过滤。
@@ -101,12 +91,12 @@ export interface ReceiveLogFilter {
 }
 
 /**
- * 消息日志订阅（onRecvMsg 回调参数为消息数组——2026-08-07 运行时实证，遍历逐条打印）。
- * 返回退订函数（软重登重装配时清理旧订阅，2026-09-08）；通道返回面宽松
+ * 消息日志订阅（onRecvMsg 回调参数是消息数组，遍历逐条打印）。
+ * 返回退订函数（软重登重装配时清理旧订阅）；通道返回面宽松
  * （EventChannelLike.on 返回 unknown），非函数时退化为 no-op。
  *
- * 2026-10-25 级别重分配：接收行 info → debug（运行状态无信息量的高频行；
- * 终端要看配 [log.levels] loader = "debug"）。
+ * 接收行级别为 debug（运行状态无信息量的高频行；
+ * 终端要看需配 [log.levels] loader = "debug"）。
  */
 export function setupMsgLogging(
     kernel: KernelLike,

@@ -1,14 +1,6 @@
 /**
- * bootstrap/core.ts：NapukettoCore 装配路径主流程编排（从 bootstrap.ts 拆分，2026-08-08
- * FTA 优化；2026-11-25 P1 二次拆分：session 编排 → session.ts，观测相位 →
- * bootstrap/probe.ts）。
- *
- * 职责只剩三步编排：
- *  1. `buildCoreCreateOptions` / `mountIpcLogin`：把 [log] 段 + env 折叠成
- *     `NapukettoCore.create()` 选项与登录期 IPC 动作面
- *  2. `bootstrapWithCore`：create → attachWrapper → 登录（pickLoginAccount + doLogin，
- *     与 control login 抢占竞速）→ 装配（session → 协议 → IPC）→ 探测相位
- *  3. 软重登重装配（`softRelogin`，relogin.ts 经 deps 调用）
+ * bootstrap/core.ts：NapukettoCore 装配路径主流程编排（create → attachWrapper → 登录 → 装配 → 探测相位）。
+ * session 编排在 session.ts、观测相位在 bootstrap/probe.ts、软重登相位机在 auth/relogin.ts；本文件只留编排。
  */
 import { basename, dirname } from "node:path";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
@@ -72,7 +64,7 @@ function buildCoreCreateOptions(
             : {}),
         ...(env.NAPUKETTO_QUICK_UIN !== undefined ? { account: env.NAPUKETTO_QUICK_UIN } : {}),
         // IPC 模式关 console：stdout 专用于 JSON 行协议，控制台日志并发写会
-        // 撕裂协议行（2026-09-06「能收不能发」事故根因）；文件日志
+        // 撕裂协议行（「能收不能发」事故根因）；文件日志
         // logs/napuketto.log 不受影响，cli 模式 console 输出不变
         ...(isEnvEnabled(env.NAPUKETTO_IPC) ? { consoleLog: false } : {}),
     };
@@ -104,7 +96,7 @@ export async function bootstrapWithCore(
     hostIpc?: IpcServerOptions,
 ): Promise<boolean> {
     // 日志配置（napuketto.toml [log] 段 + env 覆盖；失败回退缺省）——kernel 与
-    // loader 两个 logger 的格式/级别/时间戳统一从这里来（2026-10-25 日志可配置化）
+    // loader 两个 logger 的格式/级别/时间戳统一从这里来
     const logCfg = resolveLoaderLogConfig(kernel);
     // 装配层路径：NapukettoCore.create → attachWrapper → login
     const coreCtor = kernel.NapukettoCore;
@@ -116,16 +108,16 @@ export async function bootstrapWithCore(
     // ⭐ IPC 模式：登录前就启动 stdin 服务端（只含 login.refreshQr 动作）。
     // 否则登录中（waiting_scan）前端刷新/control 指令堆积在 pipe 缓冲区，
     // 子进程不读 stdin → 指令不可达；同时心跳 ping（15s）提前启动，
-    // 防扫码耗时超过 45s 被 driver 误判失联强杀（2026-08-13 结构性修复）。
+    // 防扫码耗时超过 45s 被 driver 误判失联强杀。
     const ipc = hostIpc ?? (isEnvEnabled(env.NAPUKETTO_IPC) ? { actions: new Map() } : undefined);
-    // control login 抢占（2026-09-08）：初始登录竞速——doLogin 与 control login
+    // control login 抢占：初始登录竞速——doLogin 与 control login
     // 先 settle 者胜。快速登录风控挂起时「强制扫码」control login 成功的结果
     // 接管引导链（否则 doLogin 永远不 settle，出码登录成功也到不了 ready）。
     const preempt: LoginPreemptRef = { resolve: null };
     const preemptLogin = new Promise<LoginResultLike>((resolve) => {
         preempt.resolve = resolve;
     });
-    // 登录控制相位机（A1/A2，relogin.ts）：登录竞速 → 装配 → ready（软重登窗口）
+    // 登录控制相位机（relogin.ts）：登录竞速 → 装配 → ready（软重登窗口）
     const control = new LoginControl(preempt);
     // 软重登延迟绑定：IPC 服务端先于 attachWrapper 启动（登录期 control 指令
     // 可达优先），softRelogin 闭包依赖 ctx，就绪后注入。相位机保证 ready 态
@@ -239,7 +231,7 @@ export async function bootstrapWithCore(
 
     /**
      * 软重登重装配（ready 态 control login 成功，relogin.ts 经 deps 调用）：
-     * 清理旧装配面 → 用新登录结果重跑装配链（A2，2026-09-08）。
+     * 清理旧装配面 → 用新登录结果重跑装配链。
      * 清理顺序：协议消费方（OB11 桥退订+动作表移除）→ IPC 事件转发/动作表
      * → kernel 桥/缓存/消息日志（dispose，幂等）。失败返回 false（上报退出）。
      */
@@ -270,9 +262,9 @@ export async function bootstrapWithCore(
         control.abort();
         return false;
     }
-    // NAPUKETTO_QUICK_UIN 强制指定快速登录账号（cli `-q <uin>` 透传，2026-08-07；
+    // NAPUKETTO_QUICK_UIN 强制指定快速登录账号（cli `-q <uin>` 透传；
     // 也用于实验/自建宿主验证，防止自动选中风控账号 3054108135 导致挂起）。
-    // NAPUKETTO_QR_ONLY 强制扫码（2026-09-08）：跳过快速登录直接 QR——
+    // NAPUKETTO_QR_ONLY 强制扫码：跳过快速登录直接 QR——
     // koishi 面板「扫码登录」的重启路径（qrOnly 一次性，登录后 env 不再生效）。
     // 打印可用快速登录账号（启动横幅）
     const forcedUin = env.NAPUKETTO_QUICK_UIN;
@@ -300,7 +292,7 @@ export async function bootstrapWithCore(
         preemptLogin,
     ]);
     // 竞速结束：关抢占口进入装配期（后续 control login 走 ready 态软重登
-    // 或按相位忽略，见 relogin.ts 相位机——A1 修复迟到结果的误导上报）
+    // 或按相位忽略，见 relogin.ts 相位机——迟到结果不得误导上报）
     if (isShuttingDown()) {
         return false;
     }

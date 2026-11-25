@@ -1,18 +1,6 @@
 /**
- * smoke.ts：P2-1 收发消息冒烟自检（NAPUKETTO_SMOKE=1 触发，2026-08-06）。
- * 2026-08-07 阶段 2：由 runtime/boot-smoke.js TS 化（零语义改动）。
- *
- * 目的：业务层最后试金石——登录 + session 就绪后，真正用 kernel MsgBridge
- * （addKernelMsgListener）+ MsgApi（sendMsg）发/收一条消息，验证：
- *  ① 发送方向：MsgApi.sendMessage 成功返回 msgId（NT 雪花 ID）
- *  ② 接收方向：MsgBridge 订阅 onRecvMsg 收到消息事件
- *  ③ 落库验证：fetchMessages 拉取最近消息，确认刚发的消息在列表里
- *
- * 目标 peer 由环境变量 NAPUKETTO_SMOKE_PEER 指定（格式：c2c:<uin> 或 group:<uin>），
- * 缺省发给自己的 uin（C2C 我的设备）。发送内容固定带时间戳，便于日志核对。
- *
- * 由 bootstrap.ts 在登录成功、session 就绪后调用（协议装配前——不依赖
- * adapter/network，单独验证 kernel 业务链路）。
+ * smoke.ts：收发消息冒烟自检（NAPUKETTO_SMOKE=1）——登录 + session 就绪后用 MsgBridge + MsgApi 真发/收一条，验证发送、接收与落库。
+ * 目标 peer 由 NAPUKETTO_SMOKE_PEER 指定（c2c:<uin> / group:<uin>，缺省发给自己）；在协议装配前调用，不依赖 adapter/network。
  */
 
 import { log } from "../../shared/boot-log.js";
@@ -102,7 +90,7 @@ export async function runSmokeTest(
     bridge.register();
     log("smoke: ✅ MsgBridge 注册完成（addKernelMsgListener）");
 
-    // ② 订阅 onRecvMsg（接收方向验证；回调参数为消息数组——2026-08-07 运行时实证）
+    // ② 订阅 onRecvMsg（接收方向验证；回调参数是消息数组，不是单条）
     let received = 0;
     let receivedText = "";
     channel.on("Msg/onRecvMsg", (msgs) => {

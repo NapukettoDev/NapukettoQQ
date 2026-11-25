@@ -1,8 +1,6 @@
 /**
- * 等待/延迟工具（通用底层原语，2026-08-08 克隆合并；2026-11 下沉至 infra）
- *
- * 纯 promise 工具，无任何业务依赖——login / cache 等上层模块经
- * `infra/index.js` 复用，杜绝 cache -> login 的跨领域依赖。
+ * 等待/延迟工具（通用底层原语，无业务依赖）。
+ * login / cache 等上层模块经 `infra/index.js` 复用，杜绝 cache → login 的跨领域依赖。
  */
 
 /** 等待条件满足（轮询，带超时）。 */
@@ -36,7 +34,7 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * 底层 NAPI promise 超时竞速（T3）：promise 先 settle 用其结果，超时先到用
+ * 底层 NAPI promise 超时竞速：promise 先 settle 用其结果，超时先到用
  * onTimeout 产物（可抛错 → 整体 reject）。底层 promise 无法取消，超时后
  * 悬挂丢弃——勿做清理动作引发二次问题；败者的迟到 settle 由 race 吞掉。
  */

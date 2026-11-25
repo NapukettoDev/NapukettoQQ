@@ -1,8 +1,6 @@
 /**
  * 默认动作（无子命令）用例：-q 单账号 / 多 -q supervisor / 无 -q 读配置拉起全部账号。
- *
- * 从 index.ts 拆出（2026-10-25 模块收拢）：这里只做编排，不 import commander；
- * 参数解析、帮助文案与退出码收敛在 cli/program.ts。
+ * 这里只做编排，不 import commander；参数解析、帮助文案与退出码收敛在 cli/program.ts。
  */
 import { configError } from "@napuketto/kernel";
 import { parseCliQq } from "../config/schema.js";
@@ -11,7 +9,6 @@ import { logger } from "../logger.js";
 import { runSingleAccount } from "../runtime/boot.js";
 import { runSupervisor } from "../runtime/supervisor.js";
 
-/** 主命令已解析参数。 */
 export interface StartOptions {
     qq?: string[];
     dataDir?: string;
@@ -33,8 +30,7 @@ async function runSingleAccountBranch(opts: StartOptions, qqs: string[]): Promis
     });
 }
 
-/** 无 -q 时：读全局配置 accounts（账号必填，2026-08-08 拍板），supervisor 拉起全部启用账号。
- * 不再有「配置为空 → 交互式单账号登录」老路径：缺账号直接报错提示编辑模板。
+/** 无 -q 时：读全局配置 accounts（账号必填），supervisor 拉起全部启用账号；缺账号直接报错提示编辑模板。
  * 配置加载内联优先（NAPUKETTO_CONFIG_JSON > 文件）；校验失败 ConfigError → exit 78。 */
 async function autoStart(opts: StartOptions): Promise<void> {
     const { config } = await loadCliConfigWithSource({
@@ -54,7 +50,7 @@ async function autoStart(opts: StartOptions): Promise<void> {
 }
 
 /**
- * -q 列表入口校验（2026-11 安全加固）：格式/占位值复用主配置规则，重复值直接报错。
+ * -q 列表入口校验：格式/占位值复用主配置规则，重复值直接报错。
  * ConfigError → exit 78；放在分发最前，非法值不会进入数据目录拼接或 supervisor。
  */
 function parseQqList(qqs: string[]): string[] {

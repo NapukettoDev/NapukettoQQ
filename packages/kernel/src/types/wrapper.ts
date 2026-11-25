@@ -1,11 +1,7 @@
 /**
- * wrapper.node 的 NAPI 接口面（自研描述，非移植）
- *
- * 来源：wrapper.node 在 QQ 定制版 Electron 里通过 napi_define_class / napi_set_named_property
- * 注册的 JS 类（2026-08-05 Ghidra 反编译 FUN_180c6274a / FUN_180c80224 确认类名）。
- * 这些接口是 wrapper.node 对外暴露的外部系统契约——我们自研描述其形状，未复制任何第三方代码。
- *
- * 注意：这里所有对象由 QQ 运行时的 NAPI 层自动构建/转换，业务层禁止触碰 C++ ABI。
+ * wrapper.node 的 NAPI 接口面（自研描述，非移植）：这些类是 wrapper.node 在 QQ 定制版 Electron
+ * 里以 napi_define_class / napi_set_named_property 注册的 JS 类（Ghidra 反编译 FUN_180c6274a /
+ * FUN_180c80224 确认类名）。对象由 QQ 的 NAPI 层自动构建，业务层禁止触碰 C++ ABI。
  */
 import type {
     NodeIKernelBuddyService,
@@ -189,7 +185,7 @@ export interface NodeIQQNTWrapperSession {
     /** 闪传服务（诊断用：调查 rich media transfer failed 时验证初始化触发点）。 */
     getFlashTransferService(): NodeIKernelFlashTransferService | null;
     getProfileService(): NodeIKernelProfileService | null;
-    /** 会话列表（P2 批次二 get_peer_pins 数据源；2026-10-31 探测方法面）。 */
+    /** 会话列表（get_peer_pins 数据源；已探测方法面）。 */
     getRecentContactService(): NodeIKernelRecentContactService | null;
     getProfileLikeService(): NodeIKernelProfileLikeService | null;
     /** 以下服务尚未产出运行时探测类型，保持 unknown（禁止盲猜形状）。 */
@@ -223,7 +219,7 @@ export interface NodeIKernelLoginService {
     quickLoginWithUin(uin: string): Promise<unknown>;
     getQRCodePicture(): boolean;
     getMsfStatus(): number;
-    /** 设备指纹 guid（wrapper.node 字符串分析实证，2026-08-12；无 getMachineId；可选）。 */
+    /** 设备指纹 guid（wrapper.node 字符串分析实证；无 getMachineId；可选）。 */
     getMachineGuid?(): string;
 }
 
@@ -240,8 +236,7 @@ export interface NodeIO3MiscService {
 
 // adapter 类型（session.init 第二/三参、engine.initWithDeskTopConfig 第二参）
 // 注意：wrapper exports **不含** NodeI*Adapter / NodeI*Listener 构造器（实测 89 键无）。
-// 传普通 JS 对象即可——NAPI 反射读取对象上的方法回调。方法名是 QQ wrapper 的外部契约
-//（2026-08-05 运行时行为实测确认，接口为自研描述）。
+// 传普通 JS 对象即可——NAPI 反射读取对象上的方法回调（方法名是 QQ wrapper 的外部契约）。
 export interface NodeIGlobalAdapter {
     onLog?(...args: unknown[]): void;
     onGetSrvCalTime?(...args: unknown[]): void;

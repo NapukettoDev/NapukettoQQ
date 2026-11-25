@@ -1,9 +1,7 @@
 /**
- * NodeIKernelRecentContactService：会话列表服务接口面（自研描述，非移植）
- *
- * 依据：getRecentContactService() 运行时反射（2026-10-31 实机探测方法面）+
- * wrapper 外部契约（接口签名是 QQ 的外部事实，自研描述其形状，零复制实现）。
- * 只收录 apis/recent-contact 当前需要的方法；其余按需探测后补齐。
+ * NodeIKernelRecentContactService：会话列表服务接口面（自研描述，非移植）。
+ * 依据 getRecentContactService() 运行时反射（实机探测方法面）+ wrapper 外部契约
+ * （接口签名是 QQ 的外部事实，零复制）；只收录 apis/recent-contact 需要的方法。
  */
 import type { GeneralCallResult } from "./msg-service.js";
 
@@ -17,7 +15,7 @@ export interface RecentContact {
     topFlag?: number;
     /** 置顶标记（布尔别名形态，兼容探测取值）。 */
     isTop?: boolean;
-    /** 置顶时间（topFlag=1 时携带；2026-11-01 置顶实验实证为秒级 unix 字符串）。 */
+    /** 置顶时间（topFlag=1 时携带；置顶实验实证为秒级 unix 字符串）。 */
     topFlagTime?: string;
     /** 对端 uin（部分返回形态带）。 */
     peerUin?: string;

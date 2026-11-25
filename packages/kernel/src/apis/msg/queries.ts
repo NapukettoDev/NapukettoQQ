@@ -1,8 +1,6 @@
 /**
- * 消息查询公共原语（从 `apis/msg.ts` 拆出）
- *
- * MsgApi 门面、转发与语音子模块共用：原生 `{ result, msgList }` 解包 →
- * 业务消息数组。
+ * 消息查询公共原语：MsgApi 门面、转发与语音子模块共用——原生 `{ result, msgList }`
+ * 解包 → 业务消息数组。
  */
 import type { NodeIKernelMsgService, Peer, RawMessage } from "../../types/index.js";
 import { unwrapResult } from "../result.js";

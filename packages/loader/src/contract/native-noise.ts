@@ -1,24 +1,7 @@
 /**
- * native-noise.ts：wrapper 原生噪音行判定（cli 转发与 koishi IPC 两条路径共享单一来源）。
- *
- * wrapper.node 加载后原生 printf 直写 fd 的 C++ 日志，JS 层无法拦截，只能在消费端
- * 逐行过滤：
- *  - `<MMKV` / `<MemoryFile_Win32` / `<MMKV_IO`：MMKV 存储库刷屏（每次初始化打 ~6 行）
- *  - `loadSymbolFromShell` / `getNodeGetJsListApi` / `get symbol failed`：
- *    标准 node 无腾讯私有符号（NodeContextifyContextMetrics 等），GetProcAddress
- *    失败的加载警告（无害，纯噪音）
- *  - `loaded [mmkv.*] with N key-values`：MMKV 初始化完成行（野生日志，风格三，
- *    无统一前缀/时间戳，过滤）
- *  - `:N::loadFromFile> loading [mmkv.*] with crc`：MMKV 载入变体行
- *    （2026-10-25 补：`loading` 拼写与 `loaded` 并存，此前漏过滤外泄到宿主控制台）
- *  - Chromium 原生日志行 `[MMDD/HHMMSS.mmm:LEVEL:file.cc(line)]`（可选 `PID:TID:`
- *    前缀变体）：QQNT 原生层把内部进度也标 ERROR 级写 stderr——QUIC 建链/关链、
- *    session stats 报告等，每次 spawn 稳定刷屏 70+ 行（2026-11-05 补，与 koishi
- *    适配器 transport 本地判定同款，后续适配器可改回 import 共享）。FATAL 不在
- *    过滤表——崩溃现场仍透传
- *
- * 边界：只处理「整条」噪音行；原生输出插进 JSON 协议行字节中间的撕裂不归这里管
- * （IPC 路径由 status 重播与脏行诊断兜底，见 ipc/sender.ts / koishi 插件 client）。
+ * native-noise.ts：wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源）——原生 printf 直写 fd，JS 只能逐行过滤。
+ * 过滤：MMKV 刷屏行（`loaded`/`loading` 两种拼写）、标准 node 缺腾讯私有符号的加载警告、Chromium 原生 ERROR/WARNING/INFO 行。
+ * FATAL 不在过滤表——崩溃现场仍透传；只处理整行噪音，插进 JSON 协议行中间的撕裂由脏行诊断兜底（见 ipc/sender.ts）。
  */
 import { IPC_VERSION } from "./ipc-schema.js";
 

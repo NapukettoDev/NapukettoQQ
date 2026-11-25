@@ -1,17 +1,7 @@
 /**
- * 类型化事件通道（ADR-003）
- *
- * - 事件名约定 `${Service}/${method}`（如 "Msg/onRecvMsg"），签名从 Listener 接口编译期推导
- * - 事件名写错 → 编译期报错（类型推导）
- * - `on` 返回 unsubscribe；`waitFor` 注册临时监听 → filter → 超时自动清理（替代魔法字符串方案）
- * - error 兜底：监听器抛异常不打断派发，统一经 `onError` 通知
- *
- * 组合实现而非 extends EventEmitter：EventEmitter.on 返回 `this`，与设计要求的
- * 返回 unsubscribe 冲突；组合更干净，且内核无全局单例（ADR-015 推论）。
- *
- * 类型推导说明：不直接 `ListenerEvents<L, Name>[E]` 索引（泛型下会扩宽到
- * string|number|symbol 索引，索引出 unknown），而是用 Extract 按事件名从
- * `{ name, fn }` 联合精确提取 handler / 参数类型，保证实例化后签名精确。
+ * 类型化事件通道（ADR-003）：事件名 `${Service}/${method}`（如 "Msg/onRecvMsg"），签名从 Listener
+ * 接口编译期推导；`on` 返回 unsubscribe，`waitFor` 注册临时监听 → filter → 超时自动清理。
+ * 组合 EventEmitter 而非 extends（`on` 返回 `this` 与 unsubscribe 契约冲突）；监听器异常不打断派发，统一经 `onError` 通知。
  */
 import { EventEmitter } from "node:events";
 import { kernelError } from "./errors.js";
@@ -26,7 +16,11 @@ type ListenerShape = Record<string, unknown>;
 /** 事件名：`${Service}/${method}`。 */
 type EventName<L extends ListenerShape, Name extends string> = `${Name}/${keyof L & string}`;
 
-/** 按事件名从 Listener 精确提取 handler 类型（条件类型 infer，泛型安全）。 */
+/**
+ * 按事件名从 Listener 精确提取 handler 类型（条件类型 infer，泛型安全）。
+ * 不直接 `ListenerEvents<L, Name>[E]` 索引：泛型下会扩宽到 string|number|symbol 索引并取出 unknown，
+ * 故用 Extract 按事件名从 `{ name, fn }` 联合精确提取，保证实例化后签名精确。
+ */
 type EventHandler<
     L extends ListenerShape,
     Name extends string,
@@ -128,12 +122,6 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
     }
 
     /**
-     * 类型化派发：wrapper 生命周期的原生回调经此推入通道。
-     * 2026-08-07 修复：原生 EventEmitter.emit 中一个 listener 抛异常会中断后续
-     * listener 派发（Node 语义）——改为快照数组逐个 try/catch，保证「单个订阅者
-     * 异常不打断派发」（协议翻译层异常不饿死缓存维护等其他订阅者）。
-     */
-    /**
      * 订阅所有事件（IPC 子进程模式整通道转发用：事件名 `"${service}/${method}"`
      * 经 handler 首参透出，args 原样透传）。返回退订函数。
      */
@@ -144,6 +132,12 @@ export class NTEventChannel<L extends ListenerShape, Name extends string> {
         };
     }
 
+    /**
+     * 类型化派发：wrapper 生命周期的原生回调经此推入通道。
+     * 原生 EventEmitter.emit 中一个 listener 抛异常会中断后续 listener 派发（Node 语义）——
+     * 这里改为快照数组逐个 try/catch，保证「单个订阅者异常不打断派发」
+     * （协议翻译层异常不饿死缓存维护等其他订阅者）。
+     */
     emit<E extends EventName<L, Name>>(event: E, ...args: EventArgs<L, Name, E>): void {
         // 全事件订阅（IPC 转发）：单个订阅者异常不打断派发，统一走 error 兜底
         for (const anyHandler of this.anyHandlers) {

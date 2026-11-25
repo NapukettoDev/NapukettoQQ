@@ -1,13 +1,7 @@
 /**
- * bootstrap/probe.ts：引导尾部的可选观测相位（2026-11-25 从 bootstrap/core.ts 拆出）。
- *
- * 三个 env 驱动的旁路能力，全部**失败不阻塞引导**（只写 napuketto-boot.log）：
- *  - `NAPUKETTO_SMOKE=1`：收发消息冒烟自检（MsgBridge + MsgApi 真发/收一条）
- *  - `NAPUKETTO_PROBE=1`：立即探测内核服务面 + 35s 后晚探测（落盘 json）
- *  - `NAPUKETTO_LISTENER_RECORD=1`：万能监听器挂满候选服务并逐行落盘
- *
- * ⚠️ 时序硬约束：listener 录制必须先于 probe（probe 的 getMainSession 写回副作用
- * 会毒化 ctx.session，给录制器留下空壳主 session）——两个相位分开导出的原因。
+ * bootstrap/probe.ts：引导尾部的可选观测相位——三个 env 旁路能力，全部失败不阻塞引导（只写 napuketto-boot.log）：
+ * NAPUKETTO_SMOKE（真发/收一条）、NAPUKETTO_PROBE（即时 + 35s 晚探测）、NAPUKETTO_LISTENER_RECORD（逐行落盘）。
+ * ⚠️ listener 录制必须先于 probe：probe 的 getMainSession 写回副作用会毒化 ctx.session，给录制器留下空壳主 session。
  */
 
 import { registerShutdownHook } from "../../lifecycle/shutdown.js";
@@ -17,7 +11,7 @@ import { env, isEnvEnabled } from "../runtime/env.js";
 import type { CoreContextLike, KernelLike, LoginResultLike } from "../runtime/types.js";
 import { runSmokeTest } from "./smoke.js";
 
-/** P2-1 收发消息冒烟自检（NAPUKETTO_SMOKE=1）：MsgBridge + MsgApi 真发/收一条。 */
+/** 收发消息冒烟自检（NAPUKETTO_SMOKE=1）：MsgBridge + MsgApi 真发/收一条。 */
 export async function runSmokeIfEnabled(
     kernel: KernelLike,
     ctx: CoreContextLike,
@@ -50,7 +44,7 @@ export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
 }
 
 /**
- * listener 录制模式（NAPUKETTO_LISTENER_RECORD=1，批次三前置）：万能监听器挂满
+ * listener 录制模式（NAPUKETTO_LISTENER_RECORD=1）：万能监听器挂满
  * 候选服务，回调逐行落盘 napuketto-listener-record.jsonl。
  * ⚠️ 必须先于 runProbePhase——probe 的 getMainSession 写回副作用会毒化
  * ctx.session（空壳主 session），录制器要先取服务。

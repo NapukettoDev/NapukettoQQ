@@ -1,14 +1,7 @@
 /**
- * BuddyCache：好友缓存（B2，2026-09-08；仿 GroupCache 的 ADR-008 模式）
- *
- * - 更新：订阅 Buddy/onBuddyListChange 全量快照（T10 实证 = BuddyCategory[]，
- *   好友明细在 category.buddyList）维护 uid → BuddyListEntry 快照。
- * - diff：首帧只建 baseline 不发事件（防止启动时对每个好友发 friend_add）；
- *   之后快照对比上一帧——新增发布 BuddyCache/onBuddyAdded、消失发布
- *   BuddyCache/onBuddyRemoved（归一化事件，协议层翻译保持纯函数）。
- * - 消费：协议翻译层订阅 diff 通道（friend_add notice）或只读快照查询。
- *
- * 无全局单例（ADR-015 推论）——每进程每 session 一份，由装配层持有。
+ * BuddyCache：好友缓存（仿 GroupCache 的 ADR-008 模式）——订阅 Buddy/onBuddyListChange 全量快照
+ * （实测 = BuddyCategory[]，明细在 category.buddyList）维护 uid → 快照；首帧只建 baseline 不发事件
+ * （防启动时逐个好友发 friend_add），之后对比上一帧发 onBuddyAdded / onBuddyRemoved。
  */
 
 import { NTEventChannel } from "../../infra/event-channel.js";
@@ -79,7 +72,7 @@ function parseCoreInfo(raw: unknown): BuddyCoreInfo | null {
 }
 
 /**
- * 解析单个好友明细（T10 实测形状：uid/uin 齐备；其余展示字段按类型安全拷贝）。
+ * 解析单个好友明细（实测形状：uid/uin 齐备；其余展示字段按类型安全拷贝）。
  * 返回真实构造的新对象——不把原生载荷直接断言成 `BuddyListEntry`。
  */
 export function parseBuddyMember(raw: unknown): BuddyListEntry | null {
@@ -125,7 +118,7 @@ function parseBuddyCategory(item: unknown): BuddyCategory | null {
 }
 
 /**
- * 防御性收窄 onBuddyListChange 载荷 → BuddyCategory[]（T10 实证形状；
+ * 防御性收窄 onBuddyListChange 载荷 → BuddyCategory[]（实测形状；
  * 非数组 / 非对象分类项返回 null，调用方打 raw 日志积累校准数据）。
  * 分类字段逐项做运行时类型校验并安全构造，缺失项取保守默认值。
  */
@@ -186,7 +179,7 @@ export class BuddyCache {
         const unsub = this.channel.on("Buddy/onBuddyListChange", (arg: unknown) => {
             const categories = narrowBuddyCategories(arg);
             if (categories === null) {
-                // 未知形状：raw 日志积累校准数据（V2 事件载荷是 boolean，同样落这里）
+                // 未知形状：raw 日志积累校准数据（旧版 wrapper 的该事件载荷是 boolean，同样落这里）
                 this.logger?.warn(
                     { raw: JSON.stringify(arg)?.slice(0, 2000) },
                     "BuddyCache: onBuddyListChange 未知载荷形状",

@@ -1,10 +1,7 @@
 /**
- * RecentContactService listener 接口（录制实证，2026-11-01）
- *
- * 方法名来自 wrapper.node 字符串簇 + listener 录制器实测（proxy-listener 三轮
- * 录制，`docs/protocols/milky.md` §0.8.5/§0.8.6）；参数形状按录制产物收窄。
- * 用 type 别名（非 interface）：需满足 ListenerShape（Record<string, unknown>）
- * 约束——与 MsgListener 同模式。
+ * RecentContactListener：RecentContactService 的原生回调监听接口。方法名来自 wrapper.node 字符串簇
+ * + listener 录制器实测（`docs/protocols/milky.md` §0.8.5/§0.8.6），参数形状按录制产物收窄；
+ * 用 type 别名（非 interface）以满足 ListenerShape（Record<string, unknown>）约束。
  */
 import type { RecentContact } from "../services/index.js";
 

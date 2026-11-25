@@ -1,11 +1,7 @@
 /**
- * 原生调用结果解包（ADR-009 统一错误语义）
- *
- * wrapper.node 的 service 方法大多返回 `{ result, errMsg }`：
- *  - unwrap：result 为 number 且非 0 → 抛 KernelError
- *  - checkLooseResult：宽松形状（result 可能缺失/非数字）→ 仅当 result 为
- *    数字且非 0 时抛错（探测期兼容：某些 API 成功时 result 缺省或为对象）
- *  - unwrapResult：result !== 0 → 按 errMsg 内容映射语义错误码（msg 系专用）
+ * 原生调用结果解包（ADR-009 统一错误语义）：wrapper.node 的 service 方法大多返回 `{ result, errMsg }`。
+ * unwrap 严格（result 为 number 且非 0 即抛）；checkLooseResult 宽松（result 缺失/非数字视为成功，
+ * 兼容某些 API 成功时 result 缺省或为对象）；unwrapResult 按 errMsg 映射语义错误码（msg 系专用）。
  */
 
 import { type KernelErrorCode, kernelError } from "../infra/index.js";

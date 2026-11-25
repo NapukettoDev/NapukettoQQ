@@ -1,8 +1,6 @@
 /**
- * 语音消息辅助（从 `apis/msg.ts` 拆出）
- *
- * fetch_ptt_text（转文字）与 get_record（主动下载 + 轮询落盘）。发送方向的
- * PTT 元素装配在 media-prep.ts；本文件只处理接收/下载方向。
+ * 语音消息辅助：fetch_ptt_text（转文字）与 get_record（主动下载 + 轮询落盘）。
+ * 发送方向的 PTT 元素装配在 media-prep.ts；本文件只处理接收/下载方向。
  */
 import { kernelError, sleep } from "../../infra/index.js";
 import type {
@@ -15,7 +13,7 @@ import type {
 import { unwrapResult } from "../result.js";
 import { fetchMsgsByMsgId } from "./queries.js";
 
-/** downloadRichMedia 契约值（2026-09-08 B1 实测：downloadType=2 可用 / thumbSize=0）。 */
+/** downloadRichMedia 契约值（实测：downloadType=2 可用 / thumbSize=0）。 */
 const DOWNLOAD_TYPE_COMMON = 2;
 const THUMB_SIZE_NONE = 0;
 /** 语音下载轮询参数（300ms × 34 ≈ 10s；返回 void 只能经重拉元素观察完成）。 */
@@ -95,7 +93,7 @@ export async function fetchPttText(
 }
 
 /**
- * 语音主动下载（get_record 本地未命中兜底，2026-09-08 B1）。
+ * 语音主动下载（get_record 本地未命中兜底）。
  * downloadRichMedia 返回 void（实测），完成信号 = 重拉消息元素：
  * 轮询（300ms × 34，约 10s）直到 filePath 非空且 transferStatus 进入
  * 已下载态（2/4）；超时但 filePath 已有值则尽力返回（磁盘命中判断留给

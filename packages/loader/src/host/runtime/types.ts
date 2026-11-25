@@ -1,13 +1,7 @@
 /**
- * types.ts：自建宿主引导的类型层（2026-08-07 阶段 2 新增）。
- *
- * 与 @napuketto/kernel 的最小交互面（KernelLike 等）——自研描述，避免包级依赖：
- * loader 运行时通过 file:// 动态 import kernel，编译期不建立 workspace 依赖，
- * 因此这里用「最小接口」描述 kernel 的契约（类型层自研，与 kernel 实现解耦，
- * 由运行时行为实证维护，勿臆造成员）。
- *
- * ⚠️ 本文件是**纯类型文件**（2026-11-25 分层约束）：0 运行时导出。运行时常量见
- * `contract/constants.ts`，动态协议模块接口见 `runtime/protocol-types.ts`。改这里不要加值。
+ * types.ts：自建宿主引导的类型层——与 @napuketto/kernel 的最小交互面（自研描述，避免包级依赖）。
+ * loader 运行期靠 file:// 动态 import kernel、编译期不建 workspace 依赖，故此处的接口由运行时行为实证维护，勿臆造成员。
+ * ⚠️ 纯类型文件（0 运行时导出）：运行时常量见 contract/constants.ts，协议模块接口见 runtime/protocol-types.ts。
  */
 
 /**
@@ -51,7 +45,7 @@ export interface BootstrapEnv {
 /** 消息事件通道（NTEventChannel 的最小面）。 */
 export interface EventChannelLike {
     on(event: string, handler: (payload: unknown) => void): unknown;
-    /** 全事件订阅（IPC 子进程模式整通道转发用；kernel 2026-08-08 新增）。 */
+    /** 全事件订阅（IPC 子进程模式整通道转发用）。 */
     onAny?(handler: (event: string, ...args: unknown[]) => void): unknown;
 }
 
@@ -66,7 +60,7 @@ export interface LoggerLike {
     info(obj: unknown, msg?: string): void;
     warn(obj: unknown, msg?: string): void;
     error(obj: unknown, msg?: string): void;
-    /** 2026-10-25 级别重分配：接收行/校准数据降 debug。 */
+    /** 级别重分配：接收行/校准数据降 debug。 */
     debug(obj: unknown, msg?: string): void;
     /** 派生子 logger（ob11 校准模块等；options.level 覆盖级别）。 */
     child?(bindings: Record<string, unknown>, options?: { level?: string }): LoggerLike;
@@ -118,7 +112,7 @@ export interface MsgApiLike {
         options: { msgId: string; emojiId: string; like: boolean },
     ): Promise<void>;
     markRead(peer: { chatType: number; peerUid: string }): Promise<void>;
-    /** 设置在线状态（自建宿主无 UI，引导链必须显式上报——缺它 = 半在线无推送，2026-09-15 发现 I）。 */
+    /** 设置在线状态（自建宿主无 UI，引导链必须显式上报——缺它 = 半在线无推送）。 */
     setOnlineStatus(opts: {
         status: number;
         extStatus: number;
@@ -212,7 +206,7 @@ export interface LogConfigLike {
 /**
  * 与 @napuketto/kernel 的最小交互面。
  * 可选成员 = 老 kernel 兼容路径（startNapuketto/quickLogin 等回退分支）；
- * 必选成员 = 自建宿主主路径（2026-08-07 实测）必须存在。
+ * 必选成员 = 自建宿主主路径必须存在（实测）。
  */
 export interface KernelLike {
     dlopenWrapper?: (path: string) => Record<string, unknown>;
@@ -225,7 +219,7 @@ export interface KernelLike {
             logLevel?: string | undefined;
             /** IPC 模式传 false：stdout 专用于 JSON 行协议，console 流会撕裂协议行。 */
             consoleLog?: boolean;
-            /** 控制台格式/时间戳/颜色 + 文件级别/路径 + 账号标注（2026-10-25 日志可配置化）。 */
+            /** 控制台格式/时间戳/颜色 + 文件级别/路径 + 账号标注。 */
             logFormat?: string;
             logTimestamp?: string;
             logColorize?: boolean;
@@ -265,7 +259,7 @@ export interface KernelLike {
     resolveQqGlobalPath?: (qqDataRoot: string) => string;
     // 探测
     probeRuntime?: (ctx: CoreContextLike, filename?: string) => ProbeResultLike;
-    /** listener 录制器（批次三前置；必须先于 probeRuntime——getMainSession 写回毒化 ctx.session）。 */
+    /** listener 录制器（必须先于 probeRuntime——getMainSession 写回毒化 ctx.session）。 */
     startListenerRecording?: (
         ctx: CoreContextLike,
         filename?: string,
@@ -293,7 +287,7 @@ export interface KernelLike {
     }) => LoggerLike;
     NTEventChannel: new (name: string) => EventChannelLike;
     MsgBridge: new (session: unknown, channel: EventChannelLike) => BridgeLike;
-    // channel 可选（NapCat 式发送确认，2026-08-11）；util 可选（富媒体 copyFile，2026-08-11）
+    // channel 可选（NapCat 式发送确认）；util 可选（富媒体 copyFile）
     MsgApi: new (
         session: unknown,
         channel?: EventChannelLike,
@@ -312,7 +306,7 @@ export interface KernelLike {
         session: unknown,
         channel: EventChannelLike,
     ) => { register(): void; unregister(): void };
-    // 批次三（2026-11-01）：RecentContact 桥（peer_pin_change 源）+ Login 桥
+    // RecentContact 桥（peer_pin_change 源）+ Login 桥
     //（bot_offline 源；loginService 由装配方注入 ctx.wrapper.loginService）
     RecentContactBridge: new (
         session: unknown,

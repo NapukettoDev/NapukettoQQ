@@ -1,16 +1,12 @@
 /**
- * canonical 消息元素双向转换（NT wrapper ↔ 协议无关中间表示）
- *
- * 2026-11 从 `types/message-element.ts` 下沉：类型层保持纯声明（无 node:fs /
- * infra 运行时依赖），本文件承担全部运行时转换与本地路径存在性校验。
- *
- * kernel 只做一次 NT ↔ canonical 转换，各协议（onebot11/satori）只写薄映射
- * canonical ↔ 协议格式。
+ * canonical 消息元素双向转换（NT wrapper ↔ 协议无关中间表示）。
+ * 类型层（`types/message-element.ts`）保持纯声明，本文件承担运行时转换与本地路径存在性校验；
+ * kernel 只做一次 NT ↔ canonical 转换，各协议只写薄映射 canonical ↔ 协议格式。
  */
 import { existsSync } from "node:fs";
 import { errorMessage, kernelError } from "../infra/index.js";
 // 运行时枚举走叶子模块/子域 barrel（不经 types/index.js）：types/index 反向
-// re-export 本文件的转换函数，值依赖须避免 codec ↔ types/index 环（fallow architecture）。
+// re-export 本文件的转换函数，值依赖须避免 codec ↔ types/index 环。
 import { VIDEO_THUMB_KEY } from "../types/entities.js";
 import type {
     CanonicalElement,
@@ -33,7 +29,7 @@ const AtType = { ALL: 1, ONE: 2, ME: 4 } as const;
 /**
  * wrapper 对无效 at 目标的归零值：`atUid` 只接受数字 UIN，非数字会被归零成 `"0"`。
  * 接收方向必须把它当「无目标」，否则 `"0"` 会一路传给 uid→uin 转换
- * （`getUinByUids` → `Data Not Existed!`，issue #192）。
+ * （`getUinByUids` → `Data Not Existed!`）。
  */
 const AT_TARGET_ZERO = "0";
 
@@ -53,7 +49,7 @@ const AT_ALL_TARGET = "all";
  *    内容全丢，无规整的传输会得到空对象 `{}`）；
  *  - 个别形态可能直接给字符串路径（兜底容忍）。
  *
- * 2026-10-24 线上事故：koishi IPC 模式下 thumbPath 到达父进程已是平面对象，
+ * ⚠️ 线上事故：koishi IPC 模式下 thumbPath 到达父进程已是平面对象，
  * 直接 `.get(0)` 抛 TypeError，整条视频消息事件分派失败。
  */
 function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefined {
@@ -75,7 +71,7 @@ function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefine
 }
 
 /**
- * at 目标解析（接收方向，issue #192）：
+ * at 目标解析（接收方向）：
  *  - 优先 `atNtUid`（`u_...` NT UID）——QQNT 解析真实提及所依赖的字段，也是发送侧
  *    唯一写入 `u_...` 的地方；
  *  - 缺失时回退 `atUid`（数字 UIN 镜像）；
@@ -105,8 +101,8 @@ function textToCanonical(textEl: TextElement | null | undefined): CanonicalEleme
         const target = readAtTarget(textEl);
         // 目标无效（atNtUid 与 atUid 都空 / atUid 被归零）：按文本降级，不产出 target "0"
         if (target !== undefined) {
-            // 2026-08-07：at 段补 display（显示名）——QQ 的 content 通常是 "@昵称"，
-            // 剥掉 @ 作 display，供 OB11 at 段 name / 日志渲染使用（此前只有 target=uid）。
+            // at 段补 display（显示名）：QQ 的 content 通常是 "@昵称"，剥掉 @ 作 display，
+            // 供 OB11 at 段 name / 日志渲染使用。
             const base = { type: "at" as const, target };
             const display = content.startsWith("@") ? content.slice(1) : content;
             if (display === "") {
@@ -151,13 +147,13 @@ function isLocalPathCandidate(value: string): boolean {
 /**
  * pic 元素的本地路径候选（按 canonical 选取顺序去重）。
  *
- * 收向实测（issue #105，2026-11）：sourcePath 是 nt_data 下的绝对路径，指向
- * 「自动下载完成后才会出现」的文件——补丁生效前该文件不存在。导出给
- * pic-path-grace（桥层等待落盘）与 picToCanonical 共用同一候选序。
+ * 收向实测：sourcePath 是 nt_data 下的绝对路径，指向「自动下载完成后才会出现」的
+ * 文件——补丁生效前该文件不存在。导出给 pic-path-grace（桥层等待落盘）与
+ * picToCanonical 共用同一候选序。
  */
 export function picLocalCandidates(pic: PicElement | null | undefined): string[] {
     // Linux 原生对象的 `picElement` 在非 PIC 元素上是显式 null（Windows 为省略），
-    // 这里必须同时挡住 null/undefined（2026-11 线上 issue：null 读取 picPath 崩溃）。
+    // 这里必须同时挡住 null/undefined（线上事故：null 读取 picPath 崩溃）。
     if (pic == null) {
         return [];
     }
@@ -178,14 +174,14 @@ function picToCanonical(pic: PicElement | null | undefined): CanonicalElement {
     if (pic == null) {
         return { type: "image", path: "" };
     }
-    // 字段随平台不同（2026-11-10 Linux 原生 wrapper 实测）：
+    // 字段随平台不同（Linux 原生 wrapper 实测）：
     //  - Windows：picPath（本地路径）/ picUrl（CDN 链接）；
     //  - Linux：两者都不存在，原图落 sourcePath（绝对本地路径），originImageUrl
     //    是相对路径（/download?appid=…&fileid=…，无 host，不能当 url 用）。
     //
-    // 本地路径存在性防御（2026-11-14，issue #105）：候选链上取第一个真实存在的
-    // 本地路径；全部缺失时回退 picUrl（URL 可供下游下载）——严禁把不存在的本地
-    // 路径暴露给协议层（下游 AstrBot 一类直接 stat 的消费者会 FileNotFoundError）。
+    // 本地路径存在性防御：候选链上取第一个真实存在的本地路径；全部缺失时回退
+    // picUrl（URL 可供下游下载）——严禁把不存在的本地路径暴露给协议层（下游
+    // AstrBot 一类直接 stat 的消费者会 FileNotFoundError）。
     const url = firstNonEmpty(pic.picUrl);
     let path = picLocalCandidates(pic).find((candidate) => existsSync(candidate));
     if (path === undefined) {
@@ -271,7 +267,7 @@ function replyToCanonical(reply: ReplyElement | null | undefined): CanonicalElem
 }
 
 /**
- * ARK 元素 → canonical json（小程序/分享卡片，2026-10-25）。
+ * ARK 元素 → canonical json（小程序/分享卡片）。
  *
  * bytesData 是卡片 JSON 字符串，原样透传不解析重组——OB11 json 段 data.data
  * 保持原始载荷（go-cqhttp/NapCat 生态一致），title/url 由下游自行 parse。
@@ -321,7 +317,7 @@ export function toCanonicalElements(msg: RawMessage): CanonicalElement[] {
 /**
  * canonical json → ARK bytesData 字符串：字符串原样透传（OB11 json 段 /
  * satori 发送链给的已是卡片 JSON 文本），其余值 JSON 序列化。
- * 与接收方向 arkToCanonical 对称（bytesData 字段名 2026-10-25 真实消息实测）。
+ * 与接收方向 arkToCanonical 对称（bytesData 字段名经真实消息实测）。
  */
 function jsonToArkBytes(raw: unknown): string {
     if (typeof raw === "string") {
@@ -365,7 +361,7 @@ export function toSendElements(elements: CanonicalElement[]): SendMessageElement
                     });
                 } else {
                     // 单人 @：`u_...` 写 atNtUid（QQNT 解析目标依赖它）；atUid 只放数字
-                    // UIN——写非数字会被 wrapper 归零成 "0"（issue #192）
+                    // UIN——写非数字会被 wrapper 归零成 "0"
                     const target = el.target;
                     const isNumericUin = NUMERIC_UIN_RE.test(target);
                     out.push({

@@ -1,13 +1,6 @@
 /**
- * package.ts：本包根目录定位与 package.json 元数据读取。
- *
- * 为什么不用固定层数：源码按领域分组放在 `src/<group>/`，构建产物是单文件
- * bundle（`dist/index.mjs`）或子进程 bundle（`dist/host/self-host.cjs`），三者到
- * 包根的层级不同；单测又直接跑源码。向上找最近的 `package.json` 对三者都成立
- * （2026-11-11 分组重构：此前 `dirname(x2)` 的写法在 `src/<group>/` 下会指向
- * `src/`，导致清单/资产路径全错）。
- *
- * 分层：`shared/` 是最底层，本文件只依赖 node 内置模块（0 内部依赖）。
+ * package.ts：本包根目录定位与 package.json 元数据读取（向上找最近的 package.json）。
+ * 源码在 src/<group>/、产物是单文件 bundle、单测直接跑源码，三者层级不同，固定 dirname 层数会指向错目录。
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -35,12 +28,8 @@ export function packageRoot(): string {
 }
 
 /**
- * 读取本包版本号；失败（发布产物缺 package.json / 解析异常）兜底 "0.0.0"。
- * 仅用于下载 User-Agent 等非关键元数据，失败不阻塞主流程。
- *
- * ESM 下用 import.meta.url 定位包根（dist/ 与包根同层：dist/index.mjs → ../package.json）；
- * CJS 输出由 rolldown 将 import.meta.url 转为 pathToFileURL(__filename) 等价形式，
- * 定位行为不变（设计文档 §发布形态）。
+ * 读取本包版本号；失败（缺 package.json / 解析异常）兜底 "0.0.0"——仅用于 User-Agent 等非关键元数据。
+ * ESM 与 CJS 产物都靠 import.meta.url 定位包根（CJS 下 rolldown 转成 pathToFileURL(__filename)）。
  */
 export function loaderVersion(): string {
     try {

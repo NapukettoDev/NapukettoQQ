@@ -1,21 +1,6 @@
 /**
- * NapukettoCore：装配 + 启动（§9 第 6 项，2026-08-05 实现）
- *
- * 装配：paths（建目录）→ logger → CoreContext。
- * 启动：attachWrapper（wrapperExports → startNapuketto）→ login（快速登录 → session.init）。
- *
- * 典型用法（boot.cjs 截获 exports 后）：
- *   const core = await NapukettoCore.create({ dataRoot, account });
- *   core.attachWrapper(wrapperExports, { qqVersion, dataDir });
- *   // appid 由 resolveAppidQua 从 major.node 动态解析（版本绑定，不写死）
- *   await core.login({ appid });
- *
- * 与手动拼 startNapuketto/quickLogin/initAndStartSession 等价，但把装配状态
- * （ctx）集中管理，协议层直接消费 core.ctx。
- *
- * 2026-11 结构重构：QR 落盘/进度转发下沉 `runtime/login/qr-flow.ts`，wrapperPath/appid/
- * 数据目录解析下沉 `core-helpers.ts`，选项类型下沉 `core-options.ts`；本文件只
- * 保留装配根与生命周期编排。
+ * NapukettoCore：装配（paths 建目录 → logger → CoreContext）+ 启动（attachWrapper → login → 可选 session 激活）。
+ * 无全局单例（ADR-015 推论），每账号每进程一份；appid 由 resolveAppidQua 从 major.node 动态解析（版本绑定，不写死）。
  */
 
 import { createLogger, kernelError, PathWrapper } from "../infra/index.js";
@@ -81,7 +66,7 @@ export class NapukettoCore {
 
     /**
      * 装配：paths（建目录）→ logger → CoreContext。
-     * 不加载 wrapper / 不登录——启动阶段由 attachWrapper + login 完成。
+     * 不加载 wrapper / 不登录——启动流程由 attachWrapper + login 完成。
      */
     static create(opts: NapukettoCoreOptions = {}): NapukettoCore {
         const paths = new PathWrapper(opts.paths);
@@ -124,7 +109,7 @@ export class NapukettoCore {
     }
 
     /**
-     * 登录握手（wrapper 契约，2026-08-05 实测确认）：
+     * 登录握手（wrapper 契约，实测确认）：
      * loginService.initConfig → 登录（快速/QR）→ 填 ctx.login 后返回。
      *
      * 默认**仅完成登录握手**，不做 session 初始化——QQ 登录后重建 session
@@ -290,7 +275,7 @@ export class NapukettoCore {
 
         try {
             // 启动 QR 登录（注册监听 → connect → getQRCodePicture）
-            // ⚠️ 不传 quickUin（2026-08-13）：QR 回退路径下快速登录已在 core.login
+            // ⚠️ 不传 quickUin：QR 回退路径下快速登录已在 core.login
             // 失败过一次，这里再传会导致 QrLoginSession 二次快速登录——无凭据环境
             // 直接 resolve 带 errMsg，白等一个周期才出二维码。QR 登录应直接出码。
             session.start();

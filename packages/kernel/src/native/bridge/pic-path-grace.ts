@@ -1,19 +1,7 @@
 /**
- * pic-path-grace：入站图片落盘宽限等待（2026-11-14，issue #105 防御层第二件）
- *
- * 背景：原生补丁（私有 native/）放行收图自动下载后，入站事件仍先于下载完成——
- * picElement.sourcePath/picPath 指向的文件在事件到达那一刻通常还不存在
- * （worker 异步落盘，实测 < 1s）。下游消费者（AstrBot 一类）拿到事件即 stat，
- * 不等待 = 仍然 FileNotFoundError。
- *
- * 职责：MsgBridge 发射 Msg/onRecvMsg、Msg/onMsgInfoListUpdate 前，对本批消息里
- * 全部 pic 本地路径候选做有界并行等待（任一存在即放行；超时原样放行，由
- * canonical 层的存在性防御兜底置空）。快速路径（无 pic / 路径已存在）零等待。
- *
- * 语义边界：
- *  - 只等待，不改消息（置空裁决在 toCanonicalElements，单一收口）；
- *  - 跨回调的到达序不保证（宽限等待让出事件循环，文本消息可能先于等待中的
- *    图片消息发射）——QQ 原生回调本就无顺序契约，协议层按 seq 排序不受影响。
+ * pic-path-grace：入站图片落盘宽限等待。原生补丁放行收图自动下载后，入站事件仍先于下载完成——
+ * picElement 的路径那时通常还不存在（worker 异步落盘，实测 < 1s），下游拿到事件即 stat 会
+ * FileNotFoundError。只等待、不改消息（置空裁决在 toCanonicalElements），超时原样放行。
  */
 
 import { existsSync } from "node:fs";

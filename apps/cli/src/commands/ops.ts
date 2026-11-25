@@ -1,13 +1,7 @@
 /**
- * ops.ts：status / stop / restart 运维命令实现（2026-09-08 T8）。
- *
- * 数据源：runtime/state 状态文件（supervisor/单账号 boot 写入）+ liveness 检测。
- * stop/restart 语义（2026-10-25 优雅化）：
- *  - stop -q <uin>：写单账号停止哨兵 → 等该账号进程链优雅退出 → 超时树杀兜底。
- *    ⚠️ supervisor 在跑且 autoRestart 时账号会被自动拉起——提示用户先 `napuketto stop`。
- *  - stop（无 -q）：写 all 哨兵（supervisor + 全部账号优雅退出）→ 超时树杀兜底。
- *  - restart：stop 同目标 + detached 重新拉起（-q → 单账号 boot；无 -q →
- *    supervisor autoStart）。
+ * status / stop / restart 运维命令实现：数据源为 runtime/state 状态文件 + liveness 检测。
+ * stop 先写停止哨兵（单账号或 all）等进程链优雅退出，超时再树杀兜底；restart = stop 同目标 + detached 拉起。
+ * ⚠️ supervisor 在跑且 autoRestart 时单账号会被自动拉起，彻底停止需 `napuketto stop`。
  */
 import process from "node:process";
 import {
@@ -29,7 +23,6 @@ import {
     spawnDetached,
 } from "../runtime/state.js";
 
-/** 运维命令选项。 */
 export interface OpsOptions {
     dataDir?: string;
     /** 目标账号（stop/restart 指定；status 过滤）。 */
@@ -172,13 +165,7 @@ function killAccountTree(runtime: AccountRuntime): void {
     logger.info({ uin: runtime.uin, pids: targets }, "已发送停止（树杀）");
 }
 
-/** stop：-q 停单账号；无 -q 停 supervisor + 全部账号兜底。
- *
- * 2026-10-25 优雅化：先写停止哨兵（目标账号或 all）→ 等进程链自行有序退出
- * （退出码 0）→ 超时残留树杀兜底 → 清理哨兵。单账号哨兵只命中对应 boot/self-host，
- * 不干扰同数据根的其他账号。
- */
-/** stop -q：写单账号独立哨兵 → 等优雅退出 → 超时树杀兜底 → 清本账号哨兵。 */
+/** stop -q：写单账号独立哨兵 → 等优雅退出（退出码 0）→ 超时树杀兜底 → 清本账号哨兵；不干扰同数据根其他账号。 */
 async function stopSingleAccount(dataRoot: string, target: AccountRuntime): Promise<void> {
     logger.info({ uin: target.uin, pid: target.pid }, "已发送停止请求（哨兵），等待退出");
     // 独立文件：并发 stop -q 不同账号时互不覆盖，也不会提前删除对方的请求。

@@ -1,11 +1,7 @@
 /**
- * session.ts：session 选择、激活与就绪探测（2026-08-07 阶段 1 从 boot-bootstrap.js 拆分，
- * 阶段 2 TS 化，零语义改动）。
- *
- * 职责：候选 session 收集（QQ 主 session → vehicle 激活 session → get() → qqSession）、
- * 最佳 session 选择（READY 优先）、session 有效性判断、就绪探测（5s 间隔定时器），
- * 以及登录后的「替换 → 激活（先 init 后 start）→ 等就绪」编排（2026-11-25 从
- * bootstrap/core.ts 拆入，行为零变更）。
+ * session.ts：session 选择、激活与就绪探测。
+ * 职责：候选收集（QQ 主 session → vehicle 激活 session → get() → qqSession）、READY 优先选择、
+ * 有效性判断、5s 间隔就绪探测，以及登录后的「替换 → 激活（先 init 后 start）→ 等就绪」编排。
  */
 
 import { join } from "node:path";
@@ -133,7 +129,7 @@ export function collectCandidateSessions(
     const candidates: SessionCandidate[] = [];
     const S2 = state.wrapperExports?.["NodeIQQNTWrapperSession"];
     // A: QQ 主 session（startup 链路 getSessionIdList → getNTWrapperSession(nt_x)），
-    //    渲染进程已 init → 大概率 READY（kernel session-resolver.ts 实测链路）。
+    //    渲染进程已 init → 大概率 READY（kernel session-resolver.ts 的实测链路）。
     try {
         if (typeof kernel.getMainSession === "function") {
             const ms = kernel.getMainSession(ctx);
@@ -160,7 +156,7 @@ export function collectCandidateSessions(
     } catch (e) {
         log(`bootstrap: get() 失败: ${getErrorMessage(e)}`);
     }
-    // D: Proxy 捕获的 QQ session（V1 兼容）
+    // D: Proxy 捕获的 QQ session
     if (state.qqSession) candidates.push({ s: state.qqSession, tag: "qqSession" });
     return candidates;
 }
@@ -203,7 +199,7 @@ export function probeCreatedSession(state: SharedState, ctx: CoreContextLike): v
     }
 }
 
-/** V2 登录后替换 session：优先 QQ 主 session，其次 vehicle 单例表；自建宿主例外。 */
+/** 登录后替换 session：优先 QQ 主 session，其次 vehicle 单例表；自建宿主例外。 */
 export function replaceSession(
     kernel: KernelLike,
     core: CoreLike,
@@ -212,7 +208,7 @@ export function replaceSession(
 ): SessionCandidate | null {
     // 自建宿主（NAPUKETTO_SELF_HOST）例外：无 QQ 主进程/vehicle/qqSession 捕获，
     // 且 getMainSession 内部会先 startupSession.start()——与「先 init 后 start」
-    // 顺序冲突（HANDOVER-V9 实证）；登录前 createSession 创建的配套 session
+    // 顺序冲突（实证）；登录前 createSession 创建的配套 session
     // （ctx.session + ctx.startupSession）才是正确激活目标。
     const isSelfHost = isEnvEnabled(env.NAPUKETTO_SELF_HOST);
     if (isSelfHost) {
@@ -234,7 +230,7 @@ export function replaceSession(
 }
 
 /**
- * 激活目标 session（先 init 后 startupSession.start，HANDOVER-V6 三要素）。
+ * 激活目标 session（先 init 后 startupSession.start，三要素）。
  * 自建宿主无候选时对 kernel 自建 session 走 NapCat 激活。
  */
 export async function activateSession(
@@ -255,8 +251,8 @@ export async function activateSession(
     }
     log(`bootstrap: 激活 session（${activateTarget.tag}，先 init 后 startupSession.start）...`);
     try {
-        // session 数据目录指向 QQ 真实数据目录（数据根/nt_qq/global，HANDOVER-V6 三要素之三）：
-        // cfgDir 下 init 的 onOpentelemetryInit 不触发（p0-kernel-flow 实证——accountPath 必须是 nt_qq/global）。
+        // session 数据目录指向 QQ 真实数据目录（数据根/nt_qq/global，三要素之三）：
+        // cfgDir 下 init 的 onOpentelemetryInit 不触发（accountPath 必须是 nt_qq/global）。
         const qqDataRoot =
             typeof kernel.resolveQqUserDataRoot === "function"
                 ? kernel.resolveQqUserDataRoot(

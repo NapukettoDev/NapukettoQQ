@@ -1,15 +1,7 @@
 /**
- * wrapper 生命周期编排（从 `wrapper-loader.ts` 拆出）
- *
- * engine / session 的创建、初始化、启动，以及 boot 装配入口 startNapuketto
- * 与自建宿主 O3MiscService 激活。原生模块装载与数据目录定位在 `loader.ts`。
- *
- * 事实（实测）：wrapper.node 不是标准 NAPI self-register 模块，只能在 QQ 定制版
- * Electron 主进程里由 preload 注册。@napuketto/loader 注入 hook DLL 后，boot.cjs
- * 在 QQ 主进程内截获 `process.dlopen` 的 `module.exports`，然后调用本模块初始化。
- *
- * 本模块**不再**使用 koffi / vtable / 内存偏移——所有对象由 QQ 的 NAPI 层自动构建。
- * 业务层拿到的都是真实 JS 对象：engine.initWithDeskTopConfig(config, adapter) 等。
+ * wrapper 生命周期编排：engine / session 的创建、初始化、启动与 boot 装配入口（原生装载在 loader.ts）。
+ * wrapper.node 不是标准 NAPI self-register 模块，只能由 QQ 定制版 Electron 主进程的 preload 注册——
+ * loader 注入 hook DLL 后截获 `process.dlopen` 的 exports；不用 koffi / vtable / 内存偏移，对象由 NAPI 构建。
  */
 import process from "node:process";
 import { getOwnProp, hasCallableProp, kernelError } from "../../infra/index.js";
@@ -79,15 +71,12 @@ export function initEngine(ctx: WrapperContext, config: EnginInitDesktopConfig):
 }
 
 /**
- * 创建会话（2026-08-06 P2-0 实测修正——NapCat 方式自研等价）：
- *  1. StartupSessionWrapper.create()（启动会话包装）
- *  2. getNTWrapperSession("nt_1")（QQ 主 session，带完整 cpp_impl）
- *  3. S.create() 回退
+ * 创建会话：StartupSessionWrapper.create() → getNTWrapperSession("nt_1")（QQ 主 session，
+ * 带完整 cpp_impl）→ S.create() 回退。
  *
- * 背景：`new NodeIQQNTWrapperSession()` 构造对象缺 cpp_impl，session.init 断言
- * "implementation of IQQNTWrapperSession is not valid"（P2-0 实测确认）。
- * NapCat 用 StartupSessionWrapper.create() + getNTWrapperSession('nt_1') 解决——
- * 返回带完整实现的实例。worker（utilityProcess）继承 QQ env 后同样有效。
+ * ⚠️ `new NodeIQQNTWrapperSession()` 构造对象缺 cpp_impl，session.init 断言
+ * "implementation of IQQNTWrapperSession is not valid"；必须走上两条路径拿带完整实现的
+ * 实例。worker（utilityProcess）继承 QQ env 后同样有效。
  */
 export function createSession(ctx: WrapperContext): NodeIQQNTWrapperSession {
     const S = ctx.exports.NodeIQQNTWrapperSession;
@@ -179,10 +168,9 @@ export function initSession(
 /**
  * 启动会话（有 startupSession 用 start()，否则 startNT(0)）。
  *
- * ⚠️ 2026-08-07 V9 修正：单纯 start() 只在「已 init」的 session 上有效。
- * 自建宿主必须走 initAndStartSession（先 session.init 再 startupSession.start()）——
- * 先 start 后 init 业务 service 不挂载（HANDOVER-V9 实测）。本函数保留给
- * 已 init 的 session 补启动用；新路径请用 initAndStartSession。
+ * ⚠️ 单纯 start() 只在「已 init」的 session 上有效：先 start 后 init 业务 service 不挂载
+ * （实测）。自建宿主必须先 session.init 再 startupSession.start()；本函数只用于给已 init
+ * 的 session 补启动。
  */
 export function startSession(ctx: WrapperContext): void {
     const { session, startupSession } = ctx;
@@ -197,13 +185,10 @@ export function startSession(ctx: WrapperContext): void {
 }
 
 /**
- * boot 装配入口：createWrapper → initEngine → session。
+ * boot 装配入口：createWrapper → session → initEngine → loginService → O3MiscService。
  *
- * **session 来源（2026-08-05 修正）**：
- *  1. qqSession（boot.cjs 拦截 `new` 窃取的 QQ 已 init session）——尚未落地
- *  2. createSession（`new NodeIQQNTWrapperSession()`）——实测可用，默认路径
- *  （getMainSession 实测为空壳：service 全 null + 缺 startNT，仅 probe 探测参考）
- *
+ * session 来源：qqSession（boot.cjs 拦截 `new` 窃取的 QQ 已 init session）优先，否则
+ * createSession；getMainSession 实测为空壳（service 全 null + 缺 startNT），仅 probe 探测参考。
  * 由 kernel NapukettoCore（core.ts）装配调用；loader 自建宿主 bootstrap 也直接调用作回退。
  * 返回 WrapperContext；失败抛 KernelError。
  */
@@ -215,11 +200,10 @@ export function startNapuketto(options: StartNapukettoOptions): WrapperContext {
     };
     const ctx = createWrapper(wrapperExports, versionInfo);
     const hasCapturedSession = captureSession(ctx, qqSession);
-    // session 创建时机：**自建宿主（标准 node）必须在 engine init 之前创建**——
-    // p0-kernel-flow 决定性顺序（HANDOVER-V6）：SSW.create + getNTWrapperSession("nt_1")
-    // 在 engine.initWithDeskTopConfig 前；engine 先建 session 后建 → 登录后
-    // session.init 的 onOpentelemetryInit 不触发（2026-08-07 自建宿主实测）。
-    // 路线 B（utility）与 QQ 主进程（browser）保持 engine 先建原顺序（已验证）。
+    // session 创建时机：**自建宿主（标准 node）必须在 engine init 之前创建**——SSW.create +
+    // getNTWrapperSession("nt_1") 要在 engine.initWithDeskTopConfig 前；顺序反了则登录后
+    // session.init 的 onOpentelemetryInit 不触发（自建宿主实测）。路线 B（utility）与
+    // QQ 主进程（browser）保持 engine 先建的原顺序（已验证）。
     const isSelfHost = electronProcessType() === undefined;
     prepareSession(ctx, hasCapturedSession, isSelfHost);
     initEngine(ctx, resolveEngineConfig(ctx, env, engineConfig));
@@ -285,9 +269,8 @@ function captureSession(
 }
 
 /**
- * 解析 loginService：优先捕获实例，其次单例 get()（自建宿主/worker 下 QQ 环境
- * 创建的实例才完整——`new` 自建实例读不到登录列表（getLoginList 空），
- * HANDOVER-V6 p0-login3 实证），最后 new 回退。
+ * 解析 loginService：优先捕获实例，其次单例 get()（自建宿主/worker 下 QQ 环境创建的
+ * 实例才完整——`new` 自建实例读不到登录列表，getLoginList 为空），最后 new 回退。
  */
 function resolveLoginService(ctx: WrapperContext, qqLoginService: unknown): void {
     if (qqLoginService !== undefined && qqLoginService !== null) {
@@ -314,9 +297,8 @@ function getOrCreateLoginService(exports: WrapperNodeApi): unknown {
 const ACTIVATED_O3_EXPORTS = new WeakSet<object>();
 
 /**
- * 激活自建宿主 O3MiscService 事件分发（三要素之二，V6 实测决定性）：
- * 不激活则 getLoginList 永不 resolve（挂起）。listener 用普通对象
- * （getOnAmgomDataPiece 空实现，wrapper 契约回调）。
+ * 激活自建宿主 O3MiscService 事件分发（三要素之二）：不激活则 getLoginList 永不 resolve
+ * （挂起）。listener 用普通对象（getOnAmgomDataPiece 空实现，wrapper 契约回调）。
  *
  * 幂等：同一 exports 重复调用只激活一次（已激活返回 true）。
  *

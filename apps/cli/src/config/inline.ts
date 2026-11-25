@@ -1,25 +1,13 @@
 /**
- * 内联配置（`NAPUKETTO_CONFIG_JSON`，2026-11 起唯一规范拼写）。
- *
- * KuroBridge 等嵌入式宿主每次拉起前整体生成配置，经环境变量喂 JSON 文本
- * （与 napuketto.toml 同构：parseCliConfig 直接吃 JSON.parse 产物），消除托管
- * toml 文件本体。优先级 NAPUKETTO_CONFIG_JSON > NAPUKETTO_CONFIG > 缺省模板生成；
- * 内联生效时不读 / 不写 / 不校验任何 toml 文件。Windows 单环境变量上限 32767
- * 字符（约 32KB），嵌入式配置形状远小于该限（超限宿主退回文件形态）。
- *
- * 读取口径分两档（有意为之）：
- * - parseInlineConfig：严格，主配置加载 / config validate 用；JSON 解析失败、
- *   非对象、字段校验失败一律 ConfigError（exit 78 一族）。
- * - readInlineConfigDoc / readInlineConfigSection：宽松，logger 读 [log] 段用；
- *   坏文档返回 undefined（日志配置损坏不阻塞启动，严格校验由主配置路径负责）。
- * loader 引导进程另有自己的宽松读取（编译期不静态依赖 kernel），两套不合并。
- *
- * 错误文案指明来源为「内联配置」且不含任何 toml 文件路径。本模块不 import
- * logger（logger.ts 反向依赖本模块判内联来源）。
+ * 内联配置（`NAPUKETTO_CONFIG_JSON`）：KuroBridge 等嵌入式宿主生成 JSON 经 env 喂入（与 napuketto.toml
+ * 同构），消除托管 toml 本体；优先级 NAPUKETTO_CONFIG_JSON > NAPUKETTO_CONFIG > 缺省模板生成，内联生效时不读写任何 toml。
+ * Windows 单个 env 上限 32767 字符（约 32KB），嵌入式配置形状远小于该限（超限宿主退回文件形态）。
  */
 import process from "node:process";
 import { configError, errorMessage, isRecord } from "@napuketto/kernel";
 import { type CliConfig, parseCliConfig } from "./schema.js";
+
+// 本模块不 import logger：logger.ts 反向依赖本模块判内联来源，反向 import 会成环。
 
 /** 内联配置 env 键（唯一规范拼写；读取为精确键访问，Windows 上 process.env 本身大小写不敏感）。 */
 const INLINE_CONFIG_ENV = "NAPUKETTO_CONFIG_JSON";
@@ -52,7 +40,8 @@ function asConfigObject(value: unknown): Record<string, unknown> | undefined {
 
 /**
  * 读内联配置文档（宽松口径：未设置 / 空串 / JSON 解析失败 / 非对象 → undefined）。
- * 供日志段等「坏配置不阻塞启动」的消费方使用。
+ * 供日志段等「坏配置不阻塞启动」的消费方使用；loader 引导进程另有自己的宽松读取
+ * （编译期不静态依赖 kernel），两套有意不合并。
  */
 function readInlineConfigDoc(): Record<string, unknown> | undefined {
     const text = readInlineConfigText();
@@ -72,7 +61,7 @@ export function readInlineConfigSection(key: string): unknown {
     return doc === undefined ? undefined : doc[key];
 }
 
-/** 严格解析内联 JSON 对象（主配置校验入口；错误一概 ConfigError）。 */
+/** 严格解析内联 JSON 对象（主配置校验入口；错误一概 ConfigError，文案标明「内联配置」且不含 toml 路径）。 */
 function parseJsonObject(text: string): Record<string, unknown> {
     let doc: unknown;
     try {

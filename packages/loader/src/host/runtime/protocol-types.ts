@@ -1,17 +1,11 @@
 /**
- * protocol-types.ts：动态 import 的协议模块最小接口面（2026-11-25 从 types.ts 拆出）。
+ * protocol-types.ts：动态 import 的协议模块最小接口面（adapter 子路径 / network / kernel）。
+ * 与 module-loader.ts + module-guards.ts 成对使用：守卫在运行时收窄，类型在这里表达。
  *
- * 这些接口只描述「模块导出面」（adapter 子路径 / network 包 / kernel 包），与
- * `module-loader.ts` + `module-guards.ts` 成对使用：守卫在运行时收窄，类型在这里
- * 表达。放在独立文件是为了让 `runtime/types.ts` 保持 kernel 交互面单一主题，避免它继续
- * 膨胀成万能类型桶。
- *
- * ⚠️ 构造入参不用 `Record<string, unknown>`（2026-11-25 整改）：那等于把字段名契约整体
- * 推迟到运行期——adapter 侧重命名一个可选构造项，loader 的 `tsc` 全绿，直到真正启用该
- * 协议（尤其可选的 Milky / Satori / Kurobot）才在运行期踩到。现在逐协议给出
- * `*AdapterOptionsLike` 结构接口：字段名 = adapter 公开选项名，值类型 = loader 侧最小
- * 结构面。字段名漂移由 `tests/host/runtime/protocol-types.test-d.ts` 在根 `pnpm check`
- * 里对拍 adapter 源码类型（导出键 / 入参键 / 必填项 / 原始值类型四向断言）。
+ * ⚠️ 构造入参不用 `Record<string, unknown>`：字段名契约会被整体推迟到运行期，
+ * adapter 侧重命名某个可选构造项时 loader 的 `tsc` 仍全绿，直到真正启用该协议才踩雷。
+ * 故逐协议给结构接口（字段名 = adapter 公开选项名，值类型 = loader 最小结构面），
+ * 漂移由 `tests/host/runtime/protocol-types.test-d.ts` 在 `pnpm check` 里四向对拍。
  */
 import type { ReceiveLogFilterLike } from "./service-types.js";
 import type {

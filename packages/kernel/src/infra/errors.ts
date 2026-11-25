@@ -6,7 +6,7 @@
  */
 
 /**
- * 错误码分类。P1 探测真实错误返回后再增删。
+ * 错误码分类（探测真实错误返回后再增删）。
  * 当前 INVALID_PARAM 也承担基础设施层（配置校验失败等）的错误语义。
  */
 export type KernelErrorCode =
@@ -65,7 +65,7 @@ export function errorMessage(err: unknown): string {
 }
 
 /**
- * 配置校验失败（INVALID_PARAM 子型，2026-10-25 嵌入式宿主契约）：仅用于
+ * 配置校验失败（INVALID_PARAM 子型，嵌入式宿主契约）：仅用于
  * 「配置未就绪」一族——主配置校验/反序列化、内联配置、协议段 seed 校验。
  * code 恒为 INVALID_PARAM，协议层错误码映射零涟漪；退出码分类走 instanceof
  * （CLI/self-host 进程以 EXIT_CONFIG_INVALID 退出），与错误文案完全解耦——

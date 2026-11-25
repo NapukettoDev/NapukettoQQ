@@ -1,10 +1,7 @@
 /**
- * NodeIKernelRichMediaService：富媒体服务接口面（自研描述，非移植）
- *
- * 依据：运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，自研描述其形状，
- * 零复制实现）。
- * （接口签名是外部系统的事实，我们自研描述其形状，零复制实现）。
- * 只收录 apis/richmedia 需要的方法；其余按需探测后补齐。
+ * NodeIKernelRichMediaService：富媒体服务接口面（自研描述，非移植）。
+ * 依据运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，自研描述其形状，零复制）；
+ * 只收录 apis/richmedia 需要的方法，其余按需探测后补齐。
  */
 import type { GeneralCallResult } from "./msg-service.js";
 
@@ -56,8 +53,7 @@ export interface GroupSpaceInfo {
  *
  * 注：Native 层 `getRichMediaService()` 返回 Proxy，运行时**不存在**
  * `addKernelRichMediaListener` / `removeKernelRichMediaListener`。下载完成事件
- * 通过 `MsgService.addKernelMsgListener` 的 `onRichMediaDownloadComplete` 回调
- * 接收，本接口不再声明这两项虚构方法。
+ * 通过 `MsgService.addKernelMsgListener` 的 `onRichMediaDownloadComplete` 回调接收。
  */
 export interface NodeIKernelRichMediaService {
     /** 英文单词翻译（translate_en2zh）。 */

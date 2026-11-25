@@ -1,19 +1,7 @@
 /**
- * 数据目录布局（ADR-016，2026-08-08 修订：数据根默认放项目根）
- *
- * ```
- * <数据根>/<qq号>/             # 每账号独立目录（ADR-015 多账号前提）
- * ├── config/                  # 各账号独立配置（历史产物，协议段已走 seed）
- * ├── logs/                    # pino 文件日志
- * └── cache/                   # 临时文件、媒体缓存
- *
- * <项目根>/napuketto.toml      # 全局配置文件（放项目根目录，不入库）
- * <项目根>/.napuketto/         # 数据根（默认值，2026-08-08 用户拍板：直接放项目主目录）
- * ```
- *
- * 数据根优先级：cli `--data-dir`（显式参数）> `NAPUKETTO_DATA` 环境变量 >
- * `<项目根>/.napuketto`（默认，部署原因不放用户目录）。
- * 配置文件路径见 `resolveConfigPath`（项目根探测，与数据根解耦）。
+ * 数据目录布局（ADR-016）：`<数据根>/<qq号>/{config,logs,cache}`，缺省 account 时账号目录即数据根；
+ * 全局配置 `napuketto.toml` 放项目根（数据仍按数据根组织，见 `resolveConfigPath`）。
+ * 数据根优先级：`--data-dir` > `NAPUKETTO_DATA` > `<项目根>/.napuketto`（默认，不放用户目录）。
  */
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -23,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { configError } from "./errors.js";
 import { isPathWithin, resolveExistingPath } from "./path-boundary.js";
 
-/** 默认数据根目录名（项目根下，2026-08-08 用户拍板：不放用户目录）。 */
+/** 默认数据根目录名（项目根下；不放用户目录）。 */
 export const DEFAULT_DATA_ROOT_NAME = ".napuketto";
 
 /** 全局配置文件名。 */
@@ -127,8 +115,8 @@ export interface ConfigPathOptions {
 }
 
 /**
- * 全局配置文件路径解析（2026-08-07 用户拍板：**配置文件放项目根目录，
- * 数据仍按数据根组织**——数据根只承载账号目录/日志/缓存/QQ 数据）。
+ * 全局配置文件路径解析（**配置文件放项目根目录，数据仍按数据根组织**——
+ * 数据根只承载账号目录/日志/缓存/QQ 数据）。
  *
  * 优先级：
  *  1. `NAPUKETTO_CONFIG` 环境变量（显式指定完整路径，任意场景可用）

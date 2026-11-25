@@ -1,16 +1,7 @@
 /**
- * ob11-bridge.ts：OB11 动作容器 IPC 桥（NAPUKETTO_IPC=1 可选装配，2026-08-27）。
- *
- * 触发条件：IPC 模式 && NAPUKETTO_ADAPTER_ENTRY + NAPUKETTO_NETWORK_ENTRY 已注入
- * （koishi 插件 launcher 透传；未注入 = app 层不要 OB11 面，静默跳过）。
- *
- * 装配：动态 import adapter onebot11/core 子路径 + network 入口（assemble-
- * protocols.ts 同款——loader 编译期零 adapter/network 静态依赖），实例化
- * NapukettoOneBot11Adapter 后仅 subscribeOnly()（接收链路，零网络传输），
- * 全部动作名平铺合并进共享 IPC 动作表（OB11 snake_case 与 kernel 点分
- * 命名空间不冲突），OB11 事件经 broadcaster 桥适配器 → sendEvent("ob11")。
- *
- * fail-soft：装配失败回滚到纯 kernel 动作面，不阻断登录链路。
+ * ob11-bridge.ts：OB11 动作容器 IPC 桥（IPC 模式 + ADAPTER_ENTRY / NETWORK_ENTRY 都已注入才装配）。
+ * 动态 import adapter onebot11/core 与 network 后实例化适配器，仅 subscribeOnly()（接收链路、零网络传输），动作名平铺并入共享动作表。
+ * OB11 事件经 broadcaster 桥适配器 → sendEvent("ob11")；装配失败回滚到纯 kernel 动作面（fail-soft，ConfigError 例外上抛）。
  */
 import { join } from "node:path";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
@@ -30,7 +21,7 @@ import type { CoreContextLike, KernelLike } from "../runtime/types.js";
 import type { IpcActionHandler } from "./actions.js";
 import { sendEvent } from "./sender.js";
 
-/** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
+/** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准）：
  * resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）。 */
 function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): string | undefined {
     if (ctx === undefined || ctx === null) {
@@ -135,17 +126,17 @@ export async function attachOb11IpcBridge(
             schema,
             ...bridgeConfig,
         });
-        // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）
+        // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准）
         const mediaBaseDir = resolveMediaBaseDir(services.kernel, services.ctx);
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: protocolConfig,
             localMediaBaseDir: localMediaBaseDir(cfgFile, e.dataRoot ?? e.cfgDir),
             broadcaster,
             msgChannel: services.channel,
-            // OB11 request 事件源（2026-09-08）：群通知 + 好友申请推送
+            // OB11 request 事件源：群通知 + 好友申请推送
             groupChannel: services.groupChannel,
             friendChannel: services.friendChannel,
-            // OB11 friend_add 源（B2，2026-09-08）：好友缓存快照 diff 通道
+            // OB11 friend_add 源：好友缓存快照 diff 通道
             buddyCacheEvents: services.buddyCache?.events,
             // 校准日志（pino 实例，未知事件形状 raw JSON）
             logger: services.logger,

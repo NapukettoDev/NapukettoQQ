@@ -1,7 +1,5 @@
 /**
- * 群精华消息（从 `apis/group.ts` 拆出）
- *
- * 原生 add/removeGroupEssence 需要 msgSeq/msgRandom：先按 msgId 拉消息再提交。
+ * 群精华消息：原生 add/removeGroupEssence 需要 msgSeq/msgRandom，先按 msgId 拉消息再提交。
  */
 import { kernelError } from "../../infra/index.js";
 import type { NodeIKernelGroupService, NodeIKernelMsgService } from "../../types/index.js";

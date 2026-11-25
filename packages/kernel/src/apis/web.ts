@@ -1,10 +1,7 @@
 /**
- * WebApi：群空间 web 接口（P2-15）
- *
- * qun.qq.com 群空间接口需 Cookie（p_skey/skey）+ bkn（skey 哈希）。
- * 复用 TicketApi.getCookies('qun.qq.com') 取 Cookie，TicketApi.getBkn 算 bkn。
- * 零 NapCat 代码：接口契约（URL/参数/返回形状）是 qun.qq.com 外部系统的事实，
- * 自研描述。
+ * WebApi：qun.qq.com 群空间 web 接口，需 Cookie（p_skey/skey）+ bkn（skey 哈希）。
+ * Cookie 经 TicketApi.getCookies('qun.qq.com') 获取，bkn 由 TicketApi.getBkn 计算。
+ * 接口契约（URL/参数/返回形状）是 qun.qq.com 外部系统的事实，自研描述。
  */
 import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
 import { isRecord } from "../infra/type-guards.js";

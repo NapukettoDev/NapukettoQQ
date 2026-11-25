@@ -1,10 +1,6 @@
 /**
- * QR 登录流程辅助（从 `core.ts` 拆出）
- *
- * - 二维码 PNG 落盘 / 清理（0o700 目录 + 0o600 文件，拒绝符号链接）
- * - QR 进度事件转发（onQrCode / onStateChange → onLoginProgress）
- * - 终态等待与 selfInfo 提取
- *
+ * QR 登录流程辅助：二维码 PNG 落盘/清理（0o700 目录 + 0o600 文件，拒绝符号链接）、
+ * QR 进度事件转发（onQrCode / onStateChange → onLoginProgress）、终态等待与 selfInfo 提取。
  * 只依赖 infra / login 叶子模块，不反向依赖 core（core 消费本文件）。
  */
 import { chmodSync, lstatSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
@@ -18,7 +14,7 @@ import type { LoginState, QrCodeData, QrLoginSession, SelfInfo } from "./login.j
  *
  * 可辨识联合：`state` 是判别字段，`switch (progress.state)` 后 `qr` / `selfInfo` /
  * `message` 由编译器自然收窄（waiting_scan 必有 qr、logged_in 必有 selfInfo、
- * failed 必有 message）。属性名与旧版完全一致，下游 `progress.qr` 等访问路径不变。
+ * failed 必有 message）。属性名与下游既有 `progress.qr` 等访问路径保持一致。
  */
 export type LoginProgress =
     | { state: "idle"; qr?: undefined; selfInfo?: undefined; message?: string | undefined }

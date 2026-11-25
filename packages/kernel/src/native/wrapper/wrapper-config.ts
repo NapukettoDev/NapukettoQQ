@@ -1,16 +1,7 @@
 /**
- * wrapper 交互配置装配（纯函数，无状态）
- *
- * 生成 QQ wrapper 交互所需的三份配置：
- *  - buildEngineConfig  → engine.initWithDeskTopConfig（appid / qua / 版本 / 路径）
- *  - buildLoginConfig   → loginService.initConfig
- *  - buildSessionConfig → session.init（登录成功后调用）
- *
- * 与 lifecycle.ts（流程编排）解耦：本模块只回答「配置长什么样」，不管流程怎么走。
- * 字段为 wrapper.node 外部契约（appid/qua/版本），运行时实测确认，自研描述。
- * appid 唯一来源是 major.node 动态解析（每版本不同）；解析失败显式抛 KernelError，
- * 不再静默回退过期 appid（2026-08 硬编码审计：537237765 是 9.9.31 的 appid，该版本
- * 登录服务已被腾讯下线，静默用它会导致扫码「请下载最新版」且极难排查）。
+ * wrapper 交互装配（纯函数，无状态）：engine / login / session 三份配置，与 lifecycle 流程编排解耦，
+ * 字段是 wrapper.node 外部契约。appid 唯一来源是 major.node 动态解析，解析失败显式抛 KernelError
+ * ——回退过期 appid（537237765 属 9.9.31，登录服务已被腾讯下线）会让扫码「请下载最新版」且极难排查。
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -62,8 +53,7 @@ const DEV_TYPE_BY_PLATFORM: Record<string, string> = {
 
 /**
  * 系统信息运行时探测（wrapper 契约：platVer / osVersion / devType）。
- * 旧实现写死 "Windows 10.0.22631"/"Windows 10 Pro"——换机即失真（2026-08 硬编码审计整改）。
- * 探测失败时给通用值兜底，但不写死具体 Windows 构建号。
+ * 不写死具体 Windows 构建号（换机即失真）；探测失败时给通用值兜底。
  */
 function systemInfo(): { platVer: string; osVersion: string; devType: string } {
     let devType = "Unknown";
@@ -331,9 +321,9 @@ export function buildSessionConfig(options: SessionConfigOptions): WrapperSessio
 }
 
 /**
- * 读取设备指纹 guid（wrapper.node 字符串分析实证，2026-08-12）：
+ * 读取设备指纹 guid（wrapper.node 字符串分析实证）：
  * NodeIKernelLoginService::getMachineGuid（0 参，返回机器 GUID 字符串）。
- * 无 getMachineId 方法——TODO 里的方法名不存在，等价方法是 getMachineGuid。
+ * 无 getMachineId 方法——等价方法是 getMachineGuid。
  * 失败（无该方法 / 调用抛错 / 返回值非字符串）兜底空串。
  */
 export function readMachineGuid(loginService: unknown): string {

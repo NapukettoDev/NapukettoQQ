@@ -1,10 +1,7 @@
 /**
- * NodeIKernelProfileLikeService：资料点赞服务接口面（自研描述，非移植）
- *
- * 依据：运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，自研描述其形状，
- * 零复制实现）。
- * （接口签名是外部系统的事实，我们自研描述其形状，零复制实现）。
- * 只收录 apis/profile-like 需要的方法；其余按需探测后补齐。
+ * NodeIKernelProfileLikeService：资料点赞服务接口面（自研描述，非移植）。
+ * 依据运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，零复制）；
+ * 只收录 apis/profile-like 需要的方法，其余按需探测后补齐。
  */
 
 /** 点赞返回（setBuddyProfileLike，说明书参考）。 */

@@ -38,6 +38,10 @@ Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人�
   `kernel` 无全局单例（状态由 `CoreContext` 或装配层持有）。
 - **运行时类型探测**：`services/listeners/entities` 类型必须由 `kernel/src/native/probe/` 加载 `wrapper.node` 反射观察产出，严禁盲猜或抄袭。
 - **扩展协议**：在 `packages/adapter` 新增目录并复用 core 框架，严禁为此修改 `network` 或 `kernel`。
+- **注释红线**：注释只说明**当前不变量**与**外部踩坑根因**（原生 API 怪癖、平台边界、竞态/重入语义）。
+  严禁写入日期戳、PR/issue/任务/阶段编号（`P0`/`Step x`/`阶段 x`）、文件拆分重构史，
+  以及针对 linter 与复杂度门禁的解释；历史归 Git，不复读标识符名。
+  best-effort 的 `catch` 块必须留一句原因注释（`noEmptyBlockStatements` 为 error）。
 
 ## 开发工作流（省上下文模式）
 

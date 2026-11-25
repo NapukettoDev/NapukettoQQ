@@ -1,11 +1,6 @@
 /**
- * 资料语义化 API（ADR-009 统一错误语义，P2-14/P2-15）
- *
- * - ProfileApi：setLongNick / setNickName / setHeader / getStrangerInfo / getUinByUid
- * - ProfileLikeApi：sendLike（send_like，sourceId=71 赞来源，doLikeCount 次数）
- *
- * 2026-11 结构重构：原 `profile-like.ts` 仅 34 行、同属资料域，合并入本文件
- * （`ProfileLikeApi` 导出名与签名不变）。
+ * 资料语义化 API（ADR-009 统一错误语义）：ProfileApi 覆盖签名 / 昵称 / 头像 /
+ * 陌生人信息 / uid→uin，ProfileLikeApi 覆盖 send_like（sourceId=71，doLikeCount 次数）。
  */
 import { kernelError } from "../../infra/index.js";
 import { requireKernelService } from "../../infra/type-guards.js";
@@ -62,7 +57,7 @@ export class ProfileApi {
     }
 
     /**
-     * uid → uin（弱身份兜底；issue #122）。
+     * uid → uin（弱身份兜底）。
      *
      * `GroupApi.uidToUin` 走群成员口径（getUinByUids），好友申请 / 陌生人这类不在任何群
      * 的 uid 必然解析失败，此处用资料详情反查 `detail.uin`。查不到返回 `null`（不抛错：

@@ -1,16 +1,7 @@
 /**
- * MsgBridge：消息事件桥（P2-2，2026-08-05）
- *
- * 职责：把 msg service 的原生回调（onRecvMsg 等）推入类型化事件通道
- * `NTEventChannel<MsgListener, "Msg">`。每个 Service 只注册一次原生监听
- * （ADR-003），缓存维护与协议翻译都订阅 channel。
- *
- * 用法：
- *   const channel = new NTEventChannel<MsgListener, "Msg">("Msg");
- *   const bridge = new MsgBridge(session, channel);
- *   bridge.register();   // addKernelMsgListener（普通 JS 对象，NAPI 反射）
- *   // 协议层订阅：channel.on("Msg/onRecvMsg", handler)
- *   bridge.unregister(); // 停止时清理
+ * MsgBridge：把 msg service 的原生回调（onRecvMsg 等）推入类型化事件通道
+ * `NTEventChannel<MsgListener, "Msg">`；每个 Service 只注册一次原生监听（ADR-003），
+ * 缓存维护与协议翻译都订阅 channel。
  */
 
 import type { NTEventChannel } from "../../infra/event-channel.js";
@@ -43,9 +34,8 @@ export class MsgBridge {
     }
 
     /**
-     * 图片落盘宽限发射（issue #105）：候选路径全缺失的 pic 才进异步等待，
-     * 其余同步发射（保持既有事件时序）。等待由 pic-path-grace 有界并行兜底，
-     * 超时后原样放行（canonical 层置空裁决）。
+     * 图片落盘宽限发射：候选路径全缺失的 pic 才进异步等待，其余同步发射（保持既有事件时序）。
+     * 等待由 pic-path-grace 有界并行兜底，超时后原样放行（canonical 层置空裁决）。
      */
     private emitPicAware(
         event: "Msg/onRecvMsg" | "Msg/onMsgInfoListUpdate",
@@ -55,7 +45,7 @@ export class MsgBridge {
         try {
             pending = hasPendingPicPaths(msgs);
         } catch {
-            // 异常隔离（2026-11 Linux 原生 null 事故）：图片落盘宽限只是增强层，
+            // 异常隔离（Linux 原生 null 事故）：图片落盘宽限只是增强层，
             // 其判定异常绝不能阻断整批事件——否则一条畸形元素就让 channel.emit
             // 完全静默（OB11 收不到任何 message 事件，debug 日志也无记录）。
             // 这里按「无需等待」降级同步发射，逐元素的空值兜底由 canonical 层
@@ -78,7 +68,7 @@ export class MsgBridge {
             return;
         }
         // listener 为普通 JS 对象（NAPI 反射读取方法回调）
-        // onRecvMsg 透传原生回调参数（运行时实证为消息数组，2026-08-07）。
+        // onRecvMsg 透传原生回调参数（运行时实证为消息数组）。
         // 图片消息先经落盘宽限（pic-path-grace，有界并行）：原生补丁放行自动
         // 下载后，事件先于落盘到达——不等待则下游拿到尚未存在的路径，被
         // canonical 层置空后变成"有图无文件"。快速路径（无 pic / 路径已在）
@@ -87,11 +77,11 @@ export class MsgBridge {
             onRecvMsg: (msgs) => this.emitPicAware("Msg/onRecvMsg", msgs),
             onRecvMsgReadReport: (reports) => this.channel.emit("Msg/onRecvMsgReadReport", reports),
             onRecvMsgReceipt: (receipts) => this.channel.emit("Msg/onRecvMsgReceipt", receipts),
-            // 2026-08-11 补齐：发送状态更新（sendMsg 结果以此为准，NapCat 同款）
+            // 发送状态更新（sendMsg 结果以此为准，NapCat 同款）
             onMsgInfoListUpdate: (msgs) => this.emitPicAware("Msg/onMsgInfoListUpdate", msgs),
-            // 2026-09-10 接线：离线文件 / sys msg（方法名证据见 listeners/msg.ts 头注释）
-            // 2026-11-01：onRecvOfflineFileMsg 收窄为 RawMessage[] + 补 onFileMsgCome
-            // （录制实证与离线文件同载荷，friend_file_upload 第二源）
+            // 离线文件 / sys msg（方法名证据见 listeners/msg.ts 头注释）；
+            // onRecvOfflineFileMsg 载荷为 RawMessage[]，onFileMsgCome 录制实证与离线文件
+            // 同载荷（friend_file_upload 第二源）
             onRecvOfflineFileMsg: (msgs) => this.channel.emit("Msg/onRecvOfflineFileMsg", msgs),
             onFileMsgCome: (msgs) => this.channel.emit("Msg/onFileMsgCome", msgs),
             onRecvOnlineFileMsg: (arg) => this.channel.emit("Msg/onRecvOnlineFileMsg", arg),

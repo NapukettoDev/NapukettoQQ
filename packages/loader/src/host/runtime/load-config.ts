@@ -1,17 +1,7 @@
 /**
- * 协议配置段读取（从 protocols.ts 拆分，2026-08-08 FTA 优化；2026-08-08 结构拍板：按账号取段）
- *
- * 主配置来源（2026-10-25 嵌入式内联契约）：**NAPUKETTO_CONFIG_JSON（内联 JSON，
- * 与 napuketto.toml 同构）> NAPUKETTO_CONFIG（文件）> NAPUKETTO_CFG_DIR 兜底（旧行为
- * 兼容）**。内联生效时不读任何 toml 文件，cfgFile 返回哨兵 "<inline>"（仅作
- * ProtocolConfig 来源标注；seed 模式本就不读盘，协议段热更新在内联形态不可用）。
- *
- * 全局配置：**协议配置嵌在账号内**——accounts 数组每项含 [onebot11] / [satori] /
- * [kurobot] / [milky] 段，登录成功后按账号 uin 找到对应项，取其段作 seed（zod 校验）。
- * （ConfigBase seed 模式：load() 直接用内存值，不再读写独立协议文件）
- *
- * 内联分支宽松（解析失败回退文件形态并记日志，不阻塞引导）：cli 主路径已在
- * 拉起前完整校验（exit 78），走到这里的坏内联多见于绕过 cli 的直跑场景。
+ * 协议配置段读取：主配置来源 NAPUKETTO_CONFIG_JSON（内联 JSON）> NAPUKETTO_CONFIG（文件）> NAPUKETTO_CFG_DIR 兜底。
+ * 协议段嵌在 accounts 每项内，登录后按账号 uin 取段作 seed；内联生效时不读任何 toml，cfgFile 返回哨兵 "<inline>"。
+ * 内联分支宽松（解析失败回退文件形态并记日志）：cli 主路径已在拉起前完整校验（exit 78），坏内联多见于绕过 cli 的直跑。
  */
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

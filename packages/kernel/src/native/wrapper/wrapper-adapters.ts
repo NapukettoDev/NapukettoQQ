@@ -1,18 +1,7 @@
 /**
- * wrapper NAPI 回调适配器实现（普通 JS 对象，2026-08-05 确认）
- *
- * 事实（实测）：wrapper.node 的 exports 89 键里没有 NodeI*Adapter/Listener 构造器，
- * engine.initWithDeskTopConfig / session.init 的 adapter 与 listener 参数一律接受
- * **普通 JS 对象**——NAPI 按方法名反射读取回调（自研实现）。
- *
- * 职责：engine / session 交互所需的全部回调占位与监听器工厂。
- *  - GlobalAdapter     → engine.initWithDeskTopConfig 第二参（onLog / getAppSetting / ...）
- *  - DependsAdapter    → session.init 第二参（onMSFStatusChange / onMSFSsoError / getGroupCode）
- *  - DispatcherAdapter → session.init 第三参（dispatchRequest / dispatchCall / dispatchCallWithJson）
- *  - createSessionListener → 日志版 session 监听器（boot 阶段默认，login 模块可覆盖）
- *  - createLoginListener   → 登录监听器占位（登录器接入时填充）
- *
- * 这些类的实例本身就是「普通 JS 对象」，可被 NAPI 反射——直接 new 传入即可。
+ * wrapper NAPI 回调适配器实现：exports 里没有 NodeI*Adapter/Listener 构造器，
+ * engine.initWithDeskTopConfig / session.init 的 adapter 与 listener 参数一律接受普通 JS 对象
+ * ——NAPI 按方法名反射读取回调，因此这些占位类可直接 new 传入。
  */
 
 import type {

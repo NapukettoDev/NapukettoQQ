@@ -1,8 +1,5 @@
 /**
- * 群域公共出口（GroupApi + 群通知 + 解析器/公告子模块）。
- *
- * 子模块：group（API 门面）/ group-parsers（原始响应守卫）/ group-bulletin
- * （群公告）/ group-notify（群通知与禁言列表）。
+ * 群域公共出口（GroupApi + 群通知 + 解析器 / 公告子模块）。
  */
 
 export { GroupApi } from "./group.js";

@@ -1,9 +1,7 @@
 /**
- * kernel 业务 API 层公共出口（ADR-009 统一错误语义）
- *
+ * kernel 业务 API 层公共出口（ADR-009 统一错误语义）。
  * L2 无状态语义 API 层：只依赖 `types/`（L0）、`infra/`（L0）与 `native/`（L1），
- * 不得引用 `runtime/`（登录 / 缓存 / 装配）。顶层只保留本 barrel 与 result.ts
- * （域内解包工具）及拆平后的 4 个媒体 / Web 模块；子域：msg / group / social。
+ * 不得引用 `runtime/`（登录 / 缓存 / 装配）；子域：msg / group / social。
  */
 
 export type {

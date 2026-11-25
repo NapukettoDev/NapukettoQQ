@@ -1,8 +1,6 @@
 /**
- * 运行时反射探测基础工具（从 probe.ts 拆分，2026-08-08 FTA 优化）
- *
- * - listMethods：反射枚举对象原型链上的方法名（去重、去构造器）
- * - tryCall：安全调用方法拿返回值（失败记录错误，不中断探测）
+ * 运行时反射探测基础工具：listMethods（反射枚举原型链上的方法名，去重、去构造器）与
+ * tryCall（安全调用拿返回值，失败记录错误、不中断探测）。
  */
 
 import { getOwnProp, isCallable } from "../../infra/type-guards.js";

@@ -1,9 +1,6 @@
 /**
- * kernel 类型层公共出口
- *
- * 语义化实体（entities / message-element）+ 原生句柄面（wrapper）+
- * 子域类型（listeners / services，各有独立 barrel）。
- * 全部类型为运行时探测产物（packages/kernel/scripts/probe/），非拍脑袋定义。
+ * kernel 类型层公共出口：语义化实体（entities / message-element）+ 原生句柄面（wrapper）+
+ * 子域类型（listeners / services，各有独立 barrel）；全部类型为运行时探测产物。
  */
 
 export type {

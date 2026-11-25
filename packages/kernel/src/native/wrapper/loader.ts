@@ -1,11 +1,7 @@
 /**
- * wrapper 原生装载与 QQ 数据目录定位（从 `wrapper-loader.ts` 拆出）
- *
- * - `dlopenWrapper`：自建宿主的原生引导原语（`process.dlopen` 截获 exports）
- * - `resolveQqUserDataRoot` / `electronProcessType`：QQ 数据根与进程类型探测
- * - `defaultEngineConfig` / `resolveBootQqGlobalPath`：engine 装配所需的平台配置
- *
- * engine/session 生命周期编排在 `lifecycle.ts`（本文件不反向依赖）。
+ * wrapper 原生装载与 QQ 数据目录定位：`dlopenWrapper`（自建宿主引导原语）、
+ * `resolveQqUserDataRoot` / `electronProcessType`（QQ 数据根与进程类型探测）、
+ * `defaultEngineConfig` / `resolveBootQqGlobalPath`（engine 装配所需的平台配置）。
  */
 import { homedir, version as osVersion } from "node:os";
 import { dirname, join } from "node:path";
@@ -74,7 +70,7 @@ export function defaultEngineConfig(env: BootEnv, qqDataPath?: string): EnginIni
 /**
  * Electron 进程类型（Node 的 process 类型无此字段）。
  * - "browser"：QQ 主进程（V1 模式）
- * - "utility"：utilityProcess Worker（路线 B，2026-08-06）
+ * - "utility"：utilityProcess Worker
  */
 export function electronProcessType(): string | undefined {
     return getElectronProcessType(process);
@@ -92,16 +88,14 @@ export interface QqDataRootOptions {
  * 解析 QQ 用户数据根（登录数据目录，如 `C:\Users\<user>\Documents\Tencent Files`）。
  * 优先 NodeQQNTWrapperUtil.getNTUserDataInfoConfig()（QQ 官方 API），回退默认位置。
  *
- * 背景（2026-08-06 P2-1 实测）：worker（utilityProcess）模式下 loginService 是
- * `new NodeIKernelLoginService()` 新建的，其 initConfig 的 commonPath 必须指向
- * QQ 真实数据路径才能读到历史账号——cli 的 `.napuketto\default` 数据目录读不到
- * （getLoginList 返回空 → 只能 QR 登录）。V1 主进程模式 QQ 自己 initConfig 过
- * 正确路径，无需此解析。
+ * ⚠️ worker（utilityProcess）模式下 loginService 是 `new NodeIKernelLoginService()` 新建的，
+ * 其 initConfig 的 commonPath 必须指向 QQ 真实数据路径才能读到历史账号——cli 的
+ * `.napuketto\default` 数据目录读不到（getLoginList 返回空 → 只能 QR 登录）；V1 主进程模式
+ * QQ 自己 initConfig 过正确路径，无需此解析。
  *
- * 平台分流（2026-11-09 Stage 1 E2E）：Linux（KLINUX）自建宿主持有 QQ 数据，直接
- * 用数据根（`<数据根>/nt_qq`），不读 `$HOME`——否则换机器/换用户读不到历史账号，
- * 还会把 QQ 崩溃目录等写进用户主目录。Windows 调试沙箱也使用传入的数据根，
- * 其余 Windows 场景走官方 API + 默认位置兜底。
+ * 平台分流：Linux（KLINUX）自建宿主持有 QQ 数据，直接用数据根（`<数据根>/nt_qq`），
+ * 不读 `$HOME`——否则换机器/换用户读不到历史账号，还会把 QQ 崩溃目录等写进用户主目录；
+ * Windows 调试沙箱也使用传入的数据根，其余 Windows 场景走官方 API + 默认位置兜底。
  */
 export function resolveQqUserDataRoot(
     exports: WrapperNodeApi,
@@ -147,10 +141,9 @@ function extractUserDataRoot(exports: WrapperNodeApi): string | null {
 
 /**
  * 解析 QQ 真实数据目录的 global 路径（desktopGlobalPath 三要素之三）。
- * worker（utilityProcess）模式 + 自建宿主（标准 node）下必须指向 QQ 真实
- * 数据目录（数据根/nt_qq/global，HANDOVER-V6），否则登录数据读写错位
- * （P2-1 实测 2026-08-06；getLoginList 空）。QQ 主进程（V1）QQ 自己已配置
- * engine，无需解析。
+ * worker（utilityProcess）模式 + 自建宿主（标准 node）下必须指向 QQ 真实数据目录
+ * （数据根/nt_qq/global），否则登录数据读写错位、getLoginList 为空；QQ 主进程（V1）
+ * QQ 自己已配置 engine，无需解析。
  *
  * `dataRoot` 在 Linux 和调试沙箱生效（`resolveQqUserDataRoot` 平台分流）：loader 由
  * `NAPUKETTO_DATA_ROOT` 注入，QQ 数据固定落 `<数据根>/nt_qq/global`。
@@ -173,9 +166,8 @@ export function resolveBootQqGlobalPath(
 }
 
 /**
- * 加载 wrapper.node 原生模块并校验核心导出（自建宿主引导原语，2026-11 从
- * loader self-host.ts 下沉：原生 `dlopen` 是 kernel 的唯一原生层职责，loader
- * 只编排流程）。
+ * 加载 wrapper.node 原生模块并校验核心导出（自建宿主引导原语：原生 `dlopen` 是
+ * kernel 的唯一原生层职责，loader 只编排流程）。
  *
  * @param wrapperPath wrapper.node 绝对路径（QQ 安装目录 / 缓存文件根）
  * @returns NAPI exports（含 NodeIKernelLoginService 等构造器）

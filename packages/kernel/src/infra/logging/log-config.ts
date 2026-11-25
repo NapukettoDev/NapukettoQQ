@@ -1,16 +1,7 @@
 /**
- * [log] 配置段解析（napuketto.toml 全局段，2026-10-25 日志可配置化）。
- *
- * 统一解析入口：cli（apps/cli）与 loader 引导链共用本函数（经 kernel 导出），
- * 避免两处手写解析漂移。输入为 TOML 解析后的 [log] 段原对象（缺失传 undefined）
- * + 环境变量快照；输出为已解析的 LogConfig（env 覆盖优先于 toml）。
- *
- * 环境变量（优先级高于 toml；非法值忽略）：
- *   - NAPUKETTO_LOG_LEVEL（唯一规范拼写）
- *   - NAPUKETTO_LOG_FORMAT（pretty | single-line | json）
- *   - NAPUKETTO_NO_BANNER（1/true = 关 banner）
- *   - NAPUKETTO_LOG_COLORIZE（1/true/0/false，CLI 顶层进程向子进程传播控制台
- *     渲染决策用；toml 不暴露此键）
+ * [log] 配置段解析（napuketto.toml 全局段）：cli 与 loader 引导链共用同一入口，避免两处手写解析漂移。
+ * 输入 TOML 的 [log] 段原对象（缺失传 undefined）+ 环境变量快照；env 覆盖优先于 toml，非法值忽略：
+ * NAPUKETTO_LOG_LEVEL / NAPUKETTO_LOG_FORMAT / NAPUKETTO_NO_BANNER / NAPUKETTO_LOG_COLORIZE。
  */
 
 import { kernelError } from "../errors.js";

@@ -1,16 +1,7 @@
 /**
- * linux-native.ts：Linux 原生 ELF 自建宿主（ADR-027 起 Linux 唯一路径）。
- *
- * 与 Windows 分支的区别：
- *  - 宿主是 Linux 原生 `node`（不是 Wine 里的 Windows node.exe——Wine 已退役）
- *  - `wrapper.node` 是 ELF，宿主符号由官方 node 直接导出；只 preload 最小 stub
- *  - stub 是 `libnapuketto_stub.so`（native/prebuilt/linux-x64/），不再是 QQNT.dll 目录
- *  - `libbugly` 的 gnutls 是无 DT_NEEDED 的隐藏依赖，必须与 stub 一起 preload
- *  - `HOME`/`XDG_*` 收敛到数据根（Stage 3c）：Bugly 的 NativeCrashHandler 不受
- *    `desktopGlobalPath` 控制，总是写 `$HOME/.config/QQ/crash_files/`
- *
- * 平台判定一律用 `process.platform === "linux"`（ADR-027 起 Linux 只有原生 ELF 分支，
- * 不再有宿主开关环境变量）。
+ * linux-native.ts：Linux 原生 ELF 自建宿主（Linux 唯一路径，平台判定只看 process.platform === "linux"）。
+ * ELF `wrapper.node` 的宿主符号由官方 node 导出，只需 preload 最小 stub；`libbugly` 的 gnutls 是无 DT_NEEDED 的隐藏依赖。
+ * `HOME` 收敛到数据根：Bugly 的崩溃处理器不认 `XDG_CONFIG_HOME`，总写 `$HOME/.config/QQ/crash_files/`（strace 实测）。
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -83,7 +74,7 @@ export function resolveLinuxNode(): string | null {
 }
 
 /**
- * Linux 原生宿主的受管 HOME 目录（Stage 3c：把原生层对 `$HOME` 的写入收进数据根）。
+ * Linux 原生宿主的受管 HOME 目录（把原生层对 `$HOME` 的写入收进数据根）。
  *
  * 优先级：显式覆盖（`NAPUKETTO_LINUX_HOME`）> `<数据根>/home` > `<账号目录>/home`。
  * 数据根缺省时退到账号目录而非继承用户 `$HOME`——宁可路径不一致，也不污染用户目录。
@@ -108,7 +99,7 @@ export function resolveLinuxHome(options: {
  * 受管 HOME 对应的环境变量集合。
  *
  * 关键变量是 `HOME`：`libbugly` 的崩溃处理器直接拼 `$HOME/.config/QQ/crash_files/`
- * （strace 实测，2026-11-09），不认 `XDG_CONFIG_HOME`；XDG_* 一并收敛是给其他 C 库
+ * （strace 实测），不认 `XDG_CONFIG_HOME`；XDG_* 一并收敛是给其他 C 库
  * （libvips / fontconfig 等）的缓存兜底。`XDG_RUNTIME_DIR` 不接管——那是会话级
  * 目录（dbus / 0700），语义与数据根不同。
  */

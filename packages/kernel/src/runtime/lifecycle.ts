@@ -1,15 +1,7 @@
 /**
- * KernelRuntime：内核服务聚合（开箱即用装配 + 生命周期管理）
- *
- * 把「事件通道 → 原生桥 → 业务 API → 缓存」这套固定装配从 loader 下沉到
- * kernel，外部嵌入方只需一个 `createKernelRuntime({ session })` 即可拿到
- * 全部内核服务，无需理解桥/通道的注册顺序与依赖注入细节。
- *
- * 约定：
- *  - `autoRegister` 默认 true（自动 register 全部桥与缓存）；
- *  - `dispose()` 幂等：一键 unregister 桥/缓存并 dispose 通道；
- *  - `reportOnlineStatus` 默认 false（自建宿主建议 true：status=10 开启服务端
- *    实时消息推送，与 loader 引导链同款调用）。
+ * KernelRuntime：内核服务聚合出口——固定装配「事件通道 → 原生桥 → 业务 API → 缓存」，
+ * 外部嵌入方只需 `createKernelRuntime({ session })` 即可拿到全部服务（无需理解桥/通道注册顺序）。
+ * `dispose()` 幂等（桥/缓存 unregister + 通道 dispose）；`reportOnlineStatus` 默认 false，自建宿主建议 true。
  */
 
 import { GroupApi, GroupNotifyApi } from "../apis/group/index.js";

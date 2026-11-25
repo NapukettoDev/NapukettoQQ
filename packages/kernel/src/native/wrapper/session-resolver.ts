@@ -1,11 +1,7 @@
 /**
- * session 解析（2026-08-05，wrapper 机制实测确认后）
- *
- * - getMainSession：startup.create → getSessionIdList → getNTWrapperSession(nt_x)
- *   （实测这些返回的 session 是空壳——核心 service 未 init，仅作参考）
- * - 真正可用的 session 是 `new wrapper.NodeIQQNTWrapperSession()` + init（见 lifecycle.ts）
- *
- * Step 2：所有 exports / 实例均经 wrapper-guards 运行时守卫收窄，零 `as` 断言。
+ * session 解析：`getMainSession` 走 startup.create → getSessionIdList → getNTWrapperSession(nt_x)，
+ * 实测这些返回的 session 是空壳（核心 service 未 init，仅作 probe 参考）；真正可用的 session 是
+ * `new wrapper.NodeIQQNTWrapperSession()` + init（见 lifecycle.ts）。exports / 实例均经守卫收窄，零 `as`。
  */
 
 import { hasCallableProp } from "../../infra/type-guards.js";
@@ -52,7 +48,7 @@ function resolveMainSession(
 }
 
 /**
- * 复用 QQ 已有 session（P1-4：QQ 已登录，直接拿单例避免重复 init）。
+ * 复用 QQ 已有 session（QQ 已登录时直接拿单例，避免重复 init）。
  * 优先 `NodeIQQNTWrapperSession.get()`；返回 null 时回退 createSession。
  *
  * @internal 仅供 probe 诊断参考，请勿在业务装配中直接调用（会写回 ctx.session）。
@@ -81,7 +77,7 @@ function trySessionGet(ctx: WrapperContext): NodeIQQNTWrapperSession | null {
 }
 
 /**
- * 复用 QQ 主 session（P1-4 实测链路）：
+ * 复用 QQ 主 session（实测链路）：
  * `NodeIQQNTStartupSessionWrapper.create()` → `start()` → `getSessionIdList()`（Map
  * {nt:"nt_3", gpro:"gpro_3"}）→ `NodeIQQNTWrapperSession.getNTWrapperSession("nt_3")`。
  * 注：实测这些 session 是空壳（核心 service null），真正可用的是 new + init（lifecycle.ts）。

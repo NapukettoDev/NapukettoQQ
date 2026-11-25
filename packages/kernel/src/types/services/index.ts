@@ -1,7 +1,6 @@
 /**
- * kernel 原生服务接口类型（wrapper.node 运行时探测产物）
- *
- * 各 NodeIKernel*Service 的语义化描述，由 apis 层消费。
+ * kernel 原生服务接口类型（wrapper.node 运行时探测产物）：各 NodeIKernel*Service 的
+ * 语义化描述，由 apis 层消费。
  */
 export type {
     BuddyCategory,

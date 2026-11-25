@@ -1,11 +1,7 @@
 /**
- * wrapper 子域公共出口（L1 原生防腐层 · 装载与生命周期）
- *
- * 原生装载（loader）/ 生命周期编排（lifecycle）/ 回调适配器 / 平台配置 /
- * 版本探测 / session 解析。
- *
- * 运行时反射探针在兄弟目录 `../probe/`，由此不再反向重导出：`native/index.ts`
- * 分别汇总 wrapper / probe / bridge / message-codec，保证 native/ 内部单向无环。
+ * wrapper 子域公共出口（L1 原生防腐层 · 装载与生命周期）。
+ * 运行时反射探针在兄弟目录 `../probe/`；`native/index.ts` 分别汇总 wrapper / probe /
+ * bridge / message-codec，保证 native/ 内部单向无环。
  */
 
 export type {

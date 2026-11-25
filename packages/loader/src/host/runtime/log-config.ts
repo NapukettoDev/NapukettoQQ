@@ -1,11 +1,6 @@
 /**
- * loader 引导链日志配置解析（2026-10-25 日志可配置化；2026-10-25 内联配置接入）。
- *
- * 自建宿主进程（self-host → bootstrap → NapukettoCore / kernel-services）不经过
- * cli 的 loadCliConfig，这里按同一契约解析：主配置 [log] 段经 kernel.parseLogConfig
- * （env 覆盖在内）解析。主配置来源优先级与 loadProtocolSections 一致：
- * NAPUKETTO_CONFIG_JSON（内联，不读盘）> NAPUKETTO_CONFIG > NAPUKETTO_CFG_DIR 兜底。
- * kernel 无该导出（老版本）或配置读取失败时回退缺省——日志配置损坏不阻塞引导。
+ * loader 引导链日志配置解析：自建宿主不经过 cli 的 loadCliConfig，这里按同一契约用 kernel.parseLogConfig 解析主配置 [log] 段。
+ * 主配置来源 NAPUKETTO_CONFIG_JSON（内联，不读盘）> NAPUKETTO_CONFIG > NAPUKETTO_CFG_DIR 兜底；kernel 缺导出或读取失败回退缺省。
  */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
