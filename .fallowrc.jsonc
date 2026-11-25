@@ -183,8 +183,7 @@
         // （保留复杂度/CRAP 检查，同 health.thresholdOverrides 精神）。
         "packages/kernel/tests/**/*.test.ts",
         "packages/adapter/tests/**/*.test.ts",
-        // 过渡期：loader 尚未迁移，测试仍在 src/__tests__/ 下。
-        "packages/loader/src/**/*.test.ts",
+        "packages/loader/tests/**/*.test.ts",
         "packages/network/tests/**/*.test.ts",
         "packages/media/tests/**/*.test.ts",
         "apps/**/*.test.ts",
@@ -194,7 +193,7 @@
         // 不豁免会让 CI 的 `fallow audit --base` 增量门禁误报 unused-export /
         // unused-file。测试支撑不是发布产物，也不参与死代码治理。
         "**/tests/**",
-        // 过渡期保留：loader 的 __tests__ 目录待后续阶段迁移。
+        // tooling/release/__tests__/ 仍保留该目录名（其余包已统一为 `tests/`）。
         "**/__tests__/**"
     ],
     // 测试文件豁免大函数检查（fallow 官方推荐）：长 describe/it 块会被误计为
