@@ -7,10 +7,10 @@
  * 已处理 / 自己发起的项丢弃，剩余项按 `${friendUid}:${reqTime}` 去重。
  */
 import type { GroupNotify } from "@napuketto/kernel";
+import { BuddyReqDedup, processInboundBuddyReqs } from "../../internal/domain/buddy-req.js";
+import { startupBaselineSec } from "../../internal/domain/startup-cutoff.js";
+import type { RequestTranslateContext } from "../../internal/domain/uid-uin.js";
 import { logEventFailure, sliceRaw } from "../../internal/infra/log.js";
-import { BuddyReqDedup, processInboundBuddyReqs } from "../../internal/qq/buddy-req.js";
-import { startupBaselineSec } from "../../internal/qq/startup-cutoff.js";
-import type { RequestTranslateContext } from "../../internal/qq/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import type { MilkyEnrichment } from "../enrichment.js";
 import {

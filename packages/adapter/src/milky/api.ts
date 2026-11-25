@@ -23,9 +23,9 @@ import type {
 } from "@napuketto/kernel";
 import { ChatType, errorMessage, kernelError } from "@napuketto/kernel";
 import type { MediaOutboundPolicy } from "@napuketto/media";
+import { toUnixSeconds } from "../internal/domain/raw-message.js";
 import { bindLocalMediaRoots } from "../internal/infra/local-media.js";
 import { MediaCache } from "../internal/infra/media-cache.js";
-import { toUnixSeconds } from "../internal/qq/raw-message.js";
 import type { MessageSeqIndex } from "./helper/state/seq-index.js";
 import type { MilkyLoggerLike } from "./transport.js";
 

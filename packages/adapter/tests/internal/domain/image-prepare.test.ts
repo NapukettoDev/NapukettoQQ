@@ -18,7 +18,7 @@ vi.mock("@napuketto/media", async (importOriginal) => ({
     detectFileType: media.detectFileType,
 }));
 
-import { prepareImageElements } from "../../../src/internal/qq/media.js";
+import { prepareImageElements } from "../../../src/internal/domain/media.js";
 
 /** 最小 logger 桩。 */
 function makeLogger() {

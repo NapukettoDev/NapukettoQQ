@@ -7,8 +7,8 @@
  */
 import type { RawMessage } from "@napuketto/kernel";
 import { ChatType, errorMessage, toCanonicalElements } from "@napuketto/kernel";
+import { resolveUidToUinWithFallback } from "../internal/domain/uid-uin.js";
 import type { AdapterLoggerLike } from "../internal/infra/log.js";
-import { resolveUidToUinWithFallback } from "../internal/qq/uid-uin.js";
 import type { OneBotApi } from "./api/onebot-api.js";
 import { collectReceiveNeeds, type ReceiveTranslateContext } from "./helper/index.js";
 import type { SysMsgEnvelope, SysMsgField, SysMsgKindRuleOB11 } from "./helper/sysmsg.js";

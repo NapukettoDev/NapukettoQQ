@@ -13,9 +13,9 @@
 import { kernelError, TicketApi } from "@napuketto/kernel";
 import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
+import { downloadProtocolMedia } from "../../../internal/domain/media.js";
 import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
-import { downloadProtocolMedia } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 

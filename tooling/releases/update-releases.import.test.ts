@@ -1,5 +1,5 @@
 /**
- * update-qq-releases.import.test.ts：兜底命令「node 直接跑」的可加载性守卫。
+ * update-releases.import.test.ts：兜底命令「node 直接跑」的可加载性守卫。
  *
  * 为什么单独一个文件：脚本靠 `node` 直接执行 TypeScript（类型剥离），不做 `.js` →
  * `.ts` 的说明符重写——它依赖链上只要出现一个相对 import，加载就会
@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 /** 被测脚本的 file: URL（与 cwd 无关，子进程在哪个目录都能加载）。 */
 const SCRIPT_URL = pathToFileURL(
-    fileURLToPath(new URL("./update-qq-releases.ts", import.meta.url)),
+    fileURLToPath(new URL("./update-releases.ts", import.meta.url)),
 ).href;
 
 /** 以 node 子进程加载脚本模块图（只 import，不执行 main），返回 stdout。 */

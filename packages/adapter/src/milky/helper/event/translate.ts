@@ -12,7 +12,7 @@ import {
     type RawMessage,
     toCanonicalElements,
 } from "@napuketto/kernel";
-import { toUnixSeconds } from "../../../internal/qq/raw-message.js";
+import { toUnixSeconds } from "../../../internal/domain/raw-message.js";
 import type {
     GroupEntity,
     GroupFileUploadData,

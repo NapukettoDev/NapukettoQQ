@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/NapukettoDev/Napuketto/main/docker/
 
 ## 首次启动链路
 
-- loader 读 `qq-releases.json`，选当前平台/架构的最新官方 Linux deb（约 190MB）；
+- loader 读 `releases.json`，选当前平台/架构的最新官方 Linux deb（约 190MB）；
 - 内置 7zz 三层解包（deb → data.tar.xz → data.tar），提取 `wrapper.node`、`major.node`、`libbugly.so`、`sharp-lib/` 等，中间产物解完即删；
 - 装配自建宿主：`LD_PRELOAD` = stub + 系统 `libgnutls.so.30`，然后 `dlopen`；
 - 有历史票据走快速登录，否则进入扫码；下载只在首启发生，之后复用 `qq-files/`。

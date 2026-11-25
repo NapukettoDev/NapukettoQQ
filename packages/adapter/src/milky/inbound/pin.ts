@@ -4,7 +4,7 @@
  * getPinnedContacts 播种基线（重启后首个取消置顶也能观测到翻转）。
  */
 import { isRecord, type RecentContact } from "@napuketto/kernel";
-import { numericUin } from "../../internal/qq/uid-uin.js";
+import { numericUin } from "../../internal/domain/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import { PinWatch, toPeerPinChangeData } from "../helper/event/peer-pin.js";
 import type { PeerPinChangeData } from "../types.js";

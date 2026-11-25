@@ -4,8 +4,8 @@
  */
 import type { EssenceAddedItem } from "@napuketto/kernel";
 import { EssenceListSync, isRecord, narrowEssenceGroupArg } from "@napuketto/kernel";
+import { numericUin } from "../../internal/domain/uid-uin.js";
 import { sliceRaw } from "../../internal/infra/log.js";
-import { numericUin } from "../../internal/qq/uid-uin.js";
 import type { MilkyInboundBase } from "../api.js";
 import { RecentKeyCache } from "../helper/state/recent-keys.js";
 

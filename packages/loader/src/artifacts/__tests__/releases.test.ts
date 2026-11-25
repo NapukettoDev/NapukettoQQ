@@ -7,11 +7,11 @@
  * 是唯一绕行点，这里锁住语义：只改该路径段大小写，其余原样不动。
  *
  * loadQqReleases：node:fs 部分替身（readFileSync 按 mode 注入缺失/坏 JSON/
- * 结构非法，其余透传——真实 qq-releases.json 读取路径同样覆盖）。
+ * 结构非法，其余透传——真实 releases.json 读取路径同样覆盖）。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { QqReleaseEntry } from "../manifests/qq-releases.js";
-import { normalizeDownloadUrl, releasePlatform } from "../manifests/qq-releases.js";
+import type { QqReleaseEntry } from "../manifests/releases.js";
+import { normalizeDownloadUrl, releasePlatform } from "../manifests/releases.js";
 import { latestRelease, loadQqReleases, QqReleasesError, resolveDownloadUrl } from "../releases.js";
 
 /** readFileSync 注入模式（null = 透传真实实现）。 */
@@ -143,7 +143,7 @@ describe("loadQqReleases", () => {
         expect(file.schema).toBe(2);
         expect(file.known.length).toBeGreaterThan(0);
         // 用 latestRelease（真实安装链的选版口径）而非 find：known 会被
-        // update-qq-releases 自动追加条目，断言具体版本号/首条匹配会让发布链
+        // update-releases 自动追加条目，断言具体版本号/首条匹配会让发布链
         // 在每次清单更新后红灯（2026-11-10 事故：追加了较旧的 3.2.34 条目）。
         const win = latestRelease(file, { platform: "win32", arch: "x64" });
         expect(win.version).toMatch(/^\d+\.\d+\.\d+-\d+$/);

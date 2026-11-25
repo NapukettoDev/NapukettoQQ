@@ -30,8 +30,8 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
 |---|---|---|---|
 | `src/framework/` | **公开**：`exports["./core"]` | 适配器骨架：`BaseProtocolAdapter` / `ActionRegistry` / `runAction` / `auth` / `transport-schema` | 只依赖 kernel / network；禁止依赖 `internal/` 与任何协议目录 |
 | `src/<protocol>/` | 公开：各自子路径 | 协议信封、事件翻译、动作声明、传输装配 | 可依赖 `framework/` + `internal/`；协议之间互不依赖 |
-| `src/internal/qq/` | 包内私有 | NTQQ 数据语义与边界桥接：sysmsg 解码、uid↔uin 口径、grayTip、essence 字段提取、raw-message 归一、发送侧媒体准备 | 可依赖 `internal/infra/` 与 `@napuketto/media`；无 barrel |
-| `src/internal/infra/` | 包内私有 | 协议无关的运行期横切件：日志截断、校准 logger 面与媒体缓存租约/回收 | 叶子层，不依赖 `qq/` 与 `framework/` |
+| `src/internal/domain/` | 包内私有 | NTQQ 数据语义与边界桥接：sysmsg 解码、uid↔uin 口径、grayTip、essence 字段提取、raw-message 归一、发送侧媒体准备 | 可依赖 `internal/infra/` 与 `@napuketto/media`；无 barrel |
+| `src/internal/infra/` | 包内私有 | 协议无关的运行期横切件：日志截断、校准 logger 面与媒体缓存租约/回收 | 叶子层，不依赖 `domain/` 与 `framework/` |
 
 - **可见性轴优先于「协议 / 非协议」轴**：公开契约（`framework/`）与包内实现（`internal/`）
   物理分开，`internal/` 下不放任何 `index.ts`——防止顺手的 `re-export` 把私有实现变成
@@ -96,7 +96,7 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   主测试文件，不新增。
 - 协议隔离：装配方为每个协议实例化独立 `EventBroadcaster`；adapter 只向自己注入的
   broadcaster emit，不跨协议共享事件或缓存。
-- 跨协议 QQ 共享原语收在包内 `src/internal/qq/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
+- 跨协议 QQ 共享原语收在包内 `src/internal/domain/`（不对外导出）：uid-uin 的 `toUin`/`toUinString`/
   `numericUin`（number / string / 数字串口径）、`collectGroupNotifyUids`（群通知 user1/user2
   双方 uid）与 `resolveUidToUinWithFallback`（去重空串 → 批量 `uidToUin` → 群口径未命中的
   前 `MAX_PROFILE_LOOKUPS` 条逐条资料兜底，fail-soft 留痕；OB11 / Milky enrichment 共用）、
@@ -111,7 +111,7 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   识别表、错误口径——NOT_FOUND 抛错类型与消息归调用方）。
 - 群精华列表缓存 / 首帧基线抑制 / 串行 diff 同步器已下沉 kernel 缓存层（ADR-028）：
   `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 从 `@napuketto/kernel`
-  导入；`src/internal/qq/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
+  导入；`src/internal/domain/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
   `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与
@@ -121,7 +121,7 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   ≤110 行；kurobot 双向流另有 session.ts 共享状态）；`enrichment.ts` 接管翻译
   前的异步查询（批量 uidToUin、群实体回填、msgId 反查），翻译函数保持纯函数
   （ADR-008）。sysmsg 单条字节块的解码 → 信封 → 识别 → 分流管线收拢
-  `internal/qq/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
+  `internal/domain/sysmsg.ts` `processSysMsgBlob`，协议只持识别表与命中处理。
 
 ### OneBot 11 事件链
 
@@ -227,7 +227,7 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
   目录（含失败路径），转换阶段不得提前删除。独立调用转换器时由调用方接管返回路径的
   清理。失败仍透传源路径，media 负责清理失败的部分产物；后续发送
   准备的 ffprobe/抽帧也受相同本地输入与超时限制，拒绝播放列表等不支持输入。
-- 远程媒体下载经 `internal/qq/media.ts` 的 `downloadProtocolMedia`，按媒体策略选择
+- 远程媒体下载经 `internal/domain/media.ts` 的 `downloadProtocolMedia`，按媒体策略选择
   `@napuketto/media` 的下载入口：超时、大小上限、流式落盘与
   出站地址策略都在那里，协议侧不再直接 `fetch` 或 `arrayBuffer()`。
 - WS 鉴权（`SatoriEventHub`）：Satori 是连接后带内鉴权，握手期无凭据，因此不复用
@@ -301,7 +301,7 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
 ### sysmsg 解码与识别
 
 - `Msg/onRecvSysMsg` 是群名片/头衔/精华/表情回应等系统事件的总闸，payload 是原始
-  protobuf 字节（带符号 int8 数组）。共享层在 `src/internal/qq/sysmsg.ts`，OB11 与
+  protobuf 字节（带符号 int8 数组）。共享层在 `src/internal/domain/sysmsg.ts`，OB11 与
   Milky 各自只维护识别表。
 - 解码：`decodeProtoTree` 手写 wire-format（varint + length-delimited，BigInt 保 64 位；
   定长 wire 跳过；深度/字段数/varint 长度设上限），length-delimited 递归 try-parse，
@@ -314,7 +314,7 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
 - 通用管线：`processSysMsgBlob`（单条字节块：解码 → 信封 → 识别 → onNotice 分流 →
   未识别 debug 校准日志）为 OB11 / Milky 共用流程；协议差异只在识别表、命中处理
   与解码失败日志级别（OB11 warn / Milky debug，既有口径刻意不统一）。
-- 732:1 精华的字段提取器（`extractEssenceSetSysMsg`）留在 `src/internal/qq/essence.ts`；
+- 732:1 精华的字段提取器（`extractEssenceSetSysMsg`）留在 `src/internal/domain/essence.ts`；
   其上的列表缓存 / diff / 首帧基线抑制由 kernel `cache/essence-cache.ts` 承担（ADR-028）。
 - 字节布局、样本清单与字段号依据见 [evidence](./evidence.md#msgonrecvsysmsg-字节布局)。
 

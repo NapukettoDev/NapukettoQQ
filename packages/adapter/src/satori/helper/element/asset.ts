@@ -1,8 +1,8 @@
 import { kernelError } from "@napuketto/kernel";
 import { inferExtension, type MediaOutboundPolicy } from "@napuketto/media";
+import { downloadProtocolMedia } from "../../../internal/domain/media.js";
 import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import { cacheMediaFile, leaseInternalMedia } from "../../../internal/infra/media-cache.js";
-import { downloadProtocolMedia } from "../../../internal/qq/media.js";
 
 /** http(s) URL 前缀。 */
 const HTTP_URL_RE = /^https?:\/\//i;

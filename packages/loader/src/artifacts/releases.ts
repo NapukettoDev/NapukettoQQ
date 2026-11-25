@@ -1,28 +1,28 @@
 /**
  * releases.ts：版本清单读取与查询（P1）。
  *
- * 运行时从包根 qq-releases.json 读取（发布时 files 含它，安装后位于
- * node_modules/@napuketto/loader/qq-releases.json）。
+ * 运行时从包根 releases.json 读取（发布时 files 含它，安装后位于
+ * node_modules/@napuketto/loader/releases.json）。
  *
  * 维护机制（真实存在，非「声称」）：清单由 CI 自动维护——
- * .github/workflows/update-qq-releases.yml（每日 cron + 手动触发）调用
- * tooling/qq-releases/update-qq-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
+ * .github/workflows/update-releases.yml（每日 cron + 手动触发）调用
+ * tooling/releases/update-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
  * 解析最新版 + 下载安装包计算 sha256 + 解析安装包内部版本目录后更新本清单
  * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUKETTO_QQ_URL
  * 可运行时覆盖下载地址（用户拿到新链接时用）。
  *
- * 形状 / 常量 / 纯函数在 `manifests/qq-releases.ts`：那个文件必须保持零 TS 源码
+ * 形状 / 常量 / 纯函数在 `manifests/releases.ts`：那个文件必须保持零 TS 源码
  * 相对 import，因为更新脚本由 `node` 直接执行（类型剥离不重写 `.js` → `.ts`
  * 说明符）。本文件只做「读文件 + 查询」；需要清单形状或归一化函数时直接从
- * `manifests/qq-releases.ts` 引入，不经本文件二次透传。
+ * `manifests/releases.ts` 引入，不经本文件二次透传。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { packageRoot } from "../shared/package.js";
 import { isRecord } from "../shared/type-guards.js";
-import type { QqReleaseEntry, QqReleasesFile } from "./manifests/qq-releases.js";
-import { QQ_RELEASES_SCHEMA, releaseArch, releasePlatform } from "./manifests/qq-releases.js";
+import type { QqReleaseEntry, QqReleasesFile } from "./manifests/releases.js";
+import { QQ_RELEASES_SCHEMA, releaseArch, releasePlatform } from "./manifests/releases.js";
 
 /** 清单解析失败。 */
 export class QqReleasesError extends Error {
@@ -80,7 +80,7 @@ function parseReleasesFile(raw: unknown): QqReleasesFile | null {
 
 /** 读版本清单（同步，启动期调用一次即可）。 */
 export function loadQqReleases(): QqReleasesFile {
-    const file = join(packageRoot(), "qq-releases.json");
+    const file = join(packageRoot(), "releases.json");
     let raw: string;
     try {
         raw = readFileSync(file, "utf8");

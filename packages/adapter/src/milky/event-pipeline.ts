@@ -9,8 +9,8 @@ import type {
     MsgEventChannel,
     RecentContactEventChannel,
 } from "@napuketto/kernel";
+import { subscribeRawMessages } from "../internal/domain/raw-message.js";
 import { logEventFailure } from "../internal/infra/log.js";
-import { subscribeRawMessages } from "../internal/qq/raw-message.js";
 import type { MilkyInboundEssence } from "./inbound/essence.js";
 import type { MilkyInboundFileNotice } from "./inbound/file-notice.js";
 import type { MilkyInboundMessage } from "./inbound/message.js";

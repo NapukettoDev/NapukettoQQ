@@ -25,7 +25,7 @@ import {
     extractWrapperFiles,
 } from "./extract.js";
 import { resolveFromRoot, resolveQqInstall, tryResolveLinuxLocalQq } from "./install-probe.js";
-import { releasePlatform } from "./manifests/qq-releases.js";
+import { releasePlatform } from "./manifests/releases.js";
 import { latestRelease, loadQqReleases, resolveDownloadUrl } from "./releases.js";
 import { resolveSevenZipPath } from "./seven-zip.js";
 import type { QqInstallInfo, ResolveQqFilesOptions } from "./types.js";

@@ -47,7 +47,7 @@
 
 共享 `fileUriToPath` 在解析失败时会剥前缀兜底。`protectMediaPath` 是受管缓存租约，普通路径直接返回。
 下游 `MsgApi` 会对部分媒体做 `stat` 和文件哈希，闪传会把路径交原生上传。两处都需要在调用前完成策略检查。
-[文件 URI](../packages/adapter/src/internal/qq/media.ts#L27) ·
+[文件 URI](../packages/adapter/src/internal/domain/media.ts#L27) ·
 [租约](../packages/adapter/src/internal/infra/media-cache.ts#L498) ·
 [媒体读取](../packages/kernel/src/apis/msg.ts#L119) ·
 [原生上传](../packages/kernel/src/apis/flash-transfer.ts#L68) · [缓存生命周期 PR](https://github.com/NapukettoDev/Napuketto/pull/162)

@@ -33,7 +33,7 @@
 | ADR-024 | 自建宿主为唯一运行路线（标准 Node + stub `QQNT.dll`） | 注入 QQ 主进程 / utilityProcess worker / 载具激活 `cpp_impl` | 无 QQ 进程与 UI、内存可控、部署简单；登录→READY→收发→协议装配已全链路验证 |
 | ADR-025 | 新增 Milky 协议适配器（**已实现**，对齐 1.3.0），与 OB11/Satori/KuroBot 并行 | 用 Milky 替换 OB11；先全量迁移再保留双协议；参考/移植 GPL 系实现 | 语义天然对齐 kernel（消息段替代 CQ 码、原生 `message_seq`、`message_scene` 三值）；规范 MIT 且机读，实现成本低于 OB11；三家实现全 GPL（含 GPL-2.0-only 的 LLBot）→ 只读规范、不读源码。能力面见 `docs/protocols/milky.md` |
 | ADR-027 | Linux 只走**原生 ELF 自建宿主**（标准 Linux `node` + stub `.so` + `dlopen` 官方 Linux `wrapper.node`）；**Wine 退役** | 继续 Wine + Windows `node.exe` 作默认/回退；双路线长期并存 | ELF 全局符号表消除近百条 forwarder；去掉 Wine / Windows `node.exe` / `WINEPREFIX` / `Z:\` 路径转换；加载 / 登录 / 收发 / 富媒体 / 文件投递已全链路验证。详见 [loader 平台分支](../../packages/loader/docs/design.md#平台分支) |
-| ADR-028 | 群精华列表缓存、首帧基线抑制与串行 diff 同步器（`EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg`）归入 `@napuketto/kernel` 缓存层（`src/runtime/cache/essence-cache.ts`）；protobuf 树字段提取（`extractEssenceSetSysMsg`）保留在 `adapter/src/internal/qq/essence.ts` | 继续将有状态 `EssenceListSync` 放在 `adapter/src/internal/qq/`；或连同 `sysmsg` wire 解码一并塞入 `kernel` | 对齐 ADR-008（diff / baseline / 首帧抑制属 kernel 缓存层，adapter 不写缓存），同时遵守 adapter 文档的 `sysmsg` 解码/识别边界 |
+| ADR-028 | 群精华列表缓存、首帧基线抑制与串行 diff 同步器（`EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg`）归入 `@napuketto/kernel` 缓存层（`src/runtime/cache/essence-cache.ts`）；protobuf 树字段提取（`extractEssenceSetSysMsg`）保留在 `adapter/src/internal/domain/essence.ts` | 继续将有状态 `EssenceListSync` 放在 `adapter/src/internal/domain/`；或连同 `sysmsg` wire 解码一并塞入 `kernel` | 对齐 ADR-008（diff / baseline / 首帧抑制属 kernel 缓存层，adapter 不写缓存），同时遵守 adapter 文档的 `sysmsg` 解码/识别边界 |
 
 编号说明：本仓编号 001~025、027~028 连续（**026 / 030 属姊妹项目 KuroAdapter / KuroBridge**，
 本仓不复用，故 ADR-027 起续号）。

@@ -7,7 +7,7 @@
  *  - 支持 302 重定向（QQ CDN 可能跳转）
  *  - NAPUKETTO_QQ_URL 环境变量可覆盖下载地址（用户拿到新链接时用）
  *  - 出站 URL 统一经 normalizeDownloadUrl 归一化（绕过 CDN 边缘对 `/QQNTV2/`
- *    路径段的大小写敏感拦截，见 qq-releases.ts；否则清单里的官方 URL 必 403）
+ *    路径段的大小写敏感拦截，见 manifests/releases.ts；否则清单里的官方 URL 必 403）
  */
 import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync, statSync } from "node:fs";
@@ -19,7 +19,7 @@ import process from "node:process";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { loaderVersion } from "../shared/package.js";
-import { normalizeDownloadUrl } from "./manifests/qq-releases.js";
+import { normalizeDownloadUrl } from "./manifests/releases.js";
 
 /** 下载请求 User-Agent（运行时读本包版本，失败兜底 0.0.0）。 */
 const USER_AGENT = `napuketto-loader/${loaderVersion()}`;

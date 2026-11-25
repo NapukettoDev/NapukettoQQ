@@ -17,7 +17,7 @@ import {
     toPendingGroupRequest,
 } from "@napuketto/kernel";
 import { z } from "zod";
-import { collectGroupNotifyUids, resolveUin } from "../../../internal/qq/uid-uin.js";
+import { collectGroupNotifyUids, resolveUin } from "../../../internal/domain/uid-uin.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";
 

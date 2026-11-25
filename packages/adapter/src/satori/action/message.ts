@@ -6,7 +6,7 @@ import { rm, rmdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { kernelError, type Peer, type RawMessage } from "@napuketto/kernel";
 import { z } from "zod";
-import { prepareImageElements } from "../../internal/qq/media.js";
+import { prepareImageElements } from "../../internal/domain/media.js";
 import type { SatoriApi } from "../api/satori-api.js";
 import { parseContentToCanonical } from "../helper/element/element-convert.js";
 import { toChannelById, toSatoriMessage } from "../helper/index.js";

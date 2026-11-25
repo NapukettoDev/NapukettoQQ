@@ -8,9 +8,9 @@
 import { errorMessage, kernelError, type Peer, type RawElement } from "@napuketto/kernel";
 import { inferExtension } from "@napuketto/media";
 import { z } from "zod";
+import { mediaDownloader } from "../../../internal/domain/media.js";
 import { exportQqMedia } from "../../../internal/infra/local-media.js";
 import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
-import { mediaDownloader } from "../../../internal/qq/media.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import { resolveMsgIdAndPeer } from "../../helper/message-unique.js";
 import { defineOb11Action, type Ob11Action } from "../base-action.js";

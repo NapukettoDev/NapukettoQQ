@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { QqInstallInfo } from "../../qq/locate.js";
+import type { QqInstallInfo } from "../../artifacts/locate.js";
 import { ENV, type LaunchOptions, launchSelfHost } from "../launcher.js";
 
 /** spawn 记录（vi.hoisted：mock 工厂内可见）。 */

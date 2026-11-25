@@ -54,7 +54,7 @@ function resolveAppid(kernel: KernelLike, bootEnv: BootstrapEnv): string | numbe
         }
     }
     throw new Error(
-        "无法从 major.node 解析 appid，请确认 wrapper.node/major.node 完整，或更新 qq-releases.json",
+        "无法从 major.node 解析 appid，请确认 wrapper.node/major.node 完整，或更新 releases.json",
     );
 }
 

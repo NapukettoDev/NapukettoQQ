@@ -6,7 +6,7 @@
  * （探测顺序 NAPUKETTO_7Z_PATH > 内置资产 > 系统 PATH + spawn 7z 并包装失败信息）。
  * 合成一个模块后，解包链只有一条 7z 语义来源。
  *
- * ⚠️ `manifests/seven-zip.ts` 不并入：那个文件被 tooling/qq-releases 的脚本用 node
+ * ⚠️ `manifests/seven-zip.ts` 不并入：那个文件被 tooling/releases 的脚本用 node
  * 直接执行（类型剥离，零相对 import 红线），本文件可自由 import。
  */
 import { execFile, execFileSync } from "node:child_process";

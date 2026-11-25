@@ -14,7 +14,7 @@ import {
     collectGrayTipUids,
     firstUntranslatedGrayTip,
     hasGrayTip,
-} from "../../../src/internal/qq/gray-tip.js";
+} from "../../../src/internal/domain/gray-tip.js";
 import { stub } from "../stub.js";
 
 /** 构造含指定元素的 RawMessage（其余字段取最小合法值）。 */

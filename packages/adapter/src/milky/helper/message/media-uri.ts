@@ -11,9 +11,9 @@
 import { open, rename } from "node:fs/promises";
 import { kernelError } from "@napuketto/kernel";
 import { detectFileType, inferExtension, type MediaOutboundPolicy } from "@napuketto/media";
+import { mediaDownloader } from "../../../internal/domain/media.js";
 import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import { cacheMediaFile } from "../../../internal/infra/media-cache.js";
-import { mediaDownloader } from "../../../internal/qq/media.js";
 
 const HTTP_URL_RE = /^https?:\/\//i;
 const DETECTED_EXTENSION_RE = /^[a-zA-Z0-9]+$/;

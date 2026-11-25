@@ -16,9 +16,9 @@ import type {
 import { isRecord } from "@napuketto/kernel";
 import type { EventBroadcaster } from "@napuketto/network";
 import { BaseProtocolAdapter, type ConfigBase, resolveProtocolConfig } from "../framework/index.js";
+import { MS_TO_SEC } from "../internal/domain/uid-uin.js";
 import type { AdapterLoggerLike } from "../internal/infra/log.js";
 import { openOutboundWithRetry } from "../internal/infra/outbound-open.js";
-import { MS_TO_SEC } from "../internal/qq/uid-uin.js";
 import type { ActionResult } from "./action/index.js";
 import { createOb11ActionRegistry } from "./action/index.js";
 import type { OneBotApiOptions } from "./api/onebot-api.js";

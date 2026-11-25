@@ -2,8 +2,9 @@
  * OB11 收链路订阅接线板：管理 unsubscribes 与 kernel 频道 → 领域处理器路由；
  * 域处理在 inbound/，异步回填在 enrichment.ts。
  */
+
+import { subscribeRawMessages } from "../internal/domain/raw-message.js";
 import { logEventFailure } from "../internal/infra/log.js";
-import { subscribeRawMessages } from "../internal/qq/raw-message.js";
 import type { Ob11EventPipelineDeps } from "./api/onebot-api.js";
 import { Ob11Enrichment } from "./enrichment.js";
 import type { OB11Config } from "./helper/index.js";

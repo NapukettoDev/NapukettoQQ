@@ -366,7 +366,7 @@ describe("Linux 原生模式（平台注入）", () => {
 });
 
 describe("ensureQqFiles 下载流", () => {
-    // 清单最新版本（动态读取真实 qq-releases.json，避免清单更新导致测试过期）
+    // 清单最新版本（动态读取真实 releases.json，避免清单更新导致测试过期）
     const Version = latestRelease(loadQqReleases()).version;
 
     it("缓存命中 → 不下载，onStage 播报命中", async () => {
