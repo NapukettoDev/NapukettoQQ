@@ -9,8 +9,8 @@
  * 私聊：user_id 经 uin→uid → Peer{ chatType: C2C, peerUid: uid }。
  */
 
-import type { CanonicalElement } from "@napuketto/kernel";
-import { errorMessage } from "@napuketto/kernel";
+import type { CanonicalElement, Peer } from "@napuketto/kernel";
+import { ChatType, errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
 import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
@@ -53,8 +53,11 @@ const sendGroupMsgSchema = z.object({ group_id: z.number(), ...sendMsgBodyFields
 /** send_msg 依赖（OneBotApi 视图，由装配方注入）。 */
 export type SendMsgDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "uinToUid" | "logger" | "getLocalMediaRoots"
+    "msgApi" | "messageUnique" | "uinToUid" | "logger" | "getLocalMediaRoots" | "groupCache"
 >;
+
+/** NT UID 前缀（`u_...`：调用方直接给 uid，发送方向直通，不再走 uinToUid）。 */
+const UID_PREFIX = "u_";
 
 /** 共享发送核心：解析 Peer → canonical 翻译（含 auto_escape）→ sendMessage → 映射 message_id。 */
 async function sendOb11Message(
@@ -71,10 +74,12 @@ async function sendOb11Message(
     }
     canonical = await prepareLocalElements(canonical, deps);
     // 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
-    // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）
+    // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）。
+    // `u_...` 已是 NT UID（调用方直接给 uid）：直通，不参与 uin→uid 批量转换
+    // （与 loader ipc-actions 的 resolveAtElements 同契约）。
     const atUins: string[] = [];
     for (const el of canonical) {
-        if (el.type === "at" && el.target !== "all") {
+        if (el.type === "at" && el.target !== "all" && !el.target.startsWith(UID_PREFIX)) {
             atUins.push(el.target);
         }
     }
@@ -94,6 +99,9 @@ async function sendOb11Message(
         ...(uinToUid !== undefined ? { uinToUid } : {}),
         ob11IdToMsgId: (id) => deps.messageUnique.getMsgId(id),
     });
+    // 群聊 at 段补显示名（uid → 群名片/昵称）：kernel 用它作 TEXT content，
+    // 缺失时聊天框只剩「@」（fail-soft，查不到不影响发送）
+    canonical = await fillAtDisplays(canonical, peer, deps);
     // auto_escape：文本段转义 CQ 特殊字符
     if (payload.auto_escape === true) {
         canonical = canonical.map((el) => {
@@ -116,6 +124,64 @@ async function sendOb11Message(
         return { message_id: deps.messageUnique.alloc(msgId, peer) };
     } finally {
         await prepared.cleanup();
+    }
+}
+
+/** send_msg 依赖中 groupCache 的非空视图（补 at 显示名用）。 */
+type MemberCache = NonNullable<SendMsgDeps["groupCache"]>;
+
+/**
+ * 群聊 at 段显示名补全（uid → 群名片优先、昵称兜底）。
+ *
+ * 仅补「已是 uid + 无 display」的单人 at：@全体、数字 uin（转换失败保留的 uin）、
+ * 非群聊或未装配 groupCache 时原样返回；查询失败只留 debug 痕迹（fail-soft，不阻塞发送）。
+ */
+async function fillAtDisplays(
+    elements: CanonicalElement[],
+    peer: Peer,
+    deps: SendMsgDeps,
+): Promise<CanonicalElement[]> {
+    const groupCache = deps.groupCache;
+    if (peer.chatType !== ChatType.GROUP || groupCache === undefined) {
+        return elements;
+    }
+    const out: CanonicalElement[] = [];
+    for (const el of elements) {
+        if (
+            el.type !== "at" ||
+            el.target === "all" ||
+            !el.target.startsWith(UID_PREFIX) ||
+            (el.display !== undefined && el.display !== "")
+        ) {
+            out.push(el);
+            continue;
+        }
+        const display = await memberDisplayName(deps, groupCache, peer.peerUid, el.target);
+        out.push(display === undefined ? el : { ...el, display });
+    }
+    return out;
+}
+
+/** 群成员显示名（群名片 → 昵称；查不到/抛错返回 undefined）。 */
+async function memberDisplayName(
+    deps: SendMsgDeps,
+    groupCache: MemberCache,
+    groupCode: string,
+    uid: string,
+): Promise<string | undefined> {
+    try {
+        const member = await groupCache.getMember(groupCode, uid);
+        if (member === undefined) {
+            return undefined;
+        }
+        const name = member.cardName ?? member.nick;
+        return name === undefined || name === "" ? undefined : name;
+    } catch (err) {
+        deps.logger?.debug(
+            { group: groupCode, error: errorMessage(err) },
+            "ob11: at 群成员显示名查询失败（at 段无 display）",
+        );
+        return undefined;
     }
 }
 

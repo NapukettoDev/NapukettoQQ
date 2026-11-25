@@ -29,11 +29,24 @@ export interface Peer {
     guildId?: string;
 }
 
-/** 文本元素（at 用 atType + atUid 表达）。 */
+/** 文本元素（at 用 atType + atNtUid/atUid 表达）。 */
 export interface TextElement {
     content: string;
     atType?: number | null; // 1=全体 2=单人 4=我
+    /**
+     * 单人 at 目标的 **数字 UIN**（QQ 号字符串）。
+     *
+     * ⚠️ 不是 NT UID：把 `u_...` 写进本字段会被 wrapper 归零成 `"0"`（issue #192）。
+     * 客户端原生元素里它是 atNtUid 的冗余镜像；`@全体` 缺省。
+     */
     atUid?: string | null;
+    /**
+     * 单人 at 目标的 **NT UID**（`u_...`），QQNT 解析真实提及所依赖的字段；
+     * 接收方向优先读它。`@全体` 实测为 `"all"`（atType=1）。
+     */
+    atNtUid?: string | null;
+    /** at 目标 tinyId（原生元素可能携带；发送不需要）。 */
+    atTinyId?: string | null;
 }
 
 /** 图片元素（发送时 picPath 必须；接收含 url）。 */

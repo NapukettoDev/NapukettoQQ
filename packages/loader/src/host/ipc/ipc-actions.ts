@@ -197,7 +197,8 @@ async function normalizeAtElement(
  *
  * 背景（koishi-plugin-adapter-napuketto issue #1「无法 @ 指定群成员」）：
  * koishi 调用方给的 at.target 是 QQ 号（uin——session.userId 即 senderUin），
- * 而 NT 的 atUid 契约是 u_ 开头的 uid。不转则 QQ 解析 at 失败，只能回退显示
+ * 而 NT 的 at 目标契约是 uid（写入 TEXT `atNtUid`；数字 uin 才进 `atUid`，非数字
+ * 会被 wrapper 归零成 `"0"`，issue #192）。不转则 QQ 解析 at 失败，只能回退显示
  * content 兜底 "@" → 表现为「@号后面为空」。群聊才有 at 语义，私聊/临时会话跳过。
  *
  * 归一化：uin 批量 uinToUid → uid（u_ 前缀直通不转）；有 groupCache.getMember

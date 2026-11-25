@@ -122,11 +122,17 @@ export interface SendTranslateContext {
     ob11IdToMsgId?: (id: number) => string | undefined;
 }
 
-/** at 段：uin → uid（缺省不转换）。 */
+/**
+ * at 段：uin → uid（缺省不转换）。
+ * `u_...` 已是 NT UID：直通（不再查映射，与 loader ipc-actions 的 at 归一化同契约）。
+ */
 function translateAtElement(
     el: Extract<CanonicalElement, { type: "at" }>,
     ctx: SendTranslateContext,
 ): CanonicalElement {
+    if (el.target.startsWith("u_")) {
+        return el;
+    }
     const uid = ctx.uinToUid?.get(el.target);
     return uid !== undefined ? { ...el, target: uid } : el;
 }

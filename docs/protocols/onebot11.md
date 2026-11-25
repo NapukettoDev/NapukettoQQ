@@ -112,7 +112,9 @@ port = 3001
 - `message_id`：协议侧 int32，由 `MessageUnique` 为每个 NT `msgId` 双向分配并记录 `Peer`，
   供 `delete_msg` / `get_msg` 反查；溢出复用已释放槽位。
 - `user_id` = uin；`group_id` = 群号。接收方向 at uid→uin、reply NT msgId→OB11 id；发送
-  方向 at uin→uid、reply OB11 id→NT msgId；失败时原样传递。
+  方向 at uin→uid、reply OB11 id→NT msgId；失败时原样传递。发送方向 `at.qq` 若已是
+  `u_...` NT UID 则直通不再转换；群聊缺 `name` 时按成员缓存补显示名。at 目标最终写进
+  NT `atNtUid`（`u_...`），数字 uin 才写 `atUid`——非数字 `atUid` 会被 QQNT 归零成 `0`。
 - 群聊 `Peer` 为 `{chatType: GROUP, peerUid: 群号}`；私聊为 `{chatType: C2C, peerUid: uid}`。
 
 ## 请求、撤回和临时会话

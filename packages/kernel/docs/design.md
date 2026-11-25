@@ -114,6 +114,12 @@ profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / web / flash-tran
   兼容按 seq 查找的调用方对多重匹配报错。审批只提交同意或拒绝，并传播原生调用失败。
 - Canonical 提及保留已知的目标标识。缺目标时按文本保留显示内容。引用消息独立保留已知的
   `senderUid` 和 `senderUin`。禁言采用非负整数秒，0 解除，QQ 接受的最大时长待真机验证。
+- at 目标的原生字段分工（`TextElement`）：`atNtUid` 是 `u_...` NT UID、QQNT 解析真实
+  提及依赖它；`atUid` 只是数字 UIN 的冗余镜像，写入非数字会被 wrapper 归零成 `"0"`。
+  发送方向单人 at 一律把目标写进 `atNtUid`（纯数字目标才写 `atUid`），`content` 归一为
+  带 `@` 前缀的显示文本；接收方向优先读 `atNtUid`，缺失时才回退到非空且非 `"0"` 的
+  `atUid`，两者都无效则降级为普通文本（不把 `"0"` 传给下游 uid→uin）。`@全体` 是
+  `atType=1` + `atNtUid="all"`。
 - 好友列表优先使用已观察到的明细 UIN，按需批量补齐旧形态。未解析的 UIN 返回 `null`，
   UID、昵称和备注仍保留。批量调用本身失败时传播错误。分类与明细基于同一快照。
 
