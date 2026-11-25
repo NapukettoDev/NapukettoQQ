@@ -65,6 +65,8 @@ Windows：
   透传。
 - 入站图片自动下载补丁（issue #105）：stub 私有组件在 wrapper 加载后
   运行期放行 QQ 原生收图管线（零磁盘篡改；版本特征失配自动降级，绝不盲写内存）。
+  主 vtable 与对象形态均按 MSVC RTTI 运行期动态解析，9.9.33 / 9.9.37 的布局差异
+  由解析层吸收（不再硬编码槽位偏移）。
   `LaunchOptions.nativeMediaPatch`（缺省 true）控制；状态 JSON 落
   `<账号数据目录>/media-patch-status.json`，self-host bootstrap 完成后读一次记日志
   （pending 时 45s 复读一次）。机制细节只在私有 `native/` 子模块。
