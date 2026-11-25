@@ -322,6 +322,22 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
   且段为空时不 `import` 对应 adapter 子路径（未启用协议零加载，兑现 ADR-014）。
 - IPC 桥的广播器在进程边界上独立，与 CLI 协议装配互不影响。
 
+### 协议构造入参契约（编译期守卫）
+
+- `runtime/protocol-types.ts` 的构造入参**不是** `Record<string, unknown>`：每个协议的
+  `*AdapterOptionsLike` 逐字段描述 loader 实际传入的装配面（字段名 = adapter 公开选项名，
+  值类型 = loader 侧最小结构面 / `unknown`）。`Record<string, unknown>` 会把字段名契约
+  整体推迟到运行期（adapter 重命名一个可选构造项，`tsc` 全绿，直到真正启用该协议才炸）。
+- 字段名漂移由 [`../tests/host/runtime/protocol-types.test-d.ts`](../tests/host/runtime/protocol-types.test-d.ts)
+  守卫，随根 `pnpm check`（`tsc --noEmit`）执行，四向断言：模块导出键 ⊆ adapter 实际导出、
+  loader 入参键 ⊆ adapter 选项键、adapter 必填项 ⊆ loader 入参必填项（含「loader 降级成
+  可选」）、原始值字段类型兼容。该测试取 adapter **源码**类型（非 `dist`），改字段名当场红，
+  不依赖构建顺序。
+- 为什么不直接 `import type` adapter 的真实选项类型：kernel 的 `MsgApi` / `ConfigBase`
+  等带 `private` 成员，`private` 按声明来源比较，loader 的最小结构镜像**永远不可能**
+  赋值给它们；直连会把「最小面」逼成「完整实现镜像」，把启动层焊死在 kernel 类型上。
+  所以契约放在 loader 侧手写、由类型测试对拍，仍保持编译期 0 workspace 依赖。
+
 ### 内联配置与退出码
 
 - 来源优先级：`NAPUKETTO_CONFIG_JSON` > `NAPUKETTO_CONFIG` > `<账号目录>/napuketto.toml`。
@@ -335,7 +351,9 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 
 - 编译期只依赖 zod；kernel / adapter / network 一律运行期 `import(file://…)`，接口面在
   `../src/host/runtime/types.ts`（kernel 契约）、`../src/host/runtime/protocol-types.ts`（动态模块导出面）与各模块内
-  声明最小面，不新增 workspace 依赖（依赖方向红线）。
+  声明最小面，不新增 workspace 依赖（依赖方向红线）。构造入参的字段名漂移由 **测试目录**的
+  类型对拍守卫（`tests/host/runtime/protocol-types.test-d.ts`，取 adapter/network 源码类型，
+  不进入包依赖图，见「协议构造入参契约」）。
 - `NAPUKETTO_KERNEL_ENTRY` 指向 kernel 构建产物；loader 只用其语义化能力
   （`NapukettoCore` / `startNapuketto`、`resolveAppidQua`、`quickLogin`、
   `initAndStartSession`、`resolveQqUserDataRoot` / `resolveQqGlobalPath`、`PathWrapper`

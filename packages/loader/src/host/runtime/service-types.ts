@@ -30,7 +30,8 @@ export interface ReceiveLogFilterLike {
 export interface KernelServices {
     kernel: KernelLike;
     ctx: CoreContextLike;
-    logger: unknown;
+    /** 引导进程 logger（kernel `createLogger` 产物；不可用时缺省）。 */
+    logger: LoggerLike | undefined;
     /** 消息事件通道（Msg/onRecvMsg 等）。 */
     channel: EventChannelLike;
     /** 群事件通道（Group/onGroupListUpdate 等）。 */
