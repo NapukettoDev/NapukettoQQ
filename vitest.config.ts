@@ -6,7 +6,6 @@
  *
  * 测试文件统一放各包根 `tests/`（镜像 `src/` 子目录结构，由 biome + 根 tsc
  * 纳入检查），只测包内纯函数（相对路径导入，不依赖跨包构建产物）。
- * `packages/loader` 尚未迁移，过渡期内其 src 下的测试 glob 仍保留在 include。
  */
 import { defineConfig } from "vitest/config";
 
@@ -15,8 +14,6 @@ export default defineConfig({
         include: [
             "packages/*/tests/**/*.test.ts",
             "apps/*/tests/**/*.test.ts",
-            // 过渡期：loader 测试仍在 src/**/__tests__/ 下（随源文件就近），待后续阶段迁移。
-            "packages/loader/src/**/*.test.ts",
             // 发布工具链（koishi 适配器依赖同步等）与产物契约测试（package-exports /
             // embedded-dx）也纳入单测。后者只走裸 specifier 并断言 dist 产物，前置
             // `pnpm -r build`（CI 已保证）；放进 packages/ 会让「包内测试不依赖构建产物」
@@ -39,16 +36,17 @@ export default defineConfig({
             // import 后进 lcov）。Codecov 的 patch 视角把它当生产代码，报
             // 「patch coverage 57% · 6 lines missing」要求给测试助手补单测——
             // 测试支撑不是发布产物，不该进入分子/分母。整个测试目录排除即可
-            // （迁移后为各包根 `tests/`；过渡期 loader 仍在 `__tests__/`）：
-            // 助手文件一律放测试目录内。同日把 2026-11 补测时
-            // 错放在 src 根的 4 个 test-support.ts（apps/cli 与 kernel 的
-            // apis/bridge/wrapper）迁回各自 `__tests__/`，与其余包一致。
+            // （各包根 `tests/`，2026-11-25 loader 已迁入；tooling 仍保留
+            // `tooling/release/__tests__/`）：助手文件一律放测试目录内。同日把
+            // 2026-11 补测时错放在 src 根的 4 个 test-support.ts（apps/cli 与
+            // kernel 的 apis/bridge/wrapper）迁回各自测试目录，与其余包一致。
             exclude: [
                 "coverage/**",
                 "**/node_modules/**",
                 "**/dist/**",
                 "packages/*/test?(s)/**",
                 "apps/*/tests/**",
+                // tooling/release/__tests__/ 仍使用该目录名（packages/apps 已统一 tests/）。
                 "**/__tests__/**",
                 "**/*.test.ts",
                 "**/*.test-d.ts",
