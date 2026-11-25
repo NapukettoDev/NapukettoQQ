@@ -1,5 +1,9 @@
 /**
- * @napuketto/kernel 入口（P0 地基 + P1 前哨）
+ * @napuketto/kernel 入口（Flat 5-Tier Runtime）
+ *
+ * 五段式扁平分层：L0 `types/` + `infra/`（零内部依赖）→ L1 `native/`（原生防腐层）
+ * → L2 `apis/`（无状态语义 API）→ L3 `runtime/`（登录 / 缓存 / 内核装配）。
+ * 本文件是唯一根出口，逐层汇总公共面；导出符号与目录重构前逐项一致。
  *
  * 当前导出：类型化错误（ADR-017）、路径装配（ADR-016）、pino 日志（ADR-007）、
  * JSON 配置基类（ADR-012）、类型化事件通道（ADR-003）、QQ 版本探测（ADR-018）、
@@ -7,6 +11,7 @@
  * apis / cache / login / bridge 均已接入（见下方导出）。
  */
 
+// ---- L2：无状态语义 API（apis/）----
 export type {
     DoubtFriendRequestInfo,
     EssenceMsgItem,
@@ -41,43 +46,7 @@ export {
     WebApi,
     WebHonorType,
 } from "./apis/index.js";
-export type {
-    BuddyEventChannel,
-    GroupEventChannel,
-    LoginEventChannel,
-    MsgEventChannel,
-    RecentContactEventChannel,
-} from "./bridge/index.js";
-export {
-    FriendBridge,
-    GroupBridge,
-    LoginBridge,
-    MsgBridge,
-    RecentContactBridge,
-} from "./bridge/index.js";
-export type {
-    BuddyCacheEventChannel,
-    BuddyCacheListener,
-    BuddyCacheOptions,
-    EssenceAddedItem,
-    EssenceCacheEntry,
-    EssenceDiffResult,
-    EssenceListSyncDeps,
-    GroupCacheOptions,
-} from "./cache/index.js";
-export {
-    BuddyCache,
-    diffEssenceList,
-    EssenceListSync,
-    GroupCache,
-    narrowBuddyCategories,
-    narrowEssenceGroupArg,
-} from "./cache/index.js";
-export { toCanonicalElements, toSendElements } from "./codec/index.js";
-export type { CoreContext, CoreContextOptions } from "./context.js";
-export { createCoreContext } from "./context.js";
-export type { CoreLoginOptions, LoginProgress, NapukettoCoreOptions } from "./core.js";
-export { NapukettoCore } from "./core.js";
+// ---- L0：零依赖基础设施（infra/）----
 export type {
     ConfigFormat,
     ConfigOptions,
@@ -138,25 +107,111 @@ export {
     stringifyToml,
     waitFor,
 } from "./infra/index.js";
+// ---- L1：原生防腐层（native/：wrapper + probe + bridge + message-codec）----
 export type {
+    BootEnv,
+    BuddyEventChannel,
+    GroupEventChannel,
+    ListenerRecordEvent,
+    ListenerRecordingResult,
+    LoginEventChannel,
+    MsgEventChannel,
+    QQVersionContext,
+    QQVersionInfo,
+    QqDataRootOptions,
+    QqVersionContext,
+    QqVersionInfo,
+    RecentContactEventChannel,
+    SessionConfigOptions,
+    SessionListenerOptions,
+    StartNapukettoOptions,
+    WrapperContext,
+} from "./native/index.js";
+export {
+    activateO3MiscService,
+    buildEngineConfig,
+    buildLoginConfig,
+    buildSessionConfig,
+    createLifecycleSessionListener,
+    createLoginListener,
+    createRecordingListener,
+    createSession,
+    createSessionListener,
+    createWrapper,
+    DependsAdapter,
+    DispatcherAdapter,
+    dlopenWrapper,
+    electronProcessType,
+    FriendBridge,
+    GlobalAdapter,
+    GroupBridge,
+    getExistingSession,
+    getMainSession,
+    initEngine,
+    initSession,
+    LoginBridge,
+    listQQVersions,
+    MsgBridge,
+    parseAppidFromMajor,
+    /** @internal 运行时反射探测工具 */
+    probeRuntime,
+    RecentContactBridge,
+    readMachineGuid,
+    resolveAppidQua,
+    resolveQQVersion,
+    resolveQqGlobalPath,
+    resolveQqUserDataRoot,
+    resolveWrapperPath,
+    /** @internal 运行时反射探测工具 */
+    startListenerRecording,
+    startNapuketto,
+    startSession,
+    toCanonicalElements,
+    toSendElements,
+} from "./native/index.js";
+// ---- L3：有状态运行时（runtime/：login + cache + core + context + lifecycle）----
+export type {
+    BuddyCacheEventChannel,
+    BuddyCacheListener,
+    BuddyCacheOptions,
+    CoreContext,
+    CoreContextOptions,
+    CoreLoginOptions,
+    EssenceAddedItem,
+    EssenceCacheEntry,
+    EssenceDiffResult,
+    EssenceListSyncDeps,
+    GroupCacheOptions,
+    KernelRuntime,
+    KernelRuntimeOptions,
     LoginAccountInfo,
     LoginListItem,
+    LoginProgress,
     LoginResult,
     LoginState,
+    NapukettoCoreOptions,
     QrCodeData,
     QuickLoginOptions,
     SelfInfo,
-} from "./login/index.js";
+} from "./runtime/index.js";
 export {
+    BuddyCache,
+    createCoreContext,
+    createKernelRuntime,
+    diffEssenceList,
+    EssenceListSync,
+    GroupCache,
     initAndStartSession,
     listLoginAccounts,
+    NapukettoCore,
+    narrowBuddyCategories,
+    narrowEssenceGroupArg,
     QrLoginSession,
     quickLogin,
     waitForNetworkConnection,
     waitSessionReady,
-} from "./login/index.js";
-export type { KernelRuntime, KernelRuntimeOptions } from "./runtime.js";
-export { createKernelRuntime } from "./runtime.js";
+} from "./runtime/index.js";
+// ---- L0：纯类型契约（types/）----
 export type {
     BuddyCategory,
     BuddyCoreInfo,
@@ -255,52 +310,3 @@ export {
     TipGroupElementType,
     VIDEO_THUMB_KEY,
 } from "./types/index.js";
-export type {
-    BootEnv,
-    ListenerRecordEvent,
-    ListenerRecordingResult,
-    QQVersionContext,
-    QQVersionInfo,
-    QqDataRootOptions,
-    QqVersionContext,
-    QqVersionInfo,
-    SessionConfigOptions,
-    SessionListenerOptions,
-    StartNapukettoOptions,
-    WrapperContext,
-} from "./wrapper/index.js";
-export {
-    activateO3MiscService,
-    buildEngineConfig,
-    buildLoginConfig,
-    buildSessionConfig,
-    createLifecycleSessionListener,
-    createLoginListener,
-    createRecordingListener,
-    createSession,
-    createSessionListener,
-    createWrapper,
-    DependsAdapter,
-    DispatcherAdapter,
-    dlopenWrapper,
-    electronProcessType,
-    GlobalAdapter,
-    getExistingSession,
-    getMainSession,
-    initEngine,
-    initSession,
-    listQQVersions,
-    parseAppidFromMajor,
-    /** @internal 运行时反射探测工具 */
-    probeRuntime,
-    readMachineGuid,
-    resolveAppidQua,
-    resolveQQVersion,
-    resolveQqGlobalPath,
-    resolveQqUserDataRoot,
-    resolveWrapperPath,
-    /** @internal 运行时反射探测工具 */
-    startListenerRecording,
-    startNapuketto,
-    startSession,
-} from "./wrapper/index.js";

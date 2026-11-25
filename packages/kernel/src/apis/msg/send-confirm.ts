@@ -4,8 +4,8 @@
  * sendMsg 的返回值不可信（result 可能为 5 但事件仍成功），发送结果以
  * `Msg/onMsgInfoListUpdate` 事件的 sendStatus 为准。
  */
-import type { MsgEventChannel } from "../../bridge/index.js";
 import { kernelError } from "../../infra/index.js";
+import type { MsgEventChannel } from "../../native/bridge/index.js";
 import type { Peer, RawMessage } from "../../types/index.js";
 
 /** 发送状态（onMsgInfoListUpdate 事件 msg.sendStatus）。 */

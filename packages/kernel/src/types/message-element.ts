@@ -5,7 +5,7 @@
  *
  * 本文件只做**类型声明**（无 `node:fs` / `infra` 运行时依赖）；运行时转换函数
  * （`picLocalCandidates` / `toCanonicalElements` / `toSendElements`）在
- * `codec/message-element.ts`，经 `codec/index.ts` 对外。
+ * `native/message-codec.ts`，经 `native/index.ts` 对外。
  */
 
 /** 协议无关的规范消息元素。 */

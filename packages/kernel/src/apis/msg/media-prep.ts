@@ -6,8 +6,8 @@
  * 固定契约值在 `media-contract.ts`，文件 IO 原语在 `media-io.ts`。
  */
 import { basename, extname } from "node:path";
-import { toSendElements } from "../../codec/index.js";
 import { hasCallableProp } from "../../infra/index.js";
+import { toSendElements } from "../../native/message-codec.js";
 import type {
     CanonicalElement,
     NodeIKernelMsgService,

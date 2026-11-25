@@ -1,10 +1,16 @@
 /**
  * kernel 业务 API 层公共出口（ADR-009 统一错误语义）
  *
- * 顶层只保留本 barrel 与 result.ts（域内解包工具）；子域：
- * msg / group / social / media-web。
+ * L2 无状态语义 API 层：只依赖 `types/`（L0）、`infra/`（L0）与 `native/`（L1），
+ * 不得引用 `runtime/`（登录 / 缓存 / 装配）。顶层只保留本 barrel 与 result.ts
+ * （域内解包工具）及拆平后的 4 个媒体 / Web 模块；子域：msg / group / social。
  */
 
+export type {
+    FlashTransferUploadOptions,
+    FlashTransferUploadResult,
+} from "./flash-transfer.js";
+export { FlashTransferApi } from "./flash-transfer.js";
 export {
     findPendingGroupRequest,
     GroupApi,
@@ -14,23 +20,9 @@ export {
     type PendingGroupRequest,
     toPendingGroupRequest,
 } from "./group/index.js";
-export type {
-    EssenceMsgItem,
-    FlashTransferUploadOptions,
-    FlashTransferUploadResult,
-    GroupFileListItem,
-    GroupFileSystemInfo,
-    GroupHonorWebInfo,
-    HonorListItem,
-} from "./media-web/index.js";
-export {
-    FlashTransferApi,
-    RichMediaApi,
-    TicketApi,
-    WebApi,
-    WebHonorType,
-} from "./media-web/index.js";
 export { MsgApi } from "./msg/index.js";
+export type { GroupFileListItem, GroupFileSystemInfo } from "./rich-media.js";
+export { RichMediaApi } from "./rich-media.js";
 export type {
     DoubtFriendRequestInfo,
     Friend,
@@ -39,9 +31,7 @@ export type {
     PinnedContact,
     StrangerInfo,
 } from "./social/index.js";
-export {
-    FriendApi,
-    ProfileApi,
-    ProfileLikeApi,
-    RecentContactApi,
-} from "./social/index.js";
+export { FriendApi, ProfileApi, ProfileLikeApi, RecentContactApi } from "./social/index.js";
+export { TicketApi } from "./ticket.js";
+export type { EssenceMsgItem, GroupHonorWebInfo, HonorListItem } from "./web.js";
+export { WebApi, WebHonorType } from "./web.js";

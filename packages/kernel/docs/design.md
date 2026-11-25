@@ -2,7 +2,29 @@
 
 > 唯一原生交互层：负责 `process.dlopen`、`wrapper.node` 会话与原生 listener、事件桥、语义化
 > API、类型层、登录与平台参数；不含协议映射（adapter）、媒体处理（media）、宿主引导（loader）。
-> 源码入口：`src/wrapper/`、`src/bridge/`、`src/infra/`、`src/apis/`、`src/types/`、`src/codec/`。
+> 源码入口（Flat 5-Tier）：`src/types/` + `src/infra/`（L0）→ `src/native/`（L1）→
+> `src/apis/`（L2）→ `src/runtime/`（L3），唯一根出口 `src/index.ts`。
+
+## 模块分层（Flat 5-Tier Runtime）
+
+全部业务源码目录深度 ≤ 2 层（`__tests__/` 随所属模块就近放置，不计入层深），依赖严格单向：
+
+| 层 | 目录 | 职责 | 允许依赖 |
+|---|---|---|---|
+| L0 | `types/` | 纯契约与协议枚举（零运行时依赖） | 无 |
+| L0 | `infra/` | 错误 / 路径 / 日志 / 配置 / 事件通道 | 无 |
+| L1 | `native/` | 原生防腐层：`wrapper/`（dlopen + 生命周期 + 平台参数）、`probe/`、`bridge/`、`message-codec.ts` | `types`、`infra` |
+| L2 | `apis/` | 无状态语义 API：`msg/`、`group/`、`social/` + `rich-media.ts`、`flash-transfer.ts`、`ticket.ts`、`web.ts` | `types`、`infra`、`native` |
+| L3 | `runtime/` | 有状态子系统与装配：`login/`、`cache/`、`core.ts`、`core-helpers.ts`、`core-options.ts`、`context.ts`、`lifecycle.ts` | 全仓 |
+| 出口 | `src/index.ts` | 唯一根出口，逐层汇总公共面（只 re-export） | 全部 |
+
+- `native/` 内部四个子域并列且单向：`wrapper` 不再重导出 `probe`（旧 `wrapper <-> probe`
+  隐性双向依赖已消除），由 `native/index.ts` 分别汇总 wrapper / probe / bridge /
+  message-codec，`src/index.ts` 只转发，`native/` 内部严格无环。
+- `apis/` 严禁依赖 `runtime/`（`login/`、`cache/` 与装配文件），保证语义 API 无状态、可单测。
+- DAG 由 `biome.json` 的 `style/noRestrictedImports` overrides 静态锁死（L0 禁 `native`/
+  `apis`/`runtime`，L1 禁 `apis`/`runtime`，L2 禁 `runtime`）；`__tests__/` 豁免——测试可以
+  用上层实现作夹具，`src/index.ts` 作为唯一出口只做 re-export。
 
 ## 核心机制
 
@@ -23,7 +45,7 @@ NapukettoCore ──▶ CoreContext     Msg/Group/Buddy/…Bridge（每 service 
 
 - 装配入口 `NapukettoCore.create` → `attachWrapper` → `login`，状态集中在 `CoreContext`
   （paths / logger / wrapper / login），不引入全局单例。
-- `wrapper/loader.ts` 负责原生 dlopen 与 QQ 数据目录定位，`wrapper/lifecycle.ts` 负责
+- `native/wrapper/loader.ts` 负责原生 dlopen 与 QQ 数据目录定位，`native/wrapper/lifecycle.ts` 负责
   engine/session 初始化与平台配置；`session-resolver` 提供主 session 读取，并防止探测写回毒化。
 - 登录状态机在 kernel（ADR-010），终端渲染在 cli；登录成功后由 loader 装配业务服务。
 
@@ -66,9 +88,10 @@ payload 不改写；缓存维护与协议翻译各自订阅通道。
 
 ### 业务 API 与错误语义
 
-`src/apis/` 按子域分组（`msg/`、`group/`、`social/`、`media-web/`），顶层仅 `index.ts` 与
-`result.ts`：11 个 Api 类（msg / group / friend / group-notify / richmedia / profile（含
-profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / webapi / flash-transfer）+
+`src/apis/` 按子域分组（`msg/`、`group/`、`social/`），顶层为 `index.ts`、`result.ts` 与
+拆平后的媒体 / Web 模块（`rich-media.ts`、`flash-transfer.ts`、`ticket.ts`、`web.ts`）：
+11 个 Api 类（msg / group / friend / group-notify / richmedia / profile（含
+profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / web / flash-transfer）+
 `stranger-info` 纯映射。统一错误语义（ADR-009 / ADR-017）：
 
 - 成功返回业务值；失败抛 `KernelError`，`code` 取 8 个枚举之一：`SEND_FAILED`、
@@ -132,7 +155,7 @@ profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / webapi / flash-t
 
 `types/services/`（service 方法面）、`types/listeners/`（回调面）、`types/entities.ts`
 （RawMessage / RawElement / Ptt / Video 等）来自加载 `wrapper.node` 后的运行时反射与实体
-JSON 观察（ADR-006），探测代码在 `src/wrapper/probe/`。未实证字段标「待探测校准」，不得按
+JSON 观察（ADR-006），探测代码在 `src/native/probe/`。未实证字段标「待探测校准」，不得按
 推测补字段；新增原生能力先补探测产物，再改类型与实现。
 
 ### 原生元素空值契约（跨平台）
@@ -214,11 +237,11 @@ canonical `image`（`path`、可选 `size` / `mime`）经 `MsgApi.prepareImageEl
 文件——无头宿主原生补丁（loader 私有 native/）放行下载后，事件仍先于落盘到达；补丁
 降级时文件永远不出现。两层防御：
 
-1. **桥层落盘宽限**（`bridge/pic-path-grace.ts`）：MsgBridge 发射 `Msg/onRecvMsg` 与
+1. **桥层落盘宽限**（`native/bridge/pic-path-grace.ts`）：MsgBridge 发射 `Msg/onRecvMsg` 与
    `Msg/onMsgInfoListUpdate` 前，对本批消息全部 pic 本地路径候选做有界并行等待（任一
    存在即放行；缺省上限 2s / 250ms 轮询）。快速路径（无 pic / 路径已在）保持同步发射，
    事件时序不变；跨回调到达序无契约（原生回调本就无顺序保证）。
-2. **canonical 存在性裁决**（`codec/message-element.ts` `picToCanonical`）：候选链上取
+2. **canonical 存在性裁决**（`native/message-codec.ts` `picToCanonical`）：候选链上取
    第一个真实存在的本地路径（picPath → sourcePath；http(s) URL 不校验直接可用）；全部
    缺失时回退 picUrl（URL 供下游下载），仍无则置空。**严禁把不存在的本地路径暴露给
    协议层**——下游直接 stat 的消费者（AstrBot 一类）会 FileNotFoundError。
@@ -303,7 +326,7 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
   可单测（ADR-008）。
 - **缓存层原语**：群精华列表缓存、首帧基线抑制与串行 diff 同步器
   `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 在
-  `src/cache/essence-cache.ts`（ADR-028）；adapter 只注入列表拉取与广播回调，不持有列表状态
+  `src/runtime/cache/essence-cache.ts`（ADR-028）；adapter 只注入列表拉取与广播回调，不持有列表状态
   （`sysmsg` 732:1 的 protobuf 树字段提取仍属 adapter 协议层）。
 - **错误传播**：kernel 抛 `KernelError`；adapter 只做 `code → 协议码` 映射，不解析原生
   `{result, errMsg}`。事件链路异常经通道 `onError` 上报，不向原生回调抛出。
@@ -320,7 +343,7 @@ Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否�
   `result` / `errMsg`。
 - **翻译纯函数、缓存只读**（ADR-008）：协议层不得在翻译过程中调 API 或写缓存；缓存由事件
   主动维护、查询惰性回填。群精华列表的 diff / 首帧 baseline 与串行同步器归
-  `cache/essence-cache.ts`（ADR-028），协议层只消费回调结果。
+  `runtime/cache/essence-cache.ts`（ADR-028），协议层只消费回调结果。
 - **类型层只来自运行时探测**：未实证字段保持 `待探测校准`，不得凭猜测补字段或改枚举值。
 - **探测产物增量落盘**：探测与录制产物写 `NAPUKETTO_CFG_DIR`，可中途崩溃后定位；公共文档只写
   符号名与方法名，不写逆向地址。

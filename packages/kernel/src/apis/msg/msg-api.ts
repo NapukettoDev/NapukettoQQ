@@ -8,7 +8,6 @@
  * （send-confirm）、转发（forward）、语音（ptt）、共享查询（queries）各自成
  * 模块，本文件只做门面编排与方法委派。
  */
-import type { MsgEventChannel } from "../../bridge/index.js";
 import {
     errorMessage,
     isKernelError,
@@ -16,6 +15,7 @@ import {
     kernelError,
     requireKernelService,
 } from "../../infra/index.js";
+import type { MsgEventChannel } from "../../native/bridge/index.js";
 import type {
     CanonicalElement,
     NodeIKernelMsgService,

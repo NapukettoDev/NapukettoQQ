@@ -120,9 +120,19 @@
             }
         },
         {
+            "includes": ["packages/kernel/src/apis/web.ts", "packages/kernel/src/apis/ticket.ts"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "useNamingConvention": "off"
+                    }
+                }
+            }
+        },
+        {
             "includes": [
-                "packages/kernel/src/apis/media-web/webapi.ts",
-                "packages/kernel/src/apis/media-web/ticket.ts"
+                "packages/kernel/src/runtime/login/__tests__/login.test.ts",
+                "packages/kernel/src/runtime/login/__tests__/quick-login.test.ts"
             ],
             "linter": {
                 "rules": {
@@ -134,13 +144,64 @@
         },
         {
             "includes": [
-                "packages/kernel/src/login/__tests__/login.test.ts",
-                "packages/kernel/src/login/__tests__/quick-login.test.ts"
+                "packages/kernel/src/types/**",
+                "packages/kernel/src/infra/**",
+                "!packages/kernel/src/**/__tests__/**"
             ],
             "linter": {
                 "rules": {
                     "style": {
-                        "useNamingConvention": "off"
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": ["**/native/**", "**/apis/**", "**/runtime/**"],
+                                        "message": "L0（types/ 与 infra/）零内部依赖：禁止引用 native/、apis/、runtime/（kernel 五段式分层 DAG）"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "includes": ["packages/kernel/src/native/**", "!packages/kernel/src/**/__tests__/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": ["**/apis/**", "**/runtime/**"],
+                                        "message": "L1（native/）只可依赖 types/ 与 infra/：禁止引用 apis/、runtime/（kernel 五段式分层 DAG）"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "includes": ["packages/kernel/src/apis/**", "!packages/kernel/src/**/__tests__/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "patterns": [
+                                    {
+                                        "group": ["**/runtime/**"],
+                                        "message": "L2（apis/）无状态：禁止引用 runtime/（登录 / 缓存 / 装配文件，kernel 五段式分层 DAG）"
+                                    }
+                                ]
+                            }
+                        }
                     }
                 }
             }

@@ -6,14 +6,14 @@
  * 时安全提取错误、回退二维码（不抛 TypeError）。
  */
 import { describe, expect, it, vi } from "vitest";
-import { QrLoginSession } from "../../login/login.js";
-import { extractLoginErrMsg } from "../../login/quick-login.js";
 import {
     isStartupSessionWrapper,
     isWrapperEngine,
     isWrapperNodeApi,
     isWrapperSession,
-} from "../../wrapper/wrapper-guards.js";
+} from "../../native/wrapper/wrapper-guards.js";
+import { QrLoginSession } from "../../runtime/login/login.js";
+import { extractLoginErrMsg } from "../../runtime/login/quick-login.js";
 import { hasCallableProp, hasMethodSurface, isRecord } from "../type-guards.js";
 
 describe("基础守卫拒绝非法形状", () => {
