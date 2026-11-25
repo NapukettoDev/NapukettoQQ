@@ -10,8 +10,15 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CanonicalElement, ChatType, type Peer } from "@napuketto/kernel";
+import {
+    type CanonicalElement,
+    ChatType,
+    type GroupCache,
+    type GroupMember,
+    type Peer,
+} from "@napuketto/kernel";
 import { describe, expect, it, type Mock, vi } from "vitest";
+import { stub } from "../../../../internal/__tests__/stub.js";
 import { MessageUnique } from "../../../helper/message-unique.js";
 import { ob11ActionOf } from "../../__tests__/test-support.js";
 import type { Ob11Action } from "../../base-action.js";
@@ -44,8 +51,12 @@ function sendActionOf(
 /** sendMessage 桩类型（calls[0] 直接解构出 peer/elements）。 */
 type SendMock = Mock<(peer: Peer, elements: CanonicalElement[]) => Promise<{ msgId: string }>>;
 
-/** 构造发送依赖桩（真实 MessageUnique + 可控 sendMessage / uinToUid）。 */
-function makeDeps(options?: { sendMessage?: SendMock; uinToUidFail?: boolean }): {
+/** 构造发送依赖桩（真实 MessageUnique + 可控 sendMessage / uinToUid / groupCache）。 */
+function makeDeps(options?: {
+    sendMessage?: SendMock;
+    uinToUidFail?: boolean;
+    groupCache?: GroupCache;
+}): {
     deps: SendMsgDeps;
     sendMessage: SendMock;
     uinToUid: Mock<(uins: string[]) => Promise<Map<string, string>>>;
@@ -63,6 +74,7 @@ function makeDeps(options?: { sendMessage?: SendMock; uinToUidFail?: boolean }):
         msgApi: { sendMessage } as never,
         messageUnique: new MessageUnique(),
         uinToUid,
+        groupCache: options?.groupCache,
     };
     return { deps, sendMessage, uinToUid };
 }
@@ -117,6 +129,118 @@ describe("send_msg（共享核心 sendOb11Message）", () => {
         expect(uinToUid).not.toHaveBeenCalled();
         const [, elements] = sendMessage.mock.calls[0] ?? [];
         expect(elements?.[0]).toEqual({ type: "at", target: "all" });
+    });
+
+    it("at 目标直接给 NT UID（u_ 前缀）→ 直通，不调 uinToUid（issue #192）", async () => {
+        const { deps, sendMessage, uinToUid } = makeDeps();
+        const action = sendActionOf(deps, "send_msg");
+        await action.handle({
+            message_type: "group",
+            group_id: 808,
+            message: [{ type: "at", data: { qq: "u_ZZHYitvlZd7ricZCeLpPpQ" } }],
+        });
+        expect(uinToUid).not.toHaveBeenCalled();
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toEqual({ type: "at", target: "u_ZZHYitvlZd7ricZCeLpPpQ" });
+    });
+
+    it("群聊 at 缺 name → groupCache 补群名片作 display（群名片优先昵称）", async () => {
+        const getMember = vi.fn(async () =>
+            stub<GroupMember>({
+                uid: "u_abc",
+                uin: "90002",
+                nick: "昵称",
+                cardName: "群名片",
+            }),
+        );
+        const { deps, sendMessage } = makeDeps({
+            groupCache: stub<GroupCache>({ getMember }),
+        });
+        const action = sendActionOf(deps, "send_msg");
+        await action.handle({
+            message_type: "group",
+            group_id: 808,
+            message: [{ type: "at", data: { qq: "u_abc" } }],
+        });
+        expect(getMember).toHaveBeenCalledWith("808", "u_abc");
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toEqual({ type: "at", target: "u_abc", display: "群名片" });
+    });
+
+    it("数字 QQ 号转换后同样补显示名（昵称兜底群名片缺失）", async () => {
+        const getMember = vi.fn(async () =>
+            stub<GroupMember>({
+                uid: "u_90002",
+                uin: "90002",
+                nick: "昵称",
+            }),
+        );
+        const { deps, sendMessage } = makeDeps({
+            groupCache: stub<GroupCache>({ getMember }),
+        });
+        const action = sendActionOf(
+            {
+                ...deps,
+                uinToUid: vi.fn(async () => new Map([["90002", "u_90002"]])),
+            },
+            "send_msg",
+        );
+        await action.handle({
+            message_type: "group",
+            group_id: 808,
+            message: [{ type: "at", data: { qq: "90002" } }],
+        });
+        expect(getMember).toHaveBeenCalledWith("808", "u_90002");
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toEqual({ type: "at", target: "u_90002", display: "昵称" });
+    });
+
+    it("at 已带 name → 不查 groupCache", async () => {
+        const getMember = vi.fn(async () => undefined);
+        const { deps, sendMessage } = makeDeps({
+            groupCache: stub<GroupCache>({ getMember }),
+        });
+        const action = sendActionOf(deps, "send_msg");
+        await action.handle({
+            message_type: "group",
+            group_id: 808,
+            message: [{ type: "at", data: { qq: "90002", name: "小明" } }],
+        });
+        expect(getMember).not.toHaveBeenCalled();
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toEqual({ type: "at", target: "u90002", display: "小明" });
+    });
+
+    it("groupCache 查询抛错 → at 原样发送（fail-soft，不阻塞）", async () => {
+        const getMember = vi.fn(async () => {
+            throw new Error("缓存不可用");
+        });
+        const { deps, sendMessage } = makeDeps({
+            groupCache: stub<GroupCache>({ getMember }),
+        });
+        const action = sendActionOf(deps, "send_msg");
+        const result = await action.handle({
+            message_type: "group",
+            group_id: 808,
+            message: [{ type: "at", data: { qq: "u_abc" } }],
+        });
+        expect(result.retcode).toBe(0);
+        const [, elements] = sendMessage.mock.calls[0] ?? [];
+        expect(elements?.[0]).toEqual({ type: "at", target: "u_abc" });
+    });
+
+    it("私聊 at 不查 groupCache（群聊才有 at 语义）", async () => {
+        const getMember = vi.fn(async () => undefined);
+        const { deps } = makeDeps({
+            groupCache: stub<GroupCache>({ getMember }),
+        });
+        const action = sendActionOf(deps, "send_msg");
+        await action.handle({
+            message_type: "private",
+            user_id: 90001,
+            message: [{ type: "at", data: { qq: "u_abc" } }],
+        });
+        expect(getMember).not.toHaveBeenCalled();
     });
 
     it("segment 数组：reply OB11 id → NT msgId；反查不到原样透传", async () => {

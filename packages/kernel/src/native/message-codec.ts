@@ -31,6 +31,22 @@ import { ElementType } from "../types/services/index.js";
 const AtType = { ALL: 1, ONE: 2, ME: 4 } as const;
 
 /**
+ * wrapper 对无效 at 目标的归零值：`atUid` 只接受数字 UIN，非数字会被归零成 `"0"`。
+ * 接收方向必须把它当「无目标」，否则 `"0"` 会一路传给 uid→uin 转换
+ * （`getUinByUids` → `Data Not Existed!`，issue #192）。
+ */
+const AT_TARGET_ZERO = "0";
+
+/** 纯数字 UIN（`atUid` 唯一接受的形态；`u_...` 等 NT UID 只能进 `atNtUid`）。 */
+const NUMERIC_UIN_RE = /^\d+$/;
+
+/** `@全体` 的显示文本（客户端原生元素实测）。 */
+const AT_ALL_CONTENT = "@全体成员";
+
+/** `@全体` 的目标值（原生元素把它放在 `atNtUid`，不是 `atUid`）。 */
+const AT_ALL_TARGET = "all";
+
+/**
  * 读视频缩略图路径（接收方向形态不唯一，防御读取）：
  *  - 进程内为 `Map<0, path>`（收向实测）；
  *  - 跨进程/JSON 序列化后退化为平面对象 `{"0": path}`（`JSON.stringify(Map)`
@@ -58,24 +74,46 @@ function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefine
     return value == null || value === "" ? undefined : value;
 }
 
+/**
+ * at 目标解析（接收方向，issue #192）：
+ *  - 优先 `atNtUid`（`u_...` NT UID）——QQNT 解析真实提及所依赖的字段，也是发送侧
+ *    唯一写入 `u_...` 的地方；
+ *  - 缺失时回退 `atUid`（数字 UIN 镜像）；
+ *  - `""` / `"0"` 均为无效（wrapper 把非数字 atUid 归零成 `"0"`），宁可按文本降级
+ *    也不能把 `"0"` 传给下游 uid→uin 转换。
+ */
+function readAtTarget(textEl: TextElement): string | undefined {
+    for (const raw of [textEl.atNtUid, textEl.atUid]) {
+        const hit = emptyToUndefined(raw);
+        if (hit !== undefined && hit.trim() !== "" && hit !== AT_TARGET_ZERO) {
+            return hit;
+        }
+    }
+    return undefined;
+}
+
 /** TEXT 元素 → canonical（at 或纯文本）。 */
 function textToCanonical(textEl: TextElement | null | undefined): CanonicalElement {
     if (textEl == null) {
         return { type: "text", text: "" };
     }
-    const { atType, atUid, content } = textEl;
+    const { atType, content } = textEl;
     if (atType === AtType.ALL) {
-        return { type: "at", target: "all" };
+        return { type: "at", target: AT_ALL_TARGET };
     }
-    if ((atType === AtType.ONE || atType === AtType.ME) && atUid != null && atUid.trim() !== "") {
-        // 2026-08-07：at 段补 display（显示名）——QQ 的 content 通常是 "@昵称"，
-        // 剥掉 @ 作 display，供 OB11 at 段 name / 日志渲染使用（此前只有 target=uid）。
-        const base = { type: "at" as const, target: atUid };
-        const display = content.startsWith("@") ? content.slice(1) : content;
-        if (display === "") {
-            return base;
+    if (atType === AtType.ONE || atType === AtType.ME) {
+        const target = readAtTarget(textEl);
+        // 目标无效（atNtUid 与 atUid 都空 / atUid 被归零）：按文本降级，不产出 target "0"
+        if (target !== undefined) {
+            // 2026-08-07：at 段补 display（显示名）——QQ 的 content 通常是 "@昵称"，
+            // 剥掉 @ 作 display，供 OB11 at 段 name / 日志渲染使用（此前只有 target=uid）。
+            const base = { type: "at" as const, target };
+            const display = content.startsWith("@") ? content.slice(1) : content;
+            if (display === "") {
+                return base;
+            }
+            return { ...base, display };
         }
-        return { ...base, display };
     }
     return { type: "text", text: content };
 }
@@ -296,6 +334,16 @@ function jsonToArkBytes(raw: unknown): string {
     }
 }
 
+/**
+ * at 显示文本归一：客户端原生元素的 content 恒为带 `@` 前缀的显示文本，
+ * 而 canonical `display` 可能来自群成员昵称（不带 `@`）——统一补前缀，
+ * 避免聊天框出现「@」后无名字的空提及。
+ */
+function atContent(display: string | undefined, fallback: string): string {
+    const text = emptyToUndefined(display) ?? fallback;
+    return text.startsWith("@") ? text : `@${text}`;
+}
+
 /** canonical 元素 → NT 发送元素（text/at/face/image/voice/reply 核心 + json ARK 透传）。 */
 export function toSendElements(elements: CanonicalElement[]): SendMessageElement[] {
     const out: SendMessageElement[] = [];
@@ -305,15 +353,29 @@ export function toSendElements(elements: CanonicalElement[]): SendMessageElement
                 out.push({ elementType: ElementType.TEXT, textElement: { content: el.text } });
                 break;
             case "at":
-                if (el.target === "all") {
+                if (el.target === AT_ALL_TARGET) {
+                    // @全体：atType=1 + atNtUid="all"（客户端原生元素实测，无 atUid）
                     out.push({
                         elementType: ElementType.TEXT,
-                        textElement: { content: el.display ?? "@", atType: 1 },
+                        textElement: {
+                            content: atContent(el.display, AT_ALL_CONTENT),
+                            atType: AtType.ALL,
+                            atNtUid: AT_ALL_TARGET,
+                        },
                     });
                 } else {
+                    // 单人 @：`u_...` 写 atNtUid（QQNT 解析目标依赖它）；atUid 只放数字
+                    // UIN——写非数字会被 wrapper 归零成 "0"（issue #192）
+                    const target = el.target;
+                    const isNumericUin = NUMERIC_UIN_RE.test(target);
                     out.push({
                         elementType: ElementType.TEXT,
-                        textElement: { content: el.display ?? "@", atType: 2, atUid: el.target },
+                        textElement: {
+                            content: atContent(el.display, "@"),
+                            atType: AtType.ONE,
+                            atUid: isNumericUin ? target : "",
+                            atNtUid: isNumericUin ? "" : target,
+                        },
                     });
                 }
                 break;

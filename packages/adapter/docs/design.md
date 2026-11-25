@@ -287,6 +287,10 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
 
 - OB11：无法表达的 canonical 元素静默跳过；未知 segment 兜底按 xml；未知 CQ 类型保留
   原文为 text 段（往返不丢数据）。CQ 转义/反转义与解析是纯函数（`helper/codec/`）。
+- OB11 发送 at：`qq` 为数字 uin 时批量 uin→uid；`u_...` 已是 NT UID，直通不再转换
+  （与 loader IPC 动作同契约）。群聊 at 段缺 `name` 时按群成员缓存补群名片/昵称作
+  `display`（fail-soft），kernel 随后把 uid 写进 `atNtUid`、把显示名归一成带 `@`
+  前缀的 `content`。
 - Satori：解析/渲染 XML；媒体元素在 `helper/element/media-convert.ts` 做本地化与转码。
 - KuroBot：text 原文、at → `@{display ?? uid}`、@全体 → `@全体成员`、image / face /
   reply 占位；其余类型忽略，结果空白不发。

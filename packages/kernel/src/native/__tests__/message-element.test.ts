@@ -4,7 +4,8 @@
  * 锁定 canonical → NT 发送元素的映射规则：
  *  - text / at（all 与单目标）/ face / image / voice / reply 六类核心
  *  - json → ARK 透传（bytesData 字符串原样 / 对象 JSON 序列化）
- *  - at 的 display 兜底 "@"、atType 区分 all(1)/单(2)
+ *  - at 的 display/content 归一（@ 前缀）、atType 区分 all(1)/单(2)，
+ *    单人 at 的 `u_...` 目标写 atNtUid 而非 atUid（issue #192）
  *  - 不支持的 video/file/forward/xml/unknown → 抛 KernelError
  */
 import { describe, expect, it } from "vitest";
@@ -23,29 +24,55 @@ describe("toSendElements", () => {
         expect(toSendElements([])).toEqual([]);
     });
 
-    it("at all → TEXT atType=1（display 兜底 @）", () => {
+    it("at all → TEXT atType=1 + atNtUid=all（content 归一为 @全体成员）", () => {
         expect(toSendElements([{ type: "at", target: "all" }])).toEqual([
-            { elementType: ElementType.TEXT, textElement: { content: "@", atType: 1 } },
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "@全体成员", atType: 1, atNtUid: "all" },
+            },
         ]);
         expect(toSendElements([{ type: "at", target: "all", display: "全体成员" }])).toEqual([
             {
                 elementType: ElementType.TEXT,
-                textElement: { content: "全体成员", atType: 1 },
+                textElement: { content: "@全体成员", atType: 1, atNtUid: "all" },
+            },
+        ]);
+        // display 已带 @ 不重复补
+        expect(toSendElements([{ type: "at", target: "all", display: "@全体成员" }])).toEqual([
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "@全体成员", atType: 1, atNtUid: "all" },
             },
         ]);
     });
 
-    it("at 单目标 → TEXT atType=2 + atUid", () => {
-        expect(toSendElements([{ type: "at", target: "u1" }])).toEqual([
+    it("at 单人（u_... NT UID）→ atNtUid 承载目标，atUid 留空（issue #192）", () => {
+        expect(toSendElements([{ type: "at", target: "u_abc" }])).toEqual([
             {
                 elementType: ElementType.TEXT,
-                textElement: { content: "@", atType: 2, atUid: "u1" },
+                textElement: { content: "@", atType: 2, atUid: "", atNtUid: "u_abc" },
             },
         ]);
-        expect(toSendElements([{ type: "at", target: "u1", display: "小明" }])).toEqual([
+        // display 不带 @ → content 补前缀
+        expect(toSendElements([{ type: "at", target: "u_abc", display: "小明" }])).toEqual([
             {
                 elementType: ElementType.TEXT,
-                textElement: { content: "小明", atType: 2, atUid: "u1" },
+                textElement: { content: "@小明", atType: 2, atUid: "", atNtUid: "u_abc" },
+            },
+        ]);
+        expect(toSendElements([{ type: "at", target: "u_abc", display: "@小明" }])).toEqual([
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "@小明", atType: 2, atUid: "", atNtUid: "u_abc" },
+            },
+        ]);
+    });
+
+    it("at 单人（纯数字 uin，转换失败兜底）→ atUid 承载数字，atNtUid 留空", () => {
+        expect(toSendElements([{ type: "at", target: "90002" }])).toEqual([
+            {
+                elementType: ElementType.TEXT,
+                textElement: { content: "@", atType: 2, atUid: "90002", atNtUid: "" },
             },
         ]);
     });

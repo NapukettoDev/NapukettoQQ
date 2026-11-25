@@ -111,6 +111,21 @@ describe("applySendContext（发送方向）", () => {
         ]);
     });
 
+    it("at 目标已是 u_ 前缀 NT UID → 直通，不查 uin 映射（issue #192）", () => {
+        const out = applySendContext(
+            [
+                { type: "at", target: "u_abc" },
+                // 映射里即便出现同名字面量也不得二次转换
+                { type: "at", target: "u_mapped" },
+            ],
+            { uinToUid: new Map([["u_mapped", "u_other"]]) },
+        );
+        expect(out).toEqual([
+            { type: "at", target: "u_abc" },
+            { type: "at", target: "u_mapped" },
+        ]);
+    });
+
     it("reply messageId 非 NaN 数字才反查；非数字原样（兼容 NT msgId 直传）", () => {
         const translate = vi.fn(() => "nt-x");
         const out = applySendContext([{ type: "reply", messageId: "not-a-number" }], {

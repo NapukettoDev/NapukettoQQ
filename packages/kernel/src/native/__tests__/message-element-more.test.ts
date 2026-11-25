@@ -89,6 +89,50 @@ describe("text 元素", () => {
             ),
         ).toEqual([{ type: "text", text: "@me" }]);
     });
+
+    it("atType=ONE：atNtUid 优先于数字 atUid（QQNT 解析目标依赖 atNtUid）", () => {
+        expect(
+            toCanonicalElements(
+                msgOf({
+                    elementType: 1,
+                    textElement: {
+                        atType: 2,
+                        atUid: "90002",
+                        atNtUid: "u_abc",
+                        content: "@小明",
+                    },
+                }),
+            ),
+        ).toEqual([{ type: "at", target: "u_abc", display: "小明" }]);
+    });
+
+    it('atType=ONE：atUid 被归零成 "0" 且 atNtUid 为空 → 降级文本（不产出 target 0）', () => {
+        expect(
+            toCanonicalElements(
+                msgOf({
+                    elementType: 1,
+                    textElement: { atType: 2, atUid: "0", atNtUid: "", content: "@" },
+                }),
+            ),
+        ).toEqual([{ type: "text", text: "@" }]);
+        expect(
+            toCanonicalElements(
+                msgOf({
+                    elementType: 1,
+                    textElement: { atType: 2, atUid: "0", atNtUid: "0", content: "@某人" },
+                }),
+            ),
+        ).toEqual([{ type: "text", text: "@某人" }]);
+        // 空白 atNtUid 同样视为缺失，回退有效 atUid
+        expect(
+            toCanonicalElements(
+                msgOf({
+                    elementType: 1,
+                    textElement: { atType: 2, atUid: "90002", atNtUid: " ", content: "@" },
+                }),
+            ),
+        ).toEqual([{ type: "at", target: "90002" }]);
+    });
 });
 
 describe("pic 元素", () => {
@@ -280,9 +324,9 @@ describe("file / face / reply / ark / unknown", () => {
 });
 
 describe("toSendElements 补充分支", () => {
-    it("at all 带 display：content 用 display", () => {
+    it("at all 带 display：content 用 display（@ 前缀保留）", () => {
         expect(toSendElements([{ type: "at", target: "all", display: "@全体" }])).toEqual([
-            { elementType: 1, textElement: { content: "@全体", atType: 1 } },
+            { elementType: 1, textElement: { content: "@全体", atType: 1, atNtUid: "all" } },
         ]);
     });
 

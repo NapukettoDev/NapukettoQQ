@@ -98,6 +98,22 @@ loginService 形状，`types/services/` 以该产物为权威来源。时序坑�
 `otherBusinessInfo{aiVoiceInfo, aiVoiceType}`/`isInApplicationDataPath`。后 7 项是补进
 `types/entities.ts` 的下载态字段。
 
+### TEXT 元素 at 字段
+
+`TextElement` 的 at 目标分两个字段（issue #192 真实环境复现 + 客户端原生元素形态）：
+
+| 场景 | 原生元素形态 |
+|---|---|
+| 单人 at | `{ atType: 2, atUid: "<数字 QQ 号>", atNtUid: "<u_... NT UID>" }` |
+| `@全体` | `{ atType: 1, atNtUid: "all", content: "@全体成员" }`（无 atUid） |
+
+- 归零事实：把 `u_...` 写进 `atUid` 后，`get_msg` 读回的目标字段变成 `"0"`（wrapper 按
+  数字 UIN 解析失败即归零），且真实提及不生效；`atNtUid` 才是 QQNT 解析 at 目标的字段。
+- 接收侧因此必须先读 `atNtUid`，`atUid === "0"` 视为无效（否则会把 `"0"` 送进
+  `getUinByUids`，日志报 `Data Not Existed!`）。
+- 外部对照：LiteLoaderQQNT-Euphony 的 `At` / `AtAll` 元素构造（`at.toElement()` 与
+  `at_all.toElement()`）与上述形态一致。
+
 ### videoElement 字段
 
 | 字段 | 实测值 / 来源 |
