@@ -1,9 +1,6 @@
 /**
- * wrapper exports 探测（从 probe.ts 拆分，2026-08-08 FTA 优化）
- *
- * - probeExportCtors：关键 export 构造器方法面
- * - probeEngineCalls：engine 关键调用
- * - probeLoginService：LoginService 实例（QQ 已登录凭据入口）
+ * wrapper exports 探测：probeExportCtors（关键 export 构造器方法面）、probeEngineCalls
+ * （engine 关键调用）、probeLoginService（LoginService 实例，QQ 已登录凭据入口）。
  */
 
 import { getOwnProp, hasCallableProp } from "../../infra/type-guards.js";

@@ -1,13 +1,6 @@
 /**
- * download.ts：QQ 官方安装包下载器（P1）。
- *
- * 无第三方依赖：Node 内置 https + crypto（sha256）。设计文档 §2.2。
- *  - https GET 流式写文件（低内存占用，313MB 安装包不整载入内存）
- *  - 下载同时流式累加 sha256，完成后与清单比对（防链接漂移劫持 / 下载不完整）
- *  - 支持 302 重定向（QQ CDN 可能跳转）
- *  - NAPUKETTO_QQ_URL 环境变量可覆盖下载地址（用户拿到新链接时用）
- *  - 出站 URL 统一经 normalizeDownloadUrl 归一化（绕过 CDN 边缘对 `/QQNTV2/`
- *    路径段的大小写敏感拦截，见 manifests/releases.ts；否则清单里的官方 URL 必 403）
+ * download.ts：QQ 官方安装包下载器（Node 内置 https + crypto，无第三方依赖）：流式落盘并同步累加 sha256。
+ * 出站 URL 必须经 normalizeDownloadUrl 归一化，否则清单里 `/QQNTV2/` 的官方 URL 必被 CDN 边缘 403。
  */
 import { createHash } from "node:crypto";
 import { createWriteStream, mkdirSync, statSync } from "node:fs";
@@ -128,10 +121,9 @@ export async function downloadFile(options: DownloadOptions): Promise<DownloadRe
     });
     await pipeline(res, hashStream, createWriteStream(options.dest));
 
-    // ⚠️ 完成态校验（2026-08-23 WSL 生产事故）：Promise 正常 resolve 但文件
-    // 缺失/为空是真实发生过的（koishi 场景 7z 解包报「No such file or
-    // directory」，疑为并发实例清理 tmp 或写入中断）。resolve 不代表落盘完整，
-    // 这里 stat 兜底，缺失/空文件立即报错而不是把坏文件交给下游解包。
+    // ⚠️ 完成态校验（生产事故实证）：Promise 正常 resolve 但文件缺失/为空真实发生过
+    // （koishi 场景 7z 解包报「No such file or directory」，疑为并发实例清理 tmp 或写入中断）。
+    // resolve 不代表落盘完整，这里 stat 兜底，坏文件立即报错不交给下游解包。
     let size: number;
     try {
         size = statSync(options.dest).size;

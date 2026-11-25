@@ -1,16 +1,7 @@
 /**
- * 运行时反射探测（ADR-006 落地，P1-4）
- *
- * 注入链路打通后（2026-08-05），wrapper exports 是 QQ 已注册的单例。
- * 本模块在 **QQ 主进程内**反射枚举 session / service 的真实方法名与返回形状，
- * 产出 JSON 到 NAPUKETTO_CFG_DIR/napuketto-probe.json，作为 types/services/ 的权威来源。
- *
- * 用法：boot.cjs 在 NAPUKETTO_PROBE=1 时于 startNapuketto 后调用 probeRuntime(ctx)。
- * 产物是研究工具数据，类型层据此补全（自研描述，非移植）。
- *
- * 工具拆分（2026-08-08 FTA 优化）：方法枚举/安全调用 → probe-utils.ts；
- * 序列化/形状探测 → probe-serialize.ts；exports/service 探测 → probe-services.ts；
- * 本文件只留 session 探测编排（probeStartup/probeSession/probeRuntime）。
+ * 运行时反射探测（ADR-006）：在 **QQ 主进程内**反射枚举 session / service 的真实方法名与返回
+ * 形状，产出 JSON 到 NAPUKETTO_CFG_DIR/napuketto-probe.json，作为 types/services/ 的权威来源。
+ * boot.cjs 在 NAPUKETTO_PROBE=1 时于 startNapuketto 后调用 probeRuntime(ctx)；产物是研究数据。
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -240,11 +231,11 @@ function findMainProbeId(sessionIds: string[]): string | undefined {
 
 /** 探测 session 与 service 方法名面。
  *  主目标 = ctx.session 快照（kernel 自建就绪 session），缺省回退 QQ 主 session；
- *  自建宿主下主 session 未被 init（get*Service 恒 null，2026-10-31 实测）。
- *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有 P1-4 遗留副作用
+ *  自建宿主下主 session 未被 init（get*Service 恒 null，实测）。
+ *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有遗留副作用
  *  （resolveMainFromStartup 把空壳主 session 写回 ctx.session，session-resolver.ts）。
  *  ⚠️ names-only：不对服务实例做无参 shape 调用——活 session 上无参调原生方法
- *  = 访问违例 0xC0000005（2026-10-31 实测崩溃，tryShape 捕不住原生段错误）。 */
+ *  = 访问违例 0xC0000005（实测崩溃，tryShape 捕不住原生段错误）。 */
 /** 非空判定（null / undefined 均视为缺省）。 */
 function hasValue(value: unknown): boolean {
     return value !== null && value !== undefined;

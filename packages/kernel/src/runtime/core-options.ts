@@ -1,7 +1,5 @@
 /**
- * NapukettoCore 的装配 / 登录选项（纯类型声明，从 `core.ts` 拆出）
- *
- * 由 `core.ts` 重新导出，包门面导出坐标不变。
+ * NapukettoCore 的装配 / 登录选项（纯类型声明，由 `core.ts` 重新导出，包门面导出坐标不变）。
  */
 import type { LogFormat, LogLevel, PathOptions, TimestampMode } from "../infra/index.js";
 import type { LoginProgress } from "./login/qr-flow.js";
@@ -41,7 +39,7 @@ export interface CoreLoginOptions {
     /** 指定快速登录账号（缺省遍历历史列表）。 */
     quickUin?: string | undefined;
     /**
-     * 单步快速登录超时（毫秒，T3 软重登挂起兜底），默认 20s。服务端已有同账号
+     * 单步快速登录超时（毫秒，软重登挂起兜底），默认 20s。服务端已有同账号
      * 会话时底层 quickLoginWithUin/getLoginList 永久挂起，超时按登录失败抛出
      * （qrFallback 可接）。底层 promise 无法取消：超时后悬挂丢弃。
      */
@@ -55,7 +53,7 @@ export interface CoreLoginOptions {
      * `<账号目录>/cache/qr/qrcode.png`，登录结束删除）。
      */
     qrCodePath?: string | undefined;
-    /** 登录进度回调（QR 阶段：二维码数据 + 状态变化）。子进程 IPC 模式转发用。 */
+    /** 登录进度回调（QR 流程：二维码数据 + 状态变化）。子进程 IPC 模式转发用。 */
     onLoginProgress?: ((progress: LoginProgress) => void) | undefined;
     /**
      * 登录成功后自动完成 Session 激活闭环（accountPath → machineGuid →

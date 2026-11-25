@@ -1,10 +1,7 @@
 /**
  * 主配置 store：默认值、ConfigBase 子类、模板落盘、内联/文件来源加载。
- *
- * 从 config-cmds.ts 拆出（2026-10-25 模块收拢）：
- * - `CliConfigStore` 只负责 napuketto.toml 的读写/校验（kernel ConfigBase）；
- * - `loadCliConfigWithSource` 负责来源决议（NAPUKETTO_CONFIG_JSON 优先）与来源日志；
- * - 4 个 config 子命令留在 commands/config.ts，不反向依赖本文件的私有实现。
+ * `CliConfigStore` 只管 napuketto.toml 的读写/校验；`loadCliConfigWithSource` 负责来源决议（内联优先）
+ * 与来源日志，config 子命令只消费其导出接口。
  */
 import { mkdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -121,7 +118,7 @@ export function resolveCliConfigSource(opts: { dataDir?: string } = {}): Resolve
 let sourceLogged = false;
 
 /**
- * 加载主配置（内联优先，2026-10-25 嵌入式契约）：
+ * 加载主配置（内联优先）：
  * NAPUKETTO_CONFIG_JSON 非空 → 内存文档校验（不读 / 不写 / 不校验任何 toml
  * 文件），打一行来源日志；否则现行文件链路（缺失自动落模板）。校验失败两形态
  * 同为 ConfigError（exit 78），文案区别只在来源标注。

@@ -1,8 +1,5 @@
 /**
- * login.ts：登录流程（2026-08-07 阶段 1 从 boot-bootstrap.js 拆分，阶段 2 TS 化，
- * 零语义改动）。
- *
- * 职责：打印可用快速登录账号并选定目标账号（pickLoginAccount）、
+ * login.ts：登录流程——打印可用快速登录账号并选定目标账号（pickLoginAccount）、
  * 快速登录 → QR 回退（doLogin）。由 bootstrap.ts import。
  */
 

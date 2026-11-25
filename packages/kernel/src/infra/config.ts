@@ -1,12 +1,7 @@
 /**
- * 配置基类（ADR-012）
- *
- * 读文件 → 校验 → 内存对象 → 变更写回。支持 **JSON / TOML** 两种文本格式
- * （按扩展名推断：.toml → TOML（smol-toml），其余 → JSON）。
- *
- * kernel 不依赖 zod：只依赖校验器的最小 `parse` 形状（`ConfigSchema`），
- * 协议包的 zod schema 天然满足；kernel 主配置用手写校验器包装。
- * 协议配置 schema 在各自协议包，见各包 docs/design.md。
+ * 配置基类（ADR-012）：读文件 → 校验 → 内存对象 → 变更写回；文本格式按扩展名推断
+ * （.toml → smol-toml，其余 → JSON）。kernel 不依赖 zod，只依赖校验器的最小 `parse` 形状
+ * （`ConfigSchema`），协议包的 zod schema 天然满足；协议配置 schema 在各自协议包。
  */
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";

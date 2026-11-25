@@ -1,12 +1,7 @@
 /**
- * state.ts：账号运行时状态文件 + 进程控制原语（2026-09-08 T8）。
- *
- * 跨进程通信选型（决策记录）：现有 IPC 为 stdio JSON 行协议（NAPUKETTO_IPC=1，
- * koishi 插件专用），supervisor 子进程不在此模式；引入独立通道（socket/pipe）
- * 复杂度高。采用 **PID 状态文件**：supervisor/单账号 boot 启动时把进程信息写
- * `<数据根>/<uin>/runtime.json`，supervisor 自身写 `<数据根>/supervisor.json`；
- * `napuketto status/stop/restart` 读文件 + liveness 检测 + 树杀（win32
- * taskkill /T /F，杀 boot 进程树连带 self-host 孙进程）+ detached 重启。
+ * 账号运行时状态文件 + 进程控制原语（跨进程通信走 PID 状态文件而非 IPC 通道：现有 stdio JSON 行协议仅
+ * koishi 插件用，supervisor 子进程不在此模式，独立 socket/pipe 复杂度高）。supervisor/boot 写
+ * `<数据根>/<uin>/runtime.json` 与 `supervisor.json`；status/stop/restart 读文件 + liveness + 树杀。
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -287,7 +282,6 @@ export function isPidAlive(pid: number): boolean {
     }
 }
 
-/** 强杀选项。 */
 export interface KillProcessTreeOptions {
     /** 附加目标（如 runtime.json 的 selfHostPid）：与主目标一并处理，覆盖孙进程。 */
     extraPids?: number[];

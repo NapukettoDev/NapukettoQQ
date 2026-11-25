@@ -1,14 +1,7 @@
 /**
- * 主配置类型与手写校验器（原 config-cmds.ts 拆分，2026-08-08 FTA 优化）
- *
- * 主配置 parse（不引入 zod）：数据根 / 自动重启 / 重启延迟 / 账号列表。
- * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
- * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
- * 协议段为宽松对象，装配时由对应协议包的 zod schema 严格校验；
- * `config validate` / `config apply` 例外（见 protocol-validate.ts：两条路径承诺与
- * 装配同 schema，否则「校验/apply 通过但启动 78」，故仅在这两处懒加载 adapter 补校验）。
- * 全部校验错误为 ConfigError（2026-10-25 嵌入式退出码契约：CLI exit 78 一族，
- * 内联与文件两形态共用本校验器）。
+ * 主配置类型与手写校验器（不引入 zod）：一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在账号内，
+ * 账号必填；协议段为宽松对象，装配时由对应协议包 zod 严格校验（validate/apply 例外，见 protocol-validate.ts）。
+ * 全部校验错误为 ConfigError（CLI exit 78 一族），内联与文件两形态共用本校验器。
  */
 import {
     configError,
@@ -24,7 +17,7 @@ export const RESERVED_PLACEHOLDER_QINS = ["123456", "654321"] as const;
 
 /** 默认自动重启。 */
 const DEFAULT_AUTO_RESTART = true;
-/** 默认入站图片自动下载补丁开关（stub 私有组件，issue #105）。 */
+/** 默认入站图片自动下载补丁开关（stub 私有组件）。 */
 const DEFAULT_NATIVE_MEDIA_PATCH = true;
 /** 默认重启延迟（毫秒；supervisor 显式 -q 场景复用，避免两处常量漂移）。 */
 export const DEFAULT_RESTART_DELAY_MS = 2000;
@@ -64,7 +57,7 @@ export function parseCliQq(qq: string): string {
 /** 协议段键（宽松对象，装配时 zod 严格校验）。 */
 type ProtocolKey = "onebot11" | "satori" | "kurobot" | "milky";
 
-/** 账号配置项（qq 必填；协议段缺省 = 该账号不启用对应协议）。 */
+/** 账号配置项（qq 必填；协议段缺省 = 该账号不启用对应协议；boot 装配时按登录 uin 从 accounts 取段作 seed）。 */
 export interface CliAccountConfig {
     qq: string;
     enabled?: boolean;
@@ -89,9 +82,8 @@ export interface CliConfig {
     /** 账号列表（至少一个，qq 必填）。 */
     accounts: CliAccountConfig[];
     /**
-     * 入站图片自动下载补丁开关（issue #105，stub 私有组件）。缺省 true；
-     * false 时 supervisor 向账号子进程注入 NAPUTO_DISABLE_MEDIA_PATCH=1。
-     * -q 直跑不经 supervisor，用同名环境变量显式禁用。
+     * 入站图片自动下载补丁开关（stub 私有组件）。缺省 true；false 时 supervisor 向账号子进程
+     * 注入 NAPUTO_DISABLE_MEDIA_PATCH=1；-q 直跑不经 supervisor，用同名环境变量显式禁用。
      */
     nativeMediaPatch: boolean;
     /** [log] 日志配置段（kernel parseLogConfig 解析；未配置段时 undefined = 全缺省）。 */

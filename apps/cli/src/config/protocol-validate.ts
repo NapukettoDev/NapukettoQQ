@@ -1,15 +1,7 @@
 /**
- * 协议段严格校验（`config validate` / `config apply` 共用）。
- *
- * 主配置解析（schema.ts）刻意保持协议段为宽松对象：普通启动路径不把协议包
- * 拉进 CLI 进程，字段级校验由 loader 装配时用各协议自己的 zod schema 完成。
- * 但 `config validate` 的承诺是「与运行时同一校验器落地」——只做 `isRecord`
- * 浅校验会让 `httpServers = "not-an-array"` 报「配置合法」，真正启动却以 78
- * 退出；`config apply` 若跳过这层，则会把非法协议段写进主配置。因此两条路径
- * 懒加载 adapter 补校验（普通 CLI 启动与 supervisor 不引入协议包）。
- *
- * 空段与 loader 装配语义一致：`{}` = 不启用该协议，跳过校验（kurobot 的
- * url 必填只在段非空时生效）。
+ * 协议段严格校验（`config validate` / `config apply` 共用）：schema 刻意保持协议段为宽松对象——普通启动
+ * 不把协议包拉进 CLI 进程，字段级校验由 loader 装配时用各协议自己的 zod schema 完成；但 validate 承诺
+ * 「与运行时同一校验器落地」：只做浅校验会让 httpServers 非法时误报合法、启动却 78；故懒加载 adapter 补校验。
  */
 import { configError, errorMessage } from "@napuketto/kernel";
 import type { CliAccountConfig, CliConfig } from "./schema.js";
@@ -35,7 +27,10 @@ async function loadProtocolSchemas(): Promise<ProtocolSchemas> {
     };
 }
 
-/** 单账号协议段校验（空段跳过；zod 错误压成单行，归 ConfigError 78 一族）。 */
+/**
+ * 单账号协议段校验（空段 `{}` = 不启用，与 loader 装配语义一致而跳过——kurobot 的 url
+ * 必填只在段非空时生效；zod 错误压成单行，归 ConfigError 78 一族）。
+ */
 function validateAccountSections(account: CliAccountConfig, schemas: ProtocolSchemas): void {
     for (const key of PROTOCOL_KEYS) {
         const section = account[key];

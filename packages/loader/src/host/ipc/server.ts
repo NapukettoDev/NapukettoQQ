@@ -1,14 +1,7 @@
 /**
- * server.ts：IPC 服务端（self-host 子进程侧）。
- *
- * 职责（design.md §5.6 / §7）：
- *  - stdin 逐物理行收 action / control / ping
- *  - action → 动作表执行 → result 响应（请求 id 匹配）
- *  - control stop/restart → 关停（由驱动层决定是否重启）
- *  - control login → onLogin 回调（触发重新登录 / 强制扫码）
- *  - control status → 重播最近一条 status（父进程丢失重同步，2026-09-06）
- *  - ping → 自动回 pong
- *  - 心跳：定期发 ping（koishi 插件探活）
+ * server.ts：IPC 服务端（self-host 子进程侧）——stdin 逐物理行收 action / control / ping，
+ * action 经动作表执行后回 result（按请求 id 匹配），control stop/restart 关停、login 走 onLogin、
+ * status 重播最近一条 status（父进程丢失后重同步），ping 自动回 pong，另定期发 ping 供插件探活。
  */
 import type { Readable } from "node:stream";
 import {

@@ -1,15 +1,7 @@
 /**
- * pino 日志封装（ADR-007）
- *
- * - console（pretty 可读输出 / single-line / json 结构化）+ 可选文件双目的地
- * - 统一 level 控制（控制台与文件可分别设级，2026-10-25 日志可配置化）
- * - 内置 redact（token / 票据等敏感字段不打日志），可追加
- * - 无全局单例（ADR-015 推论）：每进程实例化一份，由装配层持有
- * - 三种控制台格式全部由 log-format 自渲染（2026-11-03 起不再依赖 pino-pretty）
- *
- * 时间源（2026-10-25 修复）：QQNT 原生层会在 onRecvSysMsg 回调窗口内篡改进程
- * Date（实测记录时间冻结为假值、回调外恢复），故时间戳统一取
- * performance.timeOrigin + performance.now() 单调派生墙钟，不受 Date 篡改影响。
+ * pino 日志封装（ADR-007）：console（pretty / single-line / json 全部自渲染）+ 可选文件双目的地，
+ * 级别可分设、内置 redact（token/票据不入日志），无全局单例。时间源：QQNT 原生层会在 onRecvSysMsg
+ * 回调窗口内篡改进程 Date（实测记录时间冻结为假值、回调外恢复），故时间戳统一由 performance 单调派生。
  */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -54,9 +46,8 @@ function toSingle(streams: Array<{ stream: pino.DestinationStream }>): pino.Dest
 }
 
 /**
- * 可选属性统一带 `| undefined`（2026-10-25）：exactOptionalPropertyTypes 下
- * 纯直传调用点（装配层透传 LogConfig 字段）可写 `format: cfg.format` 一类
- * 直赋值，免去逐字段条件展开（展开链是复杂度热点）。
+ * 可选属性统一带 `| undefined`：exactOptionalPropertyTypes 下纯直传调用点
+ * （装配层透传 LogConfig 字段）可写 `format: cfg.format` 一类直赋值，免去逐字段条件展开。
  */
 type Optional<T> = T | undefined;
 

@@ -1,7 +1,5 @@
 /**
- * 转发消息（从 `apis/msg.ts` 拆出）
- *
- * 合并转发（buildMultiForwardMsg / getMultiMsg）与单条转发（forwardMsg）。
+ * 转发消息：合并转发（buildMultiForwardMsg / getMultiMsg）与单条转发（forwardMsg）。
  */
 import { kernelError } from "../../infra/index.js";
 import type { NodeIKernelMsgService, Peer, RawMessage } from "../../types/index.js";

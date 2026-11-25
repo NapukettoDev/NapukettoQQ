@@ -1,9 +1,7 @@
 /**
- * TicketApi：票据语义化 API（ADR-009 统一错误语义，P2-13）
- *
- * - getClientKey：TicketService.forceFetchClientKey 解包（get_clientkey）
- * - getCookies：clientKey → ssl.ptlogin2.qq.com/jump 跳转 → 解析 set-cookie 头
- *   （fetch 会吞掉 Set-Cookie 头，故用 node:https 手动请求）
+ * TicketApi：票据语义化 API（ADR-009 统一错误语义）。
+ * getClientKey 解包 TicketService.forceFetchClientKey；getCookies 经 ssl.ptlogin2.qq.com/jump
+ * 跳转解析 set-cookie 头（fetch 会吞掉 Set-Cookie 头，故用 node:https 手动请求）。
  */
 import { get as httpsGet } from "node:https";
 import { kernelError } from "../infra/index.js";

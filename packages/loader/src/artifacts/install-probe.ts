@@ -1,9 +1,6 @@
 /**
- * install-probe.ts：本机 QQ 安装位置探测（Windows 注册表 / 常见路径 / WSL 映射、
- * Linux deb 扁平布局）——2026-11-25 从 locate.ts 拆出。
- *
- * 纯定位、不下载：只回答「这台机器上哪儿有 wrapper.node」。下载/解包/缓存管线留在
- * locate.ts（它反向依赖本模块，单向）。
+ * install-probe.ts：本机 QQ 安装位置探测（Windows 注册表 / 常见路径 / WSL 映射、Linux deb 扁平布局），纯定位不下载。
+ * 下载 / 解包 / 缓存管线在 locate.ts，它单向依赖本模块。
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -61,7 +58,7 @@ function findQqViaCommonPaths(): string | null {
     ];
     for (const p of candidates) {
         // WSL 场景：Windows 盘挂载在 /mnt/<盘符>/（如 C:\ → /mnt/c/），
-        // 同一候选同时探测 Linux 侧映射路径（2026-08-13 koishi-app 实测报「未找到 QQ.exe」）。
+        // 同一候选同时探测 Linux 侧映射路径（否则会误报「未找到 QQ.exe」）。
         const wsl = wslMappedPath(p);
         if (existsSync(wsl)) {
             return wsl;
@@ -77,7 +74,6 @@ function findQqViaCommonPaths(): string | null {
  * Windows 路径 → WSL 挂载路径（`C:/...` → `/mnt/c/...`；非 Linux 或非盘符路径原样）。
  * WSL 默认把 Windows 盘符挂载到 `/mnt/<小写盘符>/`，Linux 侧 `existsSync` 必须用映射路径。
  * platform 参数可注入（测试用；缺省 process.platform）。
- * 导出便于单测（install-probe.test.ts）。
  * ⚠️ 不用 join 拼 `/mnt/...`：测试在 Windows 跑，win32 join 会产生反斜杠；目标路径
  * 是 Linux 侧路径（WSL 挂载点），必须恒正斜杠。
  */
@@ -168,7 +164,7 @@ export function resolveFromRoot(rootDir: string, source: QqFileSource): QqInstal
 export function resolveQqInstall(qqPath?: string): QqInstallInfo {
     const qq = qqPath ?? process.env["NAPUKETTO_QQ_PATH"] ?? locateQqPath();
     // Windows 安装结构：<installDir>/versions/<版本>/resources/app/wrapper.node
-    // ⚠️ dirname 跨平台：Linux/WSL 路径用正斜杠（lastIndexOf("\\") 会切错，2026-08-13 实测）；
+    // ⚠️ dirname 跨平台：Linux/WSL 路径用正斜杠（lastIndexOf("\\") 会切错）；
     // 反斜杠 Windows 路径在 posix dirname 下不切分（切错目录），非 win32 先归一化——
     // win32 不动原串，保持返回值分隔符与调用方输入一致（精确比对场景）
     const installDir = dirname(process.platform === "win32" ? qq : qq.replaceAll("\\", "/"));

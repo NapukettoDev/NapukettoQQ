@@ -1,14 +1,7 @@
 /**
- * @napuketto/kernel 入口（Flat 5-Tier Runtime）
- *
- * 五段式扁平分层：L0 `types/` + `infra/`（零内部依赖）→ L1 `native/`（原生防腐层）
- * → L2 `apis/`（无状态语义 API）→ L3 `runtime/`（登录 / 缓存 / 内核装配）。
- * 本文件是唯一根出口，逐层汇总公共面；导出符号与目录重构前逐项一致。
- *
- * 当前导出：类型化错误（ADR-017）、路径装配（ADR-016）、pino 日志（ADR-007）、
- * JSON 配置基类（ADR-012）、类型化事件通道（ADR-003）、QQ 版本探测（ADR-018）、
- * wrapper NAPI 引导（P1，2026-08-05 重构：loader 截获 exports 后初始化，无 koffi）。
- * apis / cache / login / bridge 均已接入（见下方导出）。
+ * @napuketto/kernel 入口（Flat 5-Tier Runtime）：唯一根出口，逐层汇总公共面。
+ * 分层：L0 `types/` + `infra/`（零内部依赖）→ L1 `native/`（原生防腐层）→ L2 `apis/`（无状态语义 API）
+ * → L3 `runtime/`（登录 / 缓存 / 内核装配）；wrapper NAPI 由 loader 截获 exports 后初始化，无 koffi。
  */
 
 // ---- L2：无状态语义 API（apis/）----

@@ -1,21 +1,7 @@
 /**
- * 优雅关停（2026-10-25 生命周期契约）：停止哨兵 + 关停钩子 + 信号接入。
- *
- * 背景：Windows 下 SIGTERM 无法投递给无控制台进程（嵌入式宿主 pipe 场景），
- * 既有 `napuketto stop` / 宿主只能 taskkill /T /F 树杀——被杀进程退出码 1，
- * 与真实崩溃无法区分。本模块提供两层机制，三层常驻进程
- * （supervisor / cli boot / self-host）共用：
- *
- * 1. 停止哨兵（规范化通道，宿主零 win32 依赖）：向 `<数据根>/napuketto.stop`
- *    写文件即请求该数据根下的进程树优雅退出。文件内容为目标账号
- *    （空 / "all" = 全部；"<uin>" = 单账号——`napuketto stop -q` 用）。
- *    守卫：mtime 晚于进程启动才触发（陈旧哨兵不触发，守护重启不误杀），
- *    每进程至多触发一次。轮询 500ms（fs.watch 跨平台创建事件不可靠）。
- * 2. 信号（终端场景）：SIGINT/SIGTERM/SIGBREAK（Windows CTRL_BREAK_EVENT
- *    可达）→ requestShutdown，走同一关停编排。
- *
- * 退出码契约：0 = 请求式正常退出；非 0 = 引导失败/运行时致命。taskkill /F
- * 兜底仍产出 code 1，宿主应优先用哨兵通道。
+ * 优雅关停：停止哨兵 + 关停钩子 + 信号接入（supervisor / cli boot / self-host 共用）；退出码契约 0 = 请求式正常退出，非 0 = 引导失败/运行时致命。
+ * Windows 下 SIGTERM 投递不到无控制台进程（嵌入式 pipe），只能 taskkill /T /F 树杀且退出码 1 与真实崩溃无法区分——宿主应优先用哨兵通道。
+ * 哨兵 `<数据根>/napuketto.stop`：内容空/"all" = 全部、"<uin>" = 单账号；mtime 晚于进程启动才触发（陈旧哨兵不触发），每进程一次，轮询 500ms。
  */
 
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";

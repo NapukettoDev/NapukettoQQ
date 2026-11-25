@@ -1,22 +1,6 @@
 /**
- * @napuketto/loader 入口
- *
- * 职责：自建宿主引导（2026-08-07 唯一路线）——标准 node + stub QQNT.dll 直接
- * dlopen wrapper.node 并启动 kernel（launchSelfHost → dist/host/self-host.cjs）。
- *
- * 目录分组（2026-11-25 领域分层；依赖严格单向）：
- *  - shared/    最底层工具（boot-log / data-root / package / type-guards）
- *  - contract/  跨进程契约（IPC schema / 原生噪音判定 / 协议键与 QR 标记）
- *  - lifecycle/ 进程治理（单实例锁 / cmdline 探活 / 优雅关停）
- *  - artifacts/ 腾讯产物获取链（manifests/ 为零源码依赖的版本清单层）
- *  - boot/      宿主进程装配与拉起（launcher / linux-native / win-node）
- *  - host/      自建宿主进程内运行时（入口 host/self-host.ts）
- *
- * 本入口只从「真实定义源」具名转发：不承载逻辑，也不再经 host/ 或中间文件
- * 二次透传（`package.json#exports` 与 `files` 契约保持不变）。
- *
- * 注：V1 注入框架（bootmain/hookdll）与 V2 载具（vehicle）已归档 archive/，
- * 本包不再编译 C++ 组件，业务层 100% 走 NAPI。
+ * @napuketto/loader 入口：只从各领域目录的真实定义源具名转发，不承载逻辑。
+ * 自建宿主路线——标准 node + stub QQNT.dll 直接 dlopen wrapper.node 后启动 kernel。
  */
 
 export type { DownloadOptions, DownloadResult } from "./artifacts/download.js";

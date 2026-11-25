@@ -1,16 +1,7 @@
 /**
- * media-patch-status：stub 补丁状态读取与引导日志（2026-11-14，issue #105 P2.1）
- *
- * 契约：私有 native/ stub 后台线程把补丁结果写入 NAPUTO_MEDIA_PATCH_STATUS
- * （launcher 注入，指向 <账号数据目录>/media-patch-status.json）：
- *   {"v":1,"state":"applied|degraded|disabled_by_env","componentA":"…",
- *    "componentB":"…","cleared":n,"reason":"…","tick":ms}
- * 组件 B（代码补丁）定案即先写 state=pending，组件 A（实例扫描）命中或窗口
- * 关闭后写终态——本模块在 bootstrap 完成后读一次并记日志；pending/缺失时
- * 45s 后复读一次（实例窗口最长 15 分钟，不无限等待）。
- *
- * 日志仅为观测面：补丁降级不阻塞宿主，协议层路径防御（kernel）兜底保证
- * 下游拿不到不存在的本地路径。
+ * media-patch-status：stub 补丁状态读取与引导日志（契约：stub 后台线程写 NAPUTO_MEDIA_PATCH_STATUS 指向的状态 JSON）。
+ * 组件 B（代码补丁）定案先写 pending，组件 A（实例扫描）命中或窗口关闭后写终态；bootstrap 后读一次，pending/缺失 45s 复读一次。
+ * 日志仅为观测面：补丁降级不阻塞宿主，协议层路径防御（kernel）兜底保证下游拿不到不存在的本地路径。
  */
 
 import { existsSync, readFileSync } from "node:fs";

@@ -1,25 +1,7 @@
 /**
- * extract.ts：QQ 官方安装包解包与提取（P1）。
- *
- * ⚠️ 格式事实（2026-08-12 实测修正）：QQ 官方安装包是 NSIS 自解压格式，
- * **7za standalone 不支持 NSIS**（只支持 7z/zip/tar 等）——必须用完整版
- * 7z（7z.exe + 7z.dll）。设计文档 §2.3 原「内置 7za.exe」修正为：
- *  - Windows：内置 assets/7zip/7z.exe + 7z.dll（7-Zip 官方，LGPL 合规可分发）
- *  - Linux/Docker：系统 p7zip-full（7z 完整版）
- *
- * ⚠️ 提取策略（2026-08-12 实测修正，与设计 §2.3 不同）：
- *  1. NSIS 解包产物在 <extracted>/Files/（NSIS 内部布局），Files/ = 安装根
- *  2. 真实 QQNT.dll（214MB）位于 versions/<v>/QQNT.dll，**自建宿主不需要**
- *     ——stub QQNT.dll 已替代其宿主符号职责（wrapper.node 的 v8/node/napi/qq_magic
- *     符号由 stub 转发到 node.exe）
- *  3. 只提取 resources/app 顶层 *.node + *.dll（wrapper.node 的直接/传递/delay-load
- *     依赖全覆盖，版本无关；跳过 wmpfsdk/avsdk 等大子目录，共约 235MB）
- *
- * 提取目标（与安装目录同构，resolveFromRoot 可直接消费）：
- *   <数据根>/qq-files/<版本>/versions/<版本>/resources/app/   ← *.node + *.dll
- *
- * 2026-11-25 P1 拆分：7-Zip 探测与执行（findSevenZip / runSevenZip）下沉
- * `seven-zip.ts`，本文件只留解包编排与文件提取（解包错误文案仍由 runSevenZip 统一）。
+ * extract.ts：QQ 官方安装包解包与提取——NSIS 自解压格式，7za standalone 不支持 NSIS，必须完整版 7z（7z.exe + 7z.dll）。
+ * NSIS 产物在 <extracted>/Files/，只取 resources/app 顶层 *.node + *.dll；214MB 真实 QQNT.dll 由 stub 替代，不需要。
+ * 顶层全取可覆盖 wrapper.node 的直接/传递/delay-load 依赖，与 QQ 版本无关；wmpfsdk/avsdk 等大子目录跳过。
  */
 import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readdir, rm } from "node:fs/promises";

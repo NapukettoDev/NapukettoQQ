@@ -1,36 +1,7 @@
 /**
- * cli config 子命令：init / list / apply（P6，2026-08-05；2026-08-07 配置文件移到项目根；
- * 2026-08-08 结构拍板：账号内嵌协议段）
- *
- * **全局单配置文件**：`<项目根>/napuketto.toml`（2026-08-07 用户拍板：配置文件放项目根，
- * 数据仍按数据根组织），本项目所有配置都在里面管理（TOML + smol-toml，配合 zod 校验，
- * 用户 2026-08-05 拍板：JSON 门槛太高）。本机配置不入库（.gitignore）。
- *
- * 2026-08-08 结构（用户拍板）：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
- * 账号内**，账号必填（至少一个，qq 必填）：
- *
- *   # dataDir = ".napuketto"    # 可选；缺省 = 项目根/.napuketto（跨平台）
- *   autoRestart = true
- *   restartDelayMs = 2000
- *   [[accounts]]
- *   qq = "123456"                # QQ 号（必填）
- *   enabled = true
- *   [accounts.onebot11]          # 该账号的 OB11 段（无 = 不启用）
- *   token = ""
- *   [[accounts.onebot11.httpServers]]
- *   enabled = true
- *   port = 3000
- *   [accounts.satori]            # 该账号的 Satori 段（无 = 不启用）
- *   [[accounts.satori.httpServers]]
- *   enabled = true
- *   port = 5500
- *
- * 配置文件路径解析见 kernel `resolveConfigPath`（NAPUKETTO_CONFIG 显式 > 项目根探测 > 数据根兜底）；
- * 校验器为手写 parse（适配 kernel ConfigBase 的 ConfigSchema 形状）；
- * 协议段由对应协议包的 zod schema 校验（boot 装配时按登录账号 uin 从 accounts 取段作 seed）。
- *
- * 2026-10-25 模块收拢：store/默认值/来源加载移入 config/store.ts，本文件只保留
- * 4 个子命令实现与只读校验。
+ * cli config 子命令：init / list / apply / validate（全局单配置文件 `<项目根>/napuketto.toml`，
+ * 一个 QQ 账号一个 [[accounts]] 段、协议段嵌在账号内；TOML + smol-toml，本机配置不入库）。
+ * 路径解析见 kernel `resolveConfigPath`（NAPUKETTO_CONFIG 显式 > 项目根探测 > 数据根兜底）。
  */
 import type { Dirent } from "node:fs";
 import { mkdirSync, readdirSync } from "node:fs";

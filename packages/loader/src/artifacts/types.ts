@@ -1,8 +1,6 @@
 /**
- * QQ 安装目录探测的纯类型契约（从 locate.ts 下沉）
- *
- * 供 locate / extract / boot / apps 层共享，避免 `extract -> locate`
- * 的环形值依赖（本文件零运行时导入）。
+ * QQ 安装目录探测的纯类型契约（零运行时导入）。
+ * 供 locate / extract / boot / apps 共享，避免 `extract -> locate` 的环形值依赖。
  */
 
 /** QQ 文件来源。 */
@@ -30,13 +28,10 @@ export interface ResolveQqFilesOptions {
     qqPath?: string;
     /** 数据根（L2 缓存扫描；缺省按 `NAPUKETTO_DATA` → 项目根 `/.napuketto` 轻量解析）。 */
     dataRoot?: string;
-    /** L0/L1/L2 全部失败时自动进入下载流程（P1；默认 true，测试可关）。 */
+    /** L0/L1/L2 全部失败时自动进入下载流程（默认 true，测试可关）。 */
     autoDownload?: boolean;
     /** 7z 可执行文件路径（解包用；缺省自动探测）。 */
     sevenZipPath?: string;
-    /**
-     * 阶段回调（下载/校验/解包/提取各阶段提示，2026-08-23 WSL 事故后加：
-     * 下载 313MB 全程静默，用户以为流程没生效）。调用方接 logger.info。
-     */
+    /** 阶段回调（下载/校验/解包/提取提示）：313MB 下载全程静默会让人以为流程没生效，调用方接 logger.info。 */
     onStage?: (message: string) => void;
 }

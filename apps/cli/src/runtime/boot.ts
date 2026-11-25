@@ -1,18 +1,7 @@
 /**
- * cli boot：单账号启动序列（2026-08-07 用户拍板：只保留自建宿主）
- *
- * resolveQqFiles（多级来源定位 QQ 原生文件）→ 解析各包 dist 入口 → launchSelfHost
- * （标准 node + stub QQNT.dll 直接 dlopen，不拉起 QQ / 不注入）→ 常驻。
- *
- * QQ 原生文件来源（本机未装 QQ 也能跑，2026-08-16 接入）：
- *   L0 NAPUKETTO_QQ_FILES 显式文件根 → L1 本机 QQ 安装（--qq-path / NAPUKETTO_QQ_PATH /
- *      注册表 / 常见路径）→ L2 数据根缓存 <数据根>/qq-files/<版本> → 全部缺失时
- *      自动下载官方安装包（sha256 校验 + 7z 解包 + 提取缓存，幂等）。
- * cached 来源下 qq.qqPath 为语义占位（缓存目录无 QQ.exe）——launchSelfHost 只消费
- * qq.wrapperPath / qq.version（NAPUKETTO_QQ_PATH 仅注入、self-host 未读取），占位安全。
- *
+ * cli boot：单账号启动序列——resolveQqFiles（多级来源定位 QQ 原生文件）→ 解析各包 dist 入口 →
+ * launchSelfHost（标准 node + stub QQNT.dll 直接 dlopen，不拉起 QQ / 不注入）→ 常驻。
  * 不写业务逻辑：kernel 装配 + 登录 + 协议装配全部在 self-host.cjs → boot-bootstrap.js 完成。
- * 路线 B（拉起 QQ + 注入）已淘汰（launchQqWithLoader 已移除，cli 只走自建宿主）。
  */
 import type { ChildProcess } from "node:child_process";
 import process from "node:process";
@@ -52,7 +41,6 @@ import {
     writeAccountRuntime,
 } from "./state.js";
 
-/** 单账号启动选项。 */
 export interface BootOptions {
     /** QQ 号（数据目录账号隔离，ADR-016）。 */
     qq?: string;
@@ -121,7 +109,7 @@ interface PackageEntries {
     networkEntry: string;
 }
 
-/** 解析自建宿主装配面的三个包入口（ESM 解析，顺序同旧实现）。 */
+/** 解析自建宿主装配面的三个包入口。 */
 async function resolvePackageEntries(): Promise<PackageEntries> {
     return {
         kernelEntry: await packageEntry("@napuketto/kernel"),
@@ -135,8 +123,14 @@ function resolveStubDir(opts: BootOptions): string {
     return opts.stubDir ?? process.env["NAPUKETTO_STUB_DIR"] ?? defaultStubDir();
 }
 
-/** QQ 原生文件多级来源 + 自动下载（本机未装 QQ 时走下载管线）。
- * 失败记录可操作提示并置 exitCode 1，返回 undefined（调用方提前返回）。 */
+/**
+ * QQ 原生文件多级来源 + 自动下载（本机未装 QQ 也能跑）：L0 NAPUKETTO_QQ_FILES 显式文件根 →
+ * L1 本机 QQ 安装（--qq-path / NAPUKETTO_QQ_PATH / 注册表 / 常见路径）→ L2 数据根缓存
+ * `<数据根>/qq-files/<版本>` → 全缺失时下载官方安装包（sha256 校验 + 7z 解包 + 提取缓存，幂等）。
+ * cached 来源下 qq.qqPath 为语义占位（缓存目录无 QQ.exe）——launchSelfHost 只消费
+ * qq.wrapperPath / qq.version（NAPUKETTO_QQ_PATH 仅注入、self-host 未读取），占位安全。
+ * 失败记录可操作提示并置 exitCode 1，返回 undefined（调用方提前返回）。
+ */
 async function locateQqFiles(
     dataRoot: string,
     opts: BootOptions,
@@ -160,12 +154,10 @@ async function locateQqFiles(
 }
 
 /**
- * 单实例锁预检（2026-08-07 根治「多实例抢数据目录锁挂起」）：同一账号数据
- * 目录只允许一个实例（QQ 原生层 MMKV/登录单例有锁，第二个实例抢不到锁会卡死）。
- * 占用 → 快速失败并提示占用 PID；残留（PID 已死 / PID 被复用，2026-09-10
- * cmdline 校验根治）→ self-host 会自动接管。真正的锁由 self-host 子进程
- * 获取/释放（它才是数据目录的实际持有者），cli 这里只做 spawn 前预检，
- * 给用户友好提示（supervisor 等批量拉起同用）。
+ * 单实例锁预检：同一账号数据目录只允许一个实例（QQ 原生层 MMKV/登录单例有锁，第二个实例
+ * 抢不到锁会卡死）。占用 → 快速失败并提示占用 PID；残留（PID 已死 / PID 被复用，靠 cmdline
+ * 校验识别）→ self-host 会自动接管。真正的锁由 self-host 子进程获取/释放（它才是数据目录的
+ * 实际持有者），cli 这里只做 spawn 前预检给友好提示（supervisor 等批量拉起同用）。
  * @returns 可用 true；占用时记录错误并置 exitCode 1 返回 false
  */
 function ensureInstanceLockFree(cfgDir: string): boolean {
@@ -183,8 +175,8 @@ function ensureInstanceLockFree(cfgDir: string): boolean {
 }
 
 /** 启动信息走结构化日志（时间戳 + 级别 + pid + 元数据，与 kernel 子进程格式一致）。
- * 2026-10-25 级别重分配：引导细节降 debug（banner 之外的定位/路径细节对运行
- * 状态无信息量），致命错误与登录/退出生命周期保持 info 及以上。 */
+ * 引导细节降 debug（banner 之外的定位/路径细节对运行状态无信息量），
+ * 致命错误与登录/退出生命周期保持 info 及以上。 */
 function logBootInfo(qq: QqInstallInfo, cfgDir: string): void {
     logger.debug({ qqVersion: qq.version, qqPath: qq.qqPath, source: qq.source }, "QQ 文件来源");
     logger.debug({ dataDir: cfgDir }, "数据目录");
@@ -201,14 +193,14 @@ interface SelfHostLaunchContext {
     stubDir: string;
 }
 
-/** launchSelfHost 调用参数构造（唯一启动路径：自建宿主，2026-08-07 用户拍板）。
+/** launchSelfHost 调用参数构造（唯一启动路径：自建宿主）。
  * configPath：全局配置文件（项目根 napuketto.toml），注入 NAPUKETTO_CONFIG 供装配链读取；
  *   内联配置生效（NAPUKETTO_CONFIG_JSON）时不解析、不注入——子进程经 env 继承
  *   内联文本，装配链按同一优先级读取；避免项目根探测出无关路径注入孙进程。
  * extraEnv：传播有效控制台渲染决策（子进程 stdout 恒 pipe，TTY 判定失真）+
  *   数据根（NAPUKETTO_DATA_ROOT，self-host 停止哨兵目录）。
  * cwd：子进程 cwd 指向数据根——QQ 原生层 fallback 落盘（guild1.db 等）落在专门
- *   的数据目录，不污染项目根（实测 08-07）。 */
+ *   的数据目录，不污染项目根。 */
 function buildLaunchOptions(ctx: SelfHostLaunchContext): LaunchOptions {
     const { opts, qq, cfgDir, dataRoot, entries, stubDir } = ctx;
     return {
@@ -231,7 +223,7 @@ function buildLaunchOptions(ctx: SelfHostLaunchContext): LaunchOptions {
 }
 
 /** 启动自建宿主子进程（包入口解析 → stub 目录 → 启动信息 → launchSelfHost）。
- * ⚠️ P2（2026-08-12）：launchSelfHost 变 async（win32 非 node 宿主需解析/下载 win-node）。 */
+ * ⚠️ launchSelfHost 是 async（win32 非 node 宿主需解析/下载 win-node）。 */
 async function startSelfHost(
     opts: BootOptions,
     qq: QqInstallInfo,
@@ -275,8 +267,7 @@ function isSupervisedChild(): boolean {
 }
 
 /**
- * 单账号运行时状态落盘（napuketto status/stop 消费，2026-09-08 T8；
- * pid 记 boot 进程——树杀连带 self-host 孙进程）。
+ * 单账号运行时状态落盘（napuketto status/stop 消费；pid 记 boot 进程——树杀连带 self-host 孙进程）。
  *
  * 托管模式（supervisor 拉起）下 runtime.json 的所有权在 supervisor：`kind`、
  * `restartCount`、启动时间与 boot pid 由它写入，本函数只合并补充 selfHostPid /
@@ -337,7 +328,7 @@ interface GracefulStop {
     dispose: () => void;
 }
 
-/** 优雅关停编排（2026-10-25 生命周期契约）：触发后等 self-host 经自身哨兵/信号
+/** 优雅关停编排：触发后等 self-host 经自身哨兵/信号
  * 处理自行退出（exit 0），10s 未退则 kill 兜底（Windows 下为硬杀）——
  * boot 进程随后随 child 退出自然返回（退出码 0 = 请求式正常退出）。
  * 返回句柄由 runSingleAccount 在 waitSelfHostExit 的 finally 中 dispose：
@@ -406,7 +397,7 @@ function installGracefulStop(child: ChildProcess, dataRoot: string, account: str
 /**
  * 常驻：等待自建宿主进程退出（exit / error 两路径均 resolve，去留由 self-host 决定）。
  *
- * 退出码契约（issue #144）：boot 进程必须把 self-host 的失败退出码透传给父进程
+ * 退出码契约：boot 进程必须把 self-host 的失败退出码透传给父进程
  * （supervisor / 容器编排），否则 supervisor 的 `EXIT_CONFIG_INVALID(78)` 免重启
  * 判定永远不命中，所有失败都被当成 code=0 正常退出。规则：
  *  - 收到停止请求（isStopping）→ 0（请求式正常退出，与崩溃区分）；

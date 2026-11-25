@@ -1,18 +1,7 @@
 /**
- * FriendBridge：好友事件桥（2026-09-08）
- *
- * 职责：把 buddy service 的原生回调（onBuddyReqChange / onBuddyListChange 等）
- * 推入类型化事件通道 `NTEventChannel<BuddyListener, "Buddy">`。与 MsgBridge/
- * GroupBridge 同构（每个 Service 只注册一次原生监听，ADR-003）。
- *
- * 方法名证据：wrapper.node（9.9.33-52230）二进制字符串提取；参数形状
- * 待真实事件校准（透传 unknown，订阅方防御性收窄）。
- *
- * 用法：
- *   const channel = new NTEventChannel<BuddyListener, "Buddy">("Buddy");
- *   const bridge = new FriendBridge(session, channel);
- *   bridge.register();   // addKernelBuddyListener（普通 JS 对象，NAPI 反射）
- *   bridge.unregister(); // 停止时清理
+ * FriendBridge：把 buddy service 的原生回调（onBuddyReqChange / onBuddyListChange 等）推入
+ * `NTEventChannel<BuddyListener, "Buddy">`（与 MsgBridge / GroupBridge 同构，ADR-003）。
+ * 方法名证据：wrapper.node（9.9.33-52230）二进制字符串提取；参数形状待真实事件校准（透传 unknown）。
  */
 
 import type { NTEventChannel } from "../../infra/event-channel.js";

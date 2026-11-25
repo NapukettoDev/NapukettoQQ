@@ -1,13 +1,6 @@
 /**
- * loader 本地运行时类型守卫（零内部依赖；2026-11-25 由 host/ 下沉到 shared/）
- *
- * loader 编译期只依赖 zod（运行期动态 import kernel），因此不能复用
- * `@napuketto/kernel` 的守卫实现。这里提供同语义的最小集合，供动态 import
- * 结果、IPC 参数、原生反射对象收窄——禁止调用点再用 `as` 强转。
- *
- * 分层：shared/ 是最底层（boot / lifecycle / qq / host 都可依赖），因此
- * `getErrorMessage` 是**唯一**错误信息提取口径；此前的 `errMsg` 别名已删除，
- * 调用点统一改为 `getErrorMessage`。
+ * loader 本地运行时类型守卫。shared/ 是最底层，编译期只依赖 zod，因此不能复用 `@napuketto/kernel` 的守卫实现。
+ * 动态 import 结果、IPC 参数、原生反射对象一律经此收窄；`getErrorMessage` 是唯一错误信息提取口径。
  */
 
 /** 判断未知值是否为非 null、非数组的普通对象 Record。 */
@@ -15,7 +8,6 @@ export function isRecord(val: unknown): val is Record<string, unknown> {
     return typeof val === "object" && val !== null && !Array.isArray(val);
 }
 
-/** 判断未知值是否为可调用函数。 */
 export function isCallable(val: unknown): val is (...args: unknown[]) => unknown {
     return typeof val === "function";
 }

@@ -1,16 +1,11 @@
 /**
- * 子进程输出逐行切分（boot / supervisor 共用）。
- *
- * 为什么不用 `readline.createInterface`：readline 对「无换行符的超大输出」没有
- * 缓冲上限，原生层（QQ wrapper.node）异常刷屏或误写二进制时会把整块数据积在
- * 内存里，直到换行符出现才触发 line 事件。这里用轻量切分器保留逐行语义
- * （UTF-8 多字节跨 chunk 由 StringDecoder 拼接、\r\n 归一），同时给单行缓冲设
- * 上限：超过上限的部分直接丢弃，行结束时补 `…[truncated]` 标记。
- * 上限按字符计（UTF-16 code unit），64 KiB 对正常日志行足够宽松。
+ * 子进程输出逐行切分（boot / supervisor 共用）：不用 `readline.createInterface` 是因为它对
+ * 「无换行符的超大输出」没有缓冲上限（原生层 wrapper.node 刷屏会把整块数据积在内存里）。
+ * 这里用 StringDecoder 拼多字节、`\r\n` 归一，并给单行缓冲设上限，超出部分丢弃并标记截断。
  */
 import { StringDecoder } from "node:string_decoder";
 
-/** 单行缓冲上限（字符）：异常无换行输出在此截断，防止无界内存累积。 */
+/** 单行缓冲上限（字符，UTF-16 code unit）：64 KiB 对正常日志行足够宽松，异常无换行输出在此截断。 */
 export const MAX_LINE_LENGTH = 64 * 1024;
 
 /** 截断行尾标记（保留 grep 可见性，避免静默丢数据）。 */

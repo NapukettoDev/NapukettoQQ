@@ -1,11 +1,7 @@
 /**
- * CoreContext：只读装配根（ADR-015 推论，无全局单例）
- *
- * 把 logger / paths / wrapper 上下文聚合成单一装配根，由装配层（NapukettoCore）
- * 创建并传递给消费方（协议层 adapter、apis、cache）。
- *
- * - 无全局单例：每账号每进程一份，多账号多进程场景天然隔离（ADR-015）。
- * - 只读消费：字段由装配层填充，消费方只读，不直接修改。
+ * CoreContext：只读装配根（无全局单例）：把 logger / paths / wrapper 上下文聚合成单一装配根，
+ * 由装配层（NapukettoCore）创建并传递给消费方（协议层 adapter、apis、cache）。
+ * 每账号每进程一份，多账号多进程场景天然隔离（ADR-015）；字段由装配层填充，消费方只读。
  */
 import type pino from "pino";
 import type { PathWrapper } from "../infra/index.js";

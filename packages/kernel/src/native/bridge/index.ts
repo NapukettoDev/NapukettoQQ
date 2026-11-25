@@ -1,9 +1,6 @@
 /**
- * kernel 事件桥公共出口
- *
- * 把原生 service 回调推入类型化事件通道（ADR-003）：群事件（GroupBridge）+
- * 消息事件（MsgBridge）+ 好友事件（FriendBridge）+ 会话列表（RecentContactBridge）+
- * 登录状态（LoginBridge）。缓存维护与协议层都订阅 channel。
+ * kernel 事件桥公共出口：把原生 service 回调推入类型化事件通道（ADR-003）——
+ * 群 / 消息 / 好友 / 会话列表 / 登录状态五类；缓存维护与协议层都订阅 channel。
  */
 export type { BuddyEventChannel } from "./friend-bridge.js";
 export { FriendBridge } from "./friend-bridge.js";

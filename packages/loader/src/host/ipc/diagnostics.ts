@@ -1,13 +1,7 @@
 /**
- * diagnostics.ts：显式启用的 IPC 诊断动作（默认不注册）。
- *
- * 安全边界（H-01）：
- *  - 常规动作表不含 `diag.*`；只有 `NAPUKETTO_DIAG=1` / `LaunchOptions.diagnostics`
- *    显式开启时才注册，避免外部驱动无意触达原生反射面。
- *  - 每个目标只接受固定方法 allowlist（`__methods` + 诊断必要的少量方法），参数数量有上限；
- *    未知、危险或不在列表的方法直接拒绝。
- *  - `diag.richMediaTmpPaths` 只读枚举，不再触发 setters 等副作用；更激进的实验应使用
- *    kernel 自己的探针原语，不扩大 IPC 面。
+ * diagnostics.ts：显式启用的 IPC 诊断动作——常规动作表不含 `diag.*`，只有 NAPUKETTO_DIAG 显式开启才注册。
+ * 每个目标只接受固定方法 allowlist（`__methods` + 少量诊断方法），参数数量有上限，未知/危险方法直接拒绝。
+ * `diag.richMediaTmpPaths` 只读枚举，不触发 setters 等副作用；更激进的实验走 kernel 自己的探针原语，不扩大 IPC 面。
  */
 import {
     getErrorMessage,

@@ -1,10 +1,7 @@
 /**
- * MSF 网络连接与 loginService 连接等待（从 `login-connect.ts` 拆出）
- *
- * - waitForNetworkConnection：等 MSF 网络连接就绪（getMsfStatus() === 3）
- * - ensureLoginConnected：connect() → 等 onLoginConnected（自建宿主必需）
- *
- * 快速登录/重试在 `quick-login.ts`（本文件不反向依赖）。
+ * MSF 网络连接与 loginService 连接等待：waitForNetworkConnection 等 getMsfStatus() === 3，
+ * ensureLoginConnected 走 connect() → 等 onLoginConnected（自建宿主必需）。快速登录/重试在
+ * `quick-login.ts`（本文件不反向依赖）。
  */
 import { hasFunctionProp, isRecord, sleep, waitFor } from "../../infra/index.js";
 import type { WrapperContext } from "../../native/wrapper/lifecycle.js";
@@ -22,7 +19,7 @@ export const NETWORK_READY_TIMEOUT_MS = 15_000;
 /** 网络就绪轮询间隔（毫秒）。 */
 const NETWORK_READY_POLL_MS = 1000;
 
-/** 连接稳定缓冲（毫秒，p0-kernel-flow 实证值）。 */
+/** 连接稳定缓冲（毫秒，实测值）。 */
 const CONNECTION_SETTLE_MS = 3000;
 
 /** 登录连接所需的最小方法面（connect / add / remove 监听均可缺省）。 */
@@ -75,12 +72,11 @@ export function waitForNetworkConnection(
 }
 
 /**
- * 登录服务连接（自建宿主必需，HANDOVER-V6/V10 p0-kernel-flow 实证顺序）：
- * connect() → 等 onLoginConnected。不 connect 则快速登录报「登录系统连接异常」。
+ * 登录服务连接（自建宿主必需，实测顺序）：connect() → 等 onLoginConnected。
+ * 不 connect 则快速登录报「登录系统连接异常」。
  *
- * 对齐 p0-kernel-flow：initConfig → getLoginList → connect + onLoginConnected →
- * quickLoginWithUin。QQ 环境（worker/主进程）下可能已连接——connect 幂等，
- * 监听器超时兜底，不影响原流程。
+ * 顺序：initConfig → getLoginList → connect + onLoginConnected → quickLoginWithUin。
+ * QQ 环境（worker/主进程）下可能已连接——connect 幂等，监听器超时兜底，不影响原流程。
  */
 export async function ensureLoginConnected(
     ctx: WrapperContext,
@@ -91,8 +87,8 @@ export async function ensureLoginConnected(
         return; // 无 connect（老版本 / QQ 主进程自连），跳过
     }
     await waitLoginConnected(raw, opts.timeoutMs);
-    // onLoginConnected 后网络栈仍在初始化（p0-kernel-flow 实证：connect → onLoginConnected
-    // → 3s 缓冲 → quickLoginWithUin 成功；无缓冲则「登录系统连接异常」）。
+    // onLoginConnected 后网络栈仍在初始化（实测：connect → onLoginConnected → 3s 缓冲
+    // → quickLoginWithUin 成功；无缓冲则「登录系统连接异常」）。
     await sleep(CONNECTION_SETTLE_MS);
 }
 

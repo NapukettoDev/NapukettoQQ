@@ -1,10 +1,6 @@
 /**
- * 快速登录（历史账号）与网络重试（从 `login-connect.ts` 拆出）
- *
- * - getLoginList → 账号选取 → quickLoginWithUin
- * - 网络异常 1006511 / 「登录系统连接异常」→ 等 MSF 就绪后重试
- * - T3 单步超时兜底：底层 promise 永久挂起时按登录失败抛出
- *
+ * 快速登录（历史账号）与网络重试：getLoginList → 账号选取 → quickLoginWithUin；网络异常 1006511 /
+ * 「登录系统连接异常」→ 等 MSF 就绪后重试；单步超时兜底（底层 promise 永久挂起时按登录失败抛出）。
  * 连接等待（connect / onLoginConnected / getMsfStatus）在 `msf-connection.ts`。
  */
 import { kernelError, raceWithTimeout } from "../../infra/index.js";
@@ -88,7 +84,7 @@ export function extractLoginErrMsg(result: unknown): string {
     return "未知登录错误";
 }
 
-/** 快速登录网络异常错误码（1006511，P2-1 实测：登录前网络未就绪时报此错）。 */
+/** 快速登录网络异常错误码（1006511，实测：登录前网络未就绪时报此错）。 */
 const NETWORK_ERROR_CODE = "1006511";
 
 /** 登录连接异常错误提示（自建宿主实测：connect 后未缓冲即 quickLogin 报此错）。 */
@@ -98,7 +94,7 @@ const CONNECTION_ERROR_HINT = "登录系统连接异常";
 const NETWORK_RETRY_MAX = 3;
 
 /**
- * 快速登录单步超时（毫秒，T3：软重登挂起兜底）。
+ * 快速登录单步超时（毫秒，软重登挂起兜底）。
  * 服务端已有同账号会话时底层 quickLoginWithUin / getLoginList 永不 settle——
  * 裸 await 会让 core.login 的 catch/qrFallback、loader 的 control.release 全部
  * 永久等待。底层 promise 无法取消：超时后悬挂丢弃即可。
@@ -116,8 +112,8 @@ export async function listLoginAccounts(ctx: WrapperContext): Promise<LoginAccou
 }
 
 /**
- * 目标账号选择（2026-08-07 修复：显式 uin 不在列表时**报错**而非静默 fallback——
- * 之前会退到第一个可快速登录账号，导致 `-q <uin>` 实际登成别的号）。
+ * 目标账号选择（显式 uin 不在列表时**报错**而非静默 fallback：静默回退会退到
+ * 第一个可快速登录账号，导致 `-q <uin>` 实际登成别的号）。
  * 导出供单测（quick-login.test.ts）。
  */
 export function pickLoginTarget(
@@ -148,9 +144,9 @@ export function pickLoginTarget(
 type AttemptResult = { ok: true; result: LoginResult } | { ok: false; errMsg: string };
 
 /**
- * 带网络重试的快速登录（P2-1）。
+ * 带网络重试的快速登录。
  * 重试语义：仅当失败为网络异常（1006511）且未达上限时，等网络就绪后重试。
- * T3：每次尝试包超时竞速，挂起按登录失败处理（超时文案非网络错误 → 不重试）。
+ * 每次尝试包超时竞速，挂起按登录失败处理（超时文案非网络错误 → 不重试）。
  */
 async function loginWithNetworkRetry(
     ctx: WrapperContext,
@@ -213,16 +209,16 @@ export function isNetworkError(errMsg: string): boolean {
 export interface QuickLoginOptions {
     /** 指定快速登录账号（缺省遍历历史列表，优先 isQuickLogin）。 */
     uin?: string | undefined;
-    /** 网络就绪等待超时（毫秒，P2-1 既有语义），默认 15s。 */
+    /** 网络就绪等待超时（毫秒），默认 15s。 */
     timeoutMs?: number | undefined;
-    /** 单步快速登录超时（毫秒，T3 挂起兜底），默认 {@link QUICK_LOGIN_TIMEOUT_MS}。 */
+    /** 单步快速登录超时（毫秒，挂起兜底），默认 {@link QUICK_LOGIN_TIMEOUT_MS}。 */
     quickLoginTimeoutMs?: number | undefined;
 }
 
 /**
  * 快速登录：遍历历史登录列表尝试。
- * P2-1：失败且错误为网络异常（1006511）时，等网络就绪后重试（最多 NETWORK_RETRY_MAX 次）。
- * T3：getLoginList 与每次 quickLoginWithUin 均包超时竞速（默认 20s）——服务端
+ * 失败且错误为网络异常（1006511）时，等网络就绪后重试（最多 NETWORK_RETRY_MAX 次）。
+ * getLoginList 与每次 quickLoginWithUin 均包超时竞速（默认 20s）——服务端
  * 已有会话时底层 promise 永久挂起，超时按登录失败（「快速登录失败: 快速登录超时」）
  * 抛出，上层 catch/qrFallback 语义自动生效。
  */

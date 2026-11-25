@@ -1,10 +1,6 @@
 /**
- * FriendApi：好友语义化 API（ADR-009 统一错误语义）
- *
- * 内部解包原生返回：成功返回纯业务值，失败抛 KernelError。
- * 方法面（P2-4 + P2-11）：好友列表（uid + 昵称/备注）+ 好友请求
- * （getBuddyReq / approvalFriendRequest / setBuddyRemark / delBuddy /
- * getDoubtBuddyReq / approvalDoubtBuddyReq）。
+ * FriendApi：好友语义化 API（ADR-009 统一错误语义），内部解包原生返回，失败抛 KernelError。
+ * 方法面：好友列表（含分类）+ 好友请求（审批 / 备注 / 删除 / 可疑申请）。
  */
 import { kernelError } from "../../infra/index.js";
 import { requireKernelService } from "../../infra/type-guards.js";

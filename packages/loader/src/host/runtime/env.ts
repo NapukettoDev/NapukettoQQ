@@ -1,15 +1,7 @@
 /**
- * env.ts：引导进程环境变量访问层（2026-08-07 阶段 2）。
- *
- * 根 tsconfig 开启 noPropertyAccessFromIndexSignature——process.env 是索引签名
- * 类型（Record<string, string | undefined>），点访问会报 TS4111；且 useNamingConvention
- * 不允许 typeMember 用 CONSTANT_CASE。故改为「对象字面量快照」：
- *  - 对象字面量成员允许 CONSTANT_CASE（biome 配置），键是字面量 → env.XXX 点访问合法
- *  - 快照语义：引导进程内环境变量不变（launcher spawn 前注入完毕），取一次即可
- *
- * 前缀唯一（2026-11）：只读规范前缀 `NAPUKETTO_*`，不做旧拼写别名兼容，属性名与环境
- * 变量名一一对应。唯一例外是闭源 stub 硬编码的原生契约键 `NAPUTO_MEDIA_PATCH_STATUS`
- * （禁止改名）。
+ * env.ts：引导进程环境变量访问层——对象字面量快照，取一次即可（launcher spawn 前已注入完毕）。
+ * noPropertyAccessFromIndexSignature 让 process.env 点访问报 TS4111，故用字面量成员携带 CONSTANT_CASE 键名。
+ * 前缀唯一：只读规范前缀 `NAPUKETTO_*`，不做旧拼写别名兼容；唯一例外是闭源 stub 硬编码的 `NAPUTO_MEDIA_PATCH_STATUS`（禁止改名）。
  */
 const env = {
     /** kernel 入口（.mjs，bootstrap 动态 import）。 */
@@ -42,18 +34,18 @@ const env = {
     NAPUKETTO_SMOKE_PEER: process.env["NAPUKETTO_SMOKE_PEER"],
     /** 运行时探测开关（=1 触发 probeRuntime）。 */
     NAPUKETTO_PROBE: process.env["NAPUKETTO_PROBE"],
-    /** listener 录制器开关（=1 触发 startListenerRecording，先于探测挂起——批次三前置）。 */
+    /** listener 录制器开关（=1 触发 startListenerRecording，先于探测挂起）。 */
     NAPUKETTO_LISTENER_RECORD: process.env["NAPUKETTO_LISTENER_RECORD"],
     /** 全局 TOML 配置显式路径（优先级最高）。 */
     NAPUKETTO_CONFIG: process.env["NAPUKETTO_CONFIG"],
-    /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPUKETTO_CONFIG 文件，2026-10-25）。 */
+    /** 内联主配置 JSON 文本（嵌入式宿主注入；优先级高于 NAPUKETTO_CONFIG 文件）。 */
     NAPUKETTO_CONFIG_JSON: process.env["NAPUKETTO_CONFIG_JSON"],
     /** 数据根（kernel 数据目录，cleanCache 用）。 */
     NAPUKETTO_DATA: process.env["NAPUKETTO_DATA"],
     /** 数据根（launcher 注入，停止哨兵目录解析用）。 */
     NAPUKETTO_DATA_ROOT: process.env["NAPUKETTO_DATA_ROOT"],
     /**
-     * 入站图片自动下载补丁状态文件路径（launcher 注入；stub 后台线程写 JSON，2026-11-14）。
+     * 入站图片自动下载补丁状态文件路径（launcher 注入；stub 后台线程写 JSON）。
      * 原生二进制硬编码读 `NAPUTO_MEDIA_PATCH_STATUS`：属性名与环境变量名一致，
      * 不设新前缀别名（闭源 native 契约零破坏）。
      */

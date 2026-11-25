@@ -1,15 +1,7 @@
 /**
- * 实体类型层（运行时探测产物 + 公开资料作说明书，ADR-006）
- *
- * ⚠️ 部分字段按公开资料（wrapper 外部契约）自研描述，待下一次进程内
- * 探测（probe.ts）校准——接口签名是外部系统事实，自研描述其形状。
- *
- * ⚠️ 跨平台空值契约（2026-11 Linux 3.2.x 线上事故）：Windows 原生对象省略
- * 未命中的变体字段（`undefined`），Linux 原生对象则把未命中的变体字段**显式
- * 置 `null`**（纯文本元素的 `picElement: null` / `grayTipElement: null` 等），
- * 元素子字段同样可能是 null。因此本文件所有可选字段都声明为 `T | null`
- * （而非仅 `T`）：读取方必须用 `== null` / `!= null`（同时覆盖 null 与
- * undefined），禁止只判 `=== undefined`。这样编译器会持续拦截新的漏网读取。
+ * 实体类型层（运行时探测产物 + 公开资料作说明书，ADR-006）：接口签名是外部系统事实。
+ * ⚠️ 跨平台空值契约：Windows 原生对象省略未命中的变体字段（undefined），Linux 3.2.x 则显式
+ * 置 null（纯文本元素的 `picElement: null` 等），故可选字段都声明 `T | null`、读取必须用 `== null`。
  */
 
 /** 会话类型（QQ wrapper 外部契约）。 */
@@ -36,7 +28,7 @@ export interface TextElement {
     /**
      * 单人 at 目标的 **数字 UIN**（QQ 号字符串）。
      *
-     * ⚠️ 不是 NT UID：把 `u_...` 写进本字段会被 wrapper 归零成 `"0"`（issue #192）。
+     * ⚠️ 不是 NT UID：把 `u_...` 写进本字段会被 wrapper 归零成 `"0"`。
      * 客户端原生元素里它是 atNtUid 的冗余镜像；`@全体` 缺省。
      */
     atUid?: string | null;
@@ -60,7 +52,7 @@ export interface PicElement {
     fileName?: string | null;
     sourcePath?: string | null;
     thumbPath?: string | null;
-    // 发送用完整字段（NapCat 式，2026-08-11 实证：缺任一发送失败）
+    // 发送用完整字段（NapCat 式，实测：缺任一发送失败）
     md5HexStr?: string | null;
     fileSize?: string | null;
     original?: boolean | null;
@@ -79,7 +71,7 @@ export interface PttElement {
     duration?: number | null;
     /** 语音转文字结果（translatePtt2Text 异步写回）。 */
     text?: string | null;
-    // 发送用完整字段（NapCat 式，2026-08-12 实证：只给 filePath 会触发 wrapper
+    // 发送用完整字段（NapCat 式，实测：只给 filePath 会触发 wrapper
     // 内部 "Cannot convert undefined or null to object"（缺字段转换失败））
     md5HexStr?: string | null;
     fileSize?: string | null;
@@ -93,7 +85,7 @@ export interface PttElement {
     autoConvertText?: number | null;
     storeID?: number | null;
     otherBusinessInfo?: { aiVoiceType: number } | null;
-    // 收向完整字段（2026-09-08 B1 实测快照，getLatestDbMsgs 历史消息提取）
+    // 收向完整字段（实测快照，getLatestDbMsgs 历史消息提取）
     fileId?: number | null;
     fileUuid?: string | null;
     translateStatus?: number | null;
@@ -130,7 +122,7 @@ export interface VideoElement {
     videoUrl?: string | null;
     fileName?: string | null;
     fileSize?: string | null;
-    // 接收字段（2026-10-17 收向实测快照，getLatestDbMsgs 历史视频消息）
+    // 接收字段（收向实测快照，getLatestDbMsgs 历史视频消息）
     videoMd5?: string | null;
     thumbMd5?: string | null;
     /** 时长（秒）。 */
@@ -172,7 +164,7 @@ export interface FileElement {
     fileName?: string | null;
     fileSize?: string | null;
     fileUuid?: string | null;
-    /** 文件 md5（2026-11-01 录制实证：私聊文件消息必带；官方 Milky file_hash 为 TriSHA1，见 milky.md §0.8.6）。 */
+    /** 文件 md5（录制实证：私聊文件消息必带；官方 Milky file_hash 为 TriSHA1，见 milky.md §0.8.6）。 */
     file10MMd5?: string | null;
     /** 文件 sha1（录制实证：接收侧为空，上传侧携带）。 */
     fileSha?: string | null;
@@ -280,7 +272,7 @@ export interface RawElement {
     videoElement?: VideoElement | null;
     fileElement?: FileElement | null;
     grayTipElement?: GrayTipElement | null;
-    /** ARK 卡片元素（elementType=10 ARK，小程序/分享卡片，2026-10-25 B 站卡片实测）。bytesData 为卡片 JSON 字符串；其余字段待探测校准。 */
+    /** ARK 卡片元素（elementType=10 ARK，小程序/分享卡片，B 站卡片实测）。bytesData 为卡片 JSON 字符串；其余字段待探测校准。 */
     arkElement?: { bytesData: string } | null;
     /** 合并转发元素（elementType=16 MULTI_FORWARD）。 */
     multiForwardMsgElement?: {
@@ -307,7 +299,7 @@ export interface RawMessage {
     sendMemberName?: string | null;
     /** 发送状态（0=失败 1=发送中 2=成功 3=成功无seq）。onMsgInfoListUpdate 事件填充。 */
     sendStatus?: number | null;
-    /** 发送方向（2026-11-01 录制实证：文件消息 0=收到 2=自己发出；is_self 判据）。 */
+    /** 发送方向（录制实证：文件消息 0=收到 2=自己发出；is_self 判据）。 */
     sendType?: number | null;
     elements: RawElement[];
     records?: RawMessage[] | null;

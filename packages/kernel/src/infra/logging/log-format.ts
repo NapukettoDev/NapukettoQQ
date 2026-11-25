@@ -1,19 +1,7 @@
 /**
- * 控制台渲染流（pretty / single-line / json，2026-10-25 日志可配置化；
- * 2026-11-03 起 pretty 自渲染，移除对 pino-pretty 的依赖）。
- *
- * 三种格式共用同一个「pino JSON 行 → 人读行」渲染入口（文件目的地恒为 JSON 行，
- * 不受本模块影响）：
- *
- *   pretty：多行彩色，终端交互形态
- *           `[HH:MM:ss.l] INFO (name/pid): 消息` + 逐行 `key: value`（4 空格缩进，
- *           嵌套对象/数组按 JSON 形状展开；字段名紫、消息青、级别按级别着色）
- *   single-line：`[时间] LEVEL (name/pid): 消息 key=value key=value`
- *   json：NDJSON，每行 {time, level, module, account?, pid, msg, ...fields}
- *
- * 时间渲染（LogConfig.timestamp）：local = [HH:MM:ss.l]（与 history 一致）、
- * iso8601 = 2026-10-25T16:01:33.294+08:00、elapsed = +123.456s（进程内单调秒）。
- * json 的 time 恒为 ISO8601（机器可解析契约，不受 timestamp 键影响）。
+ * 控制台渲染流（pretty / single-line / json 全部自渲染，不依赖 pino-pretty）：三种格式共用同一「pino JSON 行 → 人读行」入口。
+ * 文件目的地恒为 JSON 行，不受本模块影响；json 的 time 恒为 ISO8601（机器可解析契约，不受 timestamp 键影响）。
+ * 时间渲染：local = [HH:MM:ss.l]、iso8601 = 2026-10-25T16:01:33.294+08:00、elapsed = +123.456s（进程内单调秒）。
  */
 import process from "node:process";
 import type pino from "pino";

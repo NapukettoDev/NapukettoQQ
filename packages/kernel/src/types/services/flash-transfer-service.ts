@@ -1,11 +1,7 @@
 /**
- * NodeIKernelFlashTransferService：闪传服务接口面（自研描述，非移植）
- *
- * 依据：运行时探测（kernel design §15）。接口签名是外部系统的事实，此处自研描述其形状，
- * 零复制实现。只收录 apis/flash-transfer 用到的方法；其余按需探测后补齐。
- *
- * 通道语义：**上传文件集 + 发分享卡片**（`qfile.qq.com` 链接），不是 `fileElement`
- * 文件消息，也不进群文件列表——对外文档必须写清（§15.5）。
+ * NodeIKernelFlashTransferService：闪传服务接口面（自研描述，非移植）。
+ * 依据运行时探测（kernel design §15），只收 apis/flash-transfer 用到的方法；通道语义是
+ * **上传文件集 + 发分享卡片**（`qfile.qq.com` 链接），不是 `fileElement` 文件消息（§15.5）。
  */
 import type { GeneralCallResult } from "./msg-service.js";
 

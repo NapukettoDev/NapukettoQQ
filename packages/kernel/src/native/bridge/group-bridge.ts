@@ -1,17 +1,7 @@
 /**
- * GroupBridge：群事件桥（P2-17，2026-08-05）
- *
- * 职责：把 group service 的原生回调（onGroupListUpdate / onMemberListChange 等）
- * 推入类型化事件通道 `NTEventChannel<GroupListener, "Group">`。每个 Service 只
- * 注册一次原生监听（ADR-003），缓存维护（GroupCache）与协议层都订阅 channel。
- *
- * 用法：
- *   const channel = new NTEventChannel<GroupListener, "Group">("Group");
- *   const bridge = new GroupBridge(session, channel);
- *   bridge.register();   // addKernelGroupListener（普通 JS 对象，NAPI 反射）
- *   const cache = new GroupCache({ channel, groupApi });
- *   cache.register();    // 订阅 channel 主动维护
- *   bridge.unregister(); // 停止时清理
+ * GroupBridge：把 group service 的原生回调（onGroupListUpdate / onMemberListChange 等）
+ * 推入类型化事件通道 `NTEventChannel<GroupListener, "Group">`；每个 Service 只注册一次
+ * 原生监听（ADR-003），缓存维护（GroupCache）与协议层都订阅 channel。
  */
 
 import type { NTEventChannel } from "../../infra/event-channel.js";
@@ -63,7 +53,7 @@ export class GroupBridge {
                 this.channel.emit("Group/onGroupSingleScreenNotifies", doubt, seq, notifies),
             onShutUpMemberListChanged: (groupCode, members) =>
                 this.channel.emit("Group/onShutUpMemberListChanged", groupCode, members),
-            // 2026-09-10 接线：群精华列表变化（方法名证据见 listeners/group.ts 注释）
+            // 群精华列表变化（方法名证据见 listeners/group.ts 注释）
             onGroupEssenceListChange: (arg) =>
                 this.channel.emit("Group/onGroupEssenceListChange", arg),
         };

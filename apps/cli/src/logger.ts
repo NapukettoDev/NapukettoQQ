@@ -1,13 +1,7 @@
 /**
- * cli 进程级 logger（ADR-007 日志规范，2026-08-07 统一改造；2026-10-25 日志可配置化）。
- *
- * 复用 kernel `createLogger`；输出格式/级别/时间戳/颜色由 napuketto.toml [log] 段 +
- * 环境变量决定（kernel parseLogConfig 单一解析源）。懒构造：commander preAction
- * 钩子先 resolveCliLogConfig(dataDir)（banner 决策 + 缓存），首个日志调用时按
- * 缓存配置构造；未初始化时兜底用缺省数据根解析（-d 生效前的极早期日志）。
- *
- * 环境变量（优先级高于 toml，见 kernel parseLogConfig）：NAPUKETTO_LOG_LEVEL /
- * NAPUKETTO_LOG_FORMAT / NAPUKETTO_NO_BANNER / NAPUKETTO_LOG_COLORIZE。
+ * cli 进程级 logger：复用 kernel `createLogger`，输出格式/级别/时间戳/颜色由 napuketto.toml [log] 段 +
+ * 环境变量决定（kernel parseLogConfig 单一解析源；env 优先级高于 toml）。
+ * 懒构造：preAction 钩子先 resolveCliLogConfig 缓存（banner 决策），首个日志调用时按缓存构造。
  */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -31,9 +25,9 @@ let cachedDataRoot: string = resolveDataRoot();
 
 /** 同步解析日志配置（内联 > toml 文件的 [log] 段 + env 覆盖）。损坏/缺失配置回退缺省
  * （不阻塞启动：配置的严格校验由 loadCliConfig 主路径负责报错）。内联生效时不读
- * 任何 toml 文件（嵌入式契约，2026-10-25）。
+ * 任何 toml 文件。
  *
- * 缓存口径（2026-11 修正）：显式 `dataDir` 解析出的根与缓存不一致时重新解析，
+ * 缓存口径：显式 `dataDir` 解析出的根与缓存不一致时重新解析，
  * 避免早期无参调用（缺省数据根）把后续 `-d` 指定数据根的配置/日志路径锁死；
  * 无参调用始终复用当前缓存（preAction 解析后，懒构造 logger 的 LazyCliLogger
  * 不能再用缺省根把 `-d` 的结果覆盖掉）。 */

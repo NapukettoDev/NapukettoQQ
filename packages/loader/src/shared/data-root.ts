@@ -1,12 +1,6 @@
 /**
- * data-root.ts：轻量数据根解析（loader 侧，避免新增 kernel 依赖）。
- *
- * 从 locate.ts / win-node.ts 抽出的同构逻辑（2026-08 消重：两处
- * 22 行重复 resolveDataRoot + findProjectRoot）。
- *
- * 语义与 kernel `resolveDataRoot`（packages/kernel/src/infra/paths.ts）对齐：
- * 显式参数 > `NAPUKETTO_DATA` > 项目根/.napuketto > 用户目录兜底；
- * 支持 `~` 前缀展开（跨平台配置文件写法 `dataDir = "~/.napuketto"`）。
+ * data-root.ts：loader 侧轻量数据根解析，不引入 kernel 依赖（语义与 kernel `resolveDataRoot` 对齐）。
+ * 支持 `~` 前缀展开（跨平台配置写法 `dataDir = "~/.napuketto"`）。
  */
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";

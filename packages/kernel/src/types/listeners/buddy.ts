@@ -1,11 +1,7 @@
 /**
- * Buddy 服务（BuddyService）的原生回调监听类型（2026-09-08）。
- *
- * 方法名证据：wrapper.node（9.9.33-52230）二进制字符串提取
- * （`grep -aoE "onBuddy[A-Za-z0-9]+" wrapper.node | sort -u`），与
- * Group/Msg listener 同源验证（已知名全部命中，方法可靠）。
- * ⚠️ 回调参数形状未经真实事件校准（待登录态触发后修正）——参数一律
- * unknown 透传，订阅方自行防御性收窄。
+ * BuddyListener：BuddyService 的原生回调监听类型。方法名证据：wrapper.node（9.9.33-52230）
+ * 二进制字符串提取（`grep -aoE "onBuddy[A-Za-z0-9]+"`），与 Group/Msg listener 同源验证；
+ * ⚠️ 回调参数形状未经真实事件校准，一律 unknown 透传、订阅方自行防御性收窄。
  */
 
 /** 好友服务（BuddyService）的原生回调监听接口。

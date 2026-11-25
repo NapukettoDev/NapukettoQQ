@@ -1,23 +1,7 @@
 /**
- * 完整启动生命周期（wrapper.node 契约流程，2026-08-05 实测确认，自研实现）
- *
- * 启动顺序由 wrapper.node 外部契约决定（engine→login→session→startNT），
- * 运行时实测确认，自研实现：
- *  1. engine.initWithDeskTopConfig（appid/qua/版本）
- *  2. loginService.initConfig + addKernelLoginListener
- *  3. getLoginList() → quickLoginWithUin(uin)（或 QR 登录）
- *  4. 登录成功 → genSessionConfig → session.init(config, 3 adapter, listener) → startNT(0)
- *  5. 等 init 完成信号（onOpentelemetryInit(is_init) 为主，onSessionInitComplete 为辅）
- *
- * 关键（2026-08-05 实测修正）：
- *  - session 用 `new wrapper.NodeIQQNTWrapperSession()` 创建；exports 不含 NodeI*Adapter/Listener
- *    构造器（89 键实测无）——adapter 与 listener 一律传普通 JS 对象（NAPI 反射读取方法回调）。
- *
- * 模块边界（2026-08-05 解耦；2026-08-08 FTA 优化再拆）：
- *  - 配置装配（buildEngineConfig / buildLoginConfig / buildSessionConfig）→ wrapper-config.ts
- *  - NAPI 回调适配器（GlobalAdapter / DependsAdapter / DispatcherAdapter / listener 工厂）→ wrapper-adapters.ts
- *  - 登录连接 + 快速登录（waitForNetworkConnection / quickLogin 等）→ msf-connection.ts / quick-login.ts
- *  - 本文件只保留 session 流程编排：就绪等待（waitSessionReady）+ session 初始化（initAndStartSession）。
+ * 完整启动生命周期（wrapper.node 外部契约）：engine.init → login → session.init → startNT，再等 init 完成信号
+ * （onOpentelemetryInit 为主，onSessionInitComplete 为辅）。session 由 wrapper.NodeIQQNTWrapperSession 构造；
+ * exports 无 NodeI*Adapter/Listener 构造器（实测 89 键），adapter 与 listener 一律传普通 JS 对象。
  */
 
 import { kernelError, waitFor } from "../../infra/index.js";
@@ -43,7 +27,7 @@ const SESSION_READY_TIMEOUT_MS = 30_000;
 const SESSION_READY_POLL_MS = 1000;
 
 /**
- * 等待 QQ 自己完成 session 初始化（framework 复用模式，2026-08-05 修正）。
+ * 等待 QQ 自己完成 session 初始化（自建宿主复用 QQ 已建 session）。
  *
  * 背景：QQ 9.9.31 实测——session 由 QQ 主进程自己创建并 init（登录后）。
  * 我们不自己 init（重复 init 断言 "implementation of IQQNTWrapperSession is not valid"），
@@ -75,7 +59,7 @@ export async function waitSessionReady(
     }
 }
 
-/** 登录连接 + 快速登录（quickLogin 等）已拆到 msf-connection.ts / quick-login.ts（见文件头 re-export）。 */
+/** 登录连接 + 快速登录的公共入口经文件头 re-export 暴露。 */
 
 /** session 初始化（4 参全为普通 JS 对象，等 init 完成信号）。 */
 export async function initAndStartSession(
@@ -90,7 +74,7 @@ export async function initAndStartSession(
     }
 
     // adapter / listener 全部用普通 JS 对象（实测 exports 89 键无 NodeI*Adapter/Listener
-    // 构造器；NAPI 反射读取对象方法回调，自研实现）。
+    // 构造器；NAPI 反射读取对象方法回调）。
     const depends = new DependsAdapter();
     const dispatcher = new DispatcherAdapter();
 
@@ -134,12 +118,10 @@ function watchInitSignal(listener: NodeIKernelSessionListener): Promise<void> {
 }
 
 /**
- * 启动会话（best effort，失败不致命）：
- * **先 init 后 start（2026-08-07 V9 决定性修正）**。
- * 自建宿主实测（HANDOVER-V9，p0-napcat-min）：必须先 session.init 再
- * startupSession.start()——顺序颠倒（先 start 后 init）业务 service 不挂载
- * （getMsgService null）；init 后用 startNT（非 startupSession.start）也失败。
- * NapCat initializeSession 同款：有 startupSession 用 start()，否则 startNT(0)。
+ * 启动会话（best effort，失败不致命）：**必须先 session.init 后 start**。
+ * 自建宿主实测：顺序颠倒（先 start 后 init）业务 service 不挂载（getMsgService null）；
+ * init 后用 startNT（非 startupSession.start）也失败。NapCat initializeSession 同款：
+ * 有 startupSession 用 start()，否则 startNT(0)。
  */
 function startSessionBestEffort(
     ctx: WrapperContext,

@@ -1,8 +1,6 @@
 /**
- * NapukettoCore 的装配辅助（从 `core.ts` 拆出）
- *
- * wrapperPath / appid / QQ 数据目录解析与登录选项映射。全部为纯函数，
- * 由 `core.ts` 的装配根调用；不持有状态。
+ * NapukettoCore 的装配辅助：wrapperPath / appid / QQ 数据目录解析与登录选项映射。
+ * 全部为纯函数，由 `core.ts` 的装配根调用；不持有状态。
  */
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -108,10 +106,9 @@ export function buildQuickLoginOptions(opts: {
 /**
  * loginService.initConfig（worker/自建宿主需指定 QQ 真实数据路径）。
  * worker（utilityProcess）模式 + 自建宿主（标准 node）下 loginService 是
- * new 的，commonPath 必须指向 QQ 真实数据目录（数据根/nt_qq/global，
- * HANDOVER-V6 三要素之三）才能读到历史账号——cli 的 `.napuketto\default`
- * 读不到（getLoginList 空，P2-1 实测 2026-08-06）。
- * QQ 主进程（V1）模式 QQ 自己 initConfig 过正确路径，无需解析。
+ * new 的，commonPath 必须指向 QQ 真实数据目录（数据根/nt_qq/global）才能读到
+ * 历史账号——cli 的 `.napuketto\default` 读不到（getLoginList 空，实测）。
+ * QQ 主进程模式 QQ 自己 initConfig 过正确路径，无需解析。
  */
 export function initLoginConfig(ctx: CoreContext, wrapper: WrapperContext, appid: string): void {
     const raw = wrapper.loginService;

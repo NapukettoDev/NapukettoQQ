@@ -1,14 +1,7 @@
 /**
- * FlashTransferApi：闪传语义化 API（kernel design §15.5）
- *
- * 通道 = 「上传文件集 + 发分享卡片」：
- * - uploadFileSet：createFlashTransferUploadTask 调用即开始上传，等到每个文件都
- *   onFileDidFinishUpload 才返回（fileSetId 只能从事件取，返回值是空对象）；
- * - sendCard：sendFlashTransferMsg 把卡片发到群 / 私聊（destType 取 ChatType）。
- *
- * ⚠️ 语义边界：发出的是**分享链接卡片**（`qfile.qq.com`），不是 `fileElement` 文件消息，
- * 也不进群文件列表。文件消息路线被服务端传输命令拒（§15.3/§15.4），故本 API 是当前
- * 唯一可用的「把文件送到对端」的通道。
+ * FlashTransferApi：闪传语义化 API（kernel design §15.5）= 「上传文件集 + 发分享卡片」，fileSetId
+ * 只能从事件取（createFlashTransferUploadTask 返回值空对象），等到每个文件 onFileDidFinishUpload。
+ * ⚠️ 发出的是 `qfile.qq.com` 分享链接卡片，不是 `fileElement` 文件消息（该路线被服务端传输命令拒）。
  */
 import { errorMessage, kernelError } from "../infra/index.js";
 import { requireKernelService } from "../infra/type-guards.js";

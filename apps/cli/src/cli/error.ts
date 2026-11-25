@@ -1,17 +1,7 @@
 /**
- * CLI 动作错误出口（2026-10-25 退出码契约；2026-11 预期错误去堆栈）：
- *   0 = 请求式优雅关停（0.2.0 已有，不经此路径）；78 = 配置校验失败
- *   （ConfigError 一族，宿主据此区分「配置未就绪」与运行时崩溃，免重启）；
- *   其余 = 1（运行时崩溃，现状不变）。
- *
- * 退出码只认错误类型（instanceof ConfigError），与日志文案完全解耦——
- * 文案是人读的，退出码是宿主消费的机器契约。
- *
- * 日志分两档：
- *   - 预期内用户错误（ConfigError / KernelError INVALID_PARAM）：消息链拼成单行，
- *     只带 errorType/code 轻量字段，不在默认级别打印堆栈；
- *   - 预期外错误：保持 { err } 结构化输出（pino serializer 展开堆栈）。
- *   两档都保留 logger.debug({ err }) 的完整堆栈，排障不降级。
+ * CLI 动作错误出口：0 = 请求式优雅关停（不经此路径）；78 = 配置校验失败（ConfigError 一族，
+ * 宿主据此区分「配置未就绪」与运行时崩溃，免重启）；其余 = 1。
+ * 退出码只认错误类型，与日志文案解耦；预期错误打单行结论，两档都留 debug 完整堆栈。
  */
 import process from "node:process";
 import {
@@ -28,8 +18,7 @@ const MAX_CAUSE_DEPTH = 8;
 
 /**
  * 预期内用户错误：配置未就绪（ConfigError）或参数非法（INVALID_PARAM）。
- * ConfigError 本身就是 code=INVALID_PARAM 的 KernelError 子型，这里显式分开写，
- * 让「配置失败」与「参数非法」两类预期语义在分类处可见。
+ * ConfigError 本身是 code=INVALID_PARAM 的 KernelError 子型，显式分开写让两类预期语义可见。
  */
 function isExpectedUserError(err: unknown): err is KernelError {
     return err instanceof ConfigError || (isKernelError(err) && err.code === "INVALID_PARAM");
@@ -58,7 +47,7 @@ function errorChainText(err: unknown): string {
     return parts.join(" — ");
 }
 
-/** 统一错误输出（预期错误单行 + debug 堆栈；预期外错误保持结构化 err）。 */
+/** 统一错误输出（预期错误打单行消息链 + debug 堆栈；预期外错误保持 { err } 结构化输出，pino serializer 展开堆栈）。 */
 function reportError(err: unknown): void {
     if (isExpectedUserError(err)) {
         logger.error({ errorType: err.name, code: err.code }, errorChainText(err));

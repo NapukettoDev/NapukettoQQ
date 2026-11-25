@@ -1,13 +1,7 @@
 /**
- * ipc-schema.ts：IPC 协议消息（koishi 插件 ↔ self-host 子进程，单一来源）。
- *
- * 分层：`contract/` 是跨进程契约层，父子进程共享并对外导出；本文件只依赖 zod。
- * 协议契约（koishi 插件 design.md §5.6）：`{ v, type, id?, payload }` JSON 行。
- * 用 zod v4 定义单一 schema，两侧（loader host + koishi 插件）import 同一份：
- * 类型经 z.infer 派生、运行时经 safeParse 校验，消除「两份手写 schema」漂移。
- *
- * 命名（2026-11 统一）：Schema 变量一律 `camelCase` + `Schema` 结尾；对外已发布的
- * `Ipc*Schema` 在文件底部保留 alias re-export（公开导出契约零破坏）。
+ * ipc-schema.ts：IPC 协议消息的唯一 zod 定义（koishi 插件 ↔ self-host 子进程），两侧 import 同一份以消除 schema 漂移。
+ * 协议契约：`{ v, type, id?, payload }` JSON 行；类型经 z.infer 派生、运行时经 safeParse 校验。
+ * 命名规范：变量 camelCase + `Schema` 结尾；对外已发布的 `Ipc*Schema` 在文件底部保留 alias re-export。
  */
 import { z } from "zod";
 
@@ -130,8 +124,8 @@ const ipcControlPayloadSchema = z.union([
         command: z.literal("login"),
         uin: z.string().optional(),
         qr: z.boolean().optional(),
-    }), // 触发登录（uin 指定账号 / qr=true 强制扫码；登录期成功结果抢占初始登录竞速，2026-09-08）
-    z.object({ command: z.literal("status") }), // 状态查询：重播最近一条 status（丢失重同步，2026-09-06）
+    }), // 触发登录（uin 指定账号 / qr=true 强制扫码；登录期成功结果抢占初始登录竞速）
+    z.object({ command: z.literal("status") }), // 状态查询：重播最近一条 status（父进程丢失后重同步）
 ]);
 
 // ── 消息联合 ──
@@ -233,7 +227,7 @@ export type IpcActionMessage = z.infer<typeof ipcActionMessageSchema>;
 export type IpcControlMessage = z.infer<typeof ipcControlMessageSchema>;
 export type IpcMessage = z.infer<typeof ipcMessageSchema>;
 
-// ── 公开导出兼容 alias（2026-11 命名统一前已发布，禁止删除） ──
+// ── 公开导出兼容 alias（已发布，禁止删除） ──
 
 export {
     ipcActionPayloadSchema as IpcActionPayloadSchema,

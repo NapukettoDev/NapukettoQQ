@@ -1,11 +1,7 @@
 /**
- * GroupCache：群/成员缓存（ADR-008，P2-17，2026-08-05）
- *
+ * GroupCache：群/成员缓存（ADR-008）。
  * - 更新：订阅 GroupEventChannel 主动维护（群列表/群详情/成员事件 → 缓存 upsert）。
- * - 回填：只读接口查询缺失时经 GroupApi 惰性拉取（in-flight 去重防并发重复拉）。
- * - 消费：协议翻译层只读消费，禁止调 API（翻译 = 纯函数）。
- *
- * 无全局单例（ADR-015 推论）——每进程每 session 实例化一份，由装配层持有。
+ * - 回填：只读接口查询缺失时经 GroupApi 惰性拉取（in-flight 去重防并发重复拉）；协议翻译层只读消费，禁止调 API。
  */
 
 import type { GroupApi } from "../../apis/index.js";
@@ -45,9 +41,9 @@ export class GroupCache {
     /**
      * 惰性回填 in-flight 去重。
      *
-     * 按返回类型拆成三个精确容器：同 key 并发只拉一次，且取回的值类型由容器
-     * 声明（Promise<Group[]> / Promise<GroupDetailInfo> / Promise<GroupMember[]>）
-     * 自然推导——不再用 `Promise<unknown>` + `as Promise<T>` 假装泛型。
+     * 按返回类型拆成三个精确容器：同 key 并发只拉一次，取回的值类型由容器声明
+     * （Promise<Group[]> / Promise<GroupDetailInfo> / Promise<GroupMember[]>）自然
+     * 推导，无需类型断言。
      */
     private inFlightGroupList: Promise<Group[]> | null = null;
     private readonly inFlightDetail = new Map<string, Promise<GroupDetailInfo>>();
@@ -166,7 +162,7 @@ export class GroupCache {
     /**
      * 群列表快照（缓存为空时主动触发原生刷新，等待事件回填后返回）。
      *
-     * 实测（2026-08-08 端到端联调）：onGroupListUpdate 仅在登录后首轮同步
+     * 实测：onGroupListUpdate 仅在登录后首轮同步
      * 推送（MMKV 已有缓存后不再重复推送）——进程内缓存为空时列表读不到。
      * 触发 getGroupList(true) 会重新拉取并推送事件回填缓存。
      * 返回空数组 = 刷新后仍无数据（超时 5s）。
@@ -283,8 +279,7 @@ export class GroupCache {
 
     /**
      * 惰性回填并发去重（按返回类型分容器）：同 map + key 并发只拉一次。
-     * loader 的返回值类型即容器元素类型——取回时由 Promise<T> 自然给出 T，
-     * 不需要 `as Promise<T>` 断言。
+     * loader 的返回值类型即容器元素类型——取回时由 Promise<T> 自然给出 T。
      */
     private async dedupeMap<T>(
         map: Map<string, Promise<T>>,

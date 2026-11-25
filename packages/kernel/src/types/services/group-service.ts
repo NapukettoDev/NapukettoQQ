@@ -1,9 +1,7 @@
 /**
- * NodeIKernelGroupService：群服务接口面（自研描述，非移植）
- *
- * 依据：getGroupService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，
- * 自研描述其形状，零复制实现）。
- * 只收录 apis/group 当前需要的方法；其余按需探测后补齐。
+ * NodeIKernelGroupService：群服务接口面（自研描述，非移植）。
+ * 依据 getGroupService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，零复制）；
+ * 只收录 apis/group 当前需要的方法，其余按需探测后补齐。
  */
 import type { GeneralCallResult } from "./msg-service.js";
 

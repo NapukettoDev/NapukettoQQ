@@ -1,9 +1,6 @@
 /**
- * attach.ts：IPC 模式装配（bootstrap/core 调用）。
- *
- * 职责：登录前创建登录期动作表（login.refreshQr 可达）+ 启动 stdin 服务端；
- * 登录后把 kernel 服务动作并入同一张表 + 事件通道转发（onAny → event 消息）。
- * 返回停止函数（进程退出时清理）。
+ * attach.ts：IPC 模式装配（bootstrap/core 调用）——登录前建登录期动作表（login.refreshQr 可达）+ 启动 stdin 服务端；
+ * 登录后把 kernel 服务动作并入同一张表并转发事件通道（onAny → event 消息），返回停止函数。
  */
 
 import { IpcGroupRequestSchema } from "../../contract/ipc-schema.js";
@@ -71,7 +68,7 @@ export function attachIpcServices(
     // peerUin（QQ 号）→ uid 转换（kernel GroupApi.uinToUid，自研描述；
     // exactOptionalPropertyTypes：可选字段用条件展开，不显式赋 undefined）
     const groupApi = services.groupApi;
-    // ⚠️ 必须 bind（2026-08-20 生产实修）：GroupApi.uinToUid 是**类方法**，
+    // ⚠️ 必须 bind（生产实修）：GroupApi.uinToUid 是**类方法**，
     // 摘成裸函数注入会丢 this → 方法内 `this.service.getUidByUins()` 抛
     // `Cannot read properties of undefined (reading 'service')`（读的是
     // undefined 的 service，即 this 为 undefined，不是原生服务缺失）。
@@ -115,7 +112,7 @@ export function attachIpcServices(
                 log(`ipc-bootstrap: 事件通道退订失败: ${getErrorMessage(err)}`);
             }
         }
-        // 移除并入的动作表条目（软重登重装配清理，2026-09-08）：点分命名与
+        // 移除并入的动作表条目（软重登重装配清理）：点分命名与
         // OB11 snake_case / login.refreshQr 不冲突；重装配在同表重挂前必先停旧
         for (const name of full.keys()) {
             actions.delete(name);

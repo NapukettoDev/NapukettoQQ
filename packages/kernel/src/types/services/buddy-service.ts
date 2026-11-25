@@ -1,13 +1,11 @@
 /**
- * NodeIKernelBuddyService：好友服务接口面（自研描述，非移植）
- *
- * 依据：getBuddyService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，
- * 自研描述其形状，零复制实现）。
- * 只收录 apis/friend 当前需要的方法；其余按需探测后补齐。
+ * NodeIKernelBuddyService：好友服务接口面（自研描述，非移植）。
+ * 依据 getBuddyService() 运行时反射 + wrapper 外部契约（接口签名是 QQ 的外部事实，零复制）；
+ * 只收录 apis/friend 当前需要的方法，其余按需探测后补齐。
  */
 import type { GeneralCallResult } from "./msg-service.js";
 
-/** 好友核心信息（BuddyListEntry.coreInfo，2026-09-08 T10 实测）。 */
+/** 好友核心信息（BuddyListEntry.coreInfo，实测）。 */
 export interface BuddyCoreInfo {
     uid: string;
     uin: string;
@@ -16,7 +14,7 @@ export interface BuddyCoreInfo {
     [key: string]: unknown;
 }
 
-/** 好友列表明细（BuddyCategory.buddyList 成员，2026-09-08 T10 实测快照）。 */
+/** 好友列表明细（BuddyCategory.buddyList 成员，实测快照）。 */
 export interface BuddyListEntry {
     uid: string;
     /** 顶层 uin（coreInfo.uin 同值；缺失时回退 coreInfo）。 */
@@ -28,9 +26,8 @@ export interface BuddyListEntry {
 
 /**
  * 好友列表分类（getBuddyListV2 返回 / onBuddyListChange 全量快照载荷）。
- * ⚠️ 2026-09-08 T10 实测：onBuddyListChange 载荷 = BuddyCategory[]，分类项
- * 含 buddyList 明细（uid/uin/coreInfo/baseInfo）；实测样本无 buddyUids——
- * 两字段均按 optional 防御（旧描述的 buddyUids 保留兼容）。
+ * ⚠️ 实测：onBuddyListChange 载荷 = BuddyCategory[]，分类项含 buddyList 明细
+ * （uid/uin/coreInfo/baseInfo）；实测样本无 buddyUids——两字段均按 optional 防御。
  */
 export interface BuddyCategory {
     categoryId: number;
@@ -39,7 +36,7 @@ export interface BuddyCategory {
     categroyMbCount: number;
     onlineCount: number;
     buddyUids?: string[];
-    /** 好友明细（onBuddyListChange 快照，T10 实证）。 */
+    /** 好友明细（onBuddyListChange 快照，实测）。 */
     buddyList?: BuddyListEntry[];
 }
 

@@ -1,23 +1,7 @@
 /**
- * LoginBridge：登录状态事件桥（2026-11-01，Milky 批次三 bot_offline 候选源）
- *
- * 职责：把 login service 的原生回调（onLoginDisConnected / onLogoutSucceed）
- * 推入类型化事件通道 `NTEventChannel<LoginListener, "Login">`。与
- * QrLoginSession 并存——多监听各自独立 id（录制器实测同服务可多挂）。
- *
- * ⚠️ 与其他桥的差异：login service 不在 session 上（登录先于 session init），
- * 由装配方注入 `ctx.wrapper.loginService`（wrapper 生命周期装载拦截 new 捕获 /
- * 单例 get() 兜底的既有实例，与 QrLoginSession 同源，见 core.ts loginByQr）。
- *
- * 方法名证据：wrapper.node 二进制字符串提取（types/wrapper.ts
- * KernelLoginListener）；⚠️ 参数形状零样本（三轮录制无下线操作）——透传
- * unknown，订阅方防御性收窄 + 校准日志。
- *
- * 用法：
- *   const channel = new NTEventChannel<KernelLoginListener, "Login">("Login");
- *   const bridge = new LoginBridge(loginService, channel);
- *   bridge.register();
- *   bridge.unregister();
+ * LoginBridge：把 login service 的原生回调（onLoginDisConnected / onLogoutSucceed）推入
+ * `NTEventChannel<LoginListener, "Login">`；⚠️ login service 不在 session 上（登录先于 session init），
+ * 由装配方注入 loginService；方法名来自二进制字符串提取，参数形状零样本——透传 unknown。
  */
 
 import type { NTEventChannel } from "../../infra/event-channel.js";

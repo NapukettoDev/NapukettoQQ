@@ -1,20 +1,7 @@
 /**
- * bootstrap.ts：kernel 引导核心（import kernel → 装配 → 登录 → session 替换 → 协议装配）。
- * 2026-08-07 阶段 2：由 runtime/boot-bootstrap.js TS 化（零语义改动）。
- * 由 self-host.ts（自建宿主，2026-08-07 唯一路线）在 dlopen wrapper.node 后调用。
- *
- * 2026-08-07 阶段 1 拆分（零语义改动）：
- *  - 登录流程（选账号 / 快速登录 / QR 回退）→ login.ts
- *  - session 选择 / 探测 / 就绪 → session.ts
- *  - 协议装配 → protocols.ts；冒烟自检 → smoke.ts
- * 2026-08-08 FTA 优化：NapukettoCore 装配路径 → bootstrap/core.ts（本文件留入口 + fallback）。
- *
- * session 来源（2026-08-07 实测结论；V1 Proxy 捕获与 vehicle 载具已归档 archive/）：
- *  登录成功后按优先级取 session：
- *    ① kernel.getMainSession(ctx)（startup 链路 getNTWrapperSession(nt_x)——QQ 主 session，
- *      渲染进程已完成 init → getMsgService READY）
- *    ② get() / qqSession（V1 兼容）
- *  取到后 core.setSession 替换 → waitSessionReady 确认 getMsgService READY。
+ * bootstrap.ts：kernel 引导核心入口，由 self-host.ts 在 dlopen wrapper.node 后调用。
+ * 流程：import kernel → 装配 → 登录 → session 替换 → 协议装配；NapukettoCore 走 bootstrapWithCore，
+ * 老 kernel 无该导出时走 startNapuketto + 手工 lifecycle 的 fallback。
  */
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,10 +23,10 @@ import type {
 import { bootstrapWithCore } from "./core.js";
 import { probeOnce } from "./probe.js";
 
-/** ⭐ appid 动态解析（2026-08-06 P2-0 实测：硬编码 537237765 在 9.9.33 扫码失败
- * 「请下载最新版」；major.node 解析的 537376818 成功）。自研，参考 NapCat 思路。
- * 2026-08 硬编码审计：删除第三层字面量兜底 537237765——解析失败复用 kernel 的
- * resolveAppidQua（已改为失败抛 KernelError），旧 kernel 则显式抛错，不再静默回退。 */
+/** ⭐ appid 动态解析（硬编码 537237765 在 9.9.33 扫码失败「请下载最新版」；major.node
+ * 解析出的 appid 才能通过）。自研，参考 NapCat 思路。
+ * 不做字面量兜底：解析失败复用 kernel 的 resolveAppidQua（已改为失败抛 KernelError），
+ * 旧 kernel 则显式抛错，不再静默回退。 */
 function resolveAppid(kernel: KernelLike, bootEnv: BootstrapEnv): string | number {
     const majorPath = bootEnv.wrapperPath
         ? join(dirname(bootEnv.wrapperPath), "major.node")

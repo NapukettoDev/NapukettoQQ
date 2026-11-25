@@ -1,12 +1,7 @@
 /**
- * kernel-services.ts：kernel 业务服务装配（IPC 模式与协议模式共用）。
- *
- * 登录成功后创建：消息/群事件通道 + 桥 + 缓存 + kernel 各 Api + 自身信息。
- * IPC 模式（koishi 插件）经此拿服务装配 ipc/server.ts；非 IPC（cli）经此拿服务
- * 装配 OB11/Satori 适配器。
- *
- * 服务集合类型 `KernelServices` 定义在 `host/runtime/service-types.ts`（装配产物契约，
- * IPC 层也要引用；放在本文件会让 ipc/ → protocols/ 形成目录级循环）。
+ * kernel-services.ts：kernel 业务服务装配（IPC 模式与协议模式共用）——登录成功后创建
+ * 消息/群事件通道 + 桥 + 缓存 + 各 Api + 自身信息。
+ * `KernelServices` 类型在 host/runtime/service-types.ts：ipc/ 也要引用，放本文件会让 ipc/ → protocols/ 形成目录级循环。
  */
 
 import { tmpdir } from "node:os";
@@ -69,10 +64,9 @@ function buildLoaderLoggerOptions(
 }
 
 /**
- * 批次三通道与桥（2026-11-01）：RecentContactBridge（peer_pin_change 源）+
- * LoginBridge（bot_offline 源）。loginService 取自 wrapper 上下文（与
- * QrLoginSession 同源），缺失（老 kernel / 未 attach）时只跳过 Login 桥注册
- * ——通道保留，事件为空。
+ * RecentContact 通道与桥（peer_pin_change 源）+ Login 桥（bot_offline 源）。
+ * loginService 取自 wrapper 上下文（与 QrLoginSession 同源），缺失（老 kernel / 未 attach）
+ * 时只跳过 Login 桥注册——通道保留，事件为空。
  */
 function createBatch3Channels(
     kernel: KernelLike,
@@ -111,7 +105,7 @@ function resolveServiceLogFile(logCfg: LogConfigLike | undefined): string {
 }
 
 async function registerOnlineStatus(msgApi: KernelServices["msgApi"]): Promise<void> {
-    // 在线状态注册（2026-09-15 发现 I）：自建宿主无 UI，引导链此前无人调 setStatus →
+    // 在线状态注册：自建宿主无 UI，引导链此前无人调 setStatus →
     // NT 会话半在线（msf 连接可用、消息可发，但腾讯侧设备不在线）→ 服务端不推送实时
     // 消息（群消息收不到、他端显示「电脑未登录」）。真 QQNT 客户端启动即上报在线，此处
     // 补同款调用（IPC 与协议模式共用此装配面，软重登重装配时随 services 重建自动重报）；
@@ -138,12 +132,12 @@ export async function createKernelServices(
     logCfg?: LogConfigLike,
 ): Promise<KernelServices | null> {
     // IPC 模式关 console：子进程 stdout 专用于 JSON 行协议，控制台日志并发写
-    // 会撕裂协议行（2026-09-06「能收不能发」事故根因，消息日志经此 logger 每
+    // 会撕裂协议行（「能收不能发」事故根因，消息日志经此 logger 每
     // 条消息都会污染）——此行为不可回退。两种模式统一落盘数据目录
-    // logs/loader.log（cli 模式 2026-09-10 起同样落盘：poke/Buddy 校准等诊断
+    // logs/loader.log（cli 模式同样落盘：poke/Buddy 校准等诊断
     // 数据此前仅 IPC 模式留存，cli 模式全丢）；cli 模式 console 输出保持不变。
     // 消息纯文本另有 napuketto-boot.log 兜底（见 msg-log.ts）。
-    // 2026-10-25 日志可配置化：级别/格式/时间戳/颜色接 [log] 段 + env
+    // 级别/格式/时间戳/颜色接 [log] 段 + env
     //（boot 经 NAPUKETTO_LOG_FORMAT/COLORIZE 传播顶层控制台决策）；[log.file]
     // 配置时改写该独立 sink（否则沿用 loader.log）。
     const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
@@ -183,8 +177,7 @@ export async function createKernelServices(
         disposeHooks.push(() => bridge.unregister());
         bridge.register();
         // 控制台消息日志（NapCat 同款：收到消息打印到控制台；渲染逻辑见 msg-log.ts）。
-        // 返回退订函数（软重登重装配时清理）。接收行已降 debug（2026-10-25 级别
-        // 重分配）；[log].unboundReceive=false 时按 kurobot 绑定表过滤未绑定频道。
+        // 返回退订函数（软重登重装配时清理）。接收行已降 debug；[log].unboundReceive=false 时按 kurobot 绑定表过滤未绑定频道。
         // 接收行颜色：IPC 关；colorize 决策传播（env）缺省保持彩色（终端现状）。
         const receiveFilter: ReceiveLogFilter = { current: null };
         const offMsgLogging = setupMsgLogging(
@@ -197,8 +190,8 @@ export async function createKernelServices(
         disposeHooks.push(offMsgLogging);
         // kernel APIs
         const groupApi = new kernel.GroupApi(session);
-        // channel 传入 MsgApi：sendMsg 后等 onMsgInfoListUpdate 确认（NapCat 式，2026-08-11）
-        // util 传入 MsgApi：富媒体发送 copyFile（NapCat 式图片预处理，2026-08-11）
+        // channel 传入 MsgApi：sendMsg 后等 onMsgInfoListUpdate 确认（NapCat 式）
+        // util 传入 MsgApi：富媒体发送 copyFile（NapCat 式图片预处理）
         const util = ctx.exports?.["NodeQQNTWrapperUtil"];
         const msgApi = new kernel.MsgApi(session, channel, util);
         await registerOnlineStatus(msgApi);
@@ -214,18 +207,18 @@ export async function createKernelServices(
         const groupBridge = new kernel.GroupBridge(session, groupChannel);
         disposeHooks.push(() => groupBridge.unregister());
         groupBridge.register();
-        // 好友事件通道 + 桥（OB11 request/friend 事件源，2026-09-08）
+        // 好友事件通道 + 桥（OB11 request/friend 事件源）
         const friendChannel = new kernel.NTEventChannel("Buddy");
         const friendBridge = new kernel.FriendBridge(session, friendChannel);
         disposeHooks.push(() => friendBridge.unregister());
         friendBridge.register();
-        // 批次三通道 + 桥（peer_pin / bot_offline 源，2026-11-01）
+        // RecentContact / Login 通道 + 桥（peer_pin / bot_offline 源）
         const batch3 = createBatch3Channels(kernel, ctx, session, log);
         disposeHooks.push(batch3.unregister);
         const groupCache = new kernel.GroupCache({ channel: groupChannel, groupApi });
         disposeHooks.push(() => groupCache.unregister());
         groupCache.register();
-        // 好友缓存（B2）：快照 diff 归一化事件（OB11 friend_add 源）
+        // 好友缓存：快照 diff 归一化事件（OB11 friend_add 源）
         const buddyCache = new kernel.BuddyCache({ channel: friendChannel, logger });
         disposeHooks.push(() => buddyCache.unregister());
         buddyCache.register();
@@ -233,7 +226,7 @@ export async function createKernelServices(
         const ticketApi = new kernel.TicketApi(session);
         const richMediaApi = new kernel.RichMediaApi(session);
         const flashTransferApi = new kernel.FlashTransferApi(session);
-        // 会话列表（P2 批次二 get_peer_pins 数据源）
+        // 会话列表（get_peer_pins 数据源）
         const recentContactApi = new kernel.RecentContactApi(session);
         const profileApi = new kernel.ProfileApi(session);
         const profileLikeApi = new kernel.ProfileLikeApi(session);

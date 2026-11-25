@@ -1,12 +1,6 @@
 /**
- * MsgApi：消息语义化 API 门面（ADR-009 统一错误语义）
- *
- * 内部解包原生 `{ result, errMsg }`：成功返回纯业务值，失败抛 KernelError。
- * 协议层只维护 `KernelErrorCode → 协议错误码` 映射表，不解析错误逻辑。
- *
- * 2026-11 从单文件 `apis/msg.ts` 拆分：媒体预处理（media-prep）、发送确认
- * （send-confirm）、转发（forward）、语音（ptt）、共享查询（queries）各自成
- * 模块，本文件只做门面编排与方法委派。
+ * MsgApi：消息语义化 API 门面（ADR-009 统一错误语义）：内部解包原生 `{ result, errMsg }`，
+ * 成功返回纯业务值、失败抛 KernelError；协议层只维护 `KernelErrorCode → 协议错误码` 映射表。
  */
 import {
     errorMessage,
@@ -93,19 +87,14 @@ export class MsgApi {
     }
 
     /**
-     * 发送消息：canonical 元素 → NT 发送元素 → sendMsg（NapCat 式）。
-     * 返回 NT msgId（雪花 ID）。
+     * 发送消息：canonical 元素 → NT 发送元素 → sendMsg（NapCat 式）；返回 NT msgId（雪花 ID）。
      *
-     * 2026-08-11 修复（NapCat 式，实测）：
-     *  - sendMsg 第一参传 '0'（固定），msgId 塞 peer.guildId —— 传 msgId 作第一参
-     *    时 wrapper 返回 result=5（失败），NapCat 同款调用返回 result=0。
-     *  - 发送结果以 onMsgInfoListUpdate 事件确认（sendStatus===2 成功）：sendMsg
-     *    返回值 result 可能为 5 但事件仍成功（异步确认），反之亦然。
-     *  - ⚠️ 必须先注册事件监听再调 sendMsg（事件可能在 sendMsg 返回前就触发）。
-     *  - msgId 以确认事件里那条消息的 msgId 为准（2026-11-09 Linux E2E 实测）：
-     *    自己 generateMsgUniqueId 出来的 id 只落在确认事件的 guildId 字段上，
-     *    按它去 get_msg / recallMsg 会查不到（消息确实已发出去）。优先返回事件
-     *    消息的 msgId，缺失时回退生成的 id（老行为，Windows 侧不变）。
+     * - 第一参固定传 '0'，生成的 msgId 塞 peer.guildId：传 msgId 作第一参时 wrapper 返回 result=5。
+     * - ⚠️ 必须先注册事件监听再调 sendMsg（事件可能早于 sendMsg 返回触发）；结果以
+     *   onMsgInfoListUpdate 的 sendStatus===2 为准，raw.result 非 0 不判失败（异步确认，反之亦然）。
+     * - msgId 以确认事件里那条消息的 msgId 为准：自己 generateMsgUniqueId 的 id 只落在确认事件的
+     *   guildId 字段，按它去 get_msg / recallMsg 查不到（消息其实已发出）。优先返回事件 msgId，
+     *   缺失时回退生成值（Windows 侧行为不变）。
      */
     async sendMessage(target: Peer, elements: CanonicalElement[]): Promise<{ msgId: string }> {
         // NapCat 式富媒体预处理：PIC 元素补 md5/fileName/sourcePath 并放置文件
@@ -125,12 +114,10 @@ export class MsgApi {
         // 有事件通道：先注册确认监听（NapCat 式，事件可能早于 sendMsg 返回触发），
         // 再调 sendMsg。最终结果以事件 sendStatus 为准（raw.result 非 0 不判失败）。
         const confirm = confirmSend(channel, msgId, target);
-        // ⚠️ 预消费 confirm 的 rejection（2026-08-22 崩溃根因修复）：若下方
-        // service.sendMsg 抛错（wrapper 内部异常），confirm 确认监听已注册却无人
-        // await，事件回调里 reject 会变成 unhandledRejection，Node 默认抛错退出
-        // 直接拖垮整个子进程（实测：sendStatus=0 确认事件触发后进程崩溃、IPC
-        // 通道关闭）。先挂 no-op 消费兜底，`await confirm` 仍能正常收到结果
-        // （Promise 允许多个消费者），失败语义不变。
+        // ⚠️ 预消费 confirm 的 rejection：若下方 service.sendMsg 抛错，confirm 监听已注册却
+        // 无人 await，事件回调里 reject 会变成 unhandledRejection，Node 默认抛错退出拖垮子
+        // 进程（实测 sendStatus=0 确认事件触发后进程崩溃、IPC 通道关闭）。no-op 消费兜底不
+        // 影响 `await confirm` 取结果（Promise 允许多个消费者），失败语义不变。
         confirm.catch(() => undefined);
         await this.service.sendMsg("0", sendPeer, sendElements, new Map());
         const confirmed = await confirm;
@@ -213,7 +200,7 @@ export class MsgApi {
         unwrapResult("setMsgRead", raw);
     }
 
-    /** 语音主动下载（get_record 本地未命中兜底，2026-09-08 B1）。 */
+    /** 语音主动下载（get_record 本地未命中兜底）。 */
     async downloadPtt(msgId: string, target: Peer): Promise<PttElement> {
         return downloadPtt(this.service, msgId, target);
     }

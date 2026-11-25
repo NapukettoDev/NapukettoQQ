@@ -1,10 +1,7 @@
 /**
- * native/probe：运行时反射探测子系统（自 native/wrapper 提平，L1 防腐层子域）
- *
- * 探测 QQ wrapper.node 的 session/engine/service 结构，产出类型层所需的
- * 实体 JSON 形状。probe.ts（probeRuntime，一次性 dump）与 probe-listener.ts
- * （startListenerRecording，长驻回调录制）是对外入口，其余为内部实现。
- * 只依赖 infra / types 与 `../wrapper/` 的纯查询入口，不被 wrapper 反向重导出。
+ * native/probe：运行时反射探测子系统（L1 防腐层子域），探测 QQ wrapper.node 的
+ * session / engine / service 结构，产出类型层所需的实体 JSON 形状。
+ * probe.ts（一次性 dump）与 probe-listener.ts（长驻回调录制）是入口；不被 wrapper 反向重导出。
  */
 
 /** @internal 运行时反射探测工具 */

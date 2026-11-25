@@ -1,9 +1,6 @@
 /**
- * wrapper 域共享类型（纯类型声明）
- *
- * `WrapperContext` 是装配根持有的 wrapper 句柄，跨 core / login / probe / bridge
- * 使用；单独成文件避免生命周期实现与类型声明互相牵制。由 `lifecycle.ts` 重新
- * 导出，既有 import 坐标不变。
+ * wrapper 域共享类型（纯类型声明）：`WrapperContext` 是装配根持有的 wrapper 句柄，
+ * 跨 core / login / probe / bridge 使用；由 `lifecycle.ts` 重新导出，import 坐标不变。
  */
 import type {
     EnginInitDesktopConfig,

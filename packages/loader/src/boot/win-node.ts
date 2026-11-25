@@ -1,19 +1,7 @@
 /**
- * win-node.ts：Windows 版 node.exe 获取与宿主 node 解析（**仅 win32**，非 node 宿主场景）。
- *
- * koishi CE 等 Bun 运行时里 execPath=bun.exe，而 PE `wrapper.node` 的宿主符号由 stub
- * `QQNT.dll` 转发到 node.exe——bun.exe 进程内没有该模块，LoadLibrary 报 1114。此时需要
- * 一份真正的 Windows node.exe（优先系统 `where node`，缺失才下载）。
- *
- * ⚠️ 与 Linux 无关：Linux 自建宿主直接跑系统 node（ADR-027 起唯一路径，Wine 已退役）。
- * 来源：nodejs.org 官方 zip（开源软件官方发行版，但为保守起见同样不内置，运行时下载到
- * <数据根>/runtime/win-node/，可被 NAPUKETTO_WIN_NODE_PATH 覆盖）。
- *
- * 设计文档「平台分支」。与 download.ts 同构：https 下载 + 解压 + 缓存幂等。
- *
- * 2026-11-25 P1：launcher.ts 里的宿主 node 探测链（isNodeExecutable / findSystemNode /
- * resolveWinHostNode / resolveHostNodePath）并入本文件——「Windows 版 node 从哪来」
- * 从此只有一个模块。
+ * win-node.ts：Windows 版 node.exe 获取与宿主 node 解析（仅 win32，非 node 宿主场景）。
+ * 非 node 宿主（Bun 等，execPath=bun.exe）进程内没有 stub `QQNT.dll`，宿主符号无人转发，LoadLibrary 报 1114，须用真 node.exe。
+ * 运行时下载到 <数据根>/runtime/win-node/，可被 NAPUKETTO_WIN_NODE_PATH 覆盖；Linux 不适用（直接跑系统 node）。
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -73,7 +61,7 @@ export async function ensureWinNode(
         return { exePath, version };
     }
 
-    // 下载 zip + 解压（用 P1 的 7z 解 zip；7z 支持 zip）
+    // 下载 zip + 解压（7z 直接支持 zip）
     const zipPath = join(cacheDir, `node-${version}-win-x64.zip`);
     const url = process.env["NAPUKETTO_WIN_NODE_URL"] ?? nodeZipUrl(version);
     mkdirSync(cacheDir, { recursive: true });
@@ -116,7 +104,7 @@ const DEFAULT_WIN_NODE_VERSION = "v24.16.0";
  * 解析宿主 node 可执行（win32）：标准 node 宿主直接用自身（返回 undefined，调用方
  * 回退 process.execPath）；非 node 宿主（koishi CE 等 Bun 运行时，execPath=bun.exe）
  * 必须解析真 node——wrapper.node 的符号由 stub QQNT.dll 绑定到 node.exe，bun.exe
- * 进程内无此模块，LoadLibrary 报 1114「DLL 初始化例程失败」（2026-09-05 实测）。
+ * 进程内无此模块，LoadLibrary 报 1114「DLL 初始化例程失败」（实测）。
  */
 export async function resolveHostNodePath(options: {
     winNodePath?: string | undefined;
@@ -136,7 +124,7 @@ export async function resolveHostNodePath(options: {
 /** 可执行文件名是否 node（win32 宿主判定；node.exe / node 两种形态）。 */
 export function isNodeExecutable(execPath: string): boolean {
     // 反斜杠 Windows 路径先归一化：posix basename 不认 `\` 分隔符，整个字符串
-    // 当文件名比对恒 false（CI ubuntu 门禁实测挂过）
+    // 当文件名比对恒 false
     const name = basename(execPath.replaceAll("\\", "/")).toLowerCase();
     return name === "node.exe" || name === "node";
 }

@@ -1,10 +1,7 @@
 /**
  * module-guards.ts：动态 `import()` 模块的运行时结构校验器。
- *
- * 背景（Step 3）：bootstrap / assemble-ob11 / ob11-bridge 通过 file:// 动态
- * import kernel / adapter / network，返回类型是 `unknown`。此前用
- * `as unknown as *ModuleLike` 暴力收窄——模块缺导出时运行期才炸。这里以方法面
- * 守卫收窄，失败走显式错误（不静默）。
+ * bootstrap / assemble-ob11 / ob11-bridge 用 file:// 动态 import kernel / adapter / network，返回类型是
+ * `unknown`；这里以方法面守卫收窄，缺导出时抛显式错误，而不是 `as unknown as *ModuleLike` 到运行期才炸。
  */
 
 import { hasCallableProp, hasMethodSurface, isRecord } from "../../shared/type-guards.js";

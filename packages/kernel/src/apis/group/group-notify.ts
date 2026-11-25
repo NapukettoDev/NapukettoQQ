@@ -1,12 +1,7 @@
 /**
- * GroupNotifyApi：群通知/禁言列表语义化 API（ADR-009 统一错误语义，P2-13）
- *
- * get_group_system_msg / set_group_add_request / get_group_shut_list 共用。
- * getSingleScreenNotifies / getGroupShutUpMemberList 的列表可能走 listener 回调，
- * 直接调用返回形状待探测校准：兼容 result 数组 / 字段 / Map。
- *
- * 列表提取一律走元素级类型守卫（`isGroupNotify` / `isGroupMember`）：
- * 原生返回数组里混入 null / 字符串 / 残缺对象时逐项丢弃，而不是整数组强转。
+ * GroupNotifyApi：群通知 / 禁言列表语义化 API（ADR-009 统一错误语义）。
+ * getSingleScreenNotifies / getGroupShutUpMemberList 的列表可能走 listener 回调，直接调用
+ * 返回形状待探测校准（兼容 result 数组 / 字段 / Map），提取一律走元素级类型守卫逐项丢弃脏值。
  */
 import { kernelError } from "../../infra/index.js";
 import {

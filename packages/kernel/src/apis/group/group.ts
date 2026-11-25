@@ -1,12 +1,6 @@
 /**
- * GroupApi：群语义化 API（ADR-009 统一错误语义）
- *
- * 内部解包原生返回：成功返回纯业务值，失败抛 KernelError。
- * 方法面（P2-4 + P2-10）：群列表 / 群详情 / 成员列表 / 成员详情 / uin↔uid +
- * 群管操作（踢人 / 禁言 / 管理员 / 名片 / 群名 / 退群 / 精华消息 / @all 剩余）。
- *
- * 2026-11 结构重构：末尾的原始响应守卫与解析下沉 `group-parsers.ts`，群公告
- * 子域下沉 `group-bulletin.ts`，本文件只保留 API 门面与群管编排。
+ * GroupApi：群语义化 API（ADR-009 统一错误语义），内部解包原生返回，失败抛 KernelError。
+ * 方法面：群列表 / 详情 / 成员 / uin↔uid + 群管（踢人 / 禁言 / 管理员 / 名片 / 群名 / 退群 / 精华 / @all）。
  */
 import {
     errorMessage,
@@ -82,8 +76,7 @@ export class GroupApi {
     /** 群详情（groupCode 为群号字符串）。
      * getGroupDetailInfo 返回形状：失败 result=错误码；成功详情可能直接在 result
      * 对象里，也可能在 groupInfo/detailInfo 字段——三种形状都兼容（探测校准）。
-     * 2026-08-07 修复：成功（result=0）时不再把 {result:0,errMsg} 原样当详情返回，
-     * 而是提取详情字段；形状异常抛 UNKNOWN 而非静默返回垃圾数据。 */
+     * result=0 时提取详情字段而非把 {result:0,errMsg} 当详情返回；形状异常抛 UNKNOWN。 */
     async getGroupInfo(groupCode: string): Promise<GroupDetailInfo> {
         const raw: unknown = await this.service.getGroupDetailInfo(groupCode, 0);
         if (!isRecord(raw)) {
@@ -173,7 +166,7 @@ export class GroupApi {
 
     /**
      * 踢人（set_group_kick）。memberUids 为成员 uid；refuseForever=true 拉黑拒绝再次入群。
-     * kickMemberV2 的 kickFlag/kickList 字段值待探测校准（TODO P3 联调）。
+     * kickMemberV2 的 kickFlag/kickList 字段值待实机校准。
      */
     async kickMember(
         groupCode: string,

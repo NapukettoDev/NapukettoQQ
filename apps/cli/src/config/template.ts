@@ -1,10 +1,6 @@
 /**
- * 配置模板（TOML 注释版，原 config-cmds.ts 拆分，2026-08-08 FTA 优化）。
- * `config init` 与首次启动（loadCliConfig）缺失时生成。
- *
- * 2026-08-08 结构拍板：**一个 QQ 账号一个 [[accounts]] 段，协议与通信配置嵌在
- * 账号内**（[accounts.onebot11] / [accounts.satori]）；账号必填（至少一个）。
- * dataDir 不再写死（缺省 = 项目根/.napuketto，跨平台），模板保持可移植。
+ * 配置模板（TOML 注释版）：`config init` 与首次启动（loadCliConfig）缺失时生成。
+ * 一个 QQ 账号一个 [[accounts]] 段、协议与通信配置嵌在账号内；dataDir 不写死以保持可移植。
  */
 import { RESERVED_PLACEHOLDER_QINS } from "./schema.js";
 

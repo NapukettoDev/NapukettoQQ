@@ -1,17 +1,7 @@
 /**
- * optional.ts：可选协议（Satori / Kurobot / Milky）装配（2026-11-25 从
- * assemble-ob11.ts 拆出）。
- *
- * 「段存在即启用、不写不启用」：账号配置段为空 = 该协议关闭，连 adapter 子路径都
- * 不 `import()`（ADR-014 按需加载，未启用协议零加载、零实例化）。
- *
- * 协议隔离（2026-11-10）：每个协议一个独立 EventBroadcaster，事件只推给本协议的
- * 传输客户端；kurobot 是纯客户端出向协议（无第三方接入门面、不发协议事件），
- * 因此没有广播器。
- *
- * 拆分边界：本文件只含「可选协议」的构造器与按配置顺序启动；OB11 主装配留在
- * assemble-ob11.ts。`startAdapter` / `stopAdapters` 是两者共用的生命周期原语，
- * 因此也从这里导出（单向依赖：assemble-ob11 → optional）。
+ * optional.ts：可选协议（Satori / Kurobot / Milky）装配——「段存在即启用、不写不启用」，段为空连 adapter 子路径都不 `import()`。
+ * 协议隔离：每个协议一个独立 EventBroadcaster，事件只推给本协议的传输客户端；kurobot 是纯客户端出向协议，没有广播器。
+ * OB11 主装配在 assemble-ob11.ts；`startAdapter` / `stopAdapters` 是两者共用的生命周期原语故在此导出。
  */
 import { join } from "node:path";
 import { isShuttingDown } from "../../lifecycle/shutdown.js";
@@ -44,16 +34,15 @@ export interface OptionalAssemblyDeps {
     services: KernelServices;
 }
 
-/** Satori 装配依赖（单独成函数，避免主装配函数认知复杂度超限）。 */
+/** Satori 装配依赖。 */
 interface SatoriAssemblyInput extends OptionalAssemblyDeps {
     satoriAdapter: SatoriModuleLike;
     section: Record<string, unknown>;
 }
 
 /**
- * 装配 Satori（可选协议，2026-11-10）：**段为空返回 null**——与 kurobot/milky
- * 同一范式（「段存在即启用、不写不启用」）。此前无条件装配，未配置 satori 的
- * 账号也会订阅 kernel 事件并向空传输广播。
+ * 装配 Satori：**段为空返回 null**——与 kurobot/milky 同一范式（「段存在即启用、不写不启用」）。
+ * 无条件装配会让未配置 satori 的账号也订阅 kernel 事件并向空传输广播。
  *
  * 与 OB11 共享 kernel apis / 消息通道 / 缓存，但**广播器独立**（协议隔离）：
  * 事件只推给 satori 自己的传输客户端，不会串到 OB11 / Milky 端口。
@@ -105,7 +94,7 @@ interface KurobotAssemblyInput extends OptionalAssemblyDeps {
 }
 
 /**
- * 装配 Kurobot（可选，2026-09-13）：**仅当账号段非空才装配**（url 必填，空段
+ * 装配 Kurobot：**仅当账号段非空才装配**（url 必填，空段
  * parse 会炸；「段存在即启用、不写不启用」）。作为 WS 客户端连入 KuroBot 服务端
  * （kurobot-ws），段内协议配置经 zod 校验作 seed。
  */
@@ -122,7 +111,7 @@ function createKurobot(input: KurobotAssemblyInput): AdapterHandle {
         msgChannel: services.channel,
         msgApi: services.msgApi,
         self: services.self,
-        // 接收行绑定过滤（P1-7）：握手/绑定表更新时填充，未绑定频道的
+        // 接收行绑定过滤：握手/绑定表更新时填充，未绑定频道的
         // 接收行按 [log].unboundReceive 决定是否打印
         receiveFilter: services.receiveFilter,
         // 连接生命周期 / 握手被拒等日志（pino 实例，最小面）
@@ -137,7 +126,7 @@ interface MilkyAssemblyInput extends OptionalAssemblyDeps {
 }
 
 /**
- * 装配 Milky（P0，2026-10-28）：段 enabled=true 才生效（enabled 缺省 false =
+ * 装配 Milky：段 enabled=true 才生效（enabled 缺省 false =
  * 空转不占端口）。单端口 HTTP（/api + /event SSE/WS）+ WebHook。
  */
 function createMilky(input: MilkyAssemblyInput): AdapterHandle {
@@ -153,17 +142,17 @@ function createMilky(input: MilkyAssemblyInput): AdapterHandle {
         config,
         broadcaster,
         msgChannel: services.channel,
-        // P1 事件通道：群请求/邀请（Group/onGroupNotifiesUpdated）+ 好友申请
+        // 事件通道：群请求/邀请（Group/onGroupNotifiesUpdated）+ 好友申请
         groupChannel: services.groupChannel,
         buddyChannel: services.friendChannel,
-        // 批次三事件通道：peer_pin（RecentContact）+ bot_offline（Login）
+        // RecentContact（peer_pin）+ Login（bot_offline）通道
         recentContactChannel: services.recentContactChannel,
         loginChannel: services.loginChannel,
         msgApi: services.msgApi,
         groupApi: services.groupApi,
         friendApi: services.friendApi,
         profileApi: services.profileApi,
-        // P1 扩面依赖（表态/票据/精华/群通知/群文件）
+        // 表态/票据/精华/群通知/群文件等扩展面依赖
         profileLikeApi: services.profileLikeApi,
         ticketApi: services.ticketApi,
         webApi: services.webApi,

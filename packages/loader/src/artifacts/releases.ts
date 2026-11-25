@@ -1,20 +1,6 @@
 /**
- * releases.ts：版本清单读取与查询（P1）。
- *
- * 运行时从包根 releases.json 读取（发布时 files 含它，安装后位于
- * node_modules/@napuketto/loader/releases.json）。
- *
- * 维护机制（真实存在，非「声称」）：清单由 CI 自动维护——
- * .github/workflows/update-releases.yml（每日 cron + 手动触发）调用
- * tooling/releases/update-releases.ts（纯 Node，与本地共用），抓取 QQ 官方下载配置
- * 解析最新版 + 下载安装包计算 sha256 + 解析安装包内部版本目录后更新本清单
- * （保留历史条目、known 按版本递增）。社区 PR 仍可手动补充。NAPUKETTO_QQ_URL
- * 可运行时覆盖下载地址（用户拿到新链接时用）。
- *
- * 形状 / 常量 / 纯函数在 `manifests/releases.ts`：那个文件必须保持零 TS 源码
- * 相对 import，因为更新脚本由 `node` 直接执行（类型剥离不重写 `.js` → `.ts`
- * 说明符）。本文件只做「读文件 + 查询」；需要清单形状或归一化函数时直接从
- * `manifests/releases.ts` 引入，不经本文件二次透传。
+ * releases.ts：版本清单读取与查询（运行时从包根 releases.json 读取，NAPUKETTO_QQ_URL 可覆盖下载地址）。
+ * 清单形状与归一化在 manifests/releases.ts，那里必须零 TS 相对 import——更新脚本由 node 直接执行且不重写 `.js`→`.ts` 说明符。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -109,10 +95,8 @@ export interface LatestReleaseOptions {
 }
 
 /**
- * 取该平台/架构最新已知可用版本（known 数组按录入顺序，取最后一项 = 最新）。
- *
- * 清单混装 Windows 与 Linux 条目后，不能简单取数组末项——否则 Windows 会选中
- * Linux deb、Linux 会选中 exe。按 platform/arch 过滤后再取末项。
+ * 取该平台/架构最新已知可用版本（known 按录入顺序，末项即最新）。
+ * 清单混装 Windows/Linux 条目，必须按 platform/arch 过滤后再取末项，否则会选中异平台安装包。
  */
 export function latestRelease(
     releases: QqReleasesFile,

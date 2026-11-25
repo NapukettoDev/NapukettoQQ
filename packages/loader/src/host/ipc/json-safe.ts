@@ -1,16 +1,7 @@
 /**
- * json-safe.ts：IPC 出站负载 JSON 安全化（2026-10-24）。
- *
- * `JSON.stringify` 对 Map/Set 内容全丢（Map → `{}`、Set → `[]`）：
- * kernel 事件 args（RawMessage.videoElement.thumbPath `Map<0, path>`）与
- * 动作结果（如 GroupApi.uinToUid 的 `Map<qq, uid>`）跨进程后全部退化为
- * 空对象——koishi 插件侧读 `thumbPath.get(0)` 直接 TypeError，整条视频
- * 消息事件分派失败（2026-10-24 线上报）。编码前深规整：
- *  - Map → 平面对象（Object.fromEntries，数字 key 变字符串 key）
- *  - Set → 数组
- *  - 普通对象/数组递归；非普通对象（Date/Buffer/类实例）原样交 stringify
- *    （与既有行为一致，不引入新语义）
- * 幂等：已规整的负载再跑一遍结果不变。
+ * json-safe.ts：IPC 出站负载 JSON 安全化——`JSON.stringify` 会丢掉 Map/Set 内容（Map → `{}`、Set → `[]`）。
+ * kernel 事件 args（`Map<0, path>`）与动作结果（`Map<qq, uid>`）跨进程会退化成空对象，koishi 侧 `.get(0)` 直接 TypeError。
+ * 编码前深规整：Map → 平面对象（数字 key 变字符串）、Set → 数组、普通对象/数组递归，Date/Buffer/类实例原样交 stringify；幂等。
  */
 export function toJsonSafe(value: unknown, ancestors: readonly object[] = []): unknown {
     if (value === null || typeof value !== "object") {

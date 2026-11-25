@@ -1,21 +1,7 @@
 /**
- * RecentContactBridge：会话列表事件桥（2026-11-01，Milky 批次三 peer_pin_change 源）
- *
- * 职责：把 recentContact service 的原生回调（onRecentContactListChangedVer2 /
- * onRecentContactNotification）推入类型化事件通道
- * `NTEventChannel<RecentContactListener, "RecentContact">`。与 MsgBridge/
- * GroupBridge/FriendBridge 同构（每个 Service 只注册一次原生监听，ADR-003）。
- *
- * 方法名与参数形状证据：listener 录制器三轮实测（kernel design.md §10.1）——
- * onRecentContactListChangedVer2 参数 = {listType, sortedContactList,
- * changedList} 数组，条目含 chatType/peerUin/topFlag/topFlagTime；
- * onRecentContactNotification = RecentContact 快照数组。
- *
- * 用法：
- *   const channel = new NTEventChannel<RecentContactListener, "RecentContact">("RecentContact");
- *   const bridge = new RecentContactBridge(session, channel);
- *   bridge.register();   // addKernelRecentContactListener（普通 JS 对象，NAPI 反射）
- *   bridge.unregister(); // 停止时清理
+ * RecentContactBridge：把 recentContact service 的原生回调（onRecentContactListChangedVer2 /
+ * onRecentContactNotification）推入 `NTEventChannel<RecentContactListener, "RecentContact">`。
+ * 录制实证：前者参数 = {listType, sortedContactList, changedList}（条目含 chatType/peerUin/topFlag）。
  */
 
 import type { NTEventChannel } from "../../infra/event-channel.js";

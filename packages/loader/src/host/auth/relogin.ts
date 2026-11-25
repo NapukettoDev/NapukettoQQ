@@ -1,20 +1,7 @@
 /**
- * relogin.ts：登录控制相位机 + control login 指令处理（2026-09-08 A1/A2）。
- *
- * control login（koishi 面板「重新登录/扫码登录」→ IPC control login 指令）
- * 的成功结果按引导相位分派三条路径：
- *  ① login-race（初始登录竞速中）：结果经 preemptRef 接管引导链——快速登录
- *     风控挂起时强制扫码也能走完装配链（2026-09-08 T2 既有语义）。
- *  ② ready（引导已完成）：**软重登**——重装配（清理旧服务 + 用新结果重跑
- *     装配链），不再整进程重启；完成后重播 ready + logged_in。
- *  ③ assembling/aborted：迟到结果**不上报**（A1 修复）——引导失败进程将退出，
- *     无条件 sendLogin("logged_in") 会制造 failed→logged_in 的误导序列
- *     （koishi driver 收到 logged_in 但子进程无协议装配，上线后所有请求失败）；
- *     装配进行中的并发结果同样忽略（不干扰初次装配链）。
- *
- * 防重入（2026-09-08 拍板）：control login 全程互斥（claim/release）——在途
- * 登录/重装配期间的新指令直接忽略（仅留日志，不发登录消息，面板随首个流程
- * 的真实状态收敛）。
+ * relogin.ts：登录控制相位机 + control login 指令处理（koishi 面板「重新登录/扫码登录」→ IPC control login）。
+ * 分派：login-race 经 preemptRef 接管引导链；ready 走软重登（重装配而非重启进程）；assembling/aborted 不上报迟到结果。
+ * 防重入：control login 全程 claim/release 互斥，在途期间新指令直接忽略（只留日志）。
  */
 
 import process from "node:process";
@@ -28,7 +15,7 @@ import type { CoreLike, LoginResultLike } from "../runtime/types.js";
 import type { LoginTargetRef } from "./login.js";
 
 /**
- * control login 抢占引用（2026-09-08）：初始登录竞速期间，control login
+ * control login 抢占引用：初始登录竞速期间，control login
  * （如强制扫码）成功的结果经 resolve 接管 doLogin——否则快速登录风控挂起时
  * 强制扫码虽能出码登录，bootstrap 的 doLogin 永远不 settle，装配链不跑。
  */
@@ -139,10 +126,7 @@ function forwardIpcLoginProgress(progress: LoginProgressLike): void {
 
 /**
  * 登录参数（NAPUKETTO_QUICK_UIN 强制指定 / ref 目标 / qrOnly 强制扫码 / 默认）。
- *
- * 2026-11-25 从 bootstrap/core.ts 迁入：登录进度回调（QR 透出）与 control login
- * 共用同一套 `LoginProgressLike` + `forwardIpcLoginProgress` 语义，放在这里后
- * 引导主流程只剩编排。
+ * 登录进度回调（QR 透出）与 control login 共用同一套 `LoginProgressLike` + `forwardIpcLoginProgress` 语义。
  */
 export function buildLoginOpts(
     Appid: string | number,
@@ -204,7 +188,7 @@ async function softReloginAndReport(
     sendLogin("logged_in", selfInfo);
 }
 
-/** control login 成功结果按相位分派（抽取自 handler，控制认知复杂度）。 */
+/** control login 成功结果按相位分派。 */
 async function dispatchLoginSuccess(
     result: LoginResultLike,
     control: LoginControl,

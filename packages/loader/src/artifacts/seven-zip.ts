@@ -1,13 +1,6 @@
 /**
- * seven-zip.ts：7-Zip 可执行文件定位 / 获取 / 执行（唯一实现，2026-11-25 从
- * locate.ts 与 extract.ts 收拢）。
- *
- * 两个来源原本各写一半：定位侧（Linux 内置 7zz + 数据根缓存 + 官方下载）与执行侧
- * （探测顺序 NAPUKETTO_7Z_PATH > 内置资产 > 系统 PATH + spawn 7z 并包装失败信息）。
- * 合成一个模块后，解包链只有一条 7z 语义来源。
- *
- * ⚠️ `manifests/seven-zip.ts` 不并入：那个文件被 tooling/releases 的脚本用 node
- * 直接执行（类型剥离，零相对 import 红线），本文件可自由 import。
+ * seven-zip.ts：7-Zip 定位 / 获取 / 执行的唯一实现（探测顺序 NAPUKETTO_7Z_PATH > 内置资产 > 系统 PATH）。
+ * ⚠️ manifests/seven-zip.ts 不能并入：它被 tooling 脚本用 node 直接执行，受零相对 import 红线约束。
  */
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -43,7 +36,7 @@ interface SevenZipFailureHint {
  * 内置 7z 资产是否适用于当前平台/架构。
  *
  * 内置 `assets/7zip/7zz` 是 **x86-64 ELF**（`e_machine=0x3e`），`7z.exe` 是 x64 PE。
- * 在 Linux arm64 上 exec 会直接 `cannot execute`（2026-11-10 在 arm64 容器实测）——
+ * Linux arm64 上 exec 会直接 `cannot execute`（arm64 容器实测）——
  * 因此 Linux 非 x64 一律回退到系统 7-Zip（`7zz` / `7z`），不碰内置资产。
  */
 export function bundledSevenZipSupported(
@@ -77,8 +70,7 @@ export function findSystemSevenZip(
 /**
  * 探测 7z 可执行文件：
  *   NAPUKETTO_7Z_PATH 环境变量 > 内置资产（Windows assets/7zip/7z.exe、Linux
- *   assets/7zip/7zz——2026-08-14 治本，静态二进制已打进发布包；**仅 x64 Linux 可用**）
- *   > 系统 PATH 7z。
+ *   assets/7zip/7zz——静态二进制已打进发布包；**仅 x64 Linux 可用**）> 系统 PATH 7z。
  *
  * `platform` / `arch` 参数仅测试注入（缺省取 process）。
  */
@@ -167,12 +159,12 @@ export async function ensureLinuxSevenZip(
         );
     }
 
-    // 1. 内置资产（治本）：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
+    // 1. 内置资产（发布包自带）：dist 与 assets 同层（tsdown 构建后 dist/，资产在包根 assets/）
     const bundled = findBundledSevenZip(join(packageRoot(), "assets", "7zip"), "linux");
     if (bundled !== null) {
         // npm 安装可能丢失执行位，保险设置（失败不阻塞：execFile 报 EACCES 时由调用方提示）
         await chmod(bundled, 0o755).catch(() => {
-            // 忽略：无执行位场景后续解包会明确报错，此处不静默吞掉主流程
+            // best-effort：缺执行位时后续解包会明确报 EACCES，不在此中断
         });
         return { exe: bundled, source: "内置资产 assets/7zip" };
     }

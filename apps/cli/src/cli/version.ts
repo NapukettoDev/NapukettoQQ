@@ -1,18 +1,6 @@
 /**
- * CLI 自身版本号（`--version` 输出）。
- *
- * 2026-11-10 修复：此前 `program.version("0.0.1")` 是硬编码字面量，导致 npm 上
- * 无论发到哪个版本，`napuketto --version` 都自报 `0.0.1`（补发 0.5.14 后冒烟发现）。
- * 改为运行时读自身 `package.json`，发版由 changesets 改那一处即可自动跟随。
- *
- * 候选路径（先命中先用，且要求 `name` 对得上，避免读到别家的 package.json）：
- *   - `../package.json`：生产形态。tsdown 打成单文件 `dist/index.mjs`，
- *     相对 dist 上一级即包根。
- *   - `../../package.json`：源码直跑形态（vitest / tsx），
- *     本文件位于 `src/cli/`，往上两级即包根。
- *
- * 都读不到（被裁剪的异常部署）兜底 `0.0.0-unknown`，不抛错——版本号拿不到
- * 不该让整个 CLI 起不来。
+ * CLI 自身版本号（`--version` 输出）：运行时读自身 `package.json`，发版只改那一处。
+ * 候选路径先命中先用且校验 `name`，避免读到别家的 package.json（被裁剪的异常部署才会命中兜底）。
  */
 import { readFileSync } from "node:fs";
 import { isRecord } from "@napuketto/kernel";
@@ -23,7 +11,10 @@ export const VERSION_FALLBACK = "0.0.0-unknown";
 /** 自身包名，用于校验候选 package.json 确实是本包。 */
 const SELF_NAME = "@napuketto/cli";
 
-/** 候选 package.json 相对路径（按命中概率排序）。 */
+/**
+ * 候选 package.json 相对路径（按命中概率排序）：`../` 是 tsdown 单文件 `dist/index.mjs` 的生产形态，
+ * `../../` 是源码直跑（vitest / tsx）形态——本文件位于 `src/cli/`，往上两级才是包根。
+ */
 const CANDIDATES = ["../package.json", "../../package.json"] as const;
 
 /**

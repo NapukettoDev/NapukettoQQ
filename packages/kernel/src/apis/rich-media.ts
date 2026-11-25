@@ -1,8 +1,6 @@
 /**
- * RichMediaApi：富媒体语义化 API（ADR-009 统一错误语义，P2-14）
- *
- * - translateWords：translate_en2zh
- * - 群文件：列表 / 空间 / 建夹 / 删除文件 / 删除夹 / 重命名 / 移动 / 转存
+ * RichMediaApi：富媒体语义化 API（ADR-009 统一错误语义）。
+ * 覆盖 translate_en2zh 与群文件读写（列表 / 空间 / 建夹 / 删除 / 重命名 / 移动 / 转存）。
  */
 import { kernelError } from "../infra/index.js";
 import { hasStringProp, isRecord, requireKernelService } from "../infra/type-guards.js";
@@ -75,8 +73,8 @@ export class RichMediaApi {
             showOnlinedocFolder: HIDE_ONLINEDOC_FOLDER,
         };
         const raw = await this.service.getGroupFileList(groupCode, params);
-        // 宽松解包（2026-10-31 修正）：旧逻辑 result 数字非 0 抛错 + extractFileList(0)
-        // 得空——真实返回形状（result 即列表 / 顶层列表 / 嵌套 items）下要么误抛要么恒空。
+        // 宽松解包：真实返回形状（result 即列表 / 顶层列表 / 嵌套 items）下，
+        // 严格校验 result 非 0 抛错 + extractFileList(0) 会要么误抛要么恒空。
         checkLooseResult("getGroupFileList", raw);
         const list = extractFileList(raw.result);
         const items = list.length > 0 ? list : extractFileList(raw);

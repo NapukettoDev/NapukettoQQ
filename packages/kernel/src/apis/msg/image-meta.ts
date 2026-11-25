@@ -1,13 +1,7 @@
 /**
- * 图片发送元数据：NTQQ picType 映射 + 零依赖文件头探测兜底。
- *
- * kernel 不依赖 `@napuketto/media`（解耦红线）：adapter 已探测的 canonical
- * `size` / `mime` 优先；缺失时（IPC 直发、第三方直接调 kernel）由本模块读取
- * 文件头补齐宽高与 MIME，让 picElement 的 picWidth / picHeight / picType
- * 反映真实图片，而不是固定占位值（0 / 0 / 1000 会让手机端显示空白）。
- *
- * 探测只读前 64 KiB 且失败静默返回 `{}`：元数据不是发送成功的前置条件，
- * 不能因为解析失败阻断消息。
+ * 图片发送元数据：NTQQ picType 映射 + 零依赖文件头探测兜底（kernel 不依赖 `@napuketto/media`）。
+ * canonical `size`/`mime` 优先，缺失时读文件头补齐；固定占位值（0 / 0 / 1000）会让手机端显示空白。
+ * 探测只读前 64 KiB 且失败静默返回 `{}`：元数据不是发送成功的前置条件，不能阻断消息。
  */
 import { type FileHandle, open } from "node:fs/promises";
 import { extname } from "node:path";

@@ -1,9 +1,7 @@
 /**
- * RecentContactApi：会话列表语义化 API（P2 批次二，get_peer_pins 数据源）
- *
- * 2026-10-31 实机探测确认 getRecentContactService 有 getRecentContactList /
- * setContactListTop 等方法；返回形状待探测校准（宽松提取）。
- * 置顶数据源：isTop 过滤（ChatType 区分 friend/group 场景）。
+ * RecentContactApi：会话列表语义化 API（get_peer_pins 的数据源）。
+ * getRecentContactService 有 getRecentContactList / setContactListTop 等方法（实机探测），
+ * 返回形状待探测校准（宽松提取）；置顶项按 isTop / topFlag 过滤，ChatType 区分场景。
  */
 import { errorMessage, isKernelError, kernelError } from "../../infra/index.js";
 import { getOwnProp, isRecord, requireKernelService } from "../../infra/type-guards.js";
@@ -105,7 +103,7 @@ function pinnedContactOf(contact: RecentContact): PinnedContact[] {
     return [];
 }
 
-/** 置顶字段实测为 topFlag（1 = 置顶，listener 载荷 2026-11-01 实录）；isTop 为兼容形态。 */
+/** 置顶字段实测为 topFlag（1 = 置顶，listener 载荷实录）；isTop 为兼容形态。 */
 function isPinned(contact: RecentContact): boolean {
     return contact.isTop === true || contact.topFlag === 1;
 }

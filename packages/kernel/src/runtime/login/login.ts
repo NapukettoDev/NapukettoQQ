@@ -1,13 +1,7 @@
 /**
- * login.ts：QR 登录流程编排 + 状态机 + selfInfo（ADR-010，2026-08-05）
- *
- * 流程（QQ wrapper 登录契约，自研实现）：
- *  loginService.initConfig（core.login 已做）→ addKernelLoginListener → connect()
- *  → 指定账号：quickLoginWithUin；否则 getQRCodePicture() 触发二维码
- *  → 回调驱动状态机：未登录 → 扫码中 → 已扫码 → 已登录（onQRCodeLoginSucceed）
- *  → 二维码过期（errType=1 errCode=3）→ refresh()
- *
- * 不含 UI 渲染（cli 只做二维码渲染/URL 打印）。
+ * login.ts：QR 登录流程编排 + 状态机 + selfInfo（ADR-010）。流程：initConfig（core.login 已做）→
+ * addKernelLoginListener → connect() → quickLoginWithUin（指定账号）或 getQRCodePicture()；回调驱动
+ * 「未登录 → 扫码中 → 已扫码 → 已登录」，过期（errType=1 errCode=3）自动 refresh()。不含 UI 渲染（cli 只打印）。
  */
 import { kernelError } from "../../infra/index.js";
 import { hasMethodSurface } from "../../infra/type-guards.js";
@@ -65,7 +59,7 @@ function isLoginServiceLike(val: unknown): val is LoginServiceLike {
 const QR_EXPIRED_ERR_TYPE = 1;
 const QR_EXPIRED_ERR_CODE = 3;
 
-/** 登录超时上限（毫秒，参考项目 60 次 × 2s = 120s，2026-08-13 用户拍板照搬）。 */
+/** 登录超时上限（毫秒；参考项目按 60 次 × 2s = 120s 计算）。 */
 export const QR_LOGIN_TIMEOUT_MS = 120_000;
 
 /** 登录超时提示（参考项目文案，前端 failed 态展示）。 */
@@ -137,7 +131,7 @@ export class QrLoginSession {
         this.listenerId = this.loginService.addKernelLoginListener(this.buildListener());
         this.loginService.connect();
         if (opts.quickUin !== undefined && opts.quickUin !== "") {
-            // T3：快速登录可能永久挂起（服务端已有同账号会话）——先启动超时计时，
+            // 快速登录可能永久挂起（服务端已有同账号会话）——先启动超时计时，
             // 挂起 → 超时 failed。此前挂起时连兜底计时都不启动（定时器只在 refresh
             // 里重启），ready 态软重登完全无兜底。
             this.restartTimeout();
@@ -147,7 +141,7 @@ export class QrLoginSession {
                     // ⚠️ wrapper 契约（attemptQuickLogin 已实证）：快速登录失败是
                     // resolve 带 loginErrorInfo.errMsg，**不是 reject**——只挂 .catch
                     // 会永不触发 → 无凭据环境（WSL 扫码）永不 refresh → 二维码永不
-                    // 产生，完全静默阻塞（2026-08-13 WSL 扫码卡死根因）。
+                    // 产生，完全静默阻塞（WSL 扫码卡死根因）。
                     if (extractLoginErrMsg(result) !== "") {
                         this.refreshAfterQuickLogin();
                     }
@@ -199,7 +193,7 @@ export class QrLoginSession {
         };
         listener.onQRCodeSessionFailed = (errType, errCode) => {
             if (isQrCodeExpired(errType, errCode)) {
-                // 二维码过期 → 自动刷新（2026-08-13 用户拍板保留自动刷新 + 手动刷新按钮）
+                // 二维码过期 → 自动刷新（自动刷新 + 手动刷新按钮两条路径都保留）
                 this.refresh();
                 return;
             }
