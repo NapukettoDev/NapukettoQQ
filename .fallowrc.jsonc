@@ -1,75 +1,50 @@
 {
-    // fallow 配置（2026-08-08）：仅豁免已确认的误报源，不放松重复/复杂度阈值。
-    // 目标：`pnpm dlx fallow` 输出只报真实问题，噪音清零。
-    // 文件为 JSONC（带注释，符合项目风格）；fallow 自动发现本文件。
+    // fallow 配置：仅豁免已确认的误报源，不放松重复/复杂度阈值。
     "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-    // 手动入口：仅声明静态分析不可达的手动脚本。
-    //  - loader/src/host/self-host.ts 已由 tsdown.config.ts 的多入口自动识别
-    //    （2026-11-25 P2 复核：fallow 报「entry 已是入口，建议移出配置」，据此删除；
-    //    CJS bundle dist/host/self-host.cjs 仍由 tsdown 声明，unused-file 不会误报）。
-    //  - tooling/wine/*.ts 是手动冒烟脚本（node tooling/... 直接跑），
-    //    非 import 可达，声明为入口避免误报 unused-file。
+    // 静态分析不可达的手动脚本 / 子进程入口
     "entry": [
         "tooling/wine/wine-smoke.ts",
         "tooling/wine/wine-login-smoke.ts",
-        // Linux 原生宿主 smoke 的子进程脚本：由 smoke.mjs 用 spawnSync 拉起（真 dlopen），
-        // 静态分析看不到这层 spawn → 不声明就会被误报 unused-file（2026-11-10）。
+        // 由 smoke.mjs 通过 spawnSync 拉起（真 dlopen）
         "tooling/linux-native-smoke/dlopen-check.cjs"
     ],
-    // 完全排除：packages/loader/native/ 是私有 Git Submodule（Native Bypass 载具），
-    // 仅分发编译后二进制，源脚本（verify/tools）不进主仓库分析范围。
+    // 私有 Git Submodule（Native Bypass 载具），不纳入主仓分析
     "ignorePatterns": [
         "packages/loader/native/**"
     ],
-    // 系统自带可执行文件（不是 npm 包提供，fallow 无法从依赖图推出）：
-    //  - ldconfig：loader 的 Linux 原生分支用它兜底解析系统 libgnutls（gnutlsCandidates
-    //    没命中时），属系统工具（glibc/ldconfig 包），不需要 npm 安装。
-    //    2026-11-10：Stage 3c 在 linux-native.ts 上方加代码后该行位移，增量门禁按新行号
-    //    重新上报，复核后按「系统提供」豁免。
+    // 系统自带可执行文件（glibc），非 npm 包提供
     "ignoreBinaries": [
         "ldconfig"
     ],
-    // 未使用依赖豁免（用户拍板保留，勿删）：
-    //  - @napuketto/network / @napuketto/adapter：cli 经 import.meta.resolve 动态解析（boot.ts），
-    //    fallow 静态分析看不到
-    //  - @napuketto/cli：create-napuketto 运行时读自身 package.json 的依赖范围（scaffold.ts）
+    // 动态解析 / 运行时读取 package.json 的依赖
     "ignoreDependencies": [
-        "@napuketto/network",
-        "@napuketto/adapter",
-        "@napuketto/cli"
+        "@napuketto/network", // cli/boot.ts 通过 import.meta.resolve 动态加载
+        "@napuketto/adapter", // 同上
+        "@napuketto/cli" // create-napuketto/scaffold.ts 读取自身依赖范围
     ],
-    // 依赖 override 豁免（2026-10-21）：根 package.json 的
-    // `@typescript-eslint/*>typescript` 是刻意保留的前瞻性 override（pnpm 尚未支持
-    // peer 覆盖，见 pnpm-workspace.yaml 的注释），并非升级欠账；fallow 会把它报成
-    // unused-dependency-override。按 override 键（含父选择器）+ 声明文件精确豁免。
+    // 根 package.json 前瞻性 override（pnpm 尚未支持 peer 覆盖，见 pnpm-workspace.yaml）
     "ignoreDependencyOverrides": [
         {
             "package": "@typescript-eslint/*>typescript",
             "source": "package.json"
         }
     ],
-    // 已复核的重复块（2026-10-21）：tooling 下两个可直接执行的脚本（update-releases /
-    // release-npm）共用同一段「被直接执行时跑 main」的入口 guard（15 行命令行样板）。
-    // 它是 node: CLI 的惯用样板，不是可抽取的业务逻辑。键格式 <fingerprint>:<实例数>，
-    // 内容或实例数一变就会重新上报，逼人重新复核。
-    // 2026-11-10：update-releases 增加 Linux 段后指纹变化（b7712e81），复核后仍豁免。
+    // tooling/update-releases 与 release-npm 的 15 行 CLI 入口样板
+    // TODO: 抽出 tooling/shared/run-cli.ts 后可移除此块
     "duplicates": {
         "ignoredClones": [
             "dup:b7712e81:2"
         ]
     },
-    // 预留导出豁免（勿删）：sendLog 是日志转发到 koishi 控制台（koishi 侧
-    // ipc/types.ts 已有 log 消息类型 + IpcLogLevel），host 侧接线待补（P5）。
+    // 精确导出豁免：预留接口 & 供下游复用的公共守卫
     "ignoreExports": [
         {
+            // TODO(P5): host 侧日志转发接线补齐后移除
             "file": "packages/loader/src/host/ipc/sender.ts",
             "exports": [
                 "sendLog"
             ]
         },
-        // 类型守卫的公共面（2026-11-17 虚假类型安全清理）：两者都是**跨协议复用**的
-        // 入站载荷守卫，仓内消费方分别经 parseOB11MessageSegments / forEachRawMessage
-        // 间接使用（静态图看不到对外导出的直接引用）。保留导出供下游适配器/插件复用。
         {
             "file": "packages/adapter/src/onebot11/helper/codec/segment.ts",
             "exports": [
@@ -83,18 +58,18 @@
             ]
         }
     ],
-    // 框架反射使用的类成员（NAPI 按方法名反射调用，静态分析无引用）：
-    //  - name / schema：ActionRegistry 按 action.name 索引、schema 校验（所有 Action 子类契约）
-    //  - NodeI*Adapter 接口：engine/session init 的参数，NAPI 反射回调（wrapper-adapters.ts）
+    // 框架反射 / NAPI 回调 / 多态派发的类成员
     "usedClassMembers": [
         "name",
         "schema",
         "protocol",
-        // TransportAdapter：EventBroadcaster 多态派发（send/open/close/onRequest），
-        // 静态分析追不到接口调用点（2026-10-28 Milky 事件枢纽同款）
         {
             "implements": "TransportAdapter",
-            "members": ["send", "open", "close"]
+            "members": [
+                "send",
+                "open",
+                "close"
+            ]
         },
         {
             "implements": "NodeIGlobalAdapter",
@@ -114,95 +89,41 @@
                 "*"
             ]
         }
+        // 若事件桥抽出了公共接口，可取消下方注释并删除 ignoreFindings 中的 *-bridge.ts
+        // { "implements": "EventBridge", "members": ["register", "unregister"] }
     ],
-    // 隐藏抽象骨架与公共 API 面的死代码 finding（保留文件本身，不排除分析）：
-    //  - core/framework/base-action.ts / base-protocol-adapter.ts：抽象骨架契约方法
-    //    （handle/websocketHandle/start/stop/reload 经 registry 反射/多态调用，静态分析追不到）
-    //  - core/framework/action-registry.ts：registry 公共方法（has/names）
-    //  - satori/action/base-action.ts：Satori 动作抽象骨架（run 为执行入口）
-    //  - onebot11/event/index.ts、onebot11/helper/index.ts：协议公共 barrel（re-export 被外部消费）
-    //  - onebot11/helper/codec/index.ts、satori/helper/element/index.ts：DDD 拆分的子域 barrel
-    //    （re-export 被上级 helper/index.ts / satori/index.ts 消费，fallow 静态分析看不到跨 barrel 链）
-    //  - satori/types/**、satori/helper/ids.ts：协议规范类型/常量（P5 开发中，公共协议面）
-    //  - onebot11/action/index.ts：协议动作公共面（79 动作类 + error-map + resolve-uid re-export，
-    //    注册表与 barrel 双职责，外部经 onebot11/index.ts 只转发注册表部分，动作类为公共协议面）
-    //  - satori/helper/index.ts：协议 helper 公共 barrel（ids 常量/频道构造器域内消费，fallow 看不到跨 barrel 链）
-    //  - kernel types/apis/infra barrel（2026-08-08 规范化新增）：目录公共面 re-export
-    //    （探测产物实体类型 / service 类型 / 构造选项类型，包门面 kernel/index.ts 只转发被消费部分）
-    //  注：loader host/ipc/index.ts 的 barrel 豁免已于 2026-11-25 P2 删除——该 barrel 被移除，
-    //  内部引用改为直引具体文件（actions / attach / sender / server / contract/ipc-schema）。
+    // 死代码检查豁免（保留复杂度/重复/CRAP 检查）
     "ignoreFindings": [
+        // 1. 抽象骨架与注册表（多态/反射调用，静态分析追不到）
         "packages/adapter/src/core/framework/base-action.ts",
         "packages/adapter/src/core/framework/base-protocol-adapter.ts",
         "packages/adapter/src/core/framework/action-registry.ts",
         "packages/adapter/src/satori/action/base-action.ts",
         "packages/adapter/src/milky/action/base-action.ts",
+        // 2. 协议公共 barrel 与协议规范面（跨 barrel 链 / 外部消费）
+        "packages/adapter/src/onebot11/action/index.ts",
         "packages/adapter/src/onebot11/event/index.ts",
         "packages/adapter/src/onebot11/helper/index.ts",
         "packages/adapter/src/onebot11/helper/codec/index.ts",
-        "packages/adapter/src/satori/helper/element/index.ts",
-        "packages/adapter/src/satori/types/**",
-        "packages/adapter/src/satori/helper/ids.ts",
-        "packages/adapter/src/onebot11/action/index.ts",
         "packages/adapter/src/satori/helper/index.ts",
+        "packages/adapter/src/satori/helper/element/index.ts",
+        "packages/adapter/src/satori/helper/ids.ts",
+        "packages/adapter/src/satori/types/**",
+        // 3. kernel 公共门面、语义 API 与事件桥（跨包动态装配 / 跨 barrel 链）
         "packages/kernel/src/types/index.ts",
         "packages/kernel/src/types/services/index.ts",
         "packages/kernel/src/types/listeners/index.ts",
         "packages/kernel/src/infra/index.ts",
-        "packages/kernel/src/apis/index.ts",
-        // kernel apis 实现（2026-10-31）：语义化 API 类的公开方法全部被 adapter/loader
-        // 跨包消费（MsgApi.sendMessage 这类核心方法也在内），fallow 静态图跨不过包
-        // 边界（整仓模式 72 个同类误报）；任一改动文件的行位移还会把存量成员翻成
-        // 「本次引入」卡死增量门禁。与上方 barrel 豁免同根因：包公共面。复杂度/重复
-        // 检查不受影响（ignoreFindings 只压 dead-code）。
-        "packages/kernel/src/apis/msg/**",
-        "packages/kernel/src/apis/group/**",
-        "packages/kernel/src/apis/social/**",
-        // 媒体 / Web 语义 API（2026-11 五段式扁平重构：apis/media-web/ 拆平为 4 个文件，
-        // 豁免口径与上方 apis 子域一致——公开方法被 adapter/loader 跨包消费）。
-        "packages/kernel/src/apis/rich-media.ts",
-        "packages/kernel/src/apis/flash-transfer.ts",
-        "packages/kernel/src/apis/ticket.ts",
-        "packages/kernel/src/apis/web.ts",
-        // 新分层 barrel（2026-11 扁平重构）：native/ 与 runtime/ 是目录公共面，
-        // 只做显式具名 re-export，包门面 src/index.ts 只转发被消费部分，
-        // fallow 静态分析看不到跨 barrel 链（与上方 kernel 各 barrel 同根因）。
         "packages/kernel/src/native/index.ts",
         "packages/kernel/src/runtime/index.ts",
-        // 事件桥（2026-11-01 批次三新增两桥同根因）：register/unregister 被
-        // loader KernelLike 跨包调用（动态 import 装配），fallow 静态图跨不过
-        // 包边界。存量三桥（Msg/Group/Buddy）为基线继承不报。
-        "packages/kernel/src/native/bridge/recent-contact-bridge.ts",
-        "packages/kernel/src/native/bridge/login-bridge.ts",
-        // MsgBridge：批次三补转发 onFileMsgCome 触达该文件，存量 register/unregister
-        // 位移翻成「本次引入」（同上方桥根因）。
-        "packages/kernel/src/native/bridge/msg-bridge.ts",
-        // 测试文件（**/*.test.ts）：单包目录下跑 fallow 时 vitest 入口检测不到，
-        // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经
-        // 根 vitest.config.ts 的 runner 执行，不是死代码——豁免 unused-file 判定
-        // （保留复杂度/CRAP 检查，同 health.thresholdOverrides 精神）。
-        "packages/kernel/tests/**/*.test.ts",
-        "packages/adapter/tests/**/*.test.ts",
-        "packages/loader/tests/**/*.test.ts",
-        "packages/network/tests/**/*.test.ts",
-        "packages/media/tests/**/*.test.ts",
-        "apps/**/*.test.ts",
-        "tooling/**/*.test.ts",
-        // 测试目录整体豁免（2026-11 覆盖率门禁降噪）：删掉纯覆盖率凑数单测后，
-        // `tests/` 下的 `test-support.ts` / `stub.ts` 中部分导出可能不再被外部引用，
-        // 不豁免会让 CI 的 `fallow audit --base` 增量门禁误报 unused-export /
-        // unused-file。测试支撑不是发布产物，也不参与死代码治理。
+        "packages/kernel/src/apis/**",
+        "packages/kernel/src/native/bridge/*-bridge.ts",
+        // 4. 测试文件与测试支撑（由根 vitest runner 执行，不参与死代码治理）
         "**/tests/**",
-        // tooling/release/__tests__/ 仍保留该目录名（其余包已统一为 `tests/`）。
-        "**/__tests__/**"
+        "**/__tests__/**",
+        "**/*.test.*"
     ],
-    // 测试文件豁免大函数检查（fallow 官方推荐）：长 describe/it 块会被误计为
-    // ">60 LOC 大函数"，污染 unit size 扣分（unit size = per_k 大函数数 × 0.5）。
-    // 只提高 maxUnitSize，保留复杂度/认知/CRAP 检查（fallow 文档原文：
-    // "Raising it for a glob removes those functions from the Large functions
-    //  list while keeping complexity, cognitive, and CRAP checks on the same
-    //  files, which is the recommended way to stop test suites from dominating
-    //  the list"）。单元测试本就是多路径覆盖，不应按生产代码标准计大函数。
+    // 放宽测试文件的大函数阈值，保留复杂度/认知/CRAP 检查
     "health": {
         "thresholdOverrides": [
             {
