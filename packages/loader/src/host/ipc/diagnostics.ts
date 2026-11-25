@@ -15,7 +15,7 @@ import {
     hasCallableProp,
     isCallable,
     isRecord,
-} from "../../internal/type-guards.js";
+} from "../../shared/type-guards.js";
 
 /** 诊断上下文（由 IPC 装配注入；未注入的目标返回可读错误）。 */
 export interface IpcDiagnosticContext {

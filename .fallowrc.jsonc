@@ -4,7 +4,7 @@
     // 文件为 JSONC（带注释，符合项目风格）；fallow 自动发现本文件。
     "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
     // 手动入口：仅声明静态分析不可达的手动脚本。
-    //  - loader/src/host/core/self-host.ts 已由 tsdown.config.ts 的多入口自动识别
+    //  - loader/src/host/self-host.ts 已由 tsdown.config.ts 的多入口自动识别
     //    （2026-11-25 P2 复核：fallow 报「entry 已是入口，建议移出配置」，据此删除；
     //    CJS bundle dist/host/self-host.cjs 仍由 tsdown 声明，unused-file 不会误报）。
     //  - tooling/wine/*.ts 是手动冒烟脚本（node tooling/... 直接跑），
@@ -130,7 +130,7 @@
     //  - kernel types/apis/infra barrel（2026-08-08 规范化新增）：目录公共面 re-export
     //    （探测产物实体类型 / service 类型 / 构造选项类型，包门面 kernel/index.ts 只转发被消费部分）
     //  注：loader host/ipc/index.ts 的 barrel 豁免已于 2026-11-25 P2 删除——该 barrel 被移除，
-    //  内部引用改为直引具体文件（actions / attach / sender / server / types）。
+    //  内部引用改为直引具体文件（actions / attach / sender / server / contract/ipc-schema）。
     "ignoreFindings": [
         "packages/adapter/src/core/framework/base-action.ts",
         "packages/adapter/src/core/framework/base-protocol-adapter.ts",

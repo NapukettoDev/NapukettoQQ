@@ -13,15 +13,20 @@
  * fail-soft：装配失败回滚到纯 kernel 动作面，不阻断登录链路。
  */
 import { join } from "node:path";
-import { getErrorMessage, isRecord } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
-import { env } from "../env.js";
-import { loadProtocolSections, localMediaBaseDir, parseProtocolSeed } from "../load-config.js";
-import { importFileUrl, loadOb11BridgeModules } from "../module-loader.js";
-import type { Ob11ModuleLike } from "../protocol-types.js";
-import type { KernelServices } from "../service-types.js";
-import type { CoreContextLike, KernelLike } from "../types.js";
-import { ConfigError, log } from "../util.js";
+import { log } from "../../shared/boot-log.js";
+import { getErrorMessage, isRecord } from "../../shared/type-guards.js";
+import { env } from "../runtime/env.js";
+import { ConfigError } from "../runtime/errors.js";
+import {
+    loadProtocolSections,
+    localMediaBaseDir,
+    parseProtocolSeed,
+} from "../runtime/load-config.js";
+import { importFileUrl, loadOb11BridgeModules } from "../runtime/module-loader.js";
+import type { Ob11ModuleLike } from "../runtime/protocol-types.js";
+import type { KernelServices } from "../runtime/service-types.js";
+import type { CoreContextLike, KernelLike } from "../runtime/types.js";
 import type { IpcActionHandler } from "./actions.js";
 import { sendEvent } from "./sender.js";
 

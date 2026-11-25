@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { packageRoot } from "../../internal/package-root.js";
-import type { QqInstallInfo } from "../../qq/locate-qq.js";
+import type { QqInstallInfo } from "../../qq/locate.js";
+import { packageRoot } from "../../shared/package.js";
 import { defaultStubDir, ENV, type LaunchOptions, launchSelfHost } from "../launcher.js";
 import { isNodeExecutable } from "../win-node.js";
 

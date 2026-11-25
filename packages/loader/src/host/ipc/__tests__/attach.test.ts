@@ -11,11 +11,11 @@
  * "Service/method" 拆分、无斜杠兜底、onAny 缺失跳过、stop 退订。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { KernelServices } from "../../service-types.js";
+import { IpcGroupRequestSchema } from "../../../contract/ipc-schema.js";
+import type { KernelServices } from "../../runtime/service-types.js";
 import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../actions.js";
 import { attachIpcServices, createIpcActionsForCore } from "../attach.js";
 import { DIAGNOSTIC_ACTION_NAMES } from "../diagnostics.js";
-import { IpcGroupRequestSchema } from "../types.js";
 
 /** sendEvent 捕获（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {

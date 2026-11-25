@@ -15,7 +15,7 @@ export default defineConfig({
         include: [
             "packages/*/tests/**/*.test.ts",
             "apps/*/tests/**/*.test.ts",
-            // 过渡期：loader 测试仍在 src/__tests__/ 下，待后续阶段迁移。
+            // 过渡期：loader 测试仍在 src/**/__tests__/ 下（随源文件就近），待后续阶段迁移。
             "packages/loader/src/**/*.test.ts",
             // 发布工具链（koishi 适配器依赖同步等）与产物契约测试（package-exports /
             // embedded-dx）也纳入单测。后者只走裸 specifier 并断言 dist 产物，前置
@@ -63,7 +63,6 @@ export default defineConfig({
                 "packages/kernel/src/native/wrapper/wrapper-adapters.ts",
                 "apps/cli/src/cli/program.ts",
                 "apps/cli/src/cli/version.ts",
-                "packages/loader/src/internal/package-info.ts",
             ],
             // 工程水位：覆盖真实分支即可，不设 90%+ 逼人写「只测调用次数」的假单测。
             thresholds: {

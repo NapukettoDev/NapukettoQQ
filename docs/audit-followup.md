@@ -137,9 +137,9 @@ Essence 的 stop 路径退订入口，已入队任务仍可运行。正常进程
 `process.dlopen`，再注册 O3 原生 listener，最后 `bootstrap` 动态导入 kernel。两处调用都越过 `AGENTS.md`
 规定的唯一原生层。kernel 已有加载和 O3 激活原语，且 O3 的幂等记录只覆盖经过该原语的调用。
 loader 后续还有直接读取 session exports 的探测。CJS 可动态 `import()`，启动早期的真实时序约束需实机确认。
-[工程指南](../AGENTS.md#L21) · [self-host](../packages/loader/src/host/core/self-host.ts#L132) ·
-[导入 kernel](../packages/loader/src/host/core/bootstrap.ts#L162) ·
-[session 探测](../packages/loader/src/host/core/session.ts#L75) ·
+[工程指南](../AGENTS.md#L21) · [self-host](../packages/loader/src/host/self-host.ts#L82) ·
+[导入 kernel](../packages/loader/src/host/bootstrap/bootstrap.ts#L181) ·
+[session 探测](../packages/loader/src/host/auth/session.ts#L77) ·
 [kernel 原语](../packages/kernel/src/wrapper/wrapper-loader.ts#L521)
 
 **设计与验收** · 优先由现有 CJS 壳获取锁并初始化日志和 IPC，再动态导入 kernel 的轻量宿主入口。

@@ -2,8 +2,8 @@
  * codec.test.ts：IPC 编解码单测（与 koishi 插件侧 codec.test.ts 对齐）。
  */
 import { describe, expect, it } from "vitest";
+import { IPC_VERSION, type IpcMessage } from "../../../contract/ipc-schema.js";
 import { decodeIpcMessage, encodeIpcMessage } from "../codec.js";
-import { IPC_VERSION, type IpcMessage } from "../types.js";
 
 describe("codec", () => {
     it("encode/decode roundtrip", () => {

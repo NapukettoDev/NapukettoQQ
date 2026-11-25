@@ -32,7 +32,7 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("../../qq/qq-download.js", () => ({
+vi.mock("../../qq/download.js", () => ({
     downloadFile: vi.fn(async (options: { dest: string; url: string }) => {
         h.downloads.push({ dest: options.dest, url: options.url });
         if (h.downloadError !== null) {
@@ -44,7 +44,7 @@ vi.mock("../../qq/qq-download.js", () => ({
     }),
 }));
 
-vi.mock("../../qq/qq-extract.js", () => ({
+vi.mock("../../qq/extract.js", () => ({
     extractInstaller: vi.fn(async (zipPath: string, tmpDir: string) => {
         h.extracts.push({ zipPath, tmpDir });
         mkdirSync(tmpDir, { recursive: true });

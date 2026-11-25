@@ -1,9 +1,9 @@
 /**
  * install-probe.ts：本机 QQ 安装位置探测（Windows 注册表 / 常见路径 / WSL 映射、
- * Linux deb 扁平布局）——2026-11-25 从 locate-qq.ts 拆出。
+ * Linux deb 扁平布局）——2026-11-25 从 locate.ts 拆出。
  *
  * 纯定位、不下载：只回答「这台机器上哪儿有 wrapper.node」。下载/解包/缓存管线留在
- * locate-qq.ts（它反向依赖本模块，单向）。
+ * locate.ts（它反向依赖本模块，单向）。
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -17,8 +17,8 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
-import { isRecord } from "../internal/type-guards.js";
-import type { QqFileSource, QqInstallInfo } from "./qq-types.js";
+import { isRecord } from "../shared/type-guards.js";
+import type { QqFileSource, QqInstallInfo } from "./types.js";
 
 /** 注册表 UninstallString 查询（QQ 官方安装路径）。 */
 const REG_QUERY_RE = /"([^"]+)"/;

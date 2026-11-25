@@ -23,7 +23,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { packageRoot } from "../../internal/package-root.js";
+import { packageRoot } from "../../shared/package.js";
 import {
     bundledSevenZipSupported,
     ensureLinuxSevenZip,
@@ -92,7 +92,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     };
 });
 
-vi.mock("../qq-download.js", () => ({
+vi.mock("../download.js", () => ({
     downloadFile: vi.fn(async (options: { dest: string; url: string; expectedSha256?: string }) => {
         h.downloads.push({
             dest: options.dest,

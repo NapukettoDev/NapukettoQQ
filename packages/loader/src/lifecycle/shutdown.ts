@@ -21,8 +21,8 @@
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { log } from "../internal/boot-log.js";
-import { getErrorMessage } from "../internal/type-guards.js";
+import { log } from "../shared/boot-log.js";
+import { getErrorMessage } from "../shared/type-guards.js";
 
 /** 哨兵文件名（置于数据根）。 */
 export const STOP_SENTINEL_FILENAME = "napuketto.stop";
