@@ -1,5 +1,5 @@
 /**
- * ipc-ob11.ts：OB11 动作容器 IPC 桥（NAPUKETTO_IPC=1 可选装配，2026-08-27）。
+ * ob11-bridge.ts：OB11 动作容器 IPC 桥（NAPUKETTO_IPC=1 可选装配，2026-08-27）。
  *
  * 触发条件：IPC 模式 && NAPUKETTO_ADAPTER_ENTRY + NAPUKETTO_NETWORK_ENTRY 已注入
  * （koishi 插件 launcher 透传；未注入 = app 层不要 OB11 面，静默跳过）。
@@ -22,8 +22,8 @@ import type { Ob11ModuleLike } from "../protocol-types.js";
 import type { KernelServices } from "../service-types.js";
 import type { CoreContextLike, KernelLike } from "../types.js";
 import { ConfigError, log } from "../util.js";
-import type { IpcActionHandler } from "./ipc-actions.js";
-import { sendEvent } from "./ipc-sender.js";
+import type { IpcActionHandler } from "./actions.js";
+import { sendEvent } from "./sender.js";
 
 /** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准，T5）：
  * resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）。 */

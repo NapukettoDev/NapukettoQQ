@@ -1,6 +1,6 @@
 // biome-ignore-all lint/style/useNamingConvention: 对象键名为包模块导出面（EventBroadcaster 等 PascalCase 类名），必须原样保留
 /**
- * ipc-ob11.test.ts：OB11 动作桥装配与实际动作验证。
+ * ob11-bridge.test.ts：OB11 动作桥装配与实际动作验证。
  */
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -11,8 +11,8 @@ import { describe, expect, it, vi } from "vitest";
 import { env } from "../../env.js";
 import type { KernelServices } from "../../service-types.js";
 import { ConfigError } from "../../util.js";
-import { callIpcAction, type IpcActionHandler } from "../ipc-actions.js";
-import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ipc-ob11.js";
+import { callIpcAction, type IpcActionHandler } from "../actions.js";
+import { attachOb11IpcBridge, type Ob11BridgeEnv } from "../ob11-bridge.js";
 
 /** 伪造 broadcaster（与 @napuketto/network EventBroadcaster 同语义的最小实现）。 */
 class FakeBroadcaster {

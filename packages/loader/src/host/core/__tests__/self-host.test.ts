@@ -26,13 +26,17 @@ vi.mock("../../../lifecycle/shutdown.js", () => ({
     watchStopSentinel: h.watchStopSentinel,
 }));
 
-vi.mock("../../ipc/index.js", () => ({
+// IPC 层按具体模块替换（2026-11-25 P2 移除 host/ipc/index.ts barrel）。
+vi.mock("../../ipc/sender.js", () => ({
     enableIpc: h.enableIpc,
     flushIpc: vi.fn(),
     lastIpcStatusPhase: () => h.phase,
     sendStatus: h.sendStatus,
     shouldSendGenericBootFailed: (ipcMode: boolean, lastPhase: string | null) =>
         ipcMode && lastPhase !== "failed",
+}));
+
+vi.mock("../../ipc/server.js", () => ({
     startIpcServer: h.startServer,
 }));
 

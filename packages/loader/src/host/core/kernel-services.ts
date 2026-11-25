@@ -2,7 +2,7 @@
  * kernel-services.ts：kernel 业务服务装配（IPC 模式与协议模式共用）。
  *
  * 登录成功后创建：消息/群事件通道 + 桥 + 缓存 + kernel 各 Api + 自身信息。
- * IPC 模式（koishi 插件）经此拿服务装配 ipc-server；非 IPC（cli）经此拿服务
+ * IPC 模式（koishi 插件）经此拿服务装配 ipc/server.ts；非 IPC（cli）经此拿服务
  * 装配 OB11/Satori 适配器。
  *
  * 服务集合类型 `KernelServices` 定义在 `host/service-types.ts`（装配产物契约，

@@ -1,15 +1,15 @@
 /**
- * ipc-sender.test.ts：sendStatus 快照 + replayStatus 重播单测。
+ * sender.test.ts：sendStatus 快照 + replayStatus 重播单测。
  *
  * enabled / lastStatus 是模块级状态——vi.resetModules + 动态 import 每用例
  * 取全新模块，避免串扰；stdout 用 spy 拦截（enable 后真实写会污染测试输出）。
  */
 import { describe, expect, it, vi } from "vitest";
 
-/** 取全新 ipc-sender 模块（隔离模块级 enabled / lastStatus 状态）。 */
-async function freshSender(): Promise<typeof import("../ipc-sender.js")> {
+/** 取全新 sender 模块（隔离模块级 enabled / lastStatus 状态）。 */
+async function freshSender(): Promise<typeof import("../sender.js")> {
     vi.resetModules();
-    return await import("../ipc-sender.js");
+    return await import("../sender.js");
 }
 
 /** 拦截 stdout 写并按行收集（返回收集数组）。 */
@@ -22,7 +22,7 @@ function captureStdout(): string[] {
     return lines;
 }
 
-describe("ipc-sender status 快照与重播", () => {
+describe("sender status 快照与重播", () => {
     it("未 enable（非 IPC 模式）不写 stdout", async () => {
         const sender = await freshSender();
         const lines = captureStdout();

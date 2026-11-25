@@ -1,5 +1,5 @@
 /**
- * ipc-sender.ts：IPC 消息发送封装（self-host 子进程 → koishi 插件）。
+ * sender.ts：IPC 消息发送封装（self-host 子进程 → koishi 插件）。
  *
  * 仅 NAPUKETTO_IPC=1 启用：stdout 专用于 JSON 行协议（stdin 收 action/control）。
  * 非 IPC 模式（cli pnpm start）stdout 不输出协议行，零干扰。
@@ -7,7 +7,7 @@
 
 import { isShuttingDown } from "../../lifecycle/shutdown.js";
 import { log } from "../util.js";
-import { encodeIpcMessage } from "./ipc-codec.js";
+import { encodeIpcMessage } from "./codec.js";
 import {
     DEFAULT_MAX_IPC_LINE_BYTES,
     IPC_VERSION,
@@ -17,7 +17,7 @@ import {
     type IpcMessage,
     type IpcResultPayload,
     type IpcStatusPayload,
-} from "./ipc-types.js";
+} from "./types.js";
 
 /** IPC 模式开关（self-host.ts 在 env.NAPUKETTO_IPC=1 时 enable）。 */
 let enabled = false;

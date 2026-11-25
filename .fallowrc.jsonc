@@ -3,12 +3,13 @@
     // 目标：`pnpm dlx fallow` 输出只报真实问题，噪音清零。
     // 文件为 JSONC（带注释，符合项目风格）；fallow 自动发现本文件。
     "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-    // 手动入口：loader/src/host/ 是 tsdown 多入口（dist/host/self-host.cjs CJS bundle），
-    // 不在 package.json exports 里，fallow 无法自动发现——声明后 host/ 目录不再报 unused。
-    // tooling/wine/*.ts 是手动冒烟脚本（node tooling/... 直接跑），
-    // 非 import 可达，声明为入口避免误报 unused-file。
+    // 手动入口：仅声明静态分析不可达的手动脚本。
+    //  - loader/src/host/core/self-host.ts 已由 tsdown.config.ts 的多入口自动识别
+    //    （2026-11-25 P2 复核：fallow 报「entry 已是入口，建议移出配置」，据此删除；
+    //    CJS bundle dist/host/self-host.cjs 仍由 tsdown 声明，unused-file 不会误报）。
+    //  - tooling/wine/*.ts 是手动冒烟脚本（node tooling/... 直接跑），
+    //    非 import 可达，声明为入口避免误报 unused-file。
     "entry": [
-        "packages/loader/src/host/core/self-host.ts",
         "tooling/wine/wine-smoke.ts",
         "tooling/wine/wine-login-smoke.ts",
         // Linux 原生宿主 smoke 的子进程脚本：由 smoke.mjs 用 spawnSync 拉起（真 dlopen），
@@ -61,7 +62,7 @@
     // ipc/types.ts 已有 log 消息类型 + IpcLogLevel），host 侧接线待补（P5）。
     "ignoreExports": [
         {
-            "file": "packages/loader/src/host/ipc/ipc-sender.ts",
+            "file": "packages/loader/src/host/ipc/sender.ts",
             "exports": [
                 "sendLog"
             ]
@@ -128,8 +129,8 @@
     //  - satori/helper/index.ts：协议 helper 公共 barrel（ids 常量/频道构造器域内消费，fallow 看不到跨 barrel 链）
     //  - kernel types/apis/infra barrel（2026-08-08 规范化新增）：目录公共面 re-export
     //    （探测产物实体类型 / service 类型 / 构造选项类型，包门面 kernel/index.ts 只转发被消费部分）
-    //  - loader host/ipc/index.ts：IPC 协议层公共 barrel（re-export 被 self-host.ts /
-    //    bootstrap-core.ts 部分消费，其余为协议面保留，静态分析看不到跨 barrel 链）
+    //  注：loader host/ipc/index.ts 的 barrel 豁免已于 2026-11-25 P2 删除——该 barrel 被移除，
+    //  内部引用改为直引具体文件（actions / attach / sender / server / types）。
     "ignoreFindings": [
         "packages/adapter/src/core/framework/base-action.ts",
         "packages/adapter/src/core/framework/base-protocol-adapter.ts",
@@ -176,7 +177,6 @@
         // MsgBridge：批次三补转发 onFileMsgCome 触达该文件，存量 register/unregister
         // 位移翻成「本次引入」（同上方桥根因）。
         "packages/kernel/src/native/bridge/msg-bridge.ts",
-        "packages/loader/src/host/ipc/index.ts",
         // 测试文件（**/*.test.ts）：单包目录下跑 fallow 时 vitest 入口检测不到，
         // 测试文件被误判 unused files（dead files 26% 拉低 MI）。测试文件经
         // 根 vitest.config.ts 的 runner 执行，不是死代码——豁免 unused-file 判定

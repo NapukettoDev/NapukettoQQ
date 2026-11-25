@@ -4,10 +4,12 @@
  * loader 不静态依赖 kernel（运行期动态 import），ConfigError 契约按错误名
  * （name="ConfigError"）复刻：isConfigError 对 kernel 同名错误与 loader 复刻类
  * 都命中；bootstrapExitCode 是 self-host 退出码决策的唯一出口（78 / 1）。
- * 另覆盖 getErrorMessage / forEachRawMessage（引导公共工具）。
+ * 另覆盖 forEachRawMessage（引导公共工具）。
+ *
+ * 注：getErrorMessage 的语义用例随实现下沉 internal/type-guards.ts，
+ * 已迁至 `internal/__tests__/type-guards.test.ts`（2026-11-25 P2）。
  */
 import { describe, expect, it, vi } from "vitest";
-import { getErrorMessage } from "../../internal/type-guards.js";
 import {
     bootLogPath,
     bootstrapExitCode,
@@ -91,27 +93,6 @@ describe("convergeBootstrapFailure（2026-10-25 吞异常修复）", () => {
         } finally {
             stderrSpy.mockRestore();
         }
-    });
-});
-
-describe("getErrorMessage（错误信息提取，保留 JS 原语义）", () => {
-    it("Error → message", () => {
-        expect(getErrorMessage(new Error("boom"))).toBe("boom");
-    });
-
-    it("带 message 的非 Error 对象 → message", () => {
-        expect(getErrorMessage({ message: "原生断言" })).toBe("原生断言");
-    });
-
-    it("无 message 对象 / 字符串 / 数字 → String(e)", () => {
-        expect(getErrorMessage({})).toBe("[object Object]");
-        expect(getErrorMessage("裸字符串")).toBe("裸字符串");
-        expect(getErrorMessage(42)).toBe("42");
-    });
-
-    it("null / undefined → String(e)", () => {
-        expect(getErrorMessage(null)).toBe("null");
-        expect(getErrorMessage(undefined)).toBe("undefined");
     });
 });
 

@@ -1,5 +1,5 @@
 /**
- * ipc-diagnostics.ts：显式启用的 IPC 诊断动作（默认不注册）。
+ * diagnostics.ts：显式启用的 IPC 诊断动作（默认不注册）。
  *
  * 安全边界（H-01）：
  *  - 常规动作表不含 `diag.*`；只有 `NAPUKETTO_DIAG=1` / `LaunchOptions.diagnostics`

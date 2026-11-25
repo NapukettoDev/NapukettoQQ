@@ -1,5 +1,5 @@
 /**
- * at-resolver.ts：IPC 动作入参 → Peer / at 元素归一化（2026-11-25 从 ipc-actions.ts 拆出）。
+ * at-resolver.ts：IPC 动作入参 → Peer / at 元素归一化（2026-11-25 从 actions.ts 拆出）。
  *
  * 两件事：
  *  1. `toPeer`：宽松 params → kernel Peer（chatType + peerUid）；缺 peerUid 时用
@@ -7,7 +7,7 @@
  *  2. `resolveAtElements`：发送前把 at.target 的 QQ 号（uin）归一化成 uid，并按群成员
  *     缓存补 display（否则 QQ 侧解析 at 失败，表现为「@号后面为空」）。
  *
- * 拆分原因：这两段是 ipc-actions 里唯一与「动作表注册」无关的纯逻辑，独立后
+ * 拆分原因：这两段是 actions 里唯一与「动作表注册」无关的纯逻辑，独立后
  * 动作表只剩动作定义，且 at 归一化可单独做单测（不构造整张动作表）。
  */
 import { isRecord } from "../../internal/type-guards.js";
@@ -44,9 +44,9 @@ export interface AtResolveContext {
  *
  * ⚠️ 归因更正（2026-08-20）：2026-08-09 把 `Cannot read properties of undefined
  * (reading 'service')` 归因为「传群号给 getUidByUins」是**误判**。真因是
- * ipc-bootstrap 把类方法 `GroupApi.uinToUid` 摘成裸函数注入丢了 this（读
+ * ipc/attach.ts 把类方法 `GroupApi.uinToUid` 摘成裸函数注入丢了 this（读
  * undefined 的 service）。当时群聊改直通恰好绕开了这条路径，于是「群聊修好了」，
- * 而私聊仍然必炸——直到 2026-08-20 才在 ipc-bootstrap 处 bind 根治。
+ * 而私聊仍然必炸——直到 2026-08-20 才在 ipc/attach.ts 处 bind 根治。
  * 群聊直通的行为本身仍然正确（上面第一条），保留。
  */
 export async function toPeer(

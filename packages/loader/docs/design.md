@@ -17,6 +17,35 @@ self-host（宿主子进程）
   └─ host/core  kernel 动态 import → 登录 → session → 协议装配 ｜ IPC
 ```
 
+### 目录结构（依赖单向向下）
+
+`src/` 下目录深度不超过 3 层（不含 `__tests__`），依赖只能自上而下：
+
+```text
+src/
+  index.ts        对外唯一出口（exports / files 契约；只做具名转发，不承载逻辑）
+  internal/       最底层：type-guards（错误提取/收窄）· boot-log · data-root · package-root
+  lifecycle/      进程治理：instance-lock · pid-cmdline · shutdown（停止哨兵 + 关停钩子）
+  qq/             产物链：install-probe（装在哪）→ qq-releases（版本清单）→ qq-download
+                  → seven-zip（7z 定位/执行）→ qq-extract（解包/提取）→ locate-qq（多级来源管线）
+  boot/           宿主装配：env-keys（键表 + 读写原语）→ launch-env（白名单策略）
+                  → linux-native / win-node（平台 node 与 stub 解析）→ launcher
+  host/           宿主进程内运行时（CJS bundle 入口 host/core/self-host.ts）
+    constants.ts / types.ts / protocol-types.ts / service-types.ts   常量与类型分层（types 纯类型，0 运行时导出）
+    module-loader.ts / module-guards.ts                             file:// 动态 import 与导出面收窄（唯一实现）
+    env.ts / load-config.ts / log-config.ts / msg-log.ts / util.ts
+    core/         self-host · bootstrap(-core/-probe) · login · session · relogin · kernel-services · protocols · optional-protocols
+    ipc/          actions · at-resolver · attach · ob11-bridge · codec · diagnostics · sender · server · types
+```
+
+分层红线（由静态 import 检查守护，`docs/evidence.md` 记录口径）：
+
+- `internal/` 不依赖任何其他分组；`lifecycle/` `qq/` `boot/` 不得反向依赖 `host/`。
+- `host/ipc/` 不得依赖 `host/core/`（IPC 面只消费 host 根的公共类型）；`host/types.ts`
+  只放 kernel 契约类型，运行时常量进 `constants.ts`。
+- `host/ipc/` 不设 barrel：内部引用直引具体文件，避免公共面与实现漂移。
+- 目录级循环依赖为 0（`core → ipc` 单向；`service-types.ts` 落在 host 根供两侧共享）。
+
 ### QQ 文件来源与管线
 
 ```text
@@ -294,7 +323,8 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 ## 跨包契约
 
 - 编译期只依赖 zod；kernel / adapter / network 一律运行期 `import(file://…)`，接口面在
-  `../src/host/types.ts` 与各模块内声明最小面，不新增 workspace 依赖（依赖方向红线）。
+  `../src/host/types.ts`（kernel 契约）、`protocol-types.ts`（动态模块导出面）与各模块内
+  声明最小面，不新增 workspace 依赖（依赖方向红线）。
 - `NAPUKETTO_KERNEL_ENTRY` 指向 kernel 构建产物；loader 只用其语义化能力
   （`NapukettoCore` / `startNapuketto`、`resolveAppidQua`、`quickLogin`、
   `initAndStartSession`、`resolveQqUserDataRoot` / `resolveQqGlobalPath`、`PathWrapper`

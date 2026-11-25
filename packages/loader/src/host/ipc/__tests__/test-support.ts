@@ -1,11 +1,11 @@
 /**
  * IPC 测试公共 fixture（test-support）：mock kernel apis 上下文。
  *
- * 供 ipc-actions-diag 等测试复用，避免同构 setup 跨文件复制；
+ * 供 actions-branches 等测试复用，避免同构 setup 跨文件复制；
  * stdout 捕获等按文件内联（各测试对捕获粒度需求不同，强行共用反而增加耦合）。
  */
 import { vi } from "vitest";
-import type { IpcApiContext } from "../ipc-actions.js";
+import type { IpcApiContext } from "../actions.js";
 
 /** mock kernel apis 上下文（每次调用返回全新 vi.fn，互不串扰）。 */
 export function mockIpcCtx(): IpcApiContext {

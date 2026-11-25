@@ -1,5 +1,5 @@
 /**
- * ipc-actions.ts：IPC 动作表（koishi 动作 → kernel API）。
+ * actions.ts：IPC 动作表（koishi 动作 → kernel API）。
  *
  * 协议契约：动作名点分域（`msg.sendMessage` 等），params 宽松透传。
  * 本轮实现 koishi Bot 核心动作（发消息/撤回/历史/已读/列表/self）；
@@ -15,11 +15,11 @@ import { getErrorCode, getErrorMessage } from "../../internal/type-guards.js";
 import type { GroupNotifyApiLike, MsgApiLike } from "../types.js";
 import { log } from "../util.js";
 import { resolveAtElements, toPeer, type UinToUid } from "./at-resolver.js";
-import { type IpcDiagnosticContext, registerDiagnosticActions } from "./ipc-diagnostics.js";
-import { IpcRespondToGroupRequestParamsSchema } from "./ipc-types.js";
+import { type IpcDiagnosticContext, registerDiagnosticActions } from "./diagnostics.js";
+import { IpcRespondToGroupRequestParamsSchema } from "./types.js";
 
 export type { IpcPeer } from "./at-resolver.js";
-export { DIAGNOSTIC_ACTION_NAMES } from "./ipc-diagnostics.js";
+export { DIAGNOSTIC_ACTION_NAMES } from "./diagnostics.js";
 
 /** kernel apis 最小面（仅本表用到的成员；真实实例由引导装配提供）。 */
 export interface IpcApiContext extends IpcDiagnosticContext {
@@ -176,7 +176,7 @@ export function createIpcActions(
 
     // 诊断动作默认不注册：常规动作表只含业务动作，避免外部驱动触达原生反射面。
     // 显式调试（NAPUKETTO_DIAG=1 / LaunchOptions.diagnostics）才挂 diag.*，且内部仍按
-    // 目标方法 allowlist 收窄（见 ipc-diagnostics.ts）。
+    // 目标方法 allowlist 收窄（见 diagnostics.ts）。
     if (options.diagnostics === true) {
         registerDiagnosticActions(actions, ctx);
     }

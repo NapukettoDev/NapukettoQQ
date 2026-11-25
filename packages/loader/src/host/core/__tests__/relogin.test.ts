@@ -11,7 +11,7 @@
  * spy stdout 捕获解析（测真实协议路径，不经注入桩）。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enableIpc } from "../../ipc/index.js";
+import { enableIpc } from "../../ipc/sender.js";
 import type { CoreLike, LoginResultLike } from "../../types.js";
 import { createLoginControlHandler, LoginControl, type LoginPreemptRef } from "../relogin.js";
 

@@ -1,7 +1,7 @@
 /**
  * module-guards.ts：动态 `import()` 模块的运行时结构校验器。
  *
- * 背景（Step 3）：bootstrap / assemble-protocols / ipc-ob11 通过 file:// 动态
+ * 背景（Step 3）：bootstrap / assemble-protocols / ob11-bridge 通过 file:// 动态
  * import kernel / adapter / network，返回类型是 `unknown`。此前用
  * `as unknown as *ModuleLike` 暴力收窄——模块缺导出时运行期才炸。这里以方法面
  * 守卫收窄，失败走显式错误（不静默）。

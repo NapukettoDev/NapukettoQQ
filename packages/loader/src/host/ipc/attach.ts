@@ -1,5 +1,5 @@
 /**
- * ipc-bootstrap.ts：IPC 模式装配（bootstrap-core 调用）。
+ * attach.ts：IPC 模式装配（bootstrap-core 调用）。
  *
  * 职责：登录前创建登录期动作表（login.refreshQr 可达）+ 启动 stdin 服务端；
  * 登录后把 kernel 服务动作并入同一张表 + 事件通道转发（onAny → event 消息）。
@@ -16,9 +16,9 @@ import {
     type IpcActionHandler,
     type IpcActionOptions,
     registerLoginRefreshAction,
-} from "./ipc-actions.js";
-import { readReadySelf, sendEvent } from "./ipc-sender.js";
-import { IpcGroupRequestSchema } from "./ipc-types.js";
+} from "./actions.js";
+import { readReadySelf, sendEvent } from "./sender.js";
+import { IpcGroupRequestSchema } from "./types.js";
 
 /** 订阅事件通道 → event 消息转发（事件名 "Service/method" 拆分）。 */
 function forwardChannel(

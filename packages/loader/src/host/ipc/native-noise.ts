@@ -18,9 +18,9 @@
  *    过滤表——崩溃现场仍透传
  *
  * 边界：只处理「整条」噪音行；原生输出插进 JSON 协议行字节中间的撕裂不归这里管
- * （IPC 路径由 status 重播与脏行诊断兜底，见 ipc-sender.ts / koishi 插件 client）。
+ * （IPC 路径由 status 重播与脏行诊断兜底，见 ipc/sender.ts / koishi 插件 client）。
  */
-import { IPC_VERSION } from "./ipc-types.js";
+import { IPC_VERSION } from "./types.js";
 
 const NATIVE_NOISE =
     /<MMKV|<MemoryFile_Win32|<MMKV_IO|loadSymbolFromShell|getNodeGetJsListApi|get symbol failed|loaded \[mmkv|loadFromFile> loading \[mmkv|^\[(?:\d+:\d+:)?\d{4}\/\d{6}\.\d{3}:(?:ERROR|WARNING|INFO):/i;

@@ -13,15 +13,10 @@
 import { basename, dirname } from "node:path";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { consumeQrOnlyMarker, env, isEnvEnabled } from "../env.js";
-import {
-    attachIpcServices,
-    attachOb11IpcBridge,
-    createIpcActionsForCore,
-    type IpcServerOptions,
-    sendLogin,
-    sendStatus,
-    startIpcServer,
-} from "../ipc/index.js";
+import { attachIpcServices, createIpcActionsForCore } from "../ipc/attach.js";
+import { attachOb11IpcBridge } from "../ipc/ob11-bridge.js";
+import { sendLogin, sendStatus } from "../ipc/sender.js";
+import { type IpcServerOptions, startIpcServer } from "../ipc/server.js";
 import { resolveLoaderLogConfig, resolveLogFilePath } from "../log-config.js";
 import type { BootstrapEnv, CoreLike, KernelLike, LoginResultLike } from "../types.js";
 import { log, type SharedState } from "../util.js";

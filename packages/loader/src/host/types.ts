@@ -11,7 +11,7 @@
  */
 
 /**
- * 群请求引用最小面（与 ipc/ipc-types.ts 的 `IpcGroupRequest.request` 结构兼容）。
+ * 群请求引用最小面（与 ipc/types.ts 的 `IpcGroupRequest.request` 结构兼容）。
  *
  * 结构兼容定义（而非 `import type { IpcGroupRequest }`）的原因：host/ 是 ipc/ 的
  * 上游，反向引用会制造 `host <-> host/ipc` 类型环。字段面由 ipc 侧 zod schema
@@ -125,17 +125,6 @@ export interface MsgApiLike {
         batteryStatus: number;
         customStatus?: { faceId: string; wording: string; faceType: string };
     }): Promise<void>;
-}
-
-/** 原始消息（kernel RawMessage 最小面，字段宽松——运行时反射实证）。 */
-export interface RawMessageLike {
-    chatType?: unknown;
-    sendNickName?: unknown;
-    senderUin?: unknown;
-    peerName?: unknown;
-    peerUin?: unknown;
-    msgId?: unknown;
-    msgSeq?: unknown;
 }
 
 /** canonical 消息元素（text/at/face/...，kernel toCanonicalElements 输出）。 */

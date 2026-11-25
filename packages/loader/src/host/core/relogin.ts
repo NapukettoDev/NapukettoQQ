@@ -22,7 +22,7 @@ import { getErrorMessage } from "../../internal/type-guards.js";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { QR_LINE_PREFIX } from "../constants.js";
 import { env, isEnvEnabled } from "../env.js";
-import { sendLogin, sendQr, sendStatus } from "../ipc/index.js";
+import { sendLogin, sendQr, sendStatus } from "../ipc/sender.js";
 import type { CoreLike, LoginResultLike } from "../types.js";
 import { log } from "../util.js";
 import type { LoginTargetRef } from "./login.js";
@@ -120,7 +120,7 @@ function isLoginState(value: string): value is LoginStateLike {
     return LOGIN_STATES.some((s) => s === value);
 }
 
-export interface LoginProgressLike {
+interface LoginProgressLike {
     state: string;
     qr?: { pngBase64: string; qrcodeUrl: string };
     selfInfo?: { uin: string; uid: string; nick: string };
@@ -128,7 +128,7 @@ export interface LoginProgressLike {
 }
 
 /** logged_in 由实际采纳登录结果的一方发布。 */
-export function forwardIpcLoginProgress(progress: LoginProgressLike): void {
+function forwardIpcLoginProgress(progress: LoginProgressLike): void {
     if (progress.qr !== undefined) {
         sendQr(progress.qr.pngBase64, progress.qr.qrcodeUrl);
     }

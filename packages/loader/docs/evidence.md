@@ -208,11 +208,11 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
 | --- | --- |
 | H-04 | loader `bootstrap-core.ts` 在释放 kernel 缓存与监听器前调用 OB11 `unsubscribeOnly` 或协议 `stop`。#162 / `d7ede96` 的媒体缓存定时器与租约已在 adapter 0.18.18 发布。 |
 | M-01 上游 | `assemble-protocols.ts` 启动的协议在统一关停时都会尝试停止。匹配 pong、缓冲上限和重连仍由 #163 / `2169832` 的 network 0.4.5、adapter 0.18.19 提供。 |
-| M-02、M-05 上游 | `ipc-server.ts`、`ipc-sender.ts`、`self-host.ts`、`shutdown.ts` 验证 stdin EOF、stdout 写失败、stop/restart、发生在登录或在途动作时的断开、stdout 协议帧，以及按字节限行和在途动作拒绝。 |
+| M-02、M-05 上游 | `ipc/server.ts`、`ipc/sender.ts`、`self-host.ts`、`shutdown.ts` 验证 stdin EOF、stdout 写失败、stop/restart、发生在登录或在途动作时的断开、stdout 协议帧，以及按字节限行和在途动作拒绝。 |
 | M-03 上游 | 配置错误继续通过同一编排退出 78。`ConfigBase` 并发保存沿用 #161 / `893bbdd`（kernel 0.16.2），仅保证同一实例内顺序与原子替换。 |
 | L-02 上游 | `instance-lock.ts` 用同目录变更互斥和所有权令牌验证三进程争锁、空锁、强杀残留、旧记录、读不到命令行及同 PID 所有权变化。 |
-| I-01 B | `ipc-types.ts`、`ipc-sender.ts`、`bootstrap-core.ts`、`relogin.ts` 验证 ready 重播、自身身份补查、软重登，新一代装配前返回 `INVALID_STATE`。事件晚于 ready 的既有修复在 #168 / `9fbaee1`（loader 0.10.7）。 |
-| F-06 关停接线 | `shutdown.ts`、`protocols.ts`、`ipc-ob11.ts` 覆盖协议进程控制、限时阶段、桥和监听器释放。HTTP/SSE/WS 停服由 #158 / `2ff0da0`（network 0.4.4、adapter 0.18.14）提供。应用/守护退出和树杀保留 #149 / `147e1f9` 的 loader 0.10.5 契约。 |
+| I-01 B | `ipc/types.ts`、`ipc/sender.ts`、`bootstrap-core.ts`、`relogin.ts` 验证 ready 重播、自身身份补查、软重登，新一代装配前返回 `INVALID_STATE`。事件晚于 ready 的既有修复在 #168 / `9fbaee1`（loader 0.10.7）。 |
+| F-06 关停接线 | `shutdown.ts`、`protocols.ts`、`ipc/ob11-bridge.ts` 覆盖协议进程控制、限时阶段、桥和监听器释放。HTTP/SSE/WS 停服由 #158 / `2ff0da0`（network 0.4.4、adapter 0.18.14）提供。应用/守护退出和树杀保留 #149 / `147e1f9` 的 loader 0.10.5 契约。 |
 
 ### 验证与剩余条件
 
@@ -244,12 +244,13 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
 
 ## 宿主诊断、环境与 PID 校验（H-01 / H-06 / L-03）
 
-- `buildLaunchEnv` 白名单单测在 `src/boot/__tests__/launcher-env.test.ts`：win32 与 linux
+- `buildLaunchEnv` 白名单单测在 `src/boot/__tests__/launch-env.test.ts`：win32 与 linux
   模拟输入分别验证凭据/`NODE_OPTIONS`/`LD_PRELOAD` 不透传，代理/证书/日志/控制标记透传，
   `NAPUKETTO_*` 优先并清除旧拼写，`qrOnly:false` 清一次性扫码标记，typed `log`/flags 覆盖
   `extraEnv`，Windows `Path`/`PATH` 去重。
-- 诊断动作注册启停见 `src/host/ipc/__tests__/ipc-actions-diag.test.ts` 与
-  `ipc-bootstrap.test.ts`：默认动作表无 `diag.*`；`diagnostics:true` 才注册；反射调用只在
+- 诊断动作注册启停见 `src/host/ipc/__tests__/actions-branches.test.ts`，
+  诊断动作内部行为（allowlist / 参数边界 / 反射面）见 `diagnostics.test.ts`：默认动作表无
+  `diag.*`；`diagnostics:true` 才注册；反射调用只在
   allowlist 内成功，`richMediaTmpPaths` 只读且不触发 setter。
 - PID：`isValidPid` 覆盖 0 / 负数 / 小数 / NaN / 超上限；`readCmdlineForPid` 对非法值直接
   返回 null 且不发起 PowerShell / `/proc` 查询；cli `runtime.json` 的 `selfHostPid` 非法时

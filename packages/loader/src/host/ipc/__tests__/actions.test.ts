@@ -1,5 +1,5 @@
 /**
- * ipc-actions.test.ts：IPC 动作表单测（mock kernel apis，不依赖真实 wrapper）。
+ * actions.test.ts：IPC 动作表单测（mock kernel apis，不依赖真实 wrapper）。
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -8,7 +8,7 @@ import {
     type IpcActionHandler,
     type IpcApiContext,
     registerLoginRefreshAction,
-} from "../ipc-actions.js";
+} from "../actions.js";
 
 describe("msg.addReaction", () => {
     const reaction = { msgId: "7451137051157323859", emojiId: "105" };

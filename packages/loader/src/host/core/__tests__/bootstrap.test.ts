@@ -5,10 +5,10 @@
  * fallback 装配失败 / 登录失败 / lifecycle 异常）必须收敛为 false，不得静默 true。
  *
  * env.ts 是模块加载时的 process.env 快照——vi.stubEnv + vi.resetModules + 动态
- * import 每用例取全新模块（与 ipc-sender.test.ts 同套路）。假 kernel 写临时
+ * import 每用例取全新模块（与 sender.test.ts 同套路）。假 kernel 写临时
  * .mjs 文件（每用例独立文件，动态 import URL 不同不命中模块缓存）；NAPUKETTO_CFG_DIR
  * 指向临时目录使 log() 落盘无污染。全用例非 IPC 模式（NAPUKETTO_IPC 置空）——
- * 跳过 ipc-server 启动，纯测结果信号。
+ * 跳过 server 启动，纯测结果信号。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

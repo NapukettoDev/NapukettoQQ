@@ -26,13 +26,6 @@ export interface SessionCandidate {
     tag: string;
 }
 
-/** NodeIQQNTWrapperSession 的最小面（单例表 / 会话工厂，NAPI 反射实证）。 */
-export interface WrapperSessionStaticLike {
-    get?(): unknown;
-    getNTWrapperSession?(key: string): unknown;
-    create?(): unknown;
-}
-
 /** 对象有效性判断：getMsgService() 调用不抛断言（cpp_impl 已激活）。
  * 与 isSessionUsable 的区别：这里允许返回 null（未 init 但对象有效）。 */
 function isSessionObjectValid(s: unknown): boolean {

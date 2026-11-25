@@ -2,7 +2,7 @@
  * module-loader.ts：file:// 动态模块加载与导出面守卫（唯一实现，2026-11-25）。
  *
  * 背景：loader 编译期不依赖 adapter / network / kernel，全部运行期 `import(file://…)`。
- * 此前 assemble-protocols.ts 与 ipc/ipc-ob11.ts 各写了一份「反斜杠转正 + 拼子路径 +
+ * 此前 assemble-protocols.ts 与 ipc/ob11-bridge.ts 各写了一份「反斜杠转正 + 拼子路径 +
  * 守卫收窄 + 报错文案」的逻辑——两份实现容易在错误文案与守卫顺序上漂移。
  * 本模块是这条链路的单一来源：
  *
@@ -18,12 +18,12 @@ import { isAdapterCoreModule, isNetworkModule, isOb11Module } from "./module-gua
 import type { AdapterCoreModuleLike, NetworkModuleLike, Ob11ModuleLike } from "./protocol-types.js";
 
 /** file:// URL 化（Windows 反斜杠转正斜杠）。 */
-export function toFileUrl(p: string): string {
+function toFileUrl(p: string): string {
     return `file://${p.replace(BACKSLASH_RE, "/")}`;
 }
 
 /** adapter 入口 index.mjs → 子路径入口（`core` = 配置框架，其余为协议键）。 */
-export function subpathEntry(adapterEntry: string, subpath: ProtocolKey | "core"): string {
+function subpathEntry(adapterEntry: string, subpath: ProtocolKey | "core"): string {
     return adapterEntry.replace(INDEX_MJS_RE, `${subpath}/index.mjs`);
 }
 

@@ -1,5 +1,5 @@
 /**
- * ipc-server.test.ts：IPC 服务端单测。
+ * server.test.ts：IPC 服务端单测。
  *
  *  - handleControl：控制指令分派（纯函数，mock 回调）
  *  - startIpcServer：用 PassThrough 提供物理行。action 行 → result 响应、
@@ -8,9 +8,9 @@
  */
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
-import { encodeIpcMessage } from "../ipc-codec.js";
-import { enableIpc, sendStatus } from "../ipc-sender.js";
-import { handleControl, startIpcServer } from "../ipc-server.js";
+import { encodeIpcMessage } from "../codec.js";
+import { enableIpc, sendStatus } from "../sender.js";
+import { handleControl, startIpcServer } from "../server.js";
 
 describe("handleControl", () => {
     it("stop → onExit", () => {

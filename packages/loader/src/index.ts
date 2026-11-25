@@ -27,6 +27,8 @@ export {
     WIN_NODE_DIR_NAME,
 } from "./boot/win-node.js";
 export { QR_LINE_PREFIX } from "./host/constants.js";
+// wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
+export { isNativeNoiseLine } from "./host/ipc/native-noise.js";
 export type {
     IpcActionMessage,
     IpcActionPayload,
@@ -48,10 +50,9 @@ export type {
     IpcResultPayload,
     IpcStatusMessage,
     IpcStatusPayload,
-} from "./host/ipc/index.js";
+} from "./host/ipc/types.js";
 // IPC 协议契约（koishi 插件 ↔ self-host 子进程，zod 单一来源）：
-// 类型 + schema 值统一经 host/ipc/index.js 出口，插件侧 import 同一份定义。
-// wrapper 原生噪音行判定（cli 转发与 koishi IPC 共享单一来源，见 host/ipc/native-noise.ts）。
+// 类型 + schema 值统一经 host/ipc/types.ts 出口，插件侧 import 同一份定义。
 export {
     DEFAULT_MAX_IPC_LINE_BYTES,
     DEFAULT_MAX_PENDING_REQUESTS,
@@ -92,8 +93,7 @@ export {
     ipcResultPayloadSchema,
     /** @deprecated 请使用 `IpcStatusPayloadSchema` */
     ipcStatusPayloadSchema,
-    isNativeNoiseLine,
-} from "./host/ipc/index.js";
+} from "./host/ipc/types.js";
 export type { InstanceLockCheck, InstanceLockInfo } from "./lifecycle/instance-lock.js";
 export {
     acquireInstanceLock,

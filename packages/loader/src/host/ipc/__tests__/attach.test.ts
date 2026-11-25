@@ -1,21 +1,21 @@
 /**
- * ipc-bootstrap.test.ts：IPC 装配单测（attachIpcServices / createIpcActionsForCore）。
+ * attach.test.ts：IPC 装配单测（attachIpcServices / createIpcActionsForCore）。
  *
  * 回归重点（2026-08-20 生产事故）：kernel 的 Api 是**类**，注入其方法必须保 this。
- * ipc-actions.test.ts 注入的是 `vi.fn` 裸函数（本身不依赖 this），因此测不出
+ * actions.test.ts 注入的是 `vi.fn` 裸函数（本身不依赖 this），因此测不出
  * 「摘方法丢 this」这类装配缺陷——本文件用「方法读 this.service」的假 GroupApi
  * 覆盖该缺陷：未 bind 时 uinToUid 会抛
  * `Cannot read properties of undefined (reading 'service')`。
  *
- * 事件通道转发（forwardChannel）经 ipc-sender mock 捕获 sendEvent：事件名
+ * 事件通道转发（forwardChannel）经 sender mock 捕获 sendEvent：事件名
  * "Service/method" 拆分、无斜杠兜底、onAny 缺失跳过、stop 退订。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { KernelServices } from "../../service-types.js";
-import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../ipc-actions.js";
-import { attachIpcServices, createIpcActionsForCore } from "../ipc-bootstrap.js";
-import { DIAGNOSTIC_ACTION_NAMES } from "../ipc-diagnostics.js";
-import { IpcGroupRequestSchema } from "../ipc-types.js";
+import { callIpcAction, type IpcActionHandler, type IpcPeer } from "../actions.js";
+import { attachIpcServices, createIpcActionsForCore } from "../attach.js";
+import { DIAGNOSTIC_ACTION_NAMES } from "../diagnostics.js";
+import { IpcGroupRequestSchema } from "../types.js";
 
 /** sendEvent 捕获（vi.hoisted：mock 工厂内可见）。 */
 const h = vi.hoisted(() => {
@@ -25,7 +25,7 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("../ipc-sender.js", () => ({
+vi.mock("../sender.js", () => ({
     readReadySelf: h.readReadySelf,
     sendEvent: vi.fn((service: string, name: string, args: unknown[]) => {
         h.events.push({ service, name, args });

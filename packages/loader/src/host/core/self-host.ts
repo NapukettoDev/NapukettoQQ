@@ -16,12 +16,11 @@ import { env, isEnvEnabled } from "../env.js";
 import {
     enableIpc,
     flushIpc,
-    type IpcServerOptions,
     lastIpcStatusPhase,
     sendStatus,
     shouldSendGenericBootFailed,
-    startIpcServer,
-} from "../ipc/index.js";
+} from "../ipc/sender.js";
+import { type IpcServerOptions, startIpcServer } from "../ipc/server.js";
 import { bootstrapExitCode, createState, log, logFatal } from "../util.js";
 import { bootstrap } from "./bootstrap.js";
 import { reportMediaPatchStatus } from "./media-patch-status.js";

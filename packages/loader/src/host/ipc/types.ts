@@ -1,5 +1,5 @@
 /**
- * ipc-types.ts：IPC 协议消息（koishi 插件 ↔ self-host 子进程，单一来源）。
+ * types.ts：IPC 协议消息（koishi 插件 ↔ self-host 子进程，单一来源）。
  *
  * 协议契约（koishi 插件 design.md §5.6）：`{ v, type, id?, payload }` JSON 行。
  * 用 zod v4 定义单一 schema，两侧（loader host + koishi 插件）import 同一份：

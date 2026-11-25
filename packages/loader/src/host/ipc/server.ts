@@ -1,5 +1,5 @@
 /**
- * ipc-server.ts：IPC 服务端（self-host 子进程侧）。
+ * server.ts：IPC 服务端（self-host 子进程侧）。
  *
  * 职责（design.md §5.6 / §7）：
  *  - stdin 逐物理行收 action / control / ping
@@ -13,15 +13,15 @@
 import type { Readable } from "node:stream";
 import { isShuttingDown, requestShutdown } from "../../lifecycle/shutdown.js";
 import { log } from "../util.js";
-import { callIpcAction, type IpcActionHandler } from "./ipc-actions.js";
-import { decodeIpcMessage } from "./ipc-codec.js";
-import { readReadySelf, replayStatus, sendPing, sendPong, sendResult } from "./ipc-sender.js";
+import { callIpcAction, type IpcActionHandler } from "./actions.js";
+import { decodeIpcMessage } from "./codec.js";
+import { readReadySelf, replayStatus, sendPing, sendPong, sendResult } from "./sender.js";
 import {
     DEFAULT_MAX_IPC_LINE_BYTES,
     DEFAULT_MAX_PENDING_REQUESTS,
     type IpcActionMessage,
     type IpcControlPayload,
-} from "./ipc-types.js";
+} from "./types.js";
 
 /** 心跳间隔（毫秒）。 */
 const HEARTBEAT_INTERVAL_MS = 15_000;

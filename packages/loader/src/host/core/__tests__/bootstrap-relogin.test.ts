@@ -20,8 +20,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IpcActionHandler } from "../../ipc/ipc-actions.js";
-import { decodeIpcMessage } from "../../ipc/ipc-codec.js";
+import type { IpcActionHandler } from "../../ipc/actions.js";
+import { decodeIpcMessage } from "../../ipc/codec.js";
 import type { KernelLike } from "../../types.js";
 import type { SharedState } from "../../util.js";
 import type { KernelServices } from "../kernel-services.js";
@@ -43,33 +43,13 @@ const h = vi.hoisted(() => {
     };
 });
 
-vi.mock("../../ipc/index.js", async () => {
-    const sender = await import("../../ipc/ipc-sender.js");
-    const ipcBootstrap = await import("../../ipc/ipc-bootstrap.js");
+// IPC 层按具体模块替换（2026-11-25 P2 移除 host/ipc/index.ts barrel）：
+//  - sender：记录 status/login，其余透传真实实现（sendEvent 由用例 enableIpc 后可见）
+//  - attach / server / ob11-bridge：记录装配与停止时序，并暴露 control login 注入口
+vi.mock("../../ipc/sender.js", async (importOriginal) => {
+    const sender = await importOriginal<typeof import("../../ipc/sender.js")>();
     return {
         ...sender,
-        attachIpcServices: vi.fn(
-            (actions: Map<string, IpcActionHandler>, services: KernelServices) => {
-                h.events.push("attach:ipc-services");
-                const stop = ipcBootstrap.attachIpcServices(actions, services);
-                return () => {
-                    h.events.push("stop:ipc-services");
-                    stop();
-                };
-            },
-        ),
-        attachOb11IpcBridge: vi.fn(async (actions: Map<string, IpcActionHandler>) => {
-            h.events.push("attach:ob11-bridge");
-            await Promise.resolve();
-            h.onEvent?.("Msg/onRecvMsg", "装配中");
-            actions.set("get_login_info", async () => undefined);
-            sender.sendEvent("ob11", "message", ["装配中"]);
-            return () => {
-                h.events.push("stop:ob11-bridge");
-                actions.delete("get_login_info");
-            };
-        }),
-        createIpcActionsForCore: vi.fn(() => h.actions),
         sendLogin: vi.fn((state: string, selfInfo?: unknown, message?: string) => {
             h.logins.push({
                 state,
@@ -82,6 +62,48 @@ vi.mock("../../ipc/index.js", async () => {
             h.statuses.push({ phase, ...(message !== undefined ? { message } : {}) });
             sender.sendStatus(...args);
         }),
+    };
+});
+
+vi.mock("../../ipc/attach.js", async (importOriginal) => {
+    const ipcBootstrap = await importOriginal<typeof import("../../ipc/attach.js")>();
+    return {
+        ...ipcBootstrap,
+        attachIpcServices: vi.fn(
+            (actions: Map<string, IpcActionHandler>, services: KernelServices) => {
+                h.events.push("attach:ipc-services");
+                const stop = ipcBootstrap.attachIpcServices(actions, services);
+                return () => {
+                    h.events.push("stop:ipc-services");
+                    stop();
+                };
+            },
+        ),
+        createIpcActionsForCore: vi.fn(() => h.actions),
+    };
+});
+
+vi.mock("../../ipc/ob11-bridge.js", async () => {
+    const sender = await import("../../ipc/sender.js");
+    return {
+        attachOb11IpcBridge: vi.fn(async (actions: Map<string, IpcActionHandler>) => {
+            h.events.push("attach:ob11-bridge");
+            await Promise.resolve();
+            h.onEvent?.("Msg/onRecvMsg", "装配中");
+            actions.set("get_login_info", async () => undefined);
+            sender.sendEvent("ob11", "message", ["装配中"]);
+            return () => {
+                h.events.push("stop:ob11-bridge");
+                actions.delete("get_login_info");
+            };
+        }),
+    };
+});
+
+vi.mock("../../ipc/server.js", async (importOriginal) => {
+    const server = await importOriginal<typeof import("../../ipc/server.js")>();
+    return {
+        ...server,
         startIpcServer: vi.fn(
             (options: {
                 actions: Map<string, IpcActionHandler>;
@@ -138,7 +160,7 @@ vi.mock("../protocols.js", () => ({
 
 /** 动态加载的被测模块（beforeAll stubEnv 之后首次 import，env 快照正确）。 */
 let bootstrapCore: typeof import("../bootstrap-core.js");
-let ipc: typeof import("../../ipc/index.js");
+let ipc: typeof import("../../ipc/sender.js");
 let tmpRoot = "";
 
 /** 假 kernel：NapukettoCore 路径 + 登录结果队列（逐次出队，空队列 → null）。 */
@@ -187,7 +209,7 @@ beforeAll(async () => {
     vi.stubEnv("NAPUKETTO_WRAPPER_PATH", join(tmpRoot, "wrapper.node"));
     vi.useFakeTimers(); // startSessionProbe 起 5s interval / 60s timeout，假定时器隔离
     bootstrapCore = await import("../bootstrap-core.js");
-    ipc = await import("../../ipc/index.js");
+    ipc = await import("../../ipc/sender.js");
 });
 
 beforeEach(() => {
