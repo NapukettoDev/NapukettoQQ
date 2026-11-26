@@ -20,6 +20,7 @@ import {
     NTGroupRequestOperateTypes,
 } from "../../types/index.js";
 import { checkLooseResult, unwrap } from "../result.js";
+import { isGroupMember } from "./group-parsers.js";
 
 const requestTypes = {
     invitation: GroupNotifyMsgType.INVITED_BY_MEMBER,
@@ -202,34 +203,6 @@ export class GroupNotifyApi {
 /** 群通知项形状判定（seq 字符串 + type 数字是 GroupNotify 的必备标识）。 */
 function isGroupNotify(val: unknown): val is GroupNotify {
     return isRecord(val) && hasStringProp(val, "seq") && hasNumberProp(val, "type");
-}
-
-/** 可选字段：缺失（undefined/null）放行，存在时必须是 string。 */
-function isOptionalString(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || typeof v === "string";
-}
-
-/** 可选字段：缺失放行，存在时必须是有限 number。 */
-function isOptionalNumber(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
-}
-
-/** 群成员项形状判定（uid + uin 必备；展示 / 角色字段缺失即合法，存在则须类型正确）。 */
-function isGroupMember(val: unknown): val is GroupMember {
-    return (
-        isRecord(val) &&
-        hasStringProp(val, "uid") &&
-        hasStringProp(val, "uin") &&
-        isOptionalString(val, "nick") &&
-        isOptionalString(val, "cardName") &&
-        isOptionalString(val, "remark") &&
-        isOptionalString(val, "joinTime") &&
-        isOptionalString(val, "lastSpeakTime") &&
-        isOptionalNumber(val, "role") &&
-        isOptionalNumber(val, "shutUpTime")
-    );
 }
 
 /** 数组逐项守卫过滤（非数组 = 空数组）。 */

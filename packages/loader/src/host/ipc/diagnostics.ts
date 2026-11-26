@@ -24,6 +24,16 @@ export interface IpcDiagnosticContext {
 /** 诊断动作处理函数（与 IpcActionHandler 同构）。 */
 export type DiagnosticActionHandler = (params: Record<string, unknown>) => Promise<unknown>;
 
+/** diag.richMediaTmpPaths 结果（服务缺失 / getter 失败以 error 字段返回）。 */
+interface RichMediaDiagResult {
+    error?: string;
+    richMediaService?: string;
+    richMediaTmpPaths?: Record<string, unknown>;
+    richMediaMethods?: string[];
+    flashService?: string;
+    flashMethods?: string[];
+}
+
 /** 单个反射调用的参数上限（IPC 行本身另有 16 MiB 物理行限制）。 */
 const MAX_DIAGNOSTIC_ARGS = 8;
 /** 方法名长度上限（防御异常长字符串进入日志/反射）。 */
@@ -179,11 +189,11 @@ async function enumerateTmpPaths(svc: unknown): Promise<Record<string, unknown>>
 }
 
 /** 诊断主流程：session → 富媒体服务 + 闪传服务的方法面与临时路径（只读）。 */
-async function runRichMediaDiag(session: unknown): Promise<Record<string, unknown>> {
+async function runRichMediaDiag(session: unknown): Promise<RichMediaDiagResult> {
     if (session === undefined || session === null) {
         return { error: "session 未注入" };
     }
-    const out: Record<string, unknown> = {};
+    const out: RichMediaDiagResult = {};
     // 与 serviceOf 同口径：区分「session 未注入」「getter 缺失」「服务返回 null」。
     const rich = serviceOf(session, "getRichMediaService", "richMedia");
     if (!rich.ok) {

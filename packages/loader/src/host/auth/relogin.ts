@@ -11,7 +11,12 @@ import { log } from "../../shared/boot-log.js";
 import { getErrorMessage } from "../../shared/type-guards.js";
 import { sendLogin, sendQr, sendStatus } from "../ipc/sender.js";
 import { env, isEnvEnabled } from "../runtime/env.js";
-import type { CoreLike, LoginResultLike } from "../runtime/types.js";
+import type {
+    CoreLike,
+    CoreLoginOptionsLike,
+    LoginProgressLike,
+    LoginResultLike,
+} from "../runtime/types.js";
 import type { LoginTargetRef } from "./login.js";
 
 /**
@@ -107,13 +112,6 @@ function isLoginState(value: string): value is LoginStateLike {
     return LOGIN_STATES.some((s) => s === value);
 }
 
-interface LoginProgressLike {
-    state: string;
-    qr?: { pngBase64: string; qrcodeUrl: string };
-    selfInfo?: { uin: string; uid: string; nick: string };
-    message?: string;
-}
-
 /** logged_in 由实际采纳登录结果的一方发布。 */
 function forwardIpcLoginProgress(progress: LoginProgressLike): void {
     if (progress.qr !== undefined) {
@@ -134,9 +132,9 @@ export function buildLoginOpts(
     ref: LoginTargetRef,
     qrOnly: boolean,
     isCurrent: () => boolean,
-): Record<string, unknown> {
+): CoreLoginOptionsLike {
     const quickUin = qrOnly ? undefined : (forcedUin ?? ref.targetUin);
-    const opts: Record<string, unknown> = {
+    const opts: CoreLoginOptionsLike = {
         appid: Appid,
         initTimeoutMs: 20000,
         ...(quickUin !== undefined ? { quickUin } : {}),
@@ -240,7 +238,7 @@ export function createLoginControlHandler(
             return;
         }
         const isCurrent = () => !isShuttingDown() && control.currentPhase === phase;
-        const opts: Record<string, unknown> = {
+        const opts: CoreLoginOptionsLike = {
             appid: String(Appid),
             initTimeoutMs: 20000,
             quickLoginTimeoutMs: 20000,

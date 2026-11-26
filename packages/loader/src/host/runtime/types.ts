@@ -42,6 +42,16 @@ export interface BootstrapEnv {
     wrapperPath: string;
 }
 
+/** attachWrapper / startNapuketto 的引导环境（kernel BootEnv 最小面，字段可缺省）。 */
+export interface BootEnvLike {
+    qqVersion?: string | undefined;
+    dataDir?: string | undefined;
+    dataRoot?: string | undefined;
+    selfUin?: string | undefined;
+    selfUid?: string | undefined;
+    wrapperPath?: string | undefined;
+}
+
 /** 消息事件通道（NTEventChannel 的最小面）。 */
 export interface EventChannelLike {
     on(event: string, handler: (payload: unknown) => void): unknown;
@@ -163,10 +173,31 @@ export interface CoreContextLike {
     } | null;
 }
 
+/** 登录进度（QR 流程：二维码数据 + 状态变化）。 */
+export interface LoginProgressLike {
+    state: string;
+    qr?: { pngBase64: string; qrcodeUrl: string };
+    selfInfo?: { uin: string; uid: string; nick: string };
+    message?: string;
+}
+
+/** kernel CoreLoginOptions 最小面（登录参数，字段全部可选）。 */
+export interface CoreLoginOptionsLike {
+    appid?: string | number | undefined;
+    initTimeoutMs?: number | undefined;
+    quickUin?: string | undefined;
+    quickLoginTimeoutMs?: number | undefined;
+    qrFallback?: boolean | undefined;
+    qrOnly?: boolean | undefined;
+    qrCodePath?: string | undefined;
+    onLoginProgress?: ((progress: LoginProgressLike) => void) | undefined;
+    activateSession?: boolean | undefined;
+}
+
 /** NapukettoCore（kernel 装配层）。 */
 export interface CoreLike {
-    attachWrapper(wrapperExports: unknown, env: Record<string, unknown>): CoreContextLike;
-    login(options: Record<string, unknown>): Promise<LoginResultLike | null>;
+    attachWrapper(wrapperExports: unknown, env: BootEnvLike): CoreContextLike;
+    login(options: CoreLoginOptionsLike): Promise<LoginResultLike | null>;
     setSession(session: unknown): void;
     /** 手动刷新二维码（QR 登录期间可用；返回是否触发，false = 不在扫码态）。 */
     refreshQr?: () => boolean;
@@ -228,10 +259,7 @@ export interface KernelLike {
             account?: string;
         }): CoreLike;
     };
-    startNapuketto?: (options: {
-        wrapperExports: unknown;
-        env: Record<string, unknown>;
-    }) => CoreContextLike;
+    startNapuketto?: (options: { wrapperExports: unknown; env: BootEnvLike }) => CoreContextLike;
     // 登录
     listLoginAccounts(ctx: CoreContextLike): Promise<LoginAccountLike[]>;
     quickLogin?: (ctx: CoreContextLike, options: unknown) => Promise<LoginResultLike>;

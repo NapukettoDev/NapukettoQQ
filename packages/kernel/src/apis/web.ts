@@ -4,7 +4,7 @@
  * 接口契约（URL/参数/返回形状）是 qun.qq.com 外部系统的事实，自研描述。
  */
 import { errorMessage, isKernelError, kernelError } from "../infra/index.js";
-import { isRecord } from "../infra/type-guards.js";
+import { hasNullableNumberProp, hasNullableStringProp, isRecord } from "../infra/type-guards.js";
 import { TicketApi } from "./ticket.js";
 
 /** 群空间域名（Cookie 归属）。 */
@@ -199,30 +199,18 @@ export function parseHonorList(text: string, type: number): HonorListItem[] {
     return out;
 }
 
-/** 可选字段：缺失放行，存在时类型必须正确。 */
-function isOptionalString(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || typeof v === "string";
-}
-
-/** 可选字段：缺失放行，存在时必须是有限 number。 */
-function isOptionalNumber(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
-}
-
 /** 精华消息项形状判定（msg_content 数组必备；其余字段存在时逐一校验类型）。 */
 function isEssenceMsgItem(val: unknown): val is EssenceMsgItem {
     return (
         isRecord(val) &&
         Array.isArray(val["msg_content"]) &&
-        isOptionalString(val, "sender_uin") &&
-        isOptionalString(val, "sender_nick") &&
-        isOptionalString(val, "add_digest_uin") &&
-        isOptionalString(val, "add_digest_nick") &&
-        isOptionalNumber(val, "msg_seq") &&
-        isOptionalNumber(val, "msg_random") &&
-        isOptionalNumber(val, "add_digest_time")
+        hasNullableStringProp(val, "sender_uin") &&
+        hasNullableStringProp(val, "sender_nick") &&
+        hasNullableStringProp(val, "add_digest_uin") &&
+        hasNullableStringProp(val, "add_digest_nick") &&
+        hasNullableNumberProp(val, "msg_seq") &&
+        hasNullableNumberProp(val, "msg_random") &&
+        hasNullableNumberProp(val, "add_digest_time")
     );
 }
 

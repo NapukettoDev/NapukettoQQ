@@ -110,63 +110,30 @@ function decodeTaggedField(data: Uint8Array, start: number, depth: number): Deco
     if (no === 0) {
         return null;
     }
-    return decodeFieldByWire(data, afterTag, no, Number(tagValue & 7n), depth);
-}
-
-/** 按 wire type 分派字段解码。 */
-function decodeFieldByWire(
-    data: Uint8Array,
-    afterTag: number,
-    no: number,
-    wireType: number,
-    depth: number,
-): DecodedField | null {
-    if (wireType === 0) {
-        return decodeVarintFieldAt(data, afterTag, no);
+    const wireType = Number(tagValue & 7n);
+    switch (wireType) {
+        case 0: {
+            const v = readVarint(data, afterTag);
+            if (v === null) {
+                return null;
+            }
+            return { field: { no, kind: "varint", value: v[0] }, next: v[1] };
+        }
+        case 2:
+            return decodeLengthDelimited(data, afterTag, no, depth);
+        // wire 1/5（fixed64/32）：QQ NT blob 未观测到，按定长跳过（防御性兼容）
+        case 1:
+        case 5: {
+            const next = afterTag + (wireType === 1 ? 8 : 4);
+            if (next > data.length) {
+                return null;
+            }
+            return { field: undefined, next };
+        }
+        default:
+            // wire 3/4（group）未观测到，整层判失败
+            return null;
     }
-    if (wireType === 2) {
-        return decodeLengthDelimited(data, afterTag, no, depth);
-    }
-    return decodeFixedField(data, afterTag, wireType);
-}
-
-/** wire 0：varint 字段。 */
-function decodeVarintFieldAt(data: Uint8Array, afterTag: number, no: number): DecodedField | null {
-    const v = readVarint(data, afterTag);
-    if (v === null) {
-        return null;
-    }
-    return { field: { no, kind: "varint", value: v[0] }, next: v[1] };
-}
-
-/** wire 1/5（fixed64/32）：跳过（QQ NT blob 未观测到，防御性兼容）；其余判失败。 */
-function decodeFixedField(
-    data: Uint8Array,
-    afterTag: number,
-    wireType: number,
-): DecodedField | null {
-    const width = fixedWireWidth(wireType);
-    if (width === null) {
-        return null; // wire 3/4（group）未观测到，整层判失败
-    }
-    return skipFixedBytes(data, afterTag, width);
-}
-
-/** fixed 类 wire 的字节宽度（非 fixed → null）。 */
-function fixedWireWidth(wireType: number): number | null {
-    if (wireType === 1) {
-        return 8;
-    }
-    return wireType === 5 ? 4 : null;
-}
-
-/** 定长跳过（越界判失败）。 */
-function skipFixedBytes(data: Uint8Array, start: number, width: number): DecodedField | null {
-    const next = start + width;
-    if (next > data.length) {
-        return null;
-    }
-    return { field: undefined, next };
 }
 
 /**
@@ -292,16 +259,14 @@ export function textOf(node: readonly SysMsgField[] | null, no: number): string 
 // 回调参数收窄（onRecvSysMsg arg = 带符号字节数组的数组）
 // ---------------------------------------------------------------------------
 
-/** 单个候选块 → Uint8Array（number[] -128..255 / TypedArray；其余 null）。 */
+/**
+ * 单个候选块 → Uint8Array（Int8Array / Uint8Array / number[] -128..255；其余 null）。
+ * 字节值必须是整数：浮点 & 0xff 会静默截断成别的字节。
+ */
 function toBlob(item: unknown): Uint8Array | null {
     if (item instanceof Int8Array) {
         return Uint8Array.from(item, (b) => b & 0xff);
     }
-    return blobFromGeneric(item);
-}
-
-/** Uint8Array / 字节数组形态（Int8Array 已在上层处理）。 */
-function blobFromGeneric(item: unknown): Uint8Array | null {
     if (item instanceof Uint8Array) {
         return new Uint8Array(item);
     }
@@ -315,21 +280,13 @@ function blobFromGeneric(item: unknown): Uint8Array | null {
 function blobFromArray(item: unknown[]): Uint8Array | null {
     const out = new Uint8Array(item.length);
     for (let i = 0; i < item.length; i += 1) {
-        const byte = signedToUnsigned(item[i]);
-        if (byte === null) {
+        const b = item[i];
+        if (typeof b !== "number" || !Number.isInteger(b) || b < -128 || b > 255) {
             return null;
         }
-        out[i] = byte;
+        out[i] = b & 0xff;
     }
     return out;
-}
-
-/** 带符号/无符号字节归一（非整数拒绝：浮点 & 0xff 会静默截断成别的字节）。 */
-function signedToUnsigned(b: unknown): number | null {
-    if (typeof b !== "number" || !Number.isInteger(b) || b < -128 || b > 255) {
-        return null;
-    }
-    return b & 0xff;
 }
 
 /**

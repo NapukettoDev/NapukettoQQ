@@ -2,7 +2,14 @@
  * GroupApi 的原始响应守卫与解析：原生 wrapper 返回形状不稳定，这里集中做形状收窄
  * 与宽松提取，业务方法只消费解析结果（错误仍由调用方抛 KernelError）。
  */
-import { hasNumberProp, hasStringProp, isRecord, kernelError } from "../../infra/index.js";
+import {
+    hasNullableNumberProp,
+    hasNullableStringProp,
+    hasNumberProp,
+    hasStringProp,
+    isRecord,
+    kernelError,
+} from "../../infra/index.js";
 import type { GroupBulletin, GroupDetailInfo, GroupMember } from "../../types/index.js";
 
 /** result 字段宽松取数（数字直接用，缺省 0 = 成功语义）。 */
@@ -29,33 +36,21 @@ export function toStringMap(value: unknown): Map<string, string> {
     return out;
 }
 
-/** 可选字段：缺失（undefined/null）放行，存在时必须是 string。 */
-function isOptionalString(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || typeof v === "string";
-}
-
-/** 可选字段：缺失（undefined/null）放行，存在时必须是有限 number。 */
-function isOptionalNumber(rec: Record<string, unknown>, key: string): boolean {
-    const v = rec[key];
-    return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
-}
-
 /** 群成员形状判定（uid + uin 必备；展示 / 角色字段缺失即合法，存在则须类型正确）。 */
-function isGroupMember(val: unknown): val is GroupMember {
+export function isGroupMember(val: unknown): val is GroupMember {
     return (
         isRecord(val) &&
         hasStringProp(val, "uid") &&
         hasStringProp(val, "uin") &&
-        isOptionalString(val, "nick") &&
-        isOptionalString(val, "cardName") &&
-        isOptionalString(val, "remark") &&
-        isOptionalString(val, "joinTime") &&
-        isOptionalString(val, "lastSpeakTime") &&
-        isOptionalNumber(val, "role") &&
-        isOptionalNumber(val, "shutUpTime") &&
-        isOptionalNumber(val, "sex") &&
-        isOptionalNumber(val, "age")
+        hasNullableStringProp(val, "nick") &&
+        hasNullableStringProp(val, "cardName") &&
+        hasNullableStringProp(val, "remark") &&
+        hasNullableStringProp(val, "joinTime") &&
+        hasNullableStringProp(val, "lastSpeakTime") &&
+        hasNullableNumberProp(val, "role") &&
+        hasNullableNumberProp(val, "shutUpTime") &&
+        hasNullableNumberProp(val, "sex") &&
+        hasNullableNumberProp(val, "age")
     );
 }
 
@@ -78,8 +73,8 @@ function isGroupDetailInfo(val: unknown): val is GroupDetailInfo {
         hasStringProp(val, "groupName") &&
         hasNumberProp(val, "memberNum") &&
         hasNumberProp(val, "maxMemberNum") &&
-        isOptionalString(val, "groupUin") &&
-        isOptionalString(val, "ownerUin")
+        hasNullableStringProp(val, "groupUin") &&
+        hasNullableStringProp(val, "ownerUin")
     );
 }
 
