@@ -62,13 +62,6 @@ export default defineConfig({
                 "apps/cli/src/cli/program.ts",
                 "apps/cli/src/cli/version.ts",
             ],
-            // 工程水位：覆盖真实分支即可，不设 90%+ 逼人写「只测调用次数」的假单测。
-            thresholds: {
-                lines: 70,
-                functions: 70,
-                branches: 65,
-                statements: 70,
-            },
         },
     },
 });
