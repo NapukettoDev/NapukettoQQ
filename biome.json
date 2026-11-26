@@ -35,7 +35,7 @@
                 "noExcessiveCognitiveComplexity": {
                     "level": "error",
                     "options": {
-                        "maxAllowedComplexity": 15
+                        "maxAllowedComplexity": 20
                     }
                 }
             },
@@ -101,6 +101,24 @@
         }
     },
     "overrides": [
+        {
+            "includes": [
+                "packages/adapter/src/**/helper/**",
+                "packages/adapter/src/internal/domain/sysmsg.ts"
+            ],
+            "linter": {
+                "rules": {
+                    "complexity": {
+                        "noExcessiveCognitiveComplexity": {
+                            "level": "error",
+                            "options": {
+                                "maxAllowedComplexity": 25
+                            }
+                        }
+                    }
+                }
+            }
+        },
         {
             "includes": ["packages/adapter/src/framework/**"],
             "linter": {

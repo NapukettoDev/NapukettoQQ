@@ -8,7 +8,14 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import process from "node:process";
-import { configError, errorMessage, hasStringProp, isRecord } from "@napuketto/kernel";
+import {
+    configError,
+    errorMessage,
+    getErrorCode,
+    hasOptionalStringProp,
+    hasStringProp,
+    isRecord,
+} from "@napuketto/kernel";
 import {
     CMDLINE_PROBE_SUPPORTED,
     isValidPid,
@@ -190,11 +197,6 @@ function isAccountRuntimeStatus(val: unknown): val is AccountRuntime["status"] {
     return val === "running" || val === "exited";
 }
 
-/** 可选字符串字段判定（缺省合法）。 */
-function isOptionalString(val: unknown): boolean {
-    return val === undefined || typeof val === "string";
-}
-
 /** runtime.json 形状守卫（损坏 / 旧格式 / 手工改错的文件一律判非法）。 */
 function isAccountRuntime(val: unknown): val is AccountRuntime {
     return (
@@ -205,8 +207,8 @@ function isAccountRuntime(val: unknown): val is AccountRuntime {
         isAccountRuntimeKind(val["kind"]) &&
         isAccountRuntimeStatus(val["status"]) &&
         (val["selfHostPid"] === undefined || isValidPid(val["selfHostPid"])) &&
-        isOptionalString(val["cmdline"]) &&
-        isOptionalString(val["selfHostCmdline"])
+        hasOptionalStringProp(val, "cmdline") &&
+        hasOptionalStringProp(val, "selfHostCmdline")
     );
 }
 
@@ -218,7 +220,7 @@ function isSupervisorRuntime(val: unknown): val is SupervisorRuntime {
         hasStringProp(val, "startedAt") &&
         Array.isArray(val["accounts"]) &&
         val["accounts"].every((item): item is string => typeof item === "string") &&
-        isOptionalString(val["cmdline"])
+        hasOptionalStringProp(val, "cmdline")
     );
 }
 
@@ -278,7 +280,7 @@ export function isPidAlive(pid: number): boolean {
         return true;
     } catch (err) {
         // EPERM：进程存在但无权限（非 Error 形态按「不存在」处理）
-        return isRecord(err) && err["code"] === "EPERM";
+        return getErrorCode(err) === "EPERM";
     }
 }
 
@@ -289,16 +291,6 @@ export interface KillProcessTreeOptions {
     graceMs?: number;
     /** 诊断回调（taskkill 启动失败 / 非 ESRCH 信号错误；已退出属正常不回调）。 */
     onError?: (message: string) => void;
-}
-
-/** 目标进程不存在（ESRCH）：正常路径，不回调 onError。 */
-function isNoSuchProcess(err: unknown): boolean {
-    return isRecord(err) && err["code"] === "ESRCH";
-}
-
-/** 去重并过滤非法 pid（类型/范围统一走 loader isValidPid）。 */
-function uniquePids(pids: number[]): number[] {
-    return [...new Set(pids)].filter((pid) => isValidPid(pid));
 }
 
 /**
@@ -312,7 +304,9 @@ function uniquePids(pids: number[]): number[] {
  * 是异步事件，不监听会静默失败。
  */
 export function killProcessTree(pid: number, options: KillProcessTreeOptions = {}): void {
-    const targets = uniquePids([pid, ...(options.extraPids ?? [])]);
+    const targets = [...new Set([pid, ...(options.extraPids ?? [])])].filter((target) =>
+        isValidPid(target),
+    );
     if (targets.length === 0) {
         return;
     }
@@ -332,7 +326,7 @@ export function killProcessTree(pid: number, options: KillProcessTreeOptions = {
         try {
             process.kill(target, signal);
         } catch (err) {
-            if (!isNoSuchProcess(err)) {
+            if (getErrorCode(err) !== "ESRCH") {
                 options.onError?.(`发送 ${signal} 失败（pid ${target}）：${errorMessage(err)}`);
             }
         }

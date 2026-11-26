@@ -108,9 +108,6 @@ function videoToIncoming(el: Extract<CanonicalElement, { type: "video" }>): Inco
 /**
  * canonical → IncomingSegment 单元素分发（可辨识联合 switch）。
  * 未映射类型（unknown / forward / 规范无对应）→ null（规范兼容性要求跳过）。
- *
- * 按「简单段 / 媒体与载荷段」拆两级：一级 switch 只分派，二级各管一类，
- * 单函数分支数保持低位（fallow 复杂度门禁）。
  */
 function canonicalToIncomingSegment(
     el: CanonicalElement,
@@ -122,32 +119,11 @@ function canonicalToIncomingSegment(
         case "reply":
             return replyToIncoming(el, ctx);
         case "text":
-        case "face":
-        case "file":
-            return simpleIncoming(el);
-        default:
-            return mediaOrPayloadIncoming(el);
-    }
-}
-
-/** 无需上下文的直映射元素子集。 */
-type SimpleIncomingElement = Extract<CanonicalElement, { type: "text" | "face" | "file" }>;
-
-/** text / face / file 直映射。 */
-function simpleIncoming(el: SimpleIncomingElement): IncomingSegment {
-    switch (el.type) {
-        case "text":
             return { type: "text", data: { text: el.text } };
         case "face":
             return { type: "face", data: { face_id: el.id, is_large: false } };
         case "file":
             return fileToIncoming(el);
-    }
-}
-
-/** 媒体段（image / voice / video）与载荷段（json / xml）映射；其余返回 null。 */
-function mediaOrPayloadIncoming(el: CanonicalElement): IncomingSegment | null {
-    switch (el.type) {
         case "image":
             return imageToIncoming(el);
         case "voice":
@@ -303,50 +279,9 @@ interface OutgoingConversion {
     replySeq?: number;
 }
 
-/** 段 data 收窄（非对象按空对象处理，字段守卫会立即拒绝）。 */
-function segmentData(seg: OutgoingSegment | RawOutgoingSegment): Record<string, unknown> {
-    return isRecord(seg.data) ? seg.data : {};
-}
-
 /** 已知段缺必填字段 / 类型错误 → INVALID_PARAM。 */
 function invalidSegment(type: string): never {
     throw kernelError(`Milky 消息段 ${type} 参数不合法`, "INVALID_PARAM");
-}
-
-/** text 段（必填 text: string）。 */
-function textSegment(data: Record<string, unknown>): OutgoingConversion {
-    if (!hasStringProp(data, "text")) {
-        return invalidSegment("text");
-    }
-    return { element: { type: "text", text: data["text"] } };
-}
-
-/** mention 段（必填 user_id: number）。 */
-function mentionSegment(data: Record<string, unknown>): OutgoingConversion {
-    if (!hasNumberProp(data, "user_id")) {
-        return invalidSegment("mention");
-    }
-    const uin = String(data["user_id"]);
-    return { element: { type: "at", target: uin }, atUin: uin };
-}
-
-/** face 段（必填 face_id: string）。 */
-function faceSegment(data: Record<string, unknown>): OutgoingConversion {
-    if (!hasStringProp(data, "face_id")) {
-        return invalidSegment("face");
-    }
-    return { element: { type: "face", id: data["face_id"] } };
-}
-
-/** reply 段（必填 message_seq: number）。 */
-function replySegment(data: Record<string, unknown>): OutgoingConversion {
-    if (!hasNumberProp(data, "message_seq")) {
-        return invalidSegment("reply");
-    }
-    return {
-        element: { type: "reply", messageId: String(data["message_seq"]) },
-        replySeq: data["message_seq"],
-    };
 }
 
 /** 媒体段（image/record/video，必填 uri: string）。 */
@@ -364,62 +299,49 @@ function mediaSegment(
     return { element: { type: type === "image" ? "image" : "video", path } };
 }
 
-/** light_app 段（json_payload 缺省按空串，保持容忍）。 */
-function lightAppSegment(data: Record<string, unknown>): OutgoingConversion {
-    const payload = data["json_payload"];
-    return { element: { type: "json", raw: typeof payload === "string" ? payload : "" } };
-}
-
-/** 简单段类型（无媒体载荷）。 */
-type SimpleOutgoingType = "text" | "mention" | "mention_all" | "face" | "reply";
-
-/** 简单段类型判定（字面量联合收窄）。 */
-function isSimpleOutgoingType(type: string): type is SimpleOutgoingType {
-    switch (type) {
+/** 单段分派（可辨识联合 switch）：已知类型逐项守卫，未知段跳过（规范兼容性要求）。 */
+function outgoingSegmentToCanonical(
+    seg: OutgoingSegment | RawOutgoingSegment,
+): OutgoingConversion | null {
+    const data: Record<string, unknown> = isRecord(seg.data) ? seg.data : {};
+    switch (seg.type) {
         case "text":
-        case "mention":
-        case "mention_all":
-        case "face":
-        case "reply":
-            return true;
-        default:
-            return false;
-    }
-}
-
-/** 简单段分发。 */
-function simpleOutgoingSegment(
-    type: SimpleOutgoingType,
-    data: Record<string, unknown>,
-): OutgoingConversion {
-    switch (type) {
-        case "text":
-            return textSegment(data);
-        case "mention":
-            return mentionSegment(data);
+            if (!hasStringProp(data, "text")) {
+                return invalidSegment("text");
+            }
+            return { element: { type: "text", text: data["text"] } };
+        case "mention": {
+            if (!hasNumberProp(data, "user_id")) {
+                return invalidSegment("mention");
+            }
+            const uin = String(data["user_id"]);
+            return { element: { type: "at", target: uin }, atUin: uin };
+        }
         case "mention_all":
             return { element: { type: "at", target: "all" } };
         case "face":
-            return faceSegment(data);
+            if (!hasStringProp(data, "face_id")) {
+                return invalidSegment("face");
+            }
+            return { element: { type: "face", id: data["face_id"] } };
         case "reply":
-            return replySegment(data);
-    }
-}
-
-/** 复杂段分发（媒体 / light_app / forward / 未知）。 */
-function complexOutgoingSegment(
-    type: string,
-    data: Record<string, unknown>,
-): OutgoingConversion | null {
-    switch (type) {
+            if (!hasNumberProp(data, "message_seq")) {
+                return invalidSegment("reply");
+            }
+            return {
+                element: { type: "reply", messageId: String(data["message_seq"]) },
+                replySeq: data["message_seq"],
+            };
         case "image":
             return mediaSegment("image", data);
         case "record":
             return mediaSegment("record", data);
         case "video":
             return mediaSegment("video", data);
-        case "light_app":
-            return lightAppSegment(data);
+        case "light_app": {
+            const payload = data["json_payload"];
+            return { element: { type: "json", raw: typeof payload === "string" ? payload : "" } };
+        }
         case "forward":
             throw kernelError(
                 "forward 段不可与其他消息段混发或嵌套（顶层 forward 须单独发送）",
@@ -429,15 +351,4 @@ function complexOutgoingSegment(
             // 未知段：跳过（规范兼容性要求）
             return null;
     }
-}
-
-/** 单段分派入口（简单段 / 复杂段两级，避免单函数分支过多）。 */
-function outgoingSegmentToCanonical(
-    seg: OutgoingSegment | RawOutgoingSegment,
-): OutgoingConversion | null {
-    const data = segmentData(seg);
-    if (isSimpleOutgoingType(seg.type)) {
-        return simpleOutgoingSegment(seg.type, data);
-    }
-    return complexOutgoingSegment(seg.type, data);
 }

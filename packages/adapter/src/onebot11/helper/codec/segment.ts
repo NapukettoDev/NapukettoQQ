@@ -12,7 +12,7 @@
  * 守卫接受 string | number，转换时统一 String() 归一（canonical 字段恒为 string）。
  */
 import type { CanonicalElement } from "@napuketto/kernel";
-import { hasStringProp, isRecord, kernelError } from "@napuketto/kernel";
+import { hasOptionalStringProp, hasStringProp, isRecord, kernelError } from "@napuketto/kernel";
 import type { OB11MessageSegment } from "../../types/index.js";
 import { type CqCode, encodeCqCode, escapeCqText } from "./cqcode.js";
 
@@ -75,59 +75,9 @@ function isStringOrNumber(val: unknown): boolean {
     return typeof val === "string" || typeof val === "number";
 }
 
-/** 可选字符串字段（缺省合法，出现时必须是 string）。 */
-function isOptionalString(data: Record<string, unknown>, key: string): boolean {
-    return data[key] === undefined || typeof data[key] === "string";
-}
-
-/** 文本 / at / face 类型的 data 校验。 */
-function isTextLikeSegmentData(type: string, data: Record<string, unknown>): boolean {
-    switch (type) {
-        case "text":
-        case "string":
-            return hasStringProp(data, "text");
-        case "at":
-            return isStringOrNumber(data["qq"]) && isOptionalString(data, "name");
-        case "face":
-            return isStringOrNumber(data["id"]);
-        default:
-            return false;
-    }
-}
-
-/** image / record / video / file 类型的 data 校验。 */
-function isMediaSegmentData(type: string, data: Record<string, unknown>): boolean {
-    switch (type) {
-        case "image":
-        case "record":
-        case "video":
-            return hasStringProp(data, "file") && isOptionalString(data, "url");
-        case "file":
-            return hasStringProp(data, "file");
-        default:
-            return false;
-    }
-}
-
-/** reply / forward / json / xml 类型的 data 校验。 */
-function isPayloadSegmentData(type: string, data: Record<string, unknown>): boolean {
-    switch (type) {
-        case "reply":
-        case "forward":
-            return isStringOrNumber(data["id"]);
-        case "json":
-        case "xml":
-            return typeof data["data"] === "string" || isRecord(data["data"]);
-        default:
-            return false;
-    }
-}
-
 /**
  * OB11 消息段形状守卫：`type` 为 string，`data` 为对象，且**已知类型的必填字段**
  * 类型正确。未知 `type` 一律判非法（发送入口显式拒绝，不静默丢段）。
- *
- * 按 data 校验形态拆成三组小函数（文本类 / 媒体类 / 载荷类），主函数只做短路组合。
  */
 export function isOB11MessageSegment(val: unknown): val is OB11MessageSegment {
     if (!isRecord(val) || !hasStringProp(val, "type")) {
@@ -137,12 +87,29 @@ export function isOB11MessageSegment(val: unknown): val is OB11MessageSegment {
     if (!isRecord(data)) {
         return false;
     }
-    const type = val["type"];
-    return (
-        isTextLikeSegmentData(type, data) ||
-        isMediaSegmentData(type, data) ||
-        isPayloadSegmentData(type, data)
-    );
+    switch (val["type"]) {
+        case "text":
+        case "string":
+            return hasStringProp(data, "text");
+        case "at":
+            return isStringOrNumber(data["qq"]) && hasOptionalStringProp(data, "name");
+        case "face":
+            return isStringOrNumber(data["id"]);
+        case "image":
+        case "record":
+        case "video":
+            return hasStringProp(data, "file") && hasOptionalStringProp(data, "url");
+        case "file":
+            return hasStringProp(data, "file");
+        case "reply":
+        case "forward":
+            return isStringOrNumber(data["id"]);
+        case "json":
+        case "xml":
+            return typeof data["data"] === "string" || isRecord(data["data"]);
+        default:
+            return false;
+    }
 }
 
 /**

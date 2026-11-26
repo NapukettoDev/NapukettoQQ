@@ -24,39 +24,35 @@ export interface SatoriElement {
     text?: string;
 }
 
+/** 文本转义映射（& < >）。 */
+const TEXT_ESCAPES: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+};
+
 /** 文本转义正则（& < >）。 */
 const TEXT_ESCAPE_RE = /[&<>]/g;
 
 /** 文本转义（& < >）。 */
 function encodeText(input: string): string {
-    return input.replace(TEXT_ESCAPE_RE, (ch) => {
-        if (ch === "&") {
-            return "&amp;";
-        }
-        if (ch === "<") {
-            return "&lt;";
-        }
-        return "&gt;";
-    });
+    return input.replace(TEXT_ESCAPE_RE, (ch) => TEXT_ESCAPES[ch] ?? ch);
 }
+
+/** 属性值转义映射（& " < >）。 */
+const ATTR_ESCAPES: Record<string, string> = {
+    "&": "&amp;",
+    '"': "&quot;",
+    "<": "&lt;",
+    ">": "&gt;",
+};
 
 /** 属性值转义正则（& " < >）。 */
 const ATTR_ESCAPE_RE = /[&"<>]/g;
 
 /** 属性值转义（& " < >）。 */
 function encodeAttr(input: string): string {
-    return input.replace(ATTR_ESCAPE_RE, (ch) => {
-        if (ch === "&") {
-            return "&amp;";
-        }
-        if (ch === '"') {
-            return "&quot;";
-        }
-        if (ch === "<") {
-            return "&lt;";
-        }
-        return "&gt;";
-    });
+    return input.replace(ATTR_ESCAPE_RE, (ch) => ATTR_ESCAPES[ch] ?? ch);
 }
 
 /** 行首连续空白。 */
@@ -83,88 +79,58 @@ function normalizeText(raw: string): string {
     return out;
 }
 
-/** Satori 消息解析器状态（挂载点 / 文本缓冲 / 栈管理，拆分主循环复杂度）。 */
-class ElementParser {
-    private readonly root: SatoriElement[] = [];
-    private readonly stack: SatoriElement[] = [];
-    private text = "";
+/** 解析状态（挂载根 / 标签栈 / 文本缓冲）。 */
+interface ParseState {
+    readonly root: SatoriElement[];
+    readonly stack: SatoriElement[];
+    text: string;
+}
 
-    /** 当前挂载数组（栈顶元素 children 或根数组）。 */
-    private mountPoint(): SatoriElement[] {
-        const top = this.stack[this.stack.length - 1];
-        if (top === undefined) {
-            return this.root;
-        }
-        top.children ??= [];
-        return top.children;
+/** 当前挂载数组（栈顶元素 children 或根数组）。 */
+function mountPoint(state: ParseState): SatoriElement[] {
+    const top = state.stack[state.stack.length - 1];
+    if (top === undefined) {
+        return state.root;
     }
+    top.children ??= [];
+    return top.children;
+}
 
-    /** 归一化文本落位到当前挂载点。 */
-    pushText(): void {
-        const normalized = normalizeText(this.text);
-        this.text = "";
-        if (normalized !== "") {
-            this.mountPoint().push({ type: "text", text: normalized });
-        }
+/** 归一化文本落位到当前挂载点。 */
+function pushText(state: ParseState): void {
+    const normalized = normalizeText(state.text);
+    state.text = "";
+    if (normalized !== "") {
+        mountPoint(state).push({ type: "text", text: normalized });
     }
+}
 
-    /** 解析完成的元素树。 */
-    get elements(): SatoriElement[] {
-        return this.root;
+/**
+ * 结束标签：匹配栈顶则闭合，否则按文本保留。
+ * @returns 下一个解析位置；-1 = 终止解析。
+ */
+function closeTag(state: ParseState, source: string, lt: number, slashPos: number): number {
+    const { name, end } = readTagName(source, slashPos + 1);
+    if (name === "") {
+        // 非法结束标签（</> 等）：< 按文本保留
+        state.text += "<";
+        return lt + 1;
     }
-
-    /** 追加原始文本（解析间隙累积）。 */
-    appendRaw(raw: string): void {
-        this.text += raw;
+    const gt = source.indexOf(">", end);
+    if (gt === -1) {
+        state.text += source.slice(lt);
+        return -1;
     }
-
-    /** 起始/自闭合标签落位（压栈或仅挂载）。 */
-    openTag(name: string, attrs: Record<string, string>, selfClosing: boolean): void {
-        const el: SatoriElement = { type: name, attrs };
-        this.mountPoint().push(el);
-        if (!selfClosing) {
-            this.stack.push(el);
-        }
+    const top = state.stack[state.stack.length - 1];
+    if (top !== undefined && top.type === name) {
+        // 闭合前的文本推入该元素
+        pushText(state);
+        state.stack.pop();
+    } else {
+        // 未配对：原样当文本
+        state.text += source.slice(lt, gt + 1);
     }
-
-    /** 收尾：剩余文本落位（栈剩余未闭合元素：文本落在栈顶元素内，宽容）。 */
-    flush(): void {
-        this.pushText();
-    }
-
-    /** 注释：返回跳过后的位置；-1 = 未闭合终止解析（注释不渲染）。 */
-    skipComment(source: string, pos: number): number {
-        const end = source.indexOf("-->", pos);
-        return end === -1 ? -1 : end + 3;
-    }
-
-    /**
-     * 结束标签：匹配栈顶则闭合，否则按文本保留。
-     * @returns 下一个解析位置；-1 = 终止解析。
-     */
-    closeTag(source: string, lt: number, slashPos: number): number {
-        const { name, end } = readTagName(source, slashPos + 1);
-        if (name === "") {
-            // 非法结束标签（</> 等）：< 按文本保留
-            this.text += "<";
-            return lt + 1;
-        }
-        const gt = source.indexOf(">", end);
-        if (gt === -1) {
-            this.text += source.slice(lt);
-            return -1;
-        }
-        const top = this.stack[this.stack.length - 1];
-        if (top !== undefined && top.type === name) {
-            // 闭合前的文本推入该元素
-            this.pushText();
-            this.stack.pop();
-        } else {
-            // 未配对：原样当文本
-            this.text += source.slice(lt, gt + 1);
-        }
-        return gt + 1;
-    }
+    return gt + 1;
 }
 
 /**
@@ -172,28 +138,28 @@ class ElementParser {
  * 容错：未配对标签/非法标签按文本保留；解析不抛错（消息内容宽容）。
  */
 export function parseElements(source: string): SatoriElement[] {
-    const parser = new ElementParser();
+    const state: ParseState = { root: [], stack: [], text: "" };
     let i = 0;
     while (i < source.length) {
         const lt = source.indexOf("<", i);
         if (lt === -1) {
-            parser.appendRaw(source.slice(i));
+            state.text += source.slice(i);
             break;
         }
-        parser.appendRaw(source.slice(i, lt));
+        state.text += source.slice(i, lt);
         i = lt + 1;
         // 注释：不渲染
         if (source.startsWith("!--", i)) {
-            const next = parser.skipComment(source, i);
-            if (next === -1) {
+            const end = source.indexOf("-->", i);
+            if (end === -1) {
                 break;
             }
-            i = next;
+            i = end + 3;
             continue;
         }
         // 结束标签
         if (source.startsWith("/", i)) {
-            const next = parser.closeTag(source, lt, i);
+            const next = closeTag(state, source, lt, i);
             if (next === -1) {
                 break;
             }
@@ -203,15 +169,19 @@ export function parseElements(source: string): SatoriElement[] {
         // 起始 / 自闭合标签
         const tag = readTag(source, i);
         if (tag.name === "") {
-            parser.appendRaw("<");
+            state.text += "<";
             continue;
         }
-        parser.pushText();
-        parser.openTag(tag.name, tag.attrs, tag.selfClosing);
+        pushText(state);
+        const el: SatoriElement = { type: tag.name, attrs: tag.attrs };
+        mountPoint(state).push(el);
+        if (!tag.selfClosing) {
+            state.stack.push(el);
+        }
         i = tag.end;
     }
-    parser.flush();
-    return parser.elements;
+    pushText(state);
+    return state.root;
 }
 
 /** 元素树 → Satori 消息字符串。 */

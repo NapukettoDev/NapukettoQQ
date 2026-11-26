@@ -137,8 +137,11 @@ interface RenderContext {
     useColor: boolean;
 }
 
+/** pino 日志记录（标准字段 + 任意附加字段）。 */
+interface PinoLogRecord extends Record<string, unknown> {}
+
 /** json 渲染：NDJSON 契约 {time, level, module, account?, pid, msg, ...fields}。 */
-function renderJsonLine(record: Record<string, unknown>, ctx: RenderContext): string {
+function renderJsonLine(record: PinoLogRecord, ctx: RenderContext): string {
     const { time, level, name, module, account, pid, msg: _msg, ...fields } = record;
     const msg = typeof record["msg"] === "string" ? record["msg"] : "";
     const jsonLine = {
@@ -158,14 +161,14 @@ function renderJsonLine(record: Record<string, unknown>, ctx: RenderContext): st
 }
 
 /** 元数据头：(name/pid)，无 name 时 (pid)。 */
-function renderMeta(record: Record<string, unknown>): string {
+function renderMeta(record: PinoLogRecord): string {
     const pid = record["pid"] ?? "-";
     const name = record["name"];
     return typeof name === "string" ? `(${name}/${pid})` : `(${pid})`;
 }
 
 /** single-line 附加字段：非保留键按 k=v 内联（无字段时空串）。 */
-function renderKvFields(record: Record<string, unknown>): string {
+function renderKvFields(record: PinoLogRecord): string {
     const fields: string[] = [];
     for (const [key, value] of Object.entries(record)) {
         if (!RESERVED_KEYS.has(key)) {
@@ -176,7 +179,7 @@ function renderKvFields(record: Record<string, unknown>): string {
 }
 
 /** single-line 渲染：[时间] LEVEL (name/pid): 消息 k=v k=v（级别大写）。 */
-function renderSingleLine(record: Record<string, unknown>, ctx: RenderContext): string {
+function renderSingleLine(record: PinoLogRecord, ctx: RenderContext): string {
     const label = levelLabel(record["level"]);
     const msg = typeof record["msg"] === "string" ? record["msg"] : "";
     const time = renderTime(record["time"], ctx.timestamp, false, ctx.timeOriginMs);
@@ -245,7 +248,7 @@ function renderArrayLines(value: readonly unknown[], depth: number): string[] {
 }
 
 /** 对象渲染：`{` / 属性（逗号分隔）/ `}`。 */
-function renderObjectLines(value: Record<string, unknown>, depth: number): string[] {
+function renderObjectLines(value: PinoLogRecord, depth: number): string[] {
     const pad = NESTED_INDENT.repeat(depth);
     const entries = Object.entries(value);
     if (entries.length === 0) {
@@ -296,7 +299,7 @@ function renderPrettyField(key: string, value: unknown, useColor: boolean): stri
 }
 
 /** pretty 渲染：多行彩色 `[时间] LEVEL (name/pid): 消息` + 逐行字段。 */
-function renderPrettyLine(record: Record<string, unknown>, ctx: RenderContext): string {
+function renderPrettyLine(record: PinoLogRecord, ctx: RenderContext): string {
     const label = levelLabel(record["level"]);
     const color = LEVEL_COLORS[label.toLowerCase()] ?? "";
     const time = renderTime(record["time"], ctx.timestamp, false, ctx.timeOriginMs);

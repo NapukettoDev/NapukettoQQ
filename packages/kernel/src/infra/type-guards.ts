@@ -41,6 +41,28 @@ export function hasNumberProp<K extends string>(
     return isRecord(val) && typeof val[key] === "number" && Number.isFinite(val[key]);
 }
 
+/** 可选字段：缺失（undefined / null）放行，存在时必须是 string。 */
+export function hasNullableStringProp(rec: Record<string, unknown>, key: string): boolean {
+    const value = rec[key];
+    return value === undefined || value === null || typeof value === "string";
+}
+
+/** 可选字段：缺失（undefined / null）放行，存在时必须是有限 number。 */
+export function hasNullableNumberProp(rec: Record<string, unknown>, key: string): boolean {
+    const value = rec[key];
+    return (
+        value === undefined ||
+        value === null ||
+        (typeof value === "number" && Number.isFinite(value))
+    );
+}
+
+/** 可选字段：缺失（仅 undefined）放行，存在时必须是 string（null 不合法）。 */
+export function hasOptionalStringProp(rec: Record<string, unknown>, key: string): boolean {
+    const value = rec[key];
+    return value === undefined || typeof value === "string";
+}
+
 /** 判断未知值是否为包含指定 boolean 属性的对象。 */
 export function hasBooleanProp<K extends string>(
     val: unknown,

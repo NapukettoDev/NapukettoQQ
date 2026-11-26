@@ -5,7 +5,13 @@
 
 import { log } from "../../shared/boot-log.js";
 import { getErrorMessage } from "../../shared/type-guards.js";
-import type { CoreContextLike, CoreLike, KernelLike, LoginResultLike } from "../runtime/types.js";
+import type {
+    CoreContextLike,
+    CoreLike,
+    CoreLoginOptionsLike,
+    KernelLike,
+    LoginResultLike,
+} from "../runtime/types.js";
 
 /** 登录账号选择的目标引用（bootstrap.ts 构造 { targetUin: undefined }）。 */
 export interface LoginTargetRef {
@@ -55,7 +61,7 @@ export async function pickLoginAccount(
  */
 export async function doLogin(
     core: CoreLike,
-    opts: Record<string, unknown>,
+    opts: CoreLoginOptionsLike,
 ): Promise<LoginResultLike | null> {
     try {
         return await core.login(opts);
