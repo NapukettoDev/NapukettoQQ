@@ -177,9 +177,23 @@ export interface Ob11SystemOptionsLike {
     restart(): Promise<void>;
 }
 
+interface Ob11MessageMediaStatsLike {
+    readonly items: number;
+    readonly totalBytes: number;
+    readonly peakBytes: number;
+    readonly copiedBytes: number;
+    readonly downloadedBytes: number;
+    readonly transcodedBytes: number;
+    readonly reusedReferenceBytes: number;
+    readonly tempFilesCreated: number;
+}
+
 /** OB11 构造入参（`OneBot11AdapterOptions` 的 loader 侧结构面）。 */
 export interface Ob11AdapterOptionsLike {
     config: unknown;
+    onMessageMediaPrepared?:
+        | ((stats: Ob11MessageMediaStatsLike) => void | Promise<void>)
+        | undefined;
     /** 相对媒体根的基准目录（本地媒体路径解析基准，三协议同源）。 */
     localMediaBaseDir: string;
     broadcaster: BroadcasterLike;

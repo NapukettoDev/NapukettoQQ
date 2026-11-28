@@ -25,7 +25,7 @@ import process from "node:process";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createPublicRequest } from "./public-download.js";
-import { MediaError } from "./types.js";
+import { MediaError, MediaSizeLimitError } from "./types.js";
 
 /** 按协议调用方的信任边界选择远程媒体出站模式。 */
 export type MediaOutboundPolicy = "public-only" | "compat";
@@ -41,7 +41,7 @@ export interface DownloadUrlOptions {
 }
 
 /** 默认大小上限（30MB）。 */
-const DEFAULT_MAX_BYTES = 30 * 1024 * 1024;
+export const DEFAULT_DOWNLOAD_MAX_BYTES: number = 30 * 1024 * 1024;
 
 /** 默认超时（15s）。 */
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -283,7 +283,7 @@ async function writeCapped(
         transform(chunk: Buffer, _encoding, callback): void {
             total += chunk.byteLength;
             if (total > maxBytes) {
-                callback(new MediaError(`文件超过大小上限（>${maxBytes} 字节）`));
+                callback(new MediaSizeLimitError(`文件超过大小上限（>${maxBytes} 字节）`));
                 return;
             }
             callback(null, chunk);
@@ -345,7 +345,7 @@ async function download(
     request: DownloadRequest,
 ): Promise<number> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+    const maxBytes = options.maxBytes ?? DEFAULT_DOWNLOAD_MAX_BYTES;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     // 下载未完成不影响进程自然退出
@@ -365,7 +365,7 @@ async function download(
         }
         const declared = Number(response.headers.get("Content-Length") ?? "0");
         if (declared > maxBytes) {
-            throw new MediaError(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
+            throw new MediaSizeLimitError(`文件超过大小上限（${declared} > ${maxBytes} 字节）`);
         }
         if (body === null) {
             throw new MediaError("响应无 body");

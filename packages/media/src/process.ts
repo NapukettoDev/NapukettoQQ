@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { execa, type Options } from "execa";
-import { MediaError } from "./types.js";
+import { MediaError, MediaSizeLimitError } from "./types.js";
 
 const WINDOWS_DRIVE = /^[a-z]:[\\/]/i;
 const NETWORK_OR_DEVICE_PATH = /^[\\/]{2}/;
@@ -51,6 +51,13 @@ export function mediaProcessOptions(timeout: number, cancelSignal?: AbortSignal)
 
 export function checkMediaSignal(signal?: AbortSignal): void {
     if (signal?.aborted) throw new MediaError("媒体操作已取消", { cause: signal.reason });
+}
+
+export function mediaOutputLimit(hardLimit: number, callerLimit = hardLimit): number {
+    if (!Number.isSafeInteger(callerLimit) || callerLimit < 0) {
+        throw new MediaSizeLimitError("媒体输出上限必须是非负安全整数");
+    }
+    return Math.min(hardLimit, callerLimit);
 }
 
 function assertLocalPath(input: string): void {
@@ -174,7 +181,7 @@ export async function writeFfmpegOutput(
         transform(chunk: Buffer, _encoding, callback) {
             bytes += chunk.length;
             if (bytes > maxBytes) {
-                callback(new MediaError(`媒体输出超过 ${maxBytes} 字节限制`));
+                callback(new MediaSizeLimitError(`媒体输出超过 ${maxBytes} 字节限制`));
             } else {
                 callback(null, chunk);
             }

@@ -78,6 +78,12 @@ Forwarded 和 X-Forwarded-*，调用者设置会被忽略。头名匹配不区�
 
 ## 外部媒体进程与资源边界
 
+`MediaOutputOptions.maxOutputBytes` 可收紧视频转码和抽帧的硬上限，写入 FFmpeg 输出时逐块校验。
+`SilkEncodeOptions` 使用同一字段限制归一化 PCM 与 SILK 的累计写入量，各自仍受固有硬上限。
+PCM 读入后先清除，再写 SILK。调用方可指定独占的 `outputPath`，从已有受控输入转码，
+并通过 `onPcmWritten` 获取中间 PCM 字节数。上限允许零字节，实际输出超额抛 `MediaSizeLimitError`，
+中止 FFmpeg 并清理部分产物。下载使用同一错误类型报告声明或流式字节超限。
+
 - 所有 ffmpeg/ffprobe 使用共同进程选项：探测 15s、抽帧 30s、音频归一化 120s、
   视频转码 300s；超时先 SIGTERM，1s 后强杀，等待进程退出后清理。禁用交互 stdin，
   FFprobe stdout 与进程 stderr 各限 1 MiB，FFmpeg 的媒体 stdout 按实际写入量单独限额；

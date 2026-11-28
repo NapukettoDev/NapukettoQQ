@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { execa } from "execa";
@@ -8,11 +9,17 @@ import {
     LOCAL_MEDIA_INPUT_OPTIONS,
     localMediaPath,
     MAX_VIDEO_PIXELS,
+    mediaOutputLimit,
     mediaProcessOptions,
     readMediaPrefix,
     writeFfmpegOutput,
 } from "./process.js";
-import type { MediaOperationOptions, TranscodeOptions, VideoInfo } from "./types.js";
+import type {
+    MediaOperationOptions,
+    MediaOutputOptions,
+    TranscodeOptions,
+    VideoInfo,
+} from "./types.js";
 import { MediaError } from "./types.js";
 
 const MAX_VIDEO_BYTES = 128 * 1024 * 1024;
@@ -177,6 +184,7 @@ function outputDimensions(source: ProbedVideo, opts: TranscodeOptions): [number,
 /** 转码到独占目录。成功后调用方拥有输出文件及其父临时目录，消费结束后负责删除。 */
 export async function transcodeVideo(input: string, opts: TranscodeOptions = {}): Promise<string> {
     const { signal } = opts;
+    const limit = mediaOutputLimit(MAX_VIDEO_BYTES, opts.maxOutputBytes);
     checkMediaSignal(signal);
     assertTranscodeOptions(opts);
     const source = await localMediaPath(input, MAX_VIDEO_BYTES);
@@ -243,7 +251,7 @@ export async function transcodeVideo(input: string, opts: TranscodeOptions = {})
                 "mp4",
             ],
             output,
-            MAX_VIDEO_BYTES,
+            limit,
             300_000,
             signal,
         );
@@ -289,8 +297,9 @@ export async function getVideoInfo(
 export async function extractVideoFrame(
     input: string,
     outputPath: string,
-    { signal }: MediaOperationOptions = {},
+    { signal, maxOutputBytes }: MediaOutputOptions = {},
 ): Promise<string> {
+    const limit = mediaOutputLimit(MAX_THUMB_BYTES, maxOutputBytes);
     checkMediaSignal(signal);
     const source = await localMediaPath(input, MAX_VIDEO_BYTES);
     const requestedTarget = resolve(outputPath);
@@ -301,8 +310,7 @@ export async function extractVideoFrame(
     ) {
         throw new MediaError("抽帧输出不能覆盖输入文件");
     }
-    const dir = await mkdtemp(join(dirname(target), ".napuketto-frame-"));
-    const output = join(dir, "frame.png");
+    const output = join(dirname(target), `media.png.part-${process.pid}-${randomUUID()}`);
     try {
         await writeFfmpegOutput(
             [
@@ -327,7 +335,7 @@ export async function extractVideoFrame(
                 "image2pipe",
             ],
             output,
-            MAX_THUMB_BYTES,
+            limit,
             30_000,
             signal,
         );
@@ -347,6 +355,6 @@ export async function extractVideoFrame(
         if (error instanceof MediaError) throw error;
         throw new MediaError(`ffmpeg 不可用或抽帧失败: ${input}`, { cause: error });
     } finally {
-        await rm(dir, { recursive: true, force: true });
+        await rm(output, { force: true });
     }
 }

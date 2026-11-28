@@ -51,22 +51,41 @@ export interface Ob11BridgeDeps {
     env?: Ob11BridgeEnv;
 }
 
-/** 确认动态载入的 adapter 认识该字段，再从主配置注入账号策略。 */
+function messageBudget(media: unknown): unknown {
+    return isRecord(media) ? media["messageBudget"] : undefined;
+}
+
+function preservesMessageBudget(config: unknown, budget: unknown): boolean {
+    const parsed = isRecord(config) ? messageBudget(config["media"]) : undefined;
+    return (
+        isRecord(budget) &&
+        isRecord(parsed) &&
+        Object.entries(budget).every(([key, value]) => parsed[key] === value)
+    );
+}
+
+/** 确认动态载入的 adapter 认识媒体配置，再从主配置注入账号策略。 */
 function resolveBridgeConfig(schema: Ob11ModuleLike["ob11ConfigSchema"], services: KernelServices) {
-    const defaults = parseProtocolSeed("onebot11", schema, {
-        media: { outboundPolicy: "public-only", localMediaRoots: [] },
-    });
+    const defaultMedia = { outboundPolicy: "public-only", localMediaRoots: [] };
+    const budget = { maxItems: 3, maxBytes: 4096 };
+    const probe = schema.parse({ media: { ...defaultMedia, messageBudget: budget } });
     if (
-        !isRecord(defaults) ||
-        !isRecord(defaults["media"]) ||
-        defaults["media"]["outboundPolicy"] !== "public-only" ||
-        !Array.isArray(defaults["media"]["localMediaRoots"])
+        !isRecord(probe) ||
+        !isRecord(probe["media"]) ||
+        probe["media"]["outboundPolicy"] !== "public-only" ||
+        !Array.isArray(probe["media"]["localMediaRoots"]) ||
+        !preservesMessageBudget(probe, budget)
     ) {
-        throw new Error("注入的 OB11 adapter 不支持 media.outboundPolicy / media.localMediaRoots");
+        throw new Error("注入的 OB11 adapter 未保留媒体策略与消息预算");
     }
+    const defaults = parseProtocolSeed("onebot11", schema, { media: defaultMedia });
     const { cfgFile, ob11Section } = loadProtocolSections(services.kernel, services.self.uin);
     const media = ob11Section["media"];
     const seed = media === undefined ? defaults : parseProtocolSeed("onebot11", schema, { media });
+    const configuredBudget = messageBudget(media);
+    if (isRecord(configuredBudget) && !preservesMessageBudget(seed, configuredBudget)) {
+        throw new Error("注入的 OB11 adapter 未保留账号消息媒体预算");
+    }
     return { defaults, seed, cfgFile };
 }
 

@@ -29,8 +29,10 @@ import type { MediaOutboundPolicy } from "@napuketto/media";
 import { bindLocalMediaRoots } from "../../internal/infra/local-media.js";
 import type { AdapterLoggerLike } from "../../internal/infra/log.js";
 import { MediaCache } from "../../internal/infra/media-cache.js";
+import type { Ob11MessageMediaBudgetConfig } from "../helper/config.js";
 import type { GroupSenderRole } from "../helper/data.js";
 import { MessageUnique } from "../helper/message-unique.js";
+import type { Ob11MessageMediaObserver } from "../types/media.js";
 
 /**
  * 事件管道装配依赖（从 event-pipeline.ts 下沉）。
@@ -66,6 +68,8 @@ export interface OneBotSystemOptions {
 
 /** OneBotApi 构造参数。 */
 export interface OneBotApiOptions {
+    /** 每条消息准备完成后报告用量。 */
+    onMessageMediaPrepared?: Ob11MessageMediaObserver | undefined;
     /** 相对 media.localMediaRoots 的可信基准目录，缺省为工作目录。 */
     localMediaBaseDir?: string | undefined;
     msgApi: MsgApi;
@@ -97,6 +101,8 @@ export class OneBotApi {
     readonly mediaCache: MediaCache;
     readonly getLocalMediaRoots?: (() => readonly string[]) | undefined;
     readonly getMediaOutboundPolicy?: (() => MediaOutboundPolicy | undefined) | undefined;
+    readonly getMessageMediaBudget?: (() => Ob11MessageMediaBudgetConfig | undefined) | undefined;
+    readonly onMessageMediaPrepared?: Ob11MessageMediaObserver | undefined;
     /** kernel 消息 API（send_msg 等消息类动作用）。 */
     readonly msgApi: MsgApi;
     /** kernel 群 API。 */
@@ -144,9 +150,12 @@ export class OneBotApi {
         opts: OneBotApiOptions,
         getMediaOutboundPolicy?: () => MediaOutboundPolicy | undefined,
         getLocalMediaRoots?: () => readonly string[] | undefined,
+        getMessageMediaBudget?: () => Ob11MessageMediaBudgetConfig | undefined,
     ) {
         this.getMediaOutboundPolicy = getMediaOutboundPolicy;
         this.getLocalMediaRoots = bindLocalMediaRoots(opts.localMediaBaseDir, getLocalMediaRoots);
+        this.getMessageMediaBudget = getMessageMediaBudget;
+        this.onMessageMediaPrepared = opts.onMessageMediaPrepared;
         this.mediaCache = new MediaCache({
             root: opts.system?.cacheDir,
             logger: opts.logger,

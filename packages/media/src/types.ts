@@ -38,8 +38,12 @@ export interface MediaOperationOptions {
     signal?: AbortSignal | undefined;
 }
 
+export interface MediaOutputOptions extends MediaOperationOptions {
+    maxOutputBytes?: number | undefined;
+}
+
 /** 视频转码选项。 */
-export interface TranscodeOptions extends MediaOperationOptions {
+export interface TranscodeOptions extends MediaOutputOptions {
     /** 偶整数，2–4096。只指定一边时保持比例。 */
     width?: number | undefined;
     /** 偶整数，2–4096。 */
@@ -61,6 +65,13 @@ export class MediaError extends Error {
     constructor(message: string, options?: ErrorOptions) {
         super(message, options);
         this.name = "MediaError";
+    }
+}
+
+export class MediaSizeLimitError extends MediaError {
+    constructor(message: string) {
+        super(message);
+        this.name = "MediaSizeLimitError";
     }
 }
 

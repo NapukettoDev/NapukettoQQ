@@ -151,24 +151,41 @@ async function writeSnapshot(file: FileHandle, path: string, size: number): Prom
     if (output.bytesWritten !== size) throw denied();
 }
 
+interface LocalMediaSnapshot {
+    path: string;
+    bytes: number;
+}
+
+interface LocalMediaBudget {
+    maxBytes: number;
+    onPrepared(kind: "copiedBytes" | "reusedReferenceBytes", bytes: number): void;
+}
+
+function checkMediaBytes(size: number, maxBytes: number): void {
+    if (size > maxBytes) throw kernelError("本地媒体超过消息剩余字节预算", "INVALID_PARAM");
+}
+
 async function snapshot(
     candidate: MediaCandidate,
     cacheDir: string,
     lifetime: "temporary" | "reference",
-): Promise<string> {
+    maxBytes = MAX_FILE_BYTES,
+): Promise<LocalMediaSnapshot> {
     const linuxFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
     const file = await open(candidate.path, WINDOWS ? "r" : linuxFlags);
     try {
         const size = await verifyOpenFile(candidate, file);
+        checkMediaBytes(size, maxBytes);
         const name = basename(candidate.path);
         const extension = EXTENSION_RE.exec(name)?.[0] ?? ".bin";
-        return await cacheMediaFile(
+        const path = await cacheMediaFile(
             cacheDir,
             extension,
             (path) => writeSnapshot(file, path, size),
             lifetime,
             lifetime === "temporary" ? name : undefined,
         );
+        return { path, bytes: size };
     } finally {
         await file.close();
     }
@@ -178,11 +195,27 @@ async function snapshot(
 export async function resolveLocalMedia(
     input: string,
     roots: readonly string[] = [],
+    budget?: LocalMediaBudget,
 ): Promise<string> {
     const path = decodeLocalPath(input);
-    if (isMediaCachePath(path)) return await leaseMediaReference(path);
+    if (isMediaCachePath(path)) {
+        const reference = await leaseMediaReference(path);
+        if (budget !== undefined) {
+            const { size } = await lstat(reference);
+            checkMediaBytes(size, Math.min(MAX_FILE_BYTES, budget.maxBytes));
+            budget.onPrepared("reusedReferenceBytes", size);
+        }
+        return reference;
+    }
     try {
-        return await snapshot(await selectCandidate(path, roots), MEDIA_TEMP_ROOT, "temporary");
+        const result = await snapshot(
+            await selectCandidate(path, roots),
+            MEDIA_TEMP_ROOT,
+            "temporary",
+            budget?.maxBytes,
+        );
+        budget?.onPrepared("copiedBytes", result.bytes);
+        return result.path;
     } catch (err) {
         if (unavailable(err)) throw denied();
         throw err;
@@ -200,7 +233,7 @@ export async function exportQqMedia(
         const input = validatePath(source.replaceAll("\\", sep));
         const candidate = await findCandidate(input, resolve(qqRoot));
         if (candidate === undefined) return undefined;
-        return await snapshot(candidate, cacheDir || MEDIA_TEMP_ROOT, "reference");
+        return (await snapshot(candidate, cacheDir || MEDIA_TEMP_ROOT, "reference")).path;
     } catch (err) {
         if (
             unavailable(err) ||

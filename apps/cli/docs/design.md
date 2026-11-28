@@ -103,6 +103,8 @@ loader 装配同口径的字段校验（空段 = 不启用，跳过）。`config
 各账号的 OB11、Milky、Satori 可配置 `media.localMediaRoots`。模板缺省空数组，
 现有集成可将共享媒体或导出目录加到对应账号协议段。路径基准与 IPC 相同，参考[配置指南](../../../docs/guides/configuration.md)。
 
+OB11 模板列出账号级 `media.messageBudget`，CLI 配置检查复用 OB11 schema 校验项数及字节上限。
+
 ## 仓库外调试沙箱
 
 仓库根的调试入口在加载 CLI 前设置沙箱 cwd、绝对配置路径与数据根，并通过

@@ -206,6 +206,30 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
 - Milky base64 魔数识别结果的扩展名补 `.`；识别失败保留 `.bin`，落盘/改名失败正常报错
   并回收部分产物，不伪装成类型识别失败。
 
+### OB11 发送媒体预算
+
+账号的 `onebot11.media.messageBudget` 可分别设置 `maxItems`（整数 1–256，默认 16）与
+`maxBytes`（整数 1–536870912，默认 125829120，即 120 MiB）。嵌入配置和热更新后的
+HTTP、WS、IPC 动作在每次发送时读取同一份账号配置。`Ob11MessageMediaBudgetConfig`、
+`Ob11MessageMediaStats`、`Ob11MessageMediaPreparation` 和 `Ob11MessageMediaObserver` 由
+`@napuketto/adapter` 与 `@napuketto/adapter/onebot11` 显式导出。
+
+三个发送动作先解析 CQ 或消息段，再按每个图片、语音、视频及显式视频 `thumb` 计一项。
+自动首帧是视频的派生产物，只计字节。项数超限在读取文件或创建缓存前拒绝。`file` 和
+`thumb` 可为白名单本地路径、账号缓存引用或经 `outboundPolicy` 校验的 HTTP(S) 地址。
+消息段上的 `url` 保留为元数据。合并转发只解析现有 `node.data.id`，继续受节点上限约束，
+不重新准备历史消息媒体。`node.data.content` 自定义内容（含嵌套节点）在准备前拒绝。
+
+字节预算累计扣除本地快照、下载、每次引用的文件大小、SILK、转码中间 PCM 与自动缩略图。
+合成产物使用扣除所有前序消耗后的剩余限额。PCM 在 SILK 写盘前删除，但累计预算继续计入
+PCM。`peakBytes` 为动作同时持有的临时媒体载荷峰值，包含 PCM 存在时的占用，不重复计入
+已有引用或缓存管理文件。`tempFilesCreated` 统计临时媒体文件，原子改名只计一次。
+缓存引用可共享一个租约，重复出现仍逐次计入项数和字节。正常消费和中途失败都由动作缓存
+清理临时文件并释放租约，已有引用仍由账号缓存的原生命周期管理。
+
+共用准备层返回元素和统计。嵌入调用方可通过 `OneBot11AdapterOptions.onMessageMediaPrepared`
+获取成功准备的累计统计，发送调用失败时该统计仍可用。动作的响应信封及 `data` 沿用原契约。
+
 ### Satori 事件与媒体转换
 
 `message.get` 从当前账号消息读取本地媒体时，把 QQ 媒体根内的文件导出到账号专属缓存，

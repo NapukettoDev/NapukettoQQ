@@ -4,7 +4,7 @@
  * 严格解耦：只被协议层（adapter）依赖，kernel 不背媒体依赖。
  */
 
-export type { DecodedWav, DecodeSilkToWavOptions } from "./audio.js";
+export type { DecodedWav, DecodeSilkToWavOptions, SilkEncodeOptions } from "./audio.js";
 export {
     decodeSilkToPcm,
     decodeSilkToWav,
@@ -15,7 +15,12 @@ export {
     SILK_SAMPLE_RATE,
 } from "./audio.js";
 export type { DownloadUrlOptions, MediaOutboundPolicy } from "./downloader.js";
-export { downloadPublicUrl, downloadUrl, inferExtension } from "./downloader.js";
+export {
+    DEFAULT_DOWNLOAD_MAX_BYTES,
+    downloadPublicUrl,
+    downloadUrl,
+    inferExtension,
+} from "./downloader.js";
 export { detectFileType, getImageSize } from "./image.js";
 export type {
     AudioInfo,
@@ -23,8 +28,9 @@ export type {
     FileTypeResult,
     ImageSize,
     MediaOperationOptions,
+    MediaOutputOptions,
     TranscodeOptions,
     VideoInfo,
 } from "./types.js";
-export { MediaError } from "./types.js";
+export { MediaError, MediaSizeLimitError } from "./types.js";
 export { extractVideoFrame, getVideoInfo, transcodeVideo } from "./video.js";

@@ -25,6 +25,7 @@ export type {
     OB11RequestEvent,
     OB11Status,
 } from "./event/index.js";
+export type { Ob11MessageMediaBudgetConfig } from "./helper/config.js";
 export type { CqCode, OB11Config } from "./helper/index.js";
 export {
     canonicalToCqMessage,
@@ -66,3 +67,8 @@ export type {
     StrangerInfo,
     VersionInfo,
 } from "./types/index.js";
+export type {
+    Ob11MessageMediaObserver,
+    Ob11MessageMediaPreparation,
+    Ob11MessageMediaStats,
+} from "./types/media.js";

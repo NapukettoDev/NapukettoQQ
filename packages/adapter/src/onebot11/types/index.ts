@@ -19,7 +19,7 @@ export type OB11MessageSegment =
     | { type: "face"; data: { id: string } }
     | { type: "image"; data: { file: string; url?: string } }
     | { type: "record"; data: { file: string; url?: string } }
-    | { type: "video"; data: { file: string; url?: string } }
+    | { type: "video"; data: { file: string; url?: string; thumb?: string } }
     | { type: "file"; data: { file: string } }
     | { type: "reply"; data: { id: string } }
     | { type: "forward"; data: { id: string } }

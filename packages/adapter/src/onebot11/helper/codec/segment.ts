@@ -48,7 +48,7 @@ function canonicalAt(target: string, display: string | undefined): CanonicalElem
 
 /** canonical 媒体元素（image/voice/video，url 可选；分支内收窄，无需断言）。 */
 function canonicalMedia(
-    type: "image" | "voice" | "video",
+    type: "image" | "voice",
     path: string,
     url: string | undefined,
 ): CanonicalElement {
@@ -57,8 +57,6 @@ function canonicalMedia(
             return url === undefined ? { type: "image", path } : { type: "image", path, url };
         case "voice":
             return url === undefined ? { type: "voice", path } : { type: "voice", path, url };
-        case "video":
-            return url === undefined ? { type: "video", path } : { type: "video", path, url };
     }
 }
 
@@ -97,8 +95,13 @@ export function isOB11MessageSegment(val: unknown): val is OB11MessageSegment {
             return isStringOrNumber(data["id"]);
         case "image":
         case "record":
-        case "video":
             return hasStringProp(data, "file") && hasOptionalStringProp(data, "url");
+        case "video":
+            return (
+                hasStringProp(data, "file") &&
+                hasOptionalStringProp(data, "url") &&
+                hasOptionalStringProp(data, "thumb")
+            );
         case "file":
             return hasStringProp(data, "file");
         case "reply":
@@ -180,7 +183,12 @@ export function segmentToCanonical(seg: OB11MessageSegment): CanonicalElement | 
         case "record":
             return canonicalMedia("voice", seg.data.file, seg.data.url);
         case "video":
-            return canonicalMedia("video", seg.data.file, seg.data.url);
+            return {
+                type: "video",
+                path: seg.data.file,
+                ...(seg.data.url === undefined ? {} : { url: seg.data.url }),
+                ...(seg.data.thumb === undefined ? {} : { thumbPath: seg.data.thumb }),
+            };
         case "reply":
             return { type: "reply", messageId: String(seg.data.id) };
         case "forward":
@@ -215,7 +223,10 @@ const CQ_SEGMENT_BUILDERS: Record<string, CqSegmentBuilder> = {
     }),
     video: (params) => ({
         type: "video",
-        data: mediaData(params["file"] ?? "", params["url"]),
+        data: {
+            ...mediaData(params["file"] ?? "", params["url"]),
+            ...(params["thumb"] === undefined ? {} : { thumb: params["thumb"] }),
+        },
     }),
     file: (params) => ({
         type: "file",
