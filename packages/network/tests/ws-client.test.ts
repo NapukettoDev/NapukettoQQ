@@ -25,7 +25,7 @@ interface WssStub {
 
 /** 起一个 ws 服务端桩（端口 0 自动分配）。 */
 async function listenWss(
-    options: Pick<ServerOptions, "autoPong" | "verifyClient">,
+    options: Pick<ServerOptions, "autoPong" | "perMessageDeflate" | "verifyClient">,
 ): Promise<WssStub> {
     const wss = new WebSocketServer({ host: "127.0.0.1", port: 0, ...options });
     const sockets: ClientSocket[] = [];
@@ -81,7 +81,7 @@ describe("WsClient", () => {
 
     /** 起服务端桩并登记清理。 */
     async function serve(
-        options: Pick<ServerOptions, "autoPong" | "verifyClient"> = {},
+        options: Pick<ServerOptions, "autoPong" | "perMessageDeflate" | "verifyClient"> = {},
     ): Promise<WssStub> {
         const stub = await listenWss(options);
         stubs.push(stub);
@@ -106,6 +106,51 @@ describe("WsClient", () => {
         await client.open();
         await vi.waitFor(() => expect(stub.sockets).toHaveLength(1));
         expect(seenHeader).toBe("napuketto");
+    });
+
+    it.each([false, true])("分片消息超过入站上限后重连且仍限长，压缩=%s", async (compress) => {
+        const stub = await serve({ perMessageDeflate: compress });
+        const maxPayloadBytes = 4096;
+        const client = makeClient({
+            url: stub.url,
+            maxPayloadBytes,
+            reconnect: { enabled: true, delayMs: 20 },
+        });
+        const onRequest = vi.fn();
+        client.onRequest = onRequest;
+        await client.open();
+        const peer = firstSocket(stub);
+        const text = "x".repeat(4085);
+        const accepted = JSON.stringify({ text });
+        expect(Buffer.byteLength(accepted)).toBe(maxPayloadBytes);
+        peer.send(accepted, { compress });
+        await vi.waitFor(() =>
+            expect(onRequest).toHaveBeenCalledWith({ text }, expect.any(Function)),
+        );
+
+        const tooLarge = JSON.stringify({ text: `${text}x` });
+        const firstClose = waitClose(peer);
+        const reconnect = once(stub.wss, "connection");
+        peer.send(tooLarge.slice(0, 2048), { fin: false, compress });
+        peer.send(tooLarge.slice(2048));
+        await expect(firstClose).resolves.toMatchObject({ code: 1009 });
+        await reconnect;
+
+        const next = take(stub.sockets[1], "重连未见连接");
+        const nextClose = waitClose(next);
+        next.send(tooLarge, { compress });
+        await expect(nextClose).resolves.toMatchObject({ code: 1009 });
+        expect(onRequest).toHaveBeenCalledOnce();
+    });
+
+    it("缺省接收上限拒绝解压后超过 32 MiB 的消息", async () => {
+        const stub = await serve({ perMessageDeflate: true });
+        const client = makeClient({ url: stub.url });
+        await client.open();
+        const peer = firstSocket(stub);
+        const closed = waitClose(peer);
+        peer.send(Buffer.alloc(32 * 1024 * 1024 + 1), { compress: true });
+        await expect(closed).resolves.toMatchObject({ code: 1009 });
     });
 
     it("无服务时 open 失败 reject；失败后可再次尝试（不残留连接引用）", async () => {

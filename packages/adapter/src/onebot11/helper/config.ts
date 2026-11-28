@@ -33,7 +33,7 @@ const httpPostSchema = z.object({
     url: z.string().optional(),
     /** 实例级 token，覆盖全局 token（缺省继承全局）。 */
     token: z.string().optional(),
-    /** 上报超时（毫秒），缺省不超时。 */
+    /** 上报超时（毫秒，含排队），缺省 5 秒。 */
     timeoutMs: z.number().int().optional(),
 });
 

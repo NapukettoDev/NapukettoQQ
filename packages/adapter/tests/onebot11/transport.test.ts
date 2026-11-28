@@ -7,6 +7,7 @@
  *
  * 锁定 docs/protocols/onebot11.md §2 的传输语义；端口固定（CI 两平台跑同一套）。
  */
+import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { EventBroadcaster, WsServer } from "@napuketto/network";
@@ -42,6 +43,59 @@ function assemble(seed: Record<string, unknown>): {
     });
     return { set, broadcaster, requests };
 }
+
+it("OneBot 11 Webhook 只记录配置索引并在关停时清理慢请求", async () => {
+    const entered = Promise.withResolvers<void>();
+    const cancelled = Promise.withResolvers<void>();
+    let received = 0;
+    const stub = createServer((req, res) => {
+        received += 1;
+        req.resume();
+        if (received === 1) {
+            res.writeHead(503).write("remote response");
+            return;
+        }
+        res.once("close", cancelled.resolve);
+        entered.resolve();
+    });
+    stub.listen(0, "127.0.0.1");
+    await once(stub, "listening");
+    const addr = stub.address();
+    if (!addr || typeof addr === "string") throw new Error("未取得环回端口");
+    const broadcaster = new EventBroadcaster();
+    const logger = { warn: vi.fn() };
+    const set = assembleOb11Transports({
+        config: ob11ConfigSchema.parse({
+            httpPostUrls: [
+                {
+                    enabled: true,
+                    token: TOKEN,
+                    url: `http://127.0.0.1:${addr.port}/hook?key=test-key`,
+                },
+            ],
+        }),
+        broadcaster,
+        selfUin: "10001",
+        handleRequest: () => undefined,
+        logger,
+    });
+    try {
+        broadcaster.emit({ id: 1 });
+        broadcaster.emit({ id: 2 });
+        broadcaster.emit({ id: 3 });
+        await entered.promise;
+        expect(logger.warn.mock.calls).toEqual([
+            [{ category: "webhook_delivery_failed", index: 0 }, "onebot11: webhook 推送失败"],
+        ]);
+        await Promise.all([set.close(), cancelled.promise]);
+        expect(broadcaster.size).toBe(0);
+        expect(received).toBe(2);
+    } finally {
+        await set.close();
+        stub.closeAllConnections();
+        await new Promise<void>((resolve) => stub.close(() => resolve()));
+    }
+});
 
 describe("HTTP 反向 server（token 鉴权 + 请求-响应）", () => {
     const { set, requests } = assemble({

@@ -94,6 +94,12 @@ payload 不改写；缓存维护与协议翻译各自订阅通道。
 profile-like 的 `ProfileLikeApi`）/ recent-contact / ticket / web / flash-transfer）+
 `stranger-info` 纯映射。统一错误语义（ADR-009 / ADR-017）：
 
+- WebApi 从取得群空间 Cookie 后开始，共用 10 秒 HTTP 期限，覆盖连接、响应头和正文读取，
+  同一次精华分页或荣誉分组查询共用余下时间。每个成功响应最多读取 4 MiB 解压后的正文。
+  两个查询入口可传入 AbortSignal，HTTP 层立即响应取消。原生票据获取沿用 TicketApi，
+  WebApi 会在取票据前后检查取消。非成功状态释放正文，精华保留已读页，荣誉继续读取其他类别。
+  HTTP 超时映射为 TIMEOUT，取消、网络异常或正文超限映射为 UNKNOWN，非对象精华 JSON 仍为 INVALID_PARAM。
+
 - 成功返回业务值；失败抛 `KernelError`，`code` 取 8 个枚举之一：`SEND_FAILED`、
   `PERMISSION_DENIED`、`NOT_FOUND`、`TIMEOUT`、`NOT_LOGIN`、`INVALID_PARAM`、
   `INVALID_STATE`、`UNKNOWN`。协议层只维护 `code → 协议错误码` 映射表。

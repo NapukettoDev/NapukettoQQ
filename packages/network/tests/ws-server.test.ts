@@ -272,15 +272,17 @@ describe("WsServer", () => {
     it("close 关闭全部连接、send 静默、重复 close 与未 open close 安全", async () => {
         const port = await getFreePort();
         const server = new WsServer({ host: "127.0.0.1", port });
+        cleanups.push(() => server.close());
         await expect(server.close()).resolves.toBeUndefined();
 
         await server.open();
         const url = `ws://127.0.0.1:${port}`;
         const ws = await connectOk(url);
+        cleanups.push(async () => ws.terminate());
 
+        const closed = waitClose(ws);
         await server.close();
-        // 服务端 client.close() 无状态码 → 客户端按规范报 1005（No Status）
-        expect((await waitClose(ws)).code).toBe(1005);
+        await expect(closed).resolves.toMatchObject({ code: 1001 });
         expect(() => server.send({ after: "close" })).not.toThrow();
         await expect(server.close()).resolves.toBeUndefined();
     });
@@ -297,6 +299,42 @@ describe("WsServer", () => {
         const ws = await connectOk(`ws://127.0.0.1:${port}`);
         cleanups.push(async () => ws.terminate());
         expect(ws.readyState).toBe(ws.OPEN);
+    });
+
+    it("并发关闭给健康连接发 1001，回收停读 WS 和未完成 HTTP 握手", async () => {
+        const { server, url } = await start();
+        const serverSockets: WsSocket[] = [];
+        server.onConnection = (socket) => {
+            serverSockets.push(socket);
+        };
+        const healthy = await connectOk(url);
+        const slow = await connectOk(url);
+        const { port, hostname } = new URL(url);
+        const raw = netConnect(Number(port), hostname);
+        cleanups.push(async () => {
+            raw.destroy();
+            slow.terminate();
+            healthy.terminate();
+        });
+        await once(raw, "connect");
+        raw.write("GET / HTTP/1.1\r\nHost: localhost\r\n");
+        raw.resume();
+        slow.pause();
+        const rawClosed = once(raw, "close");
+        const healthyClosed = waitClose(healthy);
+        const slowServerSide = take(serverSockets[1], "未接入慢连接");
+        const slowServerClosed = waitClose(slowServerSide);
+        const started = performance.now();
+        const closing = server.close();
+        expect(server.close()).toBe(closing);
+        await expect(healthyClosed).resolves.toMatchObject({ code: 1001 });
+        await expect(slowServerClosed).resolves.toMatchObject({ code: 1006 });
+        await Promise.all([closing, rawClosed]);
+        expect(performance.now() - started).toBeLessThan(1500);
+        expect(slowServerSide.listenerCount("message")).toBe(0);
+        await server.open();
+        const replacement = await connectOk(url);
+        replacement.terminate();
     });
 
     describe("心跳（fake timers）", () => {

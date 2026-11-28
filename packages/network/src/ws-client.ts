@@ -6,9 +6,9 @@
  * - 断线后按 `reconnect` 策略自动重连（attempt 计数，支持 maxAttempts）
  * - 可选 ping/pong 判活
  */
-import { WebSocket } from "ws";
+import { type ClientOptions, WebSocket } from "ws";
 import { isWsOpen, type Respond, type TransportAdapter, type WsClientOptions } from "./types.js";
-import { sendWsText, startWsHeartbeat } from "./ws-flow.js";
+import { sendWsText, startWsHeartbeat, wsPayloadLimit } from "./ws-flow.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const DEFAULT_MAX_RECONNECT_DELAY_MS = 30_000;
@@ -114,20 +114,14 @@ export class WsClient implements TransportAdapter {
             ws.close();
         }
     }
-    /** 构造 WebSocket 选项（headers / 证书校验按配置透传，缺省由 ws 库决定）。 */
-    private buildSocketOptions(): {
-        headers?: Record<string, string>;
-        rejectUnauthorized?: boolean;
-    } {
-        const { headers, rejectUnauthorized } = this.opts;
-        const out: { headers?: Record<string, string>; rejectUnauthorized?: boolean } = {};
-        if (headers !== undefined) {
-            out.headers = headers;
-        }
-        if (rejectUnauthorized !== undefined) {
-            out.rejectUnauthorized = rejectUnauthorized;
-        }
-        return out;
+    private buildSocketOptions(): ClientOptions {
+        const { headers, rejectUnauthorized, maxPayloadBytes } = this.opts;
+        return {
+            maxPayload: wsPayloadLimit(maxPayloadBytes),
+            skipUTF8Validation: false,
+            ...(headers === undefined ? {} : { headers }),
+            ...(rejectUnauthorized === undefined ? {} : { rejectUnauthorized }),
+        };
     }
 
     private bind(ws: WebSocket): void {

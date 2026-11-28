@@ -20,6 +20,7 @@ import {
     WsServer,
 } from "@napuketto/network";
 import { BEARER_PREFIX, createTokenAuthorize } from "../framework/index.js";
+import type { AdapterLoggerLike } from "../internal/infra/log.js";
 import type { OB11Config } from "./helper/index.js";
 
 /** 正向 WS client 首连失败的后台重连参数（HTTP 上报无连接，不参与）。 */
@@ -64,6 +65,7 @@ export interface AssembleOb11TransportsOptions {
     handleRequest: (req: unknown, respond: (res: unknown) => void) => void;
     /** 机器人自身 uin（koishi 等第三方按 X-Self-ID 识别连接归属）。 */
     selfUin: string;
+    logger?: Pick<AdapterLoggerLike, "warn"> | undefined;
 }
 
 /**
@@ -88,7 +90,7 @@ export function assembleOb11Transports(opts: AssembleOb11TransportsOptions): Ob1
 
     assembleHttpServers(config, handleRequest, servers);
     assembleWsServers(config, handleRequest, servers);
-    assembleHttpPosts(config, selfUin, transports, outbound);
+    assembleHttpPosts(opts, transports, outbound);
     assembleWsReverses(config, selfUin, handleRequest, transports, outbound);
 
     // 注册事件上报传输（正向 client：HTTP 上报 / WS 正向）
@@ -108,10 +110,11 @@ export function assembleOb11Transports(opts: AssembleOb11TransportsOptions): Ob1
         transports,
         outbound,
         close: async () => {
-            await Promise.all([...servers, ...transports].map((t) => t.close()));
-            for (const t of [...servers, ...transports]) {
+            const adapters = [...servers, ...transports];
+            for (const t of adapters) {
                 broadcaster.unregister(t);
             }
+            await Promise.all(adapters.map((t) => t.close()));
         },
     };
 }
@@ -171,12 +174,11 @@ function assembleWsServers(
 
 /** 装配 HTTP 正向上报 client 列表（fire-and-forget）。 */
 function assembleHttpPosts(
-    config: OB11Config,
-    selfUin: string,
+    { config, selfUin, logger }: AssembleOb11TransportsOptions,
     transports: TransportAdapter[],
     outbound: Ob11OutboundTransport[],
 ): void {
-    for (const item of config.httpPostUrls) {
+    for (const [index, item] of config.httpPostUrls.entries()) {
         if (item.enabled && item.url !== undefined) {
             // koishi HTTP 上报同样按 x-self-id 识别 bot（缺失返回 403）
             const headers = {
@@ -186,13 +188,18 @@ function assembleHttpPosts(
             const options: ConstructorParameters<typeof HttpClient>[0] = {
                 url: item.url,
                 headers,
+                onError: () => {
+                    logger?.warn(
+                        { category: "webhook_delivery_failed", index },
+                        "onebot11: webhook 推送失败",
+                    );
+                },
             };
             if (item.timeoutMs !== undefined) {
                 options.timeoutMs = item.timeoutMs;
             }
             const client = new HttpClient(options);
             transports.push(client);
-            // HTTP 上报无连接管理（open 为 no-op），不带 WS 重连参数
             outbound.push({ transport: client });
         }
     }

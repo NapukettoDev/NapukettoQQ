@@ -16,6 +16,14 @@ const ESSENCE_PAGE_LIMIT = 50;
 /** 精华消息最大分页数。 */
 const ESSENCE_MAX_PAGES = 20;
 
+const QUN_REQUEST_TIMEOUT_MS = 10_000;
+const QUN_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+interface QunRequest {
+    cookie: Record<string, string>;
+    signal: AbortSignal;
+}
+
 /** 精华消息项（digest_list 返回 data.msg_list 成员，说明书参考）。
  * 原生返回并不保证带全部展示字段，缺失按 optional 防御；`msg_content` 是标识字段。 */
 export interface EssenceMsgItem {
@@ -73,7 +81,7 @@ export class WebApi {
     /** 拉取单页精华消息（失败/retcode 非 0 返回 null）。 */
     private async fetchEssencePage(
         groupCode: string,
-        cookie: Record<string, string>,
+        request: QunRequest,
         bkn: string,
         page: number,
     ): Promise<{ items: EssenceMsgItem[]; isEnd: boolean } | null> {
@@ -85,7 +93,7 @@ export class WebApi {
                 page_limit: String(ESSENCE_PAGE_LIMIT),
                 group_code: groupCode,
             }).toString();
-        const ret = await fetchQunJson(url, cookie);
+        const ret = await fetchQunJson(url, request);
         if (ret === null || ret.retcode !== 0) {
             return null;
         }
@@ -93,12 +101,12 @@ export class WebApi {
     }
 
     /** 获取群精华消息列表（get_essence_msg_list；分页拉取至 is_end）。 */
-    async getEssenceMsgList(groupCode: string): Promise<EssenceMsgItem[]> {
-        const cookie = await this.getCookies(QUN_DOMAIN);
-        const bkn = TicketApi.getBkn(cookie["skey"] ?? "");
+    async getEssenceMsgList(groupCode: string, signal?: AbortSignal): Promise<EssenceMsgItem[]> {
+        const request = await this.createRequest(signal);
+        const bkn = TicketApi.getBkn(request.cookie["skey"] ?? "");
         const out: EssenceMsgItem[] = [];
         for (let page = 0; page < ESSENCE_MAX_PAGES; page += 1) {
-            const result = await this.fetchEssencePage(groupCode, cookie, bkn, page);
+            const result = await this.fetchEssencePage(groupCode, request, bkn, page);
             if (result === null) {
                 break;
             }
@@ -111,8 +119,12 @@ export class WebApi {
     }
 
     /** 获取群荣誉信息（get_group_honor_info；type 0=全部）。 */
-    async getGroupHonorInfo(groupCode: string, type: WebHonorType): Promise<GroupHonorWebInfo> {
-        const cookie = await this.getCookies(QUN_DOMAIN);
+    async getGroupHonorInfo(
+        groupCode: string,
+        type: WebHonorType,
+        signal?: AbortSignal,
+    ): Promise<GroupHonorWebInfo> {
+        const request = await this.createRequest(signal);
         const result: GroupHonorWebInfo = {
             group_id: Number(groupCode),
             current_talkative: null,
@@ -122,19 +134,27 @@ export class WebApi {
             emotion_list: [],
             strong_newbie_list: [],
         };
-        await this.fillHonorLists(result, groupCode, cookie, type);
+        await this.fillHonorLists(result, groupCode, request, type);
         return result;
+    }
+
+    private async createRequest(signal: AbortSignal | undefined): Promise<QunRequest> {
+        checkQunCancellation(signal);
+        const cookie = await this.getCookies(QUN_DOMAIN);
+        checkQunCancellation(signal);
+        const timeout = AbortSignal.timeout(QUN_REQUEST_TIMEOUT_MS);
+        return { cookie, signal: signal ? AbortSignal.any([signal, timeout]) : timeout };
     }
 
     /** 按 type 填充荣誉列表（ALL 拉全部，单类型只拉对应类）。 */
     private async fillHonorLists(
         result: GroupHonorWebInfo,
         groupCode: string,
-        cookie: Record<string, string>,
+        request: QunRequest,
         type: WebHonorType,
     ): Promise<void> {
         for (const target of honorTargets(type)) {
-            const list = await this.fetchHonorList(groupCode, cookie, target.kind);
+            const list = await this.fetchHonorList(groupCode, request, target.kind);
             result[target.listKey] = list;
             if (target.kind === WebHonorType.TALKATIVE) {
                 const [first] = list;
@@ -148,13 +168,13 @@ export class WebApi {
     /** 拉取单类荣誉列表（honorlist 接口，正则提取 __INITIAL_STATE__）。 */
     private async fetchHonorList(
         groupCode: string,
-        cookie: Record<string, string>,
+        request: QunRequest,
         type: number,
     ): Promise<HonorListItem[]> {
         const url =
             "https://qun.qq.com/interactive/honorlist?" +
             new URLSearchParams({ gc: groupCode, type: String(type) }).toString();
-        const text = await fetchQunText(url, cookie);
+        const text = await fetchQunText(url, request);
         if (text === null) {
             return [];
         }
@@ -230,43 +250,74 @@ interface QunJsonResponse {
  * 请求 qun.qq.com JSON 接口（带 Cookie；失败返回 null）。
  * 响应体先过 `isRecord` 收窄再取字段——非对象 JSON（数组 / 标量）按 INVALID_PARAM 抛出。
  */
-async function fetchQunJson(
-    url: string,
-    cookie: Record<string, string>,
-): Promise<QunJsonResponse | null> {
+async function fetchQunJson(url: string, request: QunRequest): Promise<QunJsonResponse | null> {
+    const text = await fetchQunText(url, request);
+    if (text === null) return null;
+    let json: unknown;
     try {
-        const res = await fetch(url, { headers: { Cookie: cookieToString(cookie) } });
+        json = JSON.parse(text);
+    } catch (err) {
+        throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
+    }
+    if (!isRecord(json)) {
+        throw kernelError("群 WebApi 响应非 JSON 对象", "INVALID_PARAM");
+    }
+    const data = json["data"];
+    return {
+        retcode: typeof json["retcode"] === "number" ? json["retcode"] : -1,
+        msgList: isRecord(data) ? data["msg_list"] : undefined,
+        isEnd: isRecord(data) && data["is_end"] === true,
+    };
+}
+
+function checkQunCancellation(signal: AbortSignal | undefined): void {
+    if (!signal?.aborted) return;
+    if (signal.reason instanceof DOMException && signal.reason.name === "TimeoutError") {
+        throw kernelError("qun.qq.com 请求超时", "TIMEOUT");
+    }
+    throw kernelError("qun.qq.com 请求已取消", "UNKNOWN");
+}
+
+/** 群空间的非成功响应仍按空页处理。 */
+async function fetchQunText(url: string, { cookie, signal }: QunRequest): Promise<string | null> {
+    try {
+        checkQunCancellation(signal);
+        const res = await fetch(url, { headers: { Cookie: cookieToString(cookie) }, signal });
         if (!res.ok) {
+            // 正文可能已被中止或失效，HTTP 状态仍足以决定降级行为。
+            await res.body?.cancel().catch(() => checkQunCancellation(signal));
             return null;
         }
-        const json: unknown = await res.json();
-        if (!isRecord(json)) {
-            throw kernelError("群 WebApi 响应非 JSON 对象", "INVALID_PARAM");
-        }
-        const data = json["data"];
-        return {
-            retcode: typeof json["retcode"] === "number" ? json["retcode"] : -1,
-            msgList: isRecord(data) ? data["msg_list"] : undefined,
-            isEnd: isRecord(data) && data["is_end"] === true,
-        };
+        return await readQunText(res.body);
     } catch (err) {
-        if (isKernelError(err)) {
-            throw err;
-        }
+        checkQunCancellation(signal);
+        if (isKernelError(err)) throw err;
         throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
     }
 }
 
-/** 请求 qun.qq.com 文本接口（带 Cookie；失败返回 null）。 */
-async function fetchQunText(url: string, cookie: Record<string, string>): Promise<string | null> {
+async function readQunText(body: Response["body"]): Promise<string> {
+    if (!body) return "";
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    const parts: string[] = [];
+    let bytes = 0;
     try {
-        const res = await fetch(url, { headers: { Cookie: cookieToString(cookie) } });
-        if (!res.ok) {
-            return null;
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > QUN_MAX_RESPONSE_BYTES) {
+                // 停止底层传输，即使远端还在发送正文。
+                await reader.cancel().catch(() => undefined);
+                throw kernelError("qun.qq.com 响应正文超限", "UNKNOWN");
+            }
+            parts.push(decoder.decode(value, { stream: true }));
         }
-        return await res.text();
-    } catch (err) {
-        throw kernelError(`qun.qq.com 请求失败: ${errorMessage(err)}`, "UNKNOWN");
+        parts.push(decoder.decode());
+        return parts.join("");
+    } finally {
+        reader.releaseLock();
     }
 }
 
