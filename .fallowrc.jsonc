@@ -1,5 +1,5 @@
 {
-    // fallow 配置：只豁免已核实的误报；重复/复杂度取「偶发不拦、成规模才拦」口径。
+    // CI 只检查架构边界。复杂度、重复和死代码保留供按需审阅。
     "$schema": "./node_modules/fallow/schema.json",
     // 锁死最低 fallow 版本，对齐单段 * glob 语义并防止旧版 CLI 漂移
     "minimumVersion": "3.44.0",
@@ -7,14 +7,14 @@
     "ignorePatterns": [
         "packages/loader/native/**"
     ],
-    // 门禁严苛度：复杂度仅告警不阻断，越层依赖硬拦截（对齐 AGENTS.md）
+    // 复杂度用于提示。越层依赖由 CI 阻断。
     "rules": {
         "complexity-cyclomatic": "warn",
         "complexity-cognitive": "warn",
         "complexity-crap": "warn",
         "boundary-violation": "error"
     },
-    // 只拦 3 处以上、达到一定体量的重复，排除测试文件的 mock/fixture 样板
+    // 审阅至少出现 3 次的重复，排除测试文件的 mock/fixture 样板。
     "duplicates": {
         "minOccurrences": 3,
         "minLines": 8,
@@ -124,13 +124,49 @@
                     "**/*.test-d.*"
                 ]
             },
-            // 底层三包：互不依赖
+            // kernel 各层向下依赖，包外生产代码经根出口访问。
             {
-                "name": "kernel",
+                "name": "kernel-l0",
+                "patterns": [
+                    "packages/kernel/src/types/**",
+                    "packages/kernel/src/infra/**"
+                ]
+            },
+            {
+                "name": "kernel-l1",
+                "patterns": [
+                    "packages/kernel/src/native/**"
+                ]
+            },
+            {
+                "name": "kernel-l2",
+                "patterns": [
+                    "packages/kernel/src/apis/**"
+                ]
+            },
+            {
+                "name": "kernel-l3",
+                "patterns": [
+                    "packages/kernel/src/runtime/**"
+                ]
+            },
+            {
+                "name": "kernel-entry",
+                "patterns": [
+                    "packages/kernel/src/index.ts"
+                ],
+                "publicFiles": [
+                    "packages/kernel/src/index.ts"
+                ]
+            },
+            // 首个匹配的 zone 生效。未归层的源码需落在已定义层级后才能跨 zone 引用。
+            {
+                "name": "kernel-unclassified",
                 "patterns": [
                     "packages/kernel/src/**"
                 ]
             },
+            // 底层三包互不依赖
             {
                 "name": "media",
                 "patterns": [
@@ -208,11 +244,45 @@
             }
         ],
         "rules": [
-            // 底层与 loader 禁止引用任何其他内部 zone
             {
-                "from": "kernel",
+                "from": "kernel-l0",
                 "allow": []
             },
+            {
+                "from": "kernel-l1",
+                "allow": [
+                    "kernel-l0"
+                ]
+            },
+            {
+                "from": "kernel-l2",
+                "allow": [
+                    "kernel-l0",
+                    "kernel-l1"
+                ]
+            },
+            {
+                "from": "kernel-l3",
+                "allow": [
+                    "kernel-l0",
+                    "kernel-l1",
+                    "kernel-l2"
+                ]
+            },
+            {
+                "from": "kernel-entry",
+                "allow": [
+                    "kernel-l0",
+                    "kernel-l1",
+                    "kernel-l2",
+                    "kernel-l3"
+                ]
+            },
+            {
+                "from": "kernel-unclassified",
+                "allow": []
+            },
+            // media、network 与 loader 禁止引用其他内部 zone。
             {
                 "from": "media",
                 "allow": []
@@ -229,7 +299,7 @@
             {
                 "from": "adapter-framework",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media"
                 ]
@@ -237,7 +307,7 @@
             {
                 "from": "adapter-internal",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media",
                     "adapter-framework"
@@ -247,7 +317,7 @@
             {
                 "from": "adapter-onebot11",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media",
                     "adapter-framework",
@@ -257,7 +327,7 @@
             {
                 "from": "adapter-satori",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media",
                     "adapter-framework",
@@ -267,7 +337,7 @@
             {
                 "from": "adapter-milky",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media",
                     "adapter-framework",
@@ -277,7 +347,7 @@
             {
                 "from": "adapter-kurobot",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "media",
                     "adapter-framework",
@@ -299,7 +369,7 @@
             {
                 "from": "cli",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
                     "network",
                     "loader",
                     "adapter-entry",
@@ -316,11 +386,15 @@
                     "cli"
                 ]
             },
-            // 测试文件允许访问全部 zone
+            // 测试文件允许直接访问已经归层的实现。
             {
                 "from": "tests",
                 "allow": [
-                    "kernel",
+                    "kernel-entry",
+                    "kernel-l0",
+                    "kernel-l1",
+                    "kernel-l2",
+                    "kernel-l3",
                     "media",
                     "network",
                     "loader",
