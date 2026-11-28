@@ -67,7 +67,8 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   未知动作 404。装配方直接持有各协议适配器（不设 AdapterRegistry 中间层）。
 - OB11 动作文件按领域组织：`action/` 下 message / group / friend / system 领域文件
   （声明式动作与 `create*Actions(api)` 工厂同文件，≤300 行）；错误码映射与 uid 解析收在
-  `action/base-action.ts`，`index.ts` 只遍历工厂注册零样板。
+  `action/base-action.ts`，各领域也从该模块直接引入 `resolveTargetPeer` 和 `fetchMsgById`。
+  `index.ts` 只遍历工厂注册零样板。
 - Milky 动作文件按领域组织：`milky/action/` 下 group（query / manage / essence /
   notice，另有群文件 `group-file` 一域）/ message（send / query / ops）+ profile /
   social / system，声明式动作与领域工厂同文件（每文件 150~300 行）；`index.ts`

@@ -25,7 +25,7 @@ import {
 } from "../../src/satori/transport.js";
 import { Opcode } from "../../src/satori/types/index.js";
 import { stub } from "../internal/stub.js";
-import { type StubSatoriApi, stubSatoriApi } from "./action/test-support.js";
+import { type StubSatoriApi, stubSatoriApi } from "./test-support.js";
 
 const SELF = { uin: "10001", nickname: "机器人" };
 /** HTTP / WS 端口（A 组无鉴权 / B 组带 token）。 */
