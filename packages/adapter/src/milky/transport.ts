@@ -171,20 +171,21 @@ export function assembleMilkyTransports(opts: {
     };
 
     const adapters: TransportAdapter[] = [server, hub];
-    for (const [index, url] of config.webhooks.entries()) {
-        const client = new HttpClient({
-            url,
-            ...(token !== "" ? { headers: { authorization: `${BEARER_PREFIX}${token}` } } : {}),
-            timeoutMs: 5000,
-            onError: () => {
-                logger?.warn(
-                    { category: "webhook_delivery_failed", index },
-                    "milky: webhook 推送失败",
-                );
-            },
-        });
-        adapters.push(client);
-    }
+    const webhooks = config.webhooks.map(
+        (url, index) =>
+            new HttpClient({
+                url,
+                ...(token !== "" ? { headers: { authorization: `${BEARER_PREFIX}${token}` } } : {}),
+                timeoutMs: 5000,
+                onError: () => {
+                    logger?.warn(
+                        { category: "webhook_delivery_failed", index },
+                        "milky: webhook 推送失败",
+                    );
+                },
+            }),
+    );
+    adapters.push(...webhooks);
 
     for (const adapter of adapters) {
         broadcaster.register(adapter);
@@ -198,7 +199,7 @@ export function assembleMilkyTransports(opts: {
                     broadcaster.unregister(adapter);
                 }
                 try {
-                    await hub.close();
+                    await Promise.all([hub.close(), ...webhooks.map((client) => client.close())]);
                 } finally {
                     await server.close();
                 }

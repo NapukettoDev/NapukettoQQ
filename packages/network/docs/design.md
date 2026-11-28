@@ -43,7 +43,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
   （ws 的连接类型）、`isWsOpen()` 和 `sendWsText()`。上层经这些符号管理连接、
   发送已序列化的文本，因此**不需要**在自己的
   `dependencies` 里声明 `ws`——ws 的版本与实例由 network 单点持有。
-- **入帧 UTF-8 强校验**：`WsServer` 与 `HttpServer` 的同端口升级都显式设置
+- **入帧 UTF-8 强校验**：`WsClient`、`WsServer` 与 `HttpServer` 的同端口升级都显式设置
   `skipUTF8Validation: false`（ws 默认值，写死防止后人为「微秒级性能」关掉）。文本帧
   在进入 `JSON.parse` / 日志前必须已校验 UTF-8，否则畸形字节流会变成下游乱码或异常，
   而不是可诊断的协议错误。
@@ -62,7 +62,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 | :--- | :--- | :--- |
 | `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`WsSocket`、`isWsOpen`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略） |
 | `src/http-server.ts` | `HttpServer` | 基于 `hono` + `@hono/node-server` 的反向 server。处理链：`authorize` → `onRawRequest`（命中即短路返回 `Response`）→ JSON 解析 → `onPathRequest`（优先）/ `onRequest` → `respond`；`onUpgrade` 在 `open()` 时挂到原生 `upgrade` 事件，实现 SSE 与 WS 同端口共存 |
-| `src/http-client.ts` | `HttpClient` | 正向 HTTP 上报：`send` 即触发一次 POST（fire-and-forget），失败（网络 / 非 2xx / 超时）经 `onError` 交回协议层；`open` / `close` 为无连接管理语义 |
+| `src/http-client.ts` | `HttpClient` | 正向 HTTP 上报：`send` 同步提交，按实例串行 POST，失败和拒收经 `onError` 回报 |
 | `src/ws-server.ts` | `WsServer` | 反向 WS server：消息经 `onRequest` 分发，`respond` 回同一客户端。握手鉴权走 `authorize`，通过后 `onConnection` 把连接与 `RequestContext` 交给调用方，可用于带内鉴权；鉴权失败以 close code `4401` 关闭 |
 | `src/ws-client.ts` | `WsClient` | 正向 WS client：`open()` 成功 resolve / 失败 reject（不自动重试），断线后按 `reconnect` 策略重连（`maxAttempts` 计数），支持 `heartbeat` 与 `rejectUnauthorized: false`（自签证书） |
 | `src/ws-flow.ts` | `sendWsText` | 对调用方选定的连接发送相同文本，逐连接执行发送上限；内部也提供 ping/pong 判活 |
@@ -83,7 +83,26 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
   不再序列化载荷。同步 handler 异常或响应序列化异常回 HTTP 500；已响应时保持首个结果。
   超时/关停不取消协议层已开始的业务操作。
 
+## HTTP 出站上报
+
+- 每个实例同时处理 1 条，最多保留 64 条等待事件。活跃与等待事件的序列化 UTF-8
+  正文合计最多 32 MiB。超出任一预算时同步回报拒收，保留已接纳的 FIFO 顺序。
+  每条事件最多尝试一次投递，各目的地址独立。成功与失败响应均取消未使用的正文。
+- `timeoutMs` 从事件提交开始计时，包含排队、请求和响应清理，默认 5 秒。
+  正整数可配置，非法值使用默认值。超时事件出队后经 `onError` 回报。
+- 新建实例可立即使用。显式 `close()` 拒绝新事件、丢弃队列并取消活跃请求，
+  等待本地清理完成。关闭主动丢弃的已接纳事件静默结束；调用方可用 `open()` 重开。
+
 ## WebSocket 连接可靠性
+
+- WsClient、独立 WsServer 和同端口升级的入站单消息缺省上限同为 32 MiB，允许常见
+  base64 媒体与 JSON 开销。独立客户端和服务端用各自的 `maxPayloadBytes`，同端口用
+  `wsMaxPayloadBytes`。仅接受 1 到 2147483647 的整数，其他值用默认上限。
+  客户端每次连接和重连均执行上限；客户端默认可协商压缩，上限
+  也适用于解压后的消息，两个服务端默认不协商压缩。入向上限与发送缓冲预算独立。
+- 独立 WsServer 关停时停止接入和判活，向现有连接发送 1001。共用入站服务的 250ms
+  宽限期，到期终止未完成关闭的 WS 并断开剩余 TCP。关闭等待资源回收，并发调用共用
+  启动或关闭过程，关闭后可重新监听。
 
 - `WsServer` 和 `WsClient` 可配置 `heartbeat`。连接建立或收到匹配 pong 后等待
   `intervalMs` 再发 ping，每条连接只等一个 pong，接受内容与当前 ping 相同的回应。

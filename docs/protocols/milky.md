@@ -49,7 +49,8 @@ HTTP 语义与错误码：
 - `GET /event` 按 `Upgrade: websocket` 头分流：有头走 WS，无头走 SSE；两种形态由
   `eventModes` 控制，关闭的形态返回 404。
 - SSE 事件名固定 `milky_event`；WS 只下行，入帧忽略。
-- WebHook 为第三条推送路径：主动 POST，fire-and-forget，失败只记 warn 日志。
+- WebHook 按地址独立串行 POST，每次投递含排队限时 5 秒。每个地址最多等待 64 条，
+  活跃与等待正文合计最多 32 MiB。拒收和投递失败只记 warn，不重试；关闭丢弃等待事件并取消在途请求。
 
 ## 能力速查
 

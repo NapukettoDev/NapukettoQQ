@@ -4,7 +4,7 @@
  * 真实 127.0.0.1 临时端口端到端：node:http 桩服务记录请求。
  * 锁定：POST JSON + 默认 Content-Type、自定义头合并（可覆盖默认）、
  * 2xx 静默、非 2xx → onError、连接拒绝 → onError、超时 → onError、
- * fire-and-forget 语义（send 同步返回、失败异步回调）、open/close no-op。
+ * fire-and-forget 语义（send 同步提交、投递失败异步回调）。
  */
 import {
     createServer,
@@ -76,12 +76,20 @@ function startStub(
 
 describe("HttpClient", () => {
     const stubs: HttpStub[] = [];
+    const clients: HttpClient[] = [];
     afterEach(async () => {
+        for (const client of clients.splice(0)) await client.close();
         for (const stub of stubs.reverse()) {
             await stub.close();
         }
         stubs.length = 0;
     });
+
+    function makeClient(opts: ConstructorParameters<typeof HttpClient>[0]): HttpClient {
+        const client = new HttpClient(opts);
+        clients.push(client);
+        return client;
+    }
 
     /** 起桩并登记到 afterEach 清理列表。 */
     async function serve(
@@ -177,5 +185,106 @@ describe("HttpClient", () => {
         client.send({ n: 2 });
         await vi.waitFor(() => expect(stub.requests).toHaveLength(2));
         expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({ n: 2 });
+    });
+
+    it.each([200, 503])("收到 %i 后取消无终点的响应体", async (status) => {
+        const closed = Promise.withResolvers<void>();
+        const stub = await serve((_req, res) => {
+            res.once("close", closed.resolve);
+            res.writeHead(status).write("still streaming");
+        });
+        const onError = vi.fn();
+        const client = makeClient({ url: stub.url, onError });
+        client.send({ ping: 1 });
+        await closed.promise;
+        if (status === 200) {
+            expect(onError).not.toHaveBeenCalled();
+        } else {
+            expect(onError.mock.calls.map(([error]) => String(error))).toEqual([
+                expect.stringContaining("503"),
+            ]);
+        }
+    });
+
+    it("慢端点保留一条在途与 64 条等待，拒收新事件并按序投递", async () => {
+        const first = Promise.withResolvers<ServerResponse>();
+        const slow = await serve((_req, res, body) => {
+            if (body === "0") first.resolve(res);
+            else res.end();
+        });
+        const fast = await serve((_req, res) => res.end());
+        const onError = vi.fn();
+        const client = makeClient({ url: slow.url, onError });
+        const other = makeClient({ url: fast.url });
+        for (let i = 0; i < 66; i += 1) client.send(i);
+        other.send("other destination");
+        const active = await first.promise;
+        await vi.waitFor(() => expect(fast.requests).toHaveLength(1));
+        expect(slow.requests.map((req) => req.body)).toEqual(["0"]);
+        expect(onError.mock.calls.map(([error]) => String(error))).toEqual([
+            expect.stringContaining("队列已满"),
+        ]);
+        active.end();
+        await vi.waitFor(() => expect(slow.requests).toHaveLength(65), { timeout: 2500 });
+        expect(slow.requests.map((req) => req.body)).toEqual(
+            Array.from({ length: 65 }, (_, i) => String(i)),
+        );
+    });
+
+    it("超出待发送正文预算的事件在本地拒收", async () => {
+        const stub = await serve((_req, res) => res.end());
+        const onError = vi.fn();
+        const client = makeClient({ url: stub.url, onError });
+        client.send("x".repeat(32 * 1024 * 1024));
+        expect(onError.mock.calls.map(([error]) => String(error))).toEqual([
+            expect.stringContaining("正文超限"),
+        ]);
+        client.send("next");
+        await vi.waitFor(() => expect(stub.requests.map((req) => req.body)).toEqual(['"next"']));
+    });
+
+    it("过期事件在出队时回报超时，没有发起请求", async () => {
+        const first = Promise.withResolvers<ServerResponse>();
+        const expired = Promise.withResolvers<unknown>();
+        const stub = await serve((_req, res) => first.resolve(res));
+        const now = vi.spyOn(performance, "now").mockReturnValue(0);
+        try {
+            const client = makeClient({ url: stub.url, onError: expired.resolve });
+            client.send("active");
+            client.send("queued");
+            const res = await first.promise;
+            now.mockReturnValue(5_000);
+            res.end();
+            await expect(expired.promise).resolves.toMatchObject({ name: "TimeoutError" });
+            expect(stub.requests.map((req) => req.body)).toEqual(['"active"']);
+        } finally {
+            now.mockRestore();
+        }
+    });
+
+    it("关闭取消在途并丢弃队列，重开只投递新事件", async () => {
+        const entered = Promise.withResolvers<void>();
+        const closed = Promise.withResolvers<void>();
+        const stub = await serve((_req, res, body) => {
+            if (body !== "1") {
+                res.end();
+                return;
+            }
+            res.once("close", closed.resolve);
+            entered.resolve();
+        });
+        const onError = vi.fn();
+        const client = makeClient({ url: stub.url, onError });
+        client.send(1);
+        client.send(2);
+        await entered.promise;
+        await Promise.all([client.close(), client.close(), closed.promise]);
+        client.send(3);
+        expect(onError.mock.calls.map(([error]) => String(error))).toEqual([
+            expect.stringContaining("上报已关闭"),
+        ]);
+        await client.open();
+        client.send(4);
+        await vi.waitFor(() => expect(stub.requests.map((req) => req.body)).toEqual(["1", "4"]));
     });
 });

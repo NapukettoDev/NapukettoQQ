@@ -14,9 +14,9 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { WebSocketServer } from "ws";
+import { closeServerConnections } from "./server-lifecycle.js";
 import {
     DEFAULT_MAX_BODY_BYTES,
-    DEFAULT_MAX_PAYLOAD_BYTES,
     type HttpRouteContext,
     type HttpServerOptions,
     incomingMessageToRequestContext,
@@ -26,6 +26,7 @@ import {
     type WsSocket,
     type WsUpgradeHook,
 } from "./types.js";
+import { wsPayloadLimit } from "./ws-flow.js";
 
 const HTTP_STATUS = {
     badRequest: 400,
@@ -37,8 +38,6 @@ const HTTP_STATUS = {
     timeout: 504,
 } as const;
 
-/** 关闭握手宽限期；之后强断所有剩余 TCP 连接，包括升级后的 WS。 */
-const CLOSE_GRACE_MS = 250;
 const STATUS_REASON = /^[ -~]{1,128}$/;
 
 type UpgradeDecision =
@@ -307,10 +306,7 @@ export class HttpServer implements TransportAdapter {
     private attachUpgrade(server: Server): void {
         const wss = new WebSocketServer({
             noServer: true,
-            // 单条消息上限：升级通道与独立 WsServer 同一口径（见 types.ts）。
-            // skipUTF8Validation 同 WsServer 显式 false：Milky /event 的入帧同样
-            // 要求合法 UTF-8（见 ws-server.ts 注释）。
-            maxPayload: this.opts.wsMaxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+            maxPayload: wsPayloadLimit(this.opts.wsMaxPayloadBytes),
             skipUTF8Validation: false,
         });
         this.wss = wss;
@@ -366,30 +362,10 @@ export class HttpServer implements TransportAdapter {
 
     private async dispose(server: Server): Promise<void> {
         server.removeAllListeners("upgrade");
-        const httpClosed = new Promise<void>((resolve) => server.close(() => resolve()));
-        // Node 的 server.close 不等待已升级的 TCP 连接，单独等待它们释放。
-        const socketsClosed = [...this.sockets].map(
-            (socket) => new Promise<void>((resolve) => socket.once("close", () => resolve())),
-        );
         for (const finish of this.pending) finish();
-        const wss = this.wss;
-        const wsClosed = new Promise<void>((resolve) => {
-            if (!wss) {
-                resolve();
-                return;
-            }
-            wss.close(() => resolve());
-            for (const client of wss.clients) client.close(1001, "server shutdown");
-        });
-        const timer = setTimeout(() => {
-            if (wss) for (const client of wss.clients) client.terminate();
-            for (const socket of this.sockets) socket.destroy();
-        }, CLOSE_GRACE_MS);
-        timer.unref();
         try {
-            await Promise.all([httpClosed, wsClosed, ...socketsClosed]);
+            await closeServerConnections(server, this.sockets, this.wss);
         } finally {
-            clearTimeout(timer);
             this.wss = undefined;
             server.removeAllListeners();
         }

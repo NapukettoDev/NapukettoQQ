@@ -4,10 +4,12 @@
  * 收到消息 → `onRequest` 注入点（协议层分发）→ 响应经 `respond` 回发**同一客户端**。
  * 握手鉴权通过 `authorize` 钩子；调用方也可用 `onConnection` 登记连接以进行带内鉴权。
  */
-import type { IncomingMessage } from "node:http";
-import { type WebSocket, WebSocketServer } from "ws";
+import { once } from "node:events";
+import { createServer, type IncomingMessage, type Server, STATUS_CODES } from "node:http";
+import type { Socket } from "node:net";
+import { type RawData, type WebSocket, WebSocketServer } from "ws";
+import { closeServerConnections } from "./server-lifecycle.js";
 import {
-    DEFAULT_MAX_PAYLOAD_BYTES,
     incomingMessageToRequestContext,
     isWsOpen,
     type RequestContext,
@@ -16,15 +18,23 @@ import {
     type WsServerOptions,
     type WsSocket,
 } from "./types.js";
-import { sendWsText, startWsHeartbeat } from "./ws-flow.js";
+import { sendWsText, startWsHeartbeat, wsPayloadLimit } from "./ws-flow.js";
 
 const WS_CLOSE_CODE = {
     unauthorized: 4401,
 } as const;
 
+interface WsListener {
+    http: Server;
+    wss: WebSocketServer;
+    sockets: Set<Socket>;
+}
+
 export class WsServer implements TransportAdapter {
     private readonly opts: WsServerOptions;
-    private wss: WebSocketServer | undefined;
+    private listener: WsListener | undefined;
+    private opening: Promise<void> | undefined;
+    private closing: Promise<void> | undefined;
     private readonly heartbeats = new Map<WsSocket, () => void>();
 
     /**
@@ -43,82 +53,78 @@ export class WsServer implements TransportAdapter {
 
     /** 广播给所有已连接客户端（序列化后发送）。 */
     send<T>(payload: T): void {
-        const { wss } = this;
-        if (!wss) {
-            return;
-        }
-        sendWsText(wss.clients, JSON.stringify(payload), this.opts.maxBufferedBytes);
+        if (!this.listener || this.closing) return;
+        sendWsText(this.listener.wss.clients, JSON.stringify(payload), this.opts.maxBufferedBytes);
     }
 
-    async open(): Promise<void> {
-        if (this.wss) {
-            return;
-        }
-        const { host, port, path } = this.opts;
-        // 单消息上限：ws 默认 100 MiB 过宽（见 types.ts DEFAULT_MAX_PAYLOAD_BYTES）。
-        // skipUTF8Validation 显式 false：文本帧进入 JSON.parse / 日志前必须已校验
-        // UTF-8（ws 默认即 false，写死防止后人为了「微秒级性能」关掉——非法字节流
-        // 会在下游变成乱码或异常，而不是可诊断的协议错误）。
-        const serverOptions: {
-            host: string;
-            port: number;
-            path?: string;
-            maxPayload: number;
-            skipUTF8Validation: boolean;
-        } = {
-            host,
-            port,
-            maxPayload: this.opts.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
-            skipUTF8Validation: false,
-        };
-        if (path !== undefined) {
-            serverOptions.path = path;
-        }
-        const wss = new WebSocketServer(serverOptions);
-        const onConnection = (socket: WebSocket, req: IncomingMessage): void =>
-            this.handleConnection(socket, req);
-        wss.on("connection", onConnection);
+    open(): Promise<void> {
+        if (this.closing) return this.closing.then(() => this.open());
+        if (this.opening) return this.opening;
+        if (this.listener) return Promise.resolve();
+        this.opening = this.start().finally(() => {
+            this.opening = undefined;
+        });
+        return this.opening;
+    }
 
-        // 等 listening 成功后才挂到 this.wss：error 分支不残留半初始化状态。
+    private async start(): Promise<void> {
+        const { host, port, path } = this.opts;
+        // 持有原生监听器才能在关停时回收仍未升级的 TCP。
+        const http = createServer((_req, res) => {
+            const body = STATUS_CODES[426] ?? "Upgrade Required";
+            res.writeHead(426, { "Content-Length": body.length, "Content-Type": "text/plain" });
+            res.end(body);
+        });
+        const wss = new WebSocketServer({
+            server: http,
+            maxPayload: wsPayloadLimit(this.opts.maxPayloadBytes),
+            skipUTF8Validation: false,
+            ...(path === undefined ? {} : { path }),
+        });
+        const sockets = new Set<Socket>();
+        const listener = { http, wss, sockets };
+        http.on("connection", (socket) => {
+            sockets.add(socket);
+            socket.once("close", () => sockets.delete(socket));
+            if (this.closing) socket.destroy();
+        });
+        wss.on("connection", (socket, req) => this.handleConnection(socket, req));
         try {
-            await new Promise<void>((resolve, reject) => {
-                const onListening = (): void => {
-                    wss.off("error", onError);
-                    resolve();
-                };
-                const onError = (err: Error): void => {
-                    wss.off("listening", onListening);
-                    reject(err);
-                };
-                wss.once("listening", onListening);
-                wss.once("error", onError);
-            });
+            http.listen(port, host);
+            await once(wss, "listening");
         } catch (err) {
-            wss.off("connection", onConnection);
-            // 半初始化 server：挂临时 error 监听再 close，防止 close 自身报错逃逸。
-            wss.on("error", () => undefined);
-            wss.close();
+            await this.dispose(listener);
             throw err;
         }
-        this.wss = wss;
+        this.listener = listener;
     }
 
-    async close(): Promise<void> {
+    close(): Promise<void> {
+        if (this.closing) return this.closing;
+        this.closing = this.stop().finally(() => {
+            this.closing = undefined;
+        });
+        return this.closing;
+    }
+
+    private async stop(): Promise<void> {
+        // 启动失败由 open() 的调用方接收，start() 回收半初始化监听器。
+        if (this.opening) await this.opening.catch(() => undefined);
+        const { listener } = this;
+        if (!listener) return;
+        await this.dispose(listener);
+        this.listener = undefined;
+    }
+
+    private async dispose({ http, wss, sockets }: WsListener): Promise<void> {
         for (const stop of this.heartbeats.values()) stop();
         this.heartbeats.clear();
-        const { wss } = this;
-        if (!wss) {
-            return;
+        wss.removeAllListeners("connection");
+        try {
+            await closeServerConnections(http, sockets, wss);
+        } finally {
+            http.removeAllListeners();
         }
-        await new Promise<void>((resolve) => {
-            for (const client of wss.clients) {
-                client.close();
-            }
-            wss.close(() => {
-                this.wss = undefined;
-                resolve();
-            });
-        });
     }
 
     private handleConnection(socket: WebSocket, req: IncomingMessage): void {
@@ -135,7 +141,8 @@ export class WsServer implements TransportAdapter {
         // 握手通过（或未配置鉴权）后再交协议层登记，避免把待拒绝的连接暴露给上层。
         this.onConnection?.(socket, ctx);
 
-        socket.on("message", (raw) => {
+        const onMessage = (raw: RawData): void => {
+            if (this.closing) return;
             let reqBody: unknown;
             try {
                 const parsed: unknown = JSON.parse(raw.toString());
@@ -153,6 +160,8 @@ export class WsServer implements TransportAdapter {
                 },
                 socket,
             );
-        });
+        };
+        socket.on("message", onMessage);
+        socket.once("close", () => socket.off("message", onMessage));
     }
 }

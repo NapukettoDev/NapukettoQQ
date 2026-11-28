@@ -14,7 +14,7 @@
  */
 
 import { once } from "node:events";
-import { Server } from "node:http";
+import { createServer, Server } from "node:http";
 import { createConnection } from "node:net";
 import {
     type FriendApi,
@@ -556,6 +556,35 @@ describe("/event 模式开关与鉴权分支", () => {
 });
 
 describe("WebHook 推送", () => {
+    it("关停装配取消在途 Webhook 并丢弃等待事件", async () => {
+        const entered = Promise.withResolvers<void>();
+        const cancelled = Promise.withResolvers<void>();
+        let received = 0;
+        const stub = createServer((req, res) => {
+            received += 1;
+            req.resume();
+            res.once("close", cancelled.resolve);
+            entered.resolve();
+        });
+        stub.listen(0, "127.0.0.1");
+        await once(stub, "listening");
+        const addr = stub.address();
+        if (!addr || typeof addr === "string") throw new Error("未取得环回端口");
+        const set = assemble({ port: 0, webhooks: [`http://127.0.0.1:${addr.port}/hook`] });
+        try {
+            await Promise.all(set.adapters.map((transport) => transport.open()));
+            set.adapters[2]?.send({ id: 1 });
+            set.adapters[2]?.send({ id: 2 });
+            await entered.promise;
+            await Promise.all([set.close(), cancelled.promise]);
+            expect(received).toBe(1);
+        } finally {
+            await set.close();
+            stub.closeAllConnections();
+            await new Promise<void>((resolve) => stub.close(() => resolve()));
+        }
+    });
+
     it("webhook 错误日志只含固定类别与配置索引", async () => {
         const logger = { debug: vi.fn(), warn: vi.fn(), info: vi.fn() };
         const url = "http://test-user:test-password@127.0.0.1/hook?access_token=query-test-value";

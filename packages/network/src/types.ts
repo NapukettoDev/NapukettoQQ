@@ -134,9 +134,9 @@ export interface HttpClientOptions {
     /** 上报地址（完整 URL）。 */
     url: string;
     headers?: Record<string, string> | undefined;
-    /** 请求超时（毫秒）；缺省不超时。 */
+    /** 从提交到投递完成的期限（毫秒）；缺省 5 秒。 */
     timeoutMs?: number | undefined;
-    /** 上报失败回调（网络错误 / 非 2xx / 超时）。 */
+    /** 上报失败回调，含队列拒收和超时。 */
     onError?: ((err: unknown) => void) | undefined;
 }
 
@@ -162,6 +162,8 @@ export interface WsClientOptions {
     /** 服务端地址（完整 URL，含 ws:// 或 wss://）。 */
     url: string;
     headers?: Record<string, string> | undefined;
+    /** 入站单条消息上限（字节）；缺省 DEFAULT_MAX_PAYLOAD_BYTES。 */
+    maxPayloadBytes?: number | undefined;
     /** ping/pong 判活，缺省不探测。 */
     heartbeat?: WsHeartbeatOptions | undefined;
     /** 发送缓冲上限（字节，含待发送帧）；缺省 32 MiB。 */

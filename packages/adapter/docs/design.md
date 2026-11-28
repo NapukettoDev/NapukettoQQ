@@ -258,9 +258,16 @@ Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB�
 - 纯出向协议：不向 broadcaster 发事件。
 - 收向订阅同样走 `subscribeRawMessages`：启动前历史群消息不触发向服务端的回帧。
 
+### Webhook 上报
+
+- OneBot 11 和 Milky 每个地址由独立 HttpClient 串行投递，失败不重试。队列满、超时、
+  网络失败与非成功响应按配置序号记录，不包含请求凭据、地址和正文。
+- Milky 从事件入队开始给出 5 秒，OneBot 11 的 `timeoutMs` 可覆盖同一缺省值。
+  停止和热更新从广播器退订后关闭 Webhook，取消在途请求并丢弃等待事件。
+
 ### Milky 单端口传输
 
-- 关闭时先注销广播、结束 hub 的 SSE/WS，再关闭 HTTP server，避免等待仍由 hub
+- 关闭时先注销广播、取消 Webhook 并结束 hub 的 SSE/WS，再关闭 HTTP server，避免等待仍由 hub
   持有的长连接；HTTP server 负责停止接入及兜底回收并发建立的连接。close 并发去重且幂等。
 - 单端口 HTTP：`POST /api/:api` 动作，`GET /event` SSE 或同端口 WS 升级；WebHook 走
   `HttpClient` 主动推送。事件统一经 `MilkyEventHub` 广播（`event: milky_event`）。

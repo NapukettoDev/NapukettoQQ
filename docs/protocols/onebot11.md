@@ -37,6 +37,9 @@ port = 3001
 - 鉴权：协议级 `token`，实例级可覆盖；接受 `Authorization: Bearer <token>`、裸
   `Authorization: <token>` 或 `?access_token=`。WS 鉴权失败以 4401 关闭。
 - 正向 WS 握手带 `X-Self-ID`、`x-client-role: Universal`、`User-Agent: OneBot/11`。
+- Webhook 按地址独立串行 POST，`timeoutMs`（缺省 5 秒）包含排队。每个地址最多等待
+  64 条，活跃与等待正文合计最多 32 MiB。拒收和投递失败只记 warn，不重试；
+  关闭丢弃等待事件并取消在途请求。
 - 账号级 `heartbeatInterval` 控制 meta 事件。WS 实例用自己的 `heartbeatInterval` 发
   探测 ping，等待匹配 pong 最长 `max(heartbeatInterval, 1000)` 毫秒，超时即断开。
 - 反向 WS 已连接后断线，首次自动重连仍等 `reconnectDelayMs`，后续连续失败指数退避并

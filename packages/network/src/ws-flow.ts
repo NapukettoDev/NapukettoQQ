@@ -1,9 +1,21 @@
 import { randomBytes } from "node:crypto";
-import { isWsOpen, type WsHeartbeatOptions, type WsSocket } from "./types.js";
+import {
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    isWsOpen,
+    type WsHeartbeatOptions,
+    type WsSocket,
+} from "./types.js";
 
 const DEFAULT_MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
 // 基础头 2 + 扩展长度 8 + 客户端掩码 4。
 const MAX_FRAME_HEADER_BYTES = 14;
+
+export function wsPayloadLimit(bytes: number | undefined): number {
+    // ws 将上限转换成 int32，溢出后可能不再限长。
+    return bytes !== undefined && Number.isInteger(bytes) && bytes > 0 && bytes <= 0x7fff_ffff
+        ? bytes
+        : DEFAULT_MAX_PAYLOAD_BYTES;
+}
 
 /** 向选定连接发送文本，超出发送预算时立即断开对应连接。 */
 export function sendWsText(
