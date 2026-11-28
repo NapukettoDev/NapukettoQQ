@@ -284,3 +284,56 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
 - 合成 addon 实际经过 Node 原生加载，登录和监听副作用由夹具提供。官方 wrapper 与私有
   stub 的配套加载、真实快速登录／扫码、O3 底层释放、立即重启和 native fd 1 输出仍需
   匹配的两平台组件及授权测试账号。真实群操作的证据条件见 kernel 文档。
+
+## F-08、F-09、F-12 与 I-01 C／D 上游验收
+
+基线为主仓 `59e29f2`、原生 gitlink `68827c0061df50f223b6b9429ce5618ae42bc1ba`。
+沿用 #164（`f7fb4fb`）的 7-Zip 校验和已锁定的 Actions，以及 #213（`7834465`）的
+kernel 原生宿主入口。已发布基线为 loader 0.19.0 和 CLI 0.10.2。
+
+| 编号 | 当前行为与检查 | 实测结果 |
+| --- | --- | --- |
+| F-08 | [pack-loader.ts](../../../tooling/release/pack-loader.ts) 与 [release.yml](../../../.github/workflows/release.yml) 打包、核对 gitlink 和 tarball 内 stub 字节，发布任务收到归档后按 prepare 的 job output 核对 SHA-256。若 rebase 后重构建，重新打包并复核。 | 真实 loader 归档包含双平台 stub、宿主入口和发行清单。定向测试验证临时 Git 仓中的改变字节、漏件、私有源码排除和失败时旧归档保留。真实归档对回环 registry 执行 `npm publish --dry-run --ignore-scripts --no-provenance`，退出 0，回环只收到 GET。 |
+| F-09 | [Dockerfile](../../../docker/Dockerfile)、[install-cli.sh](../../../docker/install-cli.sh) 与 [image.yml](../../../.github/workflows/image.yml) 按指定 CLI 版本和 SRI 下载并安装，Docker 前端、Node 24.16.0、Debian 与 FFmpeg 都按固定 OCI 摘要解析。 | 本地 `docker buildx build --platform linux/amd64 --load` 构建 CLI 0.10.2 的 full／slim，运行得到 Node 24.16.0、CLI 0.10.2，full 内 FFmpeg 9.0.2。省略参数或传入错误 SRI 的 builder 构建退出非零。 |
+| F-12 | [open-config.ts](../../../apps/create/src/open-config.ts) 用固定 Windows 启动器脚本和环境变量传路径，macOS／Linux 分别把路径作为一个参数传给系统打开程序。 | `pnpm test:quiet apps/create/tests/open-config.test.ts` 覆盖空格、Unicode、字面量 `%PATH%` 和合法特殊字符，真实子进程读取到了临时配置。系统 Windows 启动器缺文件、子进程非零和 POSIX 打开程序启动失败均有覆盖。 |
+| I-01 C／D 上游 | 所有公开包和根清单最低 Node.js 24.11.0。CI 在 Linux 以最低版本构建并加载合成 ELF addon，Windows 24.x 构建并运行合成宿主。库入口测试通过真实 Node 子进程检查 ESM import 和 CommonJS require。 | 锁定的 tsdown 0.23.7 要求 Node 22 系列至少 22.18.0 或 Node 24 系列至少 24.11.0。Windows Node 22.12.0 的源码构建在加载 tsdown 配置时失败。Node 24.11.0 与 24.16.0 的定向构建通过。 |
+
+### 构建、导入和自建宿主
+
+- 构建命令为 `pnpm --filter '@napuketto/cli...' --filter create-napuketto build`。
+  Node 24.11.0 构建的产物在 22.12.0 通过了 kernel／adapter 的 ESM import 与 CommonJS
+  require，以及 CLI `--version`、脚手架 `--help`。该结果覆盖所列入口，仓库支持范围以
+  [Node 契约](../../../docs/architecture/runtime.md#nodejs-版本契约)为准。
+- Windows x64 和 Linux x64（WSL）分别编译 `tests/host/bootstrap/fixtures/wrapper.c`，
+  用 `HOST_TEST_ADDON=<合成 addon> node --test --test-reporter=dot packages/loader/tests/host/bootstrap/self-host-process.integration.mjs`
+  验证。Node 22.12.0、24.11.0、24.16.0 在两个平台均各通过 6 项。夹具经 Node 原生加载，
+  登录与会话行为使用合成账号及测试实现。
+- 发布证据使用 `node tooling/release/pack-loader.ts <临时目录>`，定向门禁用
+  `pnpm test:quiet tooling/release/__tests__/pack-loader.test.ts apps/create/tests/open-config.test.ts tooling/package-exports.test.ts`，
+  82 项通过。最终 `pnpm check && pnpm exec fallow architecture --boundaries && pnpm test:quiet`
+  通过，1085 项通过、3 项跳过。锁文件以 `pnpm install --frozen-lockfile --ignore-scripts` 复核。
+
+### 来源、签名与独立重建
+
+- 公共 registry 中 loader 0.19.0 用 `npm audit signatures` 验证 registry 签名和 npm
+  attestations。签名声明把 tarball 的 SHA-512 绑定到
+  `NapukettoDev/Napuketto/.github/workflows/release.yml` 的 main 触发提交 `7834465`。
+  私有原生提交由 GitHub 报告签名有效。原生构件的独立签名和编译声明仍缺证据。Windows
+  `Get-AuthenticodeSignature` 返回 `NotSigned`，Linux 未找到独立分离签名。
+- 从锁定提交做 `git archive`，解到临时目录再分别构建，原始构件和 QQ 安装目录均未改写。
+
+| 目标 | 本地重建命令与工具链 | 归档 stub SHA-256 | 重建 SHA-256 |
+| --- | --- | --- | --- |
+| Windows x64 | `cmake -G Ninja -S <源码> -B <输出> -DCMAKE_CXX_COMPILER=<x64 llvm-mingw> -DCMAKE_BUILD_TYPE=Release`、`cmake --build <输出>`，CMake 4.3.2、Clang 22.1.8 | `2a5d1483809ce63de89191a08196c1177a2c7047776bb424f91386b7d0f44052` | `a574bf61e89fff9c345a197edbf7fe8378f65a71eaf914c1fdc04c67ffb273c9` |
+| Linux x64 | `bash tools/build-linux.sh`，GCC 13.3.0（Ubuntu 24.04）、GNU ld 2.42 | `675eb9449aefb796d6a73f616b5913520340cb66bda10498446fd8cf686b70ca` | `5c8f4f5e7993ff0f3a25caa5c81b6d23d6da8e1cd19efc59214e87c3c6d04b08` |
+
+两个平台能独立编译，字节复现均未通过。原始编译方仍需补齐精确工具链、构建参数与环境，
+以及由包外受信身份签署的原生构件证明。真实 QQ wrapper 与 stub 的联合加载、登录及发布后
+registry／GHCR 复验分别等待授权双平台 QQ 测试环境、账号和正常发布流程。
+
+### 交接任务 19／20
+
+按当前基线计算，Changesets 的候选版本为 kernel 0.20.0、loader 0.20.0、adapter 0.27.0、
+network 0.7.0、media 0.6.0、CLI 0.11.0、create-napuketto 0.5.0。消费这些版本的环境
+最低 Node.js 24.11.0。发布后以实际的 npm 版本及各包 `engines.node` 为准，再更新下游
+依赖和部署说明。保留现有 CommonJS 库入口与宿主 IPC 契约。

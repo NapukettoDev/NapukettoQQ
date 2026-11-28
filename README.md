@@ -42,7 +42,7 @@
 
 ## 快速开始
 
-- **运行环境**：Node.js 24+（Windows 10/11 x64 或 Linux x64）；无需安装 QQ 客户端。
+- **运行环境**：Node.js 24.11.0+（Windows 10/11 x64 或 Linux x64）；无需安装 QQ 客户端。
 - **依赖**：Linux 另需 `libgnutls30` 与 X11 客户端库，见[运维手册](./docs/guides/operations.md#linux-原生宿主)。
 
 ### 创建并启动
@@ -130,7 +130,7 @@ pnpm exec napuketto restart             # 重启 supervisor
 
 ## English
 
-**Napuketto** is a self-hosted, multi-protocol bot runtime for Node.js 24+ (Windows / Linux x64) and Docker (`linux/amd64`), designed around a standalone, supervised per-account host architecture with all settings managed in a single `napuketto.toml`.
+**Napuketto** is a self-hosted, multi-protocol bot runtime for Node.js 24.11.0+ (Windows / Linux x64) and Docker (`linux/amd64`), designed around a standalone, supervised per-account host architecture with all settings managed in a single `napuketto.toml`.
 
 - **Protocols & Adapters**: Exposes **Milky**, **Satori**, **OneBot 11**, and **KuroBot**, plus an embedded [Koishi](https://github.com/NapukettoDev/Adapter-Koishi) adapter.
 - **Quick Start**: Scaffold a project with `pnpm create napuketto` or deploy via the official Docker image.

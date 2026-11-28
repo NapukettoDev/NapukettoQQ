@@ -6,7 +6,7 @@
 ## 开始之前
 
 1. 读 [AGENTS.md](../AGENTS.md)（红线/依赖/流程）与 [docs/README.md](../docs/README.md)（路由）。
-2. 装 Node.js 24 与 pnpm 12（根 `package.json` 的 `packageManager` 已锁定版本），
+2. 装 Node.js 24.11.0 或更高版本与 pnpm 12（根 `package.json` 的 `packageManager` 已锁定版本），
    执行 `pnpm install`；`packages/loader/native` 是私有 submodule，无权限可跳过。
 
 ## 提交前

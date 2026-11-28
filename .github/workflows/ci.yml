@@ -1,6 +1,6 @@
 # CI 门禁流水线
 #
-# 三个并行 job：
+# 门禁任务：
 # - gate   主门禁（ubuntu）：pnpm install → pnpm audit --prod（high/critical）→
 #          pnpm -r build → pnpm check →
 #          test（附 lcov 覆盖率产出，经 codecov-action 上传，驱动 Codecov 在
@@ -79,7 +79,7 @@ jobs:
             - name: Setup Node
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  node-version: 24
+                  node-version: 24.11.0
                   cache: pnpm
 
             - name: 安装依赖（frozen-lockfile 锁死供应链）
@@ -94,6 +94,11 @@ jobs:
 
             - name: 全量构建（check 与 test 的前置，见文件头注释）
               run: pnpm -r build
+
+            - name: 最低 Node 版本自建宿主（合成 N-API 加载）
+              run: |
+                  cc -shared -fPIC -o "$RUNNER_TEMP/wrapper.node" packages/loader/tests/host/bootstrap/fixtures/wrapper.c
+                  HOST_TEST_ADDON="$RUNNER_TEMP/wrapper.node" node --test --test-reporter=dot packages/loader/tests/host/bootstrap/self-host-process.integration.mjs
 
             - name: biome check + tsc --noEmit
               run: pnpm check
@@ -134,6 +139,9 @@ jobs:
 
             - name: 全量构建（package-exports 守卫消费 dist 产物）
               run: pnpm -r build
+
+            - name: 自建宿主（合成原生边界）
+              run: node --test --test-reporter=dot packages/loader/tests/host/bootstrap/self-host-process.integration.mjs
 
             - name: vitest 全量单测
               run: pnpm test

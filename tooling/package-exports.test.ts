@@ -23,8 +23,10 @@
  *
  * 断言依赖构建产物（dist 里的 .d.mts / .mjs）；CI 与本地 prepare 都先 build。
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -58,8 +60,20 @@ const LIBRARY_PACKAGES = new Set<string>([
  */
 const EXPORTING_PACKAGES = PUBLISHED_PACKAGES.filter((dir) => dir !== "apps/create");
 
-/** Node 运行时底线：commander@15 / execa@10 硬要求，也是 require(esm) 的起点。 */
-const MIN_NODE = ">=22.12.0";
+const MIN_NODE = ">=24.11.0";
+
+it.each([...LIBRARY_PACKAGES])("%s supports ESM import and CommonJS require", (dir) => {
+    const { pkg, pkgDir } = readPackage(dir);
+    const probe = `
+        import assert from "node:assert/strict";
+        import { createRequire } from "node:module";
+        const name = process.argv[1];
+        const esm = await import(name);
+        assert.ok(Object.keys(esm).length > 0);
+        assert.equal(createRequire(import.meta.url)(name), esm);
+    `;
+    execFileSync(process.execPath, ["--input-type=module", "-e", probe, pkg.name], { cwd: pkgDir });
+});
 
 interface PackageJson {
     name: string;

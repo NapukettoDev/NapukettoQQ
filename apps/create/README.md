@@ -1,5 +1,7 @@
 # create-napuketto
 
+需要 Node.js 24.11.0 或更高版本。
+
 一键生成 Napuketto 机器人项目（pnpm / yarn / npm 均可）。
 
 ```bash

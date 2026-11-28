@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
 # Napuketto 官方运行镜像（linux/amd64）
 #
@@ -19,10 +19,7 @@
 # - 用 util-linux 自带的 setpriv 替代 gosu（省 2.2MB，少装一个包）。
 # - WITH_FFMPEG=false 派生 -slim：默认 tag 保留完整媒体能力，slim 给纯文本 Bot。
 #
-# 构建（版本缺省 latest；发布工作流会传入精确版本）：
-#   docker build -t napuketto:local docker/
-#   docker build --build-arg NAPUKETTO_VERSION=0.5.17 -t napuketto:0.5.17 docker/
-#   docker build --build-arg WITH_FFMPEG=false -t napuketto:0.5.17-slim docker/
+# 自建时须同时传入 CLI 版本和预期 tarball 摘要，见 docs/guides/docker.md。
 
 # ==========================================
 # 1. 静态 FFmpeg 提取层（钉死版本与摘要）
@@ -33,9 +30,12 @@ FROM mwader/static-ffmpeg:9.0.2@sha256:7d9bdaaf887f7e6ce6151f67325c344074b5ff1fb
 # ==========================================
 # 2. Builder：安装已发布的 CLI（独立 prefix，运行阶段整目录 COPY）
 # ==========================================
-FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS builder
+FROM node:24.16.0-bookworm-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS builder
 
-ARG NAPUKETTO_VERSION=latest
+ARG NAPUKETTO_VERSION
+ARG NAPUKETTO_INTEGRITY
+
+COPY install-cli.sh /tmp/install-cli.sh
 
 # strip 需要 binutils；它只留在 builder，不进运行镜像
 RUN apt-get update \
@@ -52,10 +52,13 @@ RUN apt-get update \
 RUN set -eu; \
     attempt=1; \
     while true; do \
-        if npm install -g --no-fund --no-audit --prefix /opt/napuketto "@napuketto/cli@${NAPUKETTO_VERSION}"; then \
+        if sh /tmp/install-cli.sh "${NAPUKETTO_VERSION}" "${NAPUKETTO_INTEGRITY}" /opt/napuketto; then \
             npm cache clean --force; \
             break; \
+        else \
+            status=$?; \
         fi; \
+        if [ "$status" -eq 2 ]; then exit 2; fi; \
         if [ "${attempt}" -ge 10 ]; then \
             echo "npm install 已失败 ${attempt} 次，放弃（registry 传播异常或该版本不存在）"; \
             exit 1; \

@@ -4,6 +4,8 @@
 > client/server、SSE 与泛型广播。只解决「怎么传」，不解决「传什么」——路由、鉴权、
 > 载荷与传输选项由调用方提供，连接判活、发送上限与断线退避由传输层执行。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 包职责与架构边界（ADR-002）
 
 ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义写进传输层，Satori
@@ -125,7 +127,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 - tsdown 从 `src/index.ts` 构建 `dist/index.mjs`。包级 `tsconfig.json` 开启
   `isolatedDeclarations`，tsdown 使用 Oxc 生成 `dist/index.d.mts`。
 - `exports` 的 `types` 和 `default` 分别指向声明和 ESM 入口。CJS 消费方通过
-  Node ≥ 22.12 的 `require(esm)` 加载同一个 ESM 入口。
+  Node.js 的 `require(esm)` 加载同一个 ESM 入口。
 - `hono`、`@hono/node-server` 和 `ws` 通过 `dependencies` 安装，由 tsdown 保持 external。
 
 ## 测试布局

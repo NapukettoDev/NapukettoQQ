@@ -4,6 +4,8 @@
 > 调用方包管理器装依赖；不管运行时（业务与协议装配在 `@napuketto/cli`），生成后由 cli → loader
 > 自建宿主启动。源码入口 `src/index.ts`（参数/交互）与 `src/scaffold.ts`（模板/目录/包管理器检测）。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 核心机制
 
 ### 包名与调用方式
@@ -97,8 +99,9 @@ parseArgs → detectPackageManager → intro
 
 - **不自动启动**：占位账号（`qq = "123456"`）启动无意义，且自动前台运行占用终端；改为打开配置
   文件供填 QQ 号 + 打印指引，由用户自行 `start`。
-- 打开文件尽力而为：Windows 走 `cmd.exe /c start "" "<file>"`，macOS `open`，其他 `xdg-open`；
-  `detached + unref`，失败不阻塞流程（提示照常打印）。
+- 打开文件尽力而为。Windows 直接启动系统 Windows PowerShell，固定脚本通过环境变量获取完整路径，
+  用系统文件关联打开。macOS 调用 `open`，其他平台调用 `xdg-open`，路径各自作为一个参数。
+  Windows 等待短时启动器返回，其他平台等待进程启动后解除引用。打开失败时保留生成的配置与手动编辑指引。
 
 ## 跨包契约
 
