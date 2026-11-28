@@ -5,6 +5,8 @@
 > 源码入口（Flat 5-Tier）：`src/types/` + `src/infra/`（L0）→ `src/native/`（L1）→
 > `src/apis/`（L2）→ `src/runtime/`（L3），唯一根出口 `src/index.ts`。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 模块分层（Flat 5-Tier Runtime）
 
 全部业务源码目录深度 ≤ 2 层（包根 `tests/` 镜像 `src/` 子目录结构，不计入层深），依赖严格单向：

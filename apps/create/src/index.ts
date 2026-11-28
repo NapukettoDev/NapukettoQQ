@@ -23,6 +23,7 @@ import process from "node:process";
 import { styleText } from "node:util";
 import { cancel, confirm, intro, log, outro, spinner, text } from "@clack/prompts";
 import { isRecord } from "./guards.js";
+import { openConfig } from "./open-config.js";
 import type { PackageManager, ScaffoldResult } from "./scaffold.js";
 import {
     checkDirStatus,
@@ -63,29 +64,6 @@ const HELP = `  用法: create-napuketto [name] [选项]
 
 /** 配置文件文件名（生成后引导用户填写 QQ 号）。 */
 const CONFIG_FILE = "napuketto.toml";
-
-/**
- * 用系统默认应用打开文件（引导编辑配置用；尽力而为，失败不阻塞创建流程）。
- * Windows：经 cmd.exe 执行内建 start（CreateProcess 不认内建命令）；
- * macOS/Linux：open / xdg-open。detached + unref：不挂到脚手架进程树。
- */
-function openInEditor(file: string): void {
-    try {
-        if (process.platform === "win32") {
-            // start 首参是窗口标题（"" 占位），文件路径带引号防空格
-            spawn("cmd.exe", ["/d", "/s", "/c", `start "" "${file}"`], {
-                stdio: "ignore",
-                windowsHide: true,
-                detached: true,
-            }).unref();
-            return;
-        }
-        const opener = process.platform === "darwin" ? "open" : "xdg-open";
-        spawn(opener, [file], { stdio: "ignore", detached: true }).unref();
-    } catch {
-        // 打开失败不影响创建流程（提示仍会打印）
-    }
-}
 
 /** 解析命令行参数（flag 仅三个，手写保持自包含，不引 yargs-parser）。 */
 function parseArgs(argv: string[]): CliOptions {
@@ -368,7 +346,10 @@ async function main(): Promise<void> {
     }
     log.step(brand(`${pm} start`));
     log.message("启动后 Ctrl+C 停止；协议与端口配置见项目内 napuketto.toml。");
-    openInEditor(join(result.dir, CONFIG_FILE));
+    const configFile = join(result.dir, CONFIG_FILE);
+    if (!(await openConfig(configFile))) {
+        log.warn(`无法自动打开配置，请手动编辑：${configFile}`);
+    }
 
     outro("完成。");
 }

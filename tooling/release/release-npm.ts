@@ -328,13 +328,22 @@ export function publishPkg(
     // Actions OIDC）里能生成溯源；本地应急发布/演练必须显式关掉，否则 npm 直接
     // EUSAGE 拒发（"Automatic provenance generation not supported"）。CI 侧由
     // OIDC 自动开启，无需本脚本传参。
+    const oidc = isOidcTrustedPublishing();
+    const loaderTarball =
+        pkg.name === "@napuketto/loader"
+            ? process.env["NAPUKETTO_LOADER_RELEASE_TARBALL"]
+            : undefined;
+    if (pkg.name === "@napuketto/loader" && oidc && !dryRun && !loaderTarball) {
+        throw new Error("OIDC loader publish requires the verified prepare tarball");
+    }
     const args = [
         "publish",
+        ...(loaderTarball ? [loaderTarball, "--ignore-scripts"] : []),
         "--access",
         "public",
         "--workspaces=false",
         ...(otp === undefined ? [] : ["--otp", otp]),
-        ...(isOidcTrustedPublishing() ? [] : ["--no-provenance"]),
+        ...(oidc ? [] : ["--no-provenance"]),
         ...(dryRun ? ["--dry-run"] : []),
     ];
     // Windows 上 npm 是 npm.cmd 批处理，CreateProcess 无法直接执行 .cmd（spawn

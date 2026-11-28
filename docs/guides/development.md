@@ -5,7 +5,7 @@
 
 ## 环境
 
-- Node.js 24（CI 口径；根 `engines` 为 `>=22.12.0`），pnpm 12.4.1 由根 `package.json` 的
+- Node.js 24.11.0 或更高版本，pnpm 12.4.1 由根 `package.json` 的
   `packageManager` 锁定，用 corepack 或对应版本。
 - TypeScript 7（原生编译器）、tsdown、biome、vitest；版本由 `pnpm-workspace.yaml` 的
   catalog 统一。
@@ -75,7 +75,7 @@ CI 顺序固定为 build → check → test；本地全绿而 CI 红时优先怀
   文件系统边界；平台相关逻辑用 `skipIf` 或纯函数注入平台参数。
 - `tooling/package-exports.test.ts` 守护发布包的 `exports` 形状与发布元数据：全仓
   Pure ESM（只有 `types` + `default` 两个条件，子路径同样带 `default`，CJS 由
-  Node ≥22.12 的 `require(esm)` 加载）、`engines.node`、库包的 `sideEffects: false`、
+  Node.js 的 `require(esm)` 加载）、`engines.node`、库包的 `sideEffects: false`、
   `publishConfig.access: public` / `provenance: true`、`files` 白名单；另外三条回退
   门禁：catalog 内的依赖必须写 `catalog:`（防版本再分叉）、`packages/media/dist`
   小于 50 KB（防 tsdown 又把第三方库内联回产物）。

@@ -3,6 +3,13 @@
 > 面向贡献者与 AI 代理：从 CLI 命令到 QQ 原生调用、再到协议输出的完整链路。字段与默认值
 > 见 [configuration.md](../guides/configuration.md)；协议翻译见各协议文档。
 
+## Node.js 版本契约
+
+CLI、脚手架、库包、自建宿主及仓库工具链统一以 Node.js 24.11.0 为最低版本。CI 在最低版本和
+当前 24.x 上检查构建产物与合成自建宿主。生产环境使用受维护的 Node.js LTS 补丁版本。
+从旧版 Node 升级时，先替换服务及交互终端使用的 Node，再安装新版 Napuketto。包入口继续使用
+ESM，使用 CommonJS 的消费者可以通过 Node 的 `require(esm)` 加载公开库入口。
+
 ## 进程拓扑
 
 ```

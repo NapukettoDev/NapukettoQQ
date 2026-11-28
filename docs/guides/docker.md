@@ -115,15 +115,22 @@ docker compose start
 
 ## 自建镜像
 
+先选定已发布的 CLI 版本并记录该版本的 SHA-512 SRI。以下命令从 npm registry 查询
+示例版本的 SRI。已有可信的发布记录时，可直接把其中的 SRI 填给 `integrity`。
+
 ```bash
-docker build --build-arg NAPUKETTO_VERSION=<版本> -t napuketto:<版本> docker/
-docker build --build-arg NAPUKETTO_VERSION=<版本> --build-arg WITH_FFMPEG=false -t napuketto:<版本>-slim docker/
+version=0.10.2
+integrity=$(npm view --registry https://registry.npmjs.org "@napuketto/cli@$version" dist.integrity)
+docker build --platform linux/amd64 --build-arg NAPUKETTO_VERSION="$version" --build-arg NAPUKETTO_INTEGRITY="$integrity" -t "napuketto:$version" docker/
+docker build --platform linux/amd64 --build-arg NAPUKETTO_VERSION="$version" --build-arg NAPUKETTO_INTEGRITY="$integrity" --build-arg WITH_FFMPEG=false -t "napuketto:$version-slim" docker/
 ```
 
-- 构建只从 npm 安装**已发布**的 `@napuketto/cli`，不 COPY 仓库源码；`compose.yaml` 不带
-  `build:`，自建后改 `image:` 即可。
-- `NAPUKETTO_VERSION` 缺省 `latest`；`WITH_FFMPEG` 缺省 `true`：ffmpeg/ffprobe 用
-  `mwader/static-ffmpeg` 的静态二进制，不引入 Debian ffmpeg 的动态库闭包。
+- 版本、SRI 缺失或不合法，或下载的 CLI tarball 摘要不符时，构建失败。前端、基础镜像和
+  FFmpeg 镜像由 Docker 按固定摘要解析。`WITH_FFMPEG` 缺省 `true`。
+- CLI 的 SRI 只覆盖该 tarball。npm 子依赖按发布的版本范围解析，Debian 包通过 apt 源安装，
+  自建结果会随这两处解析变化。镜像部署可记录实际推送的 OCI 摘要以锁定交付物。
+- 镜像工作流和 registry 查询使用同一 npm 信任域。独立来源验收可使用 npm provenance 和
+  预期仓库/工作流身份。自建后将 `compose.yaml` 的 `image:` 指向构建的镜像。
 - 版本刚发布时构建可能报 `E404` / `ETARGET`：registry 的 packument 有 5 分钟缓存
   （`cache-control: max-age=300`），新版本 tarball 在边缘节点还要再同步几分钟。Dockerfile
   对该步重试 10 次（间隔 30 秒，约 5 分钟），CI 则先真实安装预检再构建；手工构建仍失败就等几分钟重试。

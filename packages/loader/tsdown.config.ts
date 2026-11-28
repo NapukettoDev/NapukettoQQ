@@ -2,7 +2,7 @@
  * tsdown.config.ts：@napuketto/loader 双构建（2026-08-07 阶段 2；2026-11-03 对外 API 转 Pure ESM）。
  *
  * 配置 1 —— 对外 API（index）：**仅 ESM** + d.mts（2026-11-03）。
- *   运行时底线 Node >=22.12（require(esm) 原生可用），koishi 适配器已独立成仓，
+ *   运行时底线 Node >=24.11（require(esm) 原生可用），koishi 适配器已独立成仓，
  *   CJS 产物不再有消费方；`require("@napuketto/loader")` 经 exports 的 default
  *   条件命中 dist/index.mjs，由 Node 原生 require(esm) 加载。
  * 配置 2 —— 自建宿主引导运行时（host/self-host）：CJS 单文件 bundle，

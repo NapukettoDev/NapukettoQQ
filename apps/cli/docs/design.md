@@ -4,6 +4,8 @@
 > 归属目录；跨目录依赖先对照「配置来源口径」。命令/选项/stdout/退出码/配置优先级以源码与
 > `docs/guides/configuration.md` 为准，本文件不重复。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 目录树与职责
 
 ```text

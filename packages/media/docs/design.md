@@ -4,6 +4,8 @@
 > 类型识别、HTTP(S) 下载。kernel 严禁依赖本包；本包只被协议层 `@napuketto/adapter` 消费。
 > 媒体能力属于协议语义，不属于原生交互，也不属于传输原语。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 包职责与架构边界（ADR-011）
 
 ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（外部进程）与
@@ -135,7 +137,7 @@ PCM 读入后先清除，再写 SILK。调用方可指定独占的 `outputPath`�
 - tsdown 从 `src/index.ts` 构建 `dist/index.mjs`，并构建独立的 SILK Worker 入口。包级 `tsconfig.json` 开启
   `isolatedDeclarations`，tsdown 使用 Oxc 生成 `dist/index.d.mts`。
 - `exports` 的 `types` 和 `default` 分别指向声明和 ESM 入口。CJS 消费方通过
-  Node ≥ 22.12 的 `require(esm)` 加载同一个 ESM 入口。
+  Node.js 的 `require(esm)` 加载同一个 ESM 入口。
 - `execa`、`file-type`、`image-size` 和 `silk-wasm` 通过 `dependencies` 安装，
   由 tsdown 保持 external。
 

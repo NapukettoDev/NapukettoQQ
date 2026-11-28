@@ -4,6 +4,8 @@
 > 管协议信封、事件翻译、动作分发与传输装配；不管原生调用、传输原语与媒体编解码。
 > 源码入口：`src/framework/`（公开契约）、`src/internal/`（包内私有）、`src/<protocol>/`（各协议薄映射）。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
 ## 核心机制
 
 ### 媒体出站

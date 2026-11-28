@@ -10,7 +10,7 @@
 #            → 打包 artifact
 #            （contents: read；检出（含私有 native submodule）与推送版本提交/tag
 #              共用 App token，**无** id-token）
-#   publish  解包 artifact → 逐包 npm publish
+#   publish  核对 loader 摘要 → 解包工作区 → 逐包 npm publish
 #            （id-token: write + environment 审批，**无** contents 写权限）
 #
 # 为什么 version 与 build 合成一个 job、不再跨 job 传 SHA：早先的写法是
@@ -143,6 +143,7 @@ jobs:
             contents: read
         outputs:
             changed: ${{ steps.bump.outputs.changed }}
+            loader-sha256: ${{ steps.loader-digest.outputs.sha256 }}
         steps:
             # App 配置缺失时早失败：否则会先消费 changeset、跑完构建测试，才在
             # create-github-app-token 处报难懂的错。App 需同时安装到 Napuketto
@@ -178,7 +179,7 @@ jobs:
             # submodules: recursive —— loader 包 files 里的 native/prebuilt/win32-x64
             # 只存在于私有 submodule 中，CI 上不检出则该条目匹配不到文件、npm 打包
             # 静默丢件（0.0.36–0.0.38 事故：stub DLL 缺失，零配置自建宿主必挂），
-            # 下方「校验 loader 打包产物」守卫兜底。
+            # 后续的 loader 打包步骤检查两平台原生构件。
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   fetch-depth: 0
@@ -264,28 +265,9 @@ jobs:
               name: 构建（发布产物 dist）
               run: pnpm release:build
 
-            # 打包守卫：@napuketto/loader 的 files 依赖 submodule 产物
-            # native/prebuilt/win32-x64/QQNT.dll。磁盘存在 ≠ 会进包——files 条目
-            # 匹配不到文件时 npm 会静默忽略（0.0.36–0.0.38 由此发出不可用包），
-            # 故按 npm pack --dry-run 的真实清单断言，缺件即终止发布；files 条目
-            # 本身被改坏（DLL 不进清单）时同样在此拦下。
-            # ⚠️ 必须收 2>&1：npm 的 notice 清单（含文件列表）走 stderr，stdout
-            # 只有 tarball 文件名一行——只重定向 stdout 会拿到空清单误拦（run
-            # 40169866167 实测：DLL 已入包，守卫却报缺件）。
             - if: steps.bump.outputs.changed == 'true'
-              name: 校验 loader 打包产物（stub DLL + Linux stub .so 必须入包）
-              working-directory: packages/loader
-              run: |
-                  npm pack --dry-run > "$RUNNER_TEMP/loader-pack.txt" 2>&1
-                  cat "$RUNNER_TEMP/loader-pack.txt"
-                  grep -q 'native/prebuilt/win32-x64/QQNT.dll' "$RUNNER_TEMP/loader-pack.txt" || {
-                      echo "::error::@napuketto/loader 打包清单缺少 native/prebuilt/win32-x64/QQNT.dll（submodule 未检出或 files 失效），已阻止发布。"
-                      exit 1
-                  }
-                  grep -q 'native/prebuilt/linux-x64/libnapuketto_stub.so' "$RUNNER_TEMP/loader-pack.txt" || {
-                      echo "::error::@napuketto/loader 打包清单缺少 native/prebuilt/linux-x64/libnapuketto_stub.so（files 未含 Linux stub 目录），Linux 用户在用户机器上会报 stub 未找到，已阻止发布。"
-                      exit 1
-                  }
+              name: 打包并核对 loader 发布物
+              run: node tooling/release/pack-loader.ts "$RUNNER_TEMP"
 
             # 发布前测试：复用根 test 口径，避免在 YAML 里另写一份
             - if: steps.bump.outputs.changed == 'true'
@@ -335,6 +317,7 @@ jobs:
                       git -c core.hooksPath=/dev/null rebase FETCH_HEAD
                       pnpm install --frozen-lockfile
                       pnpm release:build
+                      node tooling/release/pack-loader.ts "$RUNNER_TEMP"
                       pnpm release:test
                       git fetch origin main --quiet
                       if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
@@ -363,10 +346,19 @@ jobs:
                       git -c core.hooksPath=/dev/null push "$remote" "${refspecs[@]}"
                   done
 
-            # 打包给 publish job；node_modules 与 .git 都不需要
             - if: steps.bump.outputs.changed == 'true'
-              name: 打包工作区
-              run: tar --exclude=./node_modules --exclude=./.git -czf "$RUNNER_TEMP/release-workspace.tgz" .
+              name: 记录 loader 发布物摘要
+              id: loader-digest
+              run: |
+                  set -euo pipefail
+                  digest=$(sha256sum "$RUNNER_TEMP/loader.tgz")
+                  echo "sha256=${digest%% *}" >> "$GITHUB_OUTPUT"
+
+            - if: steps.bump.outputs.changed == 'true'
+              name: 打包发布工作区（原生构件已在 loader tarball 内）
+              run: |
+                  tar --exclude=node_modules --exclude=.git --exclude=./packages/loader/native \
+                      -czf "$RUNNER_TEMP/release-workspace.tgz" .
 
             # retention 必须长于「等人工审批」这段不可控时长：publish 卡在
             # environment 审批上，多久有人点没人能保证。30 天 = 仓库默认，
@@ -375,7 +367,10 @@ jobs:
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: release-workspace
-                  path: ${{ runner.temp }}/release-workspace.tgz
+                  path: |
+                      ${{ runner.temp }}/release-workspace.tgz
+                      ${{ runner.temp }}/loader.tgz
+                  if-no-files-found: error
                   retention-days: 30
 
     publish:
@@ -416,6 +411,12 @@ jobs:
                   name: release-workspace
                   path: ${{ runner.temp }}
 
+            - name: 核对 loader 发布物交接摘要
+              working-directory: ${{ runner.temp }}
+              env:
+                  EXPECTED_SHA256: ${{ needs.prepare.outputs.loader-sha256 }}
+              run: printf '%s  loader.tgz\n' "$EXPECTED_SHA256" | sha256sum --strict --check -
+
             - name: 解包到工作区
               run: |
                   mkdir -p "$GITHUB_WORKSPACE"
@@ -433,6 +434,7 @@ jobs:
               working-directory: ${{ github.workspace }}
               env:
                   NPM_CONFIG_LOGLEVEL: verbose
+                  NAPUKETTO_LOADER_RELEASE_TARBALL: ${{ runner.temp }}/loader.tgz
               run: node tooling/release/release-npm.ts
 
     notify-koishi:

@@ -4,6 +4,24 @@
 > IPC 通道；不管协议语义与业务 API（那在 kernel/adapter）。源码入口
 > [`../src/index.ts`](../src/index.ts)，子进程入口 [`../src/host/self-host.ts`](../src/host/self-host.ts)。
 
+运行时和构建统一使用 Node.js 24.11.0 及以上版本，见[运行链路](../../../docs/architecture/runtime.md#nodejs-版本契约)。
+
+## 发布物与原生信任边界
+
+发布准备阶段以主仓提交的 gitlink 定位原生提交，逐字节比对归档中的 Windows 和 Linux stub
+与该提交的 Git blob，并检查宿主入口及发行清单随包交付。发布工作流只转交已验过的 loader
+tarball 与摘要，交接校验失败即停止。私有原生源码不进入发布任务的工作区 artifact。
+
+npm provenance 绑定公开发布工作流及 tarball 摘要。原生编译来源需另由私有构建方用独立信任锚
+证明。Windows 可对系统认可的 Authenticode 签名再约束预期发布者，Linux 可用受信私有构建方
+的分离签名。验签方须从包外预置根或发布者身份，校验原生提交、目标平台、工具链和二进制摘要，
+签名缺失、错误或身份不符时拒绝交付。签名机制与双平台产物覆盖就绪前，由发布方核对来源，
+部署方通过受信渠道验收安装物及自定义 stub，并限制写入权限；运行时只做现有预检。
+Windows 的文件存在性以及 Linux 的符号表预检用于诊断兼容性。安装根或 stub 覆盖路径应指向
+部署方已验收的文件。Windows 非标准宿主还可以由部署方提供已验收的 `node.exe`；
+自动下载 zip 的 HTTPS 与本地缓存也属于部署信任边界。若启用强制验收，Node 安装包应单独
+使用 Node.js 发布团队的可信签名密钥核对发布校验清单，Linux 系统 Node 由系统包管理链验收。
+
 ## 核心机制
 
 ```text
