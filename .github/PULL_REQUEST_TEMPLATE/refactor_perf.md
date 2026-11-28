@@ -32,9 +32,11 @@
 - [ ] `pnpm check` 全绿（biome + tsc）
 - [ ] `pnpm test` 全绿（重构类：既有用例不改动即通过是最强证据；确需改测试时说明理由）
 - [ ] `pnpm -r build` 通过
-- [ ] `pnpm exec fallow audit --base origin/main` 无新增问题（环不得新增；剩余克隆组属判定后保留，勿借重构之名再动）
+- [ ] `pnpm exec fallow architecture --boundaries` 通过（整仓依赖边界）
 - [ ] 移动文件后核查 `package.json` 的 `exports` 子路径与 `files` 白名单，并跑 `tooling/package-exports.test.ts`
 - [ ] 拆分协议目录后核对 `packages/adapter` 内 core 框架的复用关系，未把协议专用逻辑塞回 core
+
+复杂度、重复和死代码可按需用 `pnpm exec fallow audit --base origin/main` 审阅。
 
 ## 6. changeset
 

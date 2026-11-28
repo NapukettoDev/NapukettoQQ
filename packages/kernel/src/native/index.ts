@@ -1,7 +1,7 @@
 /**
  * native/ 公共出口（L1 原生防腐层）：唯一允许触碰 `process.dlopen` / `wrapper.node` 的层。
  * 子域 message-codec / bridge / probe / wrapper 单向并列、互不反向重导出（避免隐性双向依赖）；
- * 只依赖 `types/`（L0）与 `infra/`（L0），禁 `export *`（biome performance/noReExportAll）。
+ * 只依赖 `types/`（L0）与 `infra/`（L0）。
  */
 
 // ---- bridge ----

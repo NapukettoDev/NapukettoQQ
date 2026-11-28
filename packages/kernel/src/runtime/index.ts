@@ -5,7 +5,6 @@
  * 子域：login（登录生命周期 + 扫码）/ cache（群成员/好友/精华缓存）/
  * core（NapukettoCore）/ context（CoreContext）/ lifecycle（业务服务装配）。
  *
- * 禁 `export *`（biome performance/noReExportAll）。
  */
 
 // ---- cache ----

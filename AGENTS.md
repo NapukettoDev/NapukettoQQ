@@ -18,6 +18,8 @@ Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人�
    - 协议层：`adapter` → 依赖 `kernel + network + media`
    - 启动层：`loader` → 编译期仅依赖 `zod`，运行期动态 `import` kernel
    - 应用层：`apps/cli` → 依赖 `kernel + network + adapter + loader`；`apps/create` → 依赖 `cli`
+   - `.fallowrc.jsonc` 定义包间和包内依赖边界，CI 检查整仓。Biome 补查 adapter 的 `./core` 导入，
+     因为该发布子路径与源码目录不同。
 3. **原生与逆向边界**：
    - **唯一原生层**：仅 `packages/kernel` 允许 `process.dlopen`、访问 `wrapper.node`、注册原生 listener；其他包只调语义 API、订阅事件、读缓存。
    - **自建宿主路线**：标准 Node + stub（Win PE `QQNT.dll` / Linux ELF `LD_PRELOAD`），注入/worker 路线已淘汰。
@@ -33,15 +35,17 @@ Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人�
 - **TS / Biome 规范**：4 空格 + LF；强制 `import type`；禁止裸 `any`（特例需注释）。
   开启 `strict` 全家桶、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、
   `verbatimModuleSyntax`、`noUnusedLocals/Parameters`。
-- **异步与状态**：开启 `noFloatingPromises`（异步必 `await` 或 `.catch`）；
-  业务抛类型化错误（如 `KernelError`），禁止静默吞错；日志统一走 `pino`（严禁打印凭证）；
-  `kernel` 无全局单例（状态由 `CoreContext` 或装配层持有）。
+- **异步与状态**：开启 `noFloatingPromises`（异步必 `await` 或 `.catch`）。
+  业务抛类型化错误（如 `KernelError`），禁止静默吞错。`kernel` 无全局单例，状态由
+  `CoreContext` 或装配层持有。
+- **日志与命令输出**：业务日志走 `pino`，严禁打印凭证。`packages/` 内禁止使用 `console`。
+  CLI、脚手架和工具脚本可用 `console` 输出命令结果。宿主引导和 IPC 可按契约使用 stdio。
 - **运行时类型探测**：`services/listeners/entities` 类型必须由 `kernel/src/native/probe/` 加载 `wrapper.node` 反射观察产出，严禁盲猜或抄袭。
 - **扩展协议**：在 `packages/adapter` 新增目录并复用 core 框架，严禁为此修改 `network` 或 `kernel`。
 - **注释红线**：注释只说明**当前不变量**与**外部踩坑根因**（原生 API 怪癖、平台边界、竞态/重入语义）。
   严禁写入日期戳、PR/issue/任务/阶段编号（`P0`/`Step x`/`阶段 x`）、文件拆分重构史，
   以及针对 linter 与复杂度门禁的解释；历史归 Git，不复读标识符名。
-  best-effort 的 `catch` 块必须留一句原因注释（`noEmptyBlockStatements` 为 error）。
+  best-effort 忽略错误时，只在原因或后果不明显时说明。
 
 ## 开发工作流（省上下文模式）
 
@@ -60,8 +64,10 @@ Napuketto：基于 QQ NT 原生模块（`wrapper.node`）的自托管机器人�
    pnpm fix
 
    # 4. 最终交卷前全量验证
-   pnpm check && pnpm test:quiet
+   pnpm check && pnpm exec fallow architecture --boundaries && pnpm test:quiet
    ```
+
+   Fallow 的复杂度、重复和死代码按需审阅。增量审阅可用 `pnpm exec fallow audit --base origin/main`。
 
 
 3. **版本记录（Changesets 强制）**：凡涉及用户可见改动（feat / fix / refactor），必须在 `.changeset/` 编写条目

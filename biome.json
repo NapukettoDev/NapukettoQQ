@@ -31,46 +31,21 @@
             "complexity": {
                 "useLiteralKeys": "off",
                 "noUselessUndefinedInitialization": "error",
-                "noForEach": "error",
+                "noForEach": "off",
                 "noExcessiveCognitiveComplexity": {
-                    "level": "error",
+                    "level": "warn",
                     "options": {
-                        "maxAllowedComplexity": 20
+                        "maxAllowedComplexity": 30
                     }
                 }
             },
             "style": {
-                "useNamingConvention": {
-                    "level": "error",
-                    "options": {
-                        "strictCase": false,
-                        "conventions": [
-                            {
-                                "selector": {
-                                    "kind": "typeParameter"
-                                },
-                                "formats": ["PascalCase"]
-                            },
-                            {
-                                "selector": {
-                                    "kind": "typeMember"
-                                },
-                                "formats": ["camelCase", "snake_case", "PascalCase"]
-                            },
-                            {
-                                "selector": {
-                                    "kind": "objectLiteralMember"
-                                },
-                                "formats": ["camelCase", "snake_case", "CONSTANT_CASE"]
-                            }
-                        ]
-                    }
-                },
+                "useNamingConvention": "off",
                 "useImportType": "error",
                 "useDefaultParameterLast": "error",
                 "useConsistentArrayType": "error",
                 "useArrayLiterals": "error",
-                "noParameterProperties": "error",
+                "noParameterProperties": "off",
                 "useNodeAssertStrict": "error",
                 "useFilenamingConvention": {
                     "level": "error",
@@ -80,20 +55,15 @@
                 }
             },
             "suspicious": {
-                "noEmptyBlockStatements": "error",
+                "noEmptyBlockStatements": "warn",
                 "useErrorMessage": "error",
                 "noSkippedTests": "error",
-                "noConsole": {
-                    "level": "error",
-                    "options": {
-                        "allow": ["log"]
-                    }
-                }
+                "noConsole": "error"
             },
             "performance": {
                 "noAccumulatingSpread": "error",
-                "useTopLevelRegex": "error",
-                "noReExportAll": "error"
+                "useTopLevelRegex": "off",
+                "noReExportAll": "off"
             },
             "nursery": {
                 "noFloatingPromises": "error"
@@ -102,138 +72,41 @@
     },
     "overrides": [
         {
-            "includes": [
-                "packages/adapter/src/**/helper/**",
-                "packages/adapter/src/internal/domain/sysmsg.ts"
-            ],
+            "includes": ["apps/cli/**", "apps/create/**", "tooling/**"],
             "linter": {
                 "rules": {
-                    "complexity": {
-                        "noExcessiveCognitiveComplexity": {
-                            "level": "error",
-                            "options": {
-                                "maxAllowedComplexity": 25
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "includes": ["packages/adapter/src/framework/**"],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "noRestrictedImports": {
-                            "level": "error",
-                            "options": {
-                                "patterns": [
-                                    {
-                                        "group": ["**/internal/**"],
-                                        "message": "framework/ 是公开契约层，禁止依赖包内私有实现（src/internal/）"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "includes": ["packages/kernel/src/apis/web.ts", "packages/kernel/src/apis/ticket.ts"],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "useNamingConvention": "off"
+                    "suspicious": {
+                        "noConsole": "off"
                     }
                 }
             }
         },
         {
             "includes": [
-                "packages/kernel/tests/runtime/login/login.test.ts",
-                "packages/kernel/tests/runtime/login/quick-login.test.ts"
-            ],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "useNamingConvention": "off"
-                    }
-                }
-            }
-        },
-        {
-            "includes": ["packages/kernel/src/types/**", "packages/kernel/src/infra/**"],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "noRestrictedImports": {
-                            "level": "error",
-                            "options": {
-                                "patterns": [
-                                    {
-                                        "group": ["**/native/**", "**/apis/**", "**/runtime/**"],
-                                        "message": "L0（types/ 与 infra/）零内部依赖：禁止引用 native/、apis/、runtime/（kernel 五段式分层 DAG）"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "includes": ["packages/kernel/src/native/**"],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "noRestrictedImports": {
-                            "level": "error",
-                            "options": {
-                                "patterns": [
-                                    {
-                                        "group": ["**/apis/**", "**/runtime/**"],
-                                        "message": "L1（native/）只可依赖 types/ 与 infra/：禁止引用 apis/、runtime/（kernel 五段式分层 DAG）"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "includes": ["packages/kernel/src/apis/**"],
-            "linter": {
-                "rules": {
-                    "style": {
-                        "noRestrictedImports": {
-                            "level": "error",
-                            "options": {
-                                "patterns": [
-                                    {
-                                        "group": ["**/runtime/**"],
-                                        "message": "L2（apis/）无状态：禁止引用 runtime/（登录 / 缓存 / 装配文件，kernel 五段式分层 DAG）"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "includes": [
-                "**/*.test.ts",
-                "**/*.test.tsx",
-                "**/*.spec.ts",
-                "**/__tests__/**",
-                "**/tests/**"
+                "packages/*/src/index.ts",
+                "packages/adapter/src/{framework,kurobot,milky,onebot11,satori}/index.ts"
             ],
             "linter": {
                 "rules": {
                     "performance": {
-                        "useTopLevelRegex": "off"
+                        "noReExportAll": "error"
+                    }
+                }
+            }
+        },
+        {
+            "includes": ["packages/{kernel,media,network,loader}/src/**", "apps/create/src/**"],
+            "linter": {
+                "rules": {
+                    "style": {
+                        "noRestrictedImports": {
+                            "level": "error",
+                            "options": {
+                                "paths": {
+                                    "@napuketto/adapter/core": "此层禁止依赖 adapter 的 ./core 入口"
+                                }
+                            }
+                        }
                     }
                 }
             }

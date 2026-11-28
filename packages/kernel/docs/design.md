@@ -22,9 +22,9 @@
   隐性双向依赖已消除），由 `native/index.ts` 分别汇总 wrapper / probe / bridge /
   message-codec，`src/index.ts` 只转发，`native/` 内部严格无环。
 - `apis/` 严禁依赖 `runtime/`（`login/`、`cache/` 与装配文件），保证语义 API 无状态、可单测。
-- DAG 由 `biome.json` 的 `style/noRestrictedImports` overrides 静态锁死（L0 禁 `native`/
-  `apis`/`runtime`，L1 禁 `apis`/`runtime`，L2 禁 `runtime`）；测试不在分层目录内（包根
-  `tests/`），可用上层实现作夹具，`src/index.ts` 作为唯一出口只做 re-export。
+- `.fallowrc.jsonc` 为 L0–L3 和根出口分别定义 zone。各层可依赖本层和下层，其他生产包
+  通过 `src/index.ts` 访问 kernel，包根 `tests/` 可直接使用各层实现作夹具。新目录需归入相应
+  层级后才能被其他 zone 引用。CI 运行 `pnpm exec fallow architecture --boundaries` 检查整仓边界。
 
 ## 核心机制
 
