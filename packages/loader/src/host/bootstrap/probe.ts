@@ -1,27 +1,21 @@
-/**
- * bootstrap/probe.ts：引导尾部的可选观测相位——三个 env 旁路能力，全部失败不阻塞引导（只写 napuketto-boot.log）：
- * NAPUKETTO_SMOKE（真发/收一条）、NAPUKETTO_PROBE（即时 + 35s 晚探测）、NAPUKETTO_LISTENER_RECORD（逐行落盘）。
- * ⚠️ listener 录制必须先于 probe：probe 的 getMainSession 写回副作用会毒化 ctx.session，给录制器留下空壳主 session。
- */
-
 import { registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { log } from "../../shared/boot-log.js";
 import { getErrorMessage } from "../../shared/type-guards.js";
 import { env, isEnvEnabled } from "../runtime/env.js";
-import type { CoreContextLike, KernelLike, LoginResultLike } from "../runtime/types.js";
+import type { HostSessionLike, KernelLike, LoginResultLike } from "../runtime/types.js";
 import { runSmokeTest } from "./smoke.js";
 
 /** 收发消息冒烟自检（NAPUKETTO_SMOKE=1）：MsgBridge + MsgApi 真发/收一条。 */
 export async function runSmokeIfEnabled(
     kernel: KernelLike,
-    ctx: CoreContextLike,
+    session: HostSessionLike,
     loginResult: LoginResultLike,
 ): Promise<void> {
     if (!isEnvEnabled(env.NAPUKETTO_SMOKE)) {
         return;
     }
     try {
-        const ok = await runSmokeTest(kernel, ctx, loginResult);
+        const ok = await runSmokeTest(kernel, session, loginResult);
         log(`bootstrap: 冒烟自检${ok ? "通过" : "未完全通过"}（见上文 smoke 日志）`);
     } catch (smokeErr) {
         log(`bootstrap: 冒烟自检异常: ${getErrorMessage(smokeErr)}`);
@@ -29,36 +23,24 @@ export async function runSmokeIfEnabled(
 }
 
 /** 立即探测一次（NAPUKETTO_PROBE=1）：fallback / core 两处引导路径共用的探测原语。 */
-export function probeOnce(kernel: KernelLike, ctx: CoreContextLike): void {
-    if (!isEnvEnabled(env.NAPUKETTO_PROBE) || typeof kernel.probeRuntime !== "function") {
-        return;
-    }
+export function probeOnce(session: HostSessionLike, filename?: string): void {
     try {
-        const probe = kernel.probeRuntime(ctx);
+        const probe = session.probe(filename);
         log(
-            `bootstrap: probe done, session=${probe.session ? "ok" : "null"}, services=${Object.keys(probe.services ?? {}).length}`,
+            `bootstrap: probe done, session=${probe.hasSession ? "ok" : "null"}, services=${probe.serviceCount}`,
         );
     } catch (e) {
         log(`bootstrap: probe error: ${getErrorMessage(e)}`);
     }
 }
 
-/**
- * listener 录制模式（NAPUKETTO_LISTENER_RECORD=1）：万能监听器挂满
- * 候选服务，回调逐行落盘 napuketto-listener-record.jsonl。
- * ⚠️ 必须先于 runProbePhase——probe 的 getMainSession 写回副作用会毒化
- * ctx.session（空壳主 session），录制器要先取服务。
- */
-export function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLike): void {
+/** 显式启用的原生回调录制。 */
+export function runListenerRecordingPhase(session: HostSessionLike): void {
     if (!isEnvEnabled(env.NAPUKETTO_LISTENER_RECORD)) {
         return;
     }
-    if (typeof kernel.startListenerRecording !== "function") {
-        log("bootstrap: listener-record 请求但 kernel 缺 startListenerRecording（kernel 过旧）");
-        return;
-    }
     try {
-        const rec = kernel.startListenerRecording(ctx);
+        const rec = session.recordListeners();
         const ok = Object.values(rec.registered).filter((r) => r.ok).length;
         const total = Object.keys(rec.registered).length;
         log(`bootstrap: listener-record 挂起 ${ok}/${total} 服务 → ${rec.file}`);
@@ -73,25 +55,12 @@ export function runListenerRecordingPhase(kernel: KernelLike, ctx: CoreContextLi
 }
 
 /** 探测模式（NAPUKETTO_PROBE=1）：立即探测 + 35s 后晚探测（napuketto-probe-late.json）。 */
-export function runProbePhase(kernel: KernelLike, ctx: CoreContextLike): void {
+export function runProbePhase(session: HostSessionLike): void {
     if (!isEnvEnabled(env.NAPUKETTO_PROBE)) {
         return;
     }
-    probeOnce(kernel, ctx);
-    const lateProbeTimer = setTimeout(() => {
-        try {
-            if (typeof kernel.probeRuntime !== "function") {
-                return;
-            }
-            const late = kernel.probeRuntime(ctx, "napuketto-probe-late.json");
-            log(
-                `bootstrap: probe-late done, session=${late.session ? "ok" : "null"}, services=${Object.keys(late.services ?? {}).length}`,
-            );
-        } catch (e2) {
-            log(`bootstrap: probe-late error: ${getErrorMessage(e2)}`);
-        }
-    }, 35000);
-    // 晚探测定时器不阻塞进程自然退出
-    lateProbeTimer.unref?.();
+    probeOnce(session);
+    const lateProbeTimer = setTimeout(() => probeOnce(session, "napuketto-probe-late.json"), 35000);
+    lateProbeTimer.unref();
     registerShutdownHook(() => clearTimeout(lateProbeTimer), "intake");
 }

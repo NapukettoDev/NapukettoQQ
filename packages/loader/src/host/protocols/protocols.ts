@@ -9,7 +9,7 @@ import { getErrorMessage } from "../../shared/type-guards.js";
 import { env, isEnvEnabled } from "../runtime/env.js";
 import { isConfigError } from "../runtime/errors.js";
 import type {
-    CoreContextLike,
+    HostSessionLike,
     KernelLike,
     LogConfigLike,
     LoginResultLike,
@@ -27,11 +27,11 @@ import { createKernelServices, type KernelServices } from "./kernel-services.js"
  */
 export async function startProtocols(
     kernel: KernelLike,
-    ctx: CoreContextLike,
+    session: HostSessionLike,
     loginResult: LoginResultLike,
     logCfg?: LogConfigLike,
 ): Promise<KernelServices | null> {
-    const services = await createKernelServices(kernel, ctx, loginResult, logCfg);
+    const services = await createKernelServices(kernel, session, loginResult, logCfg);
     if (services === null) {
         return null;
     }

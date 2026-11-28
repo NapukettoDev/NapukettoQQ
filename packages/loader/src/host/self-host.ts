@@ -26,7 +26,6 @@ import {
 import { type IpcServerOptions, startIpcServer } from "./ipc/server.js";
 import { env, isEnvEnabled } from "./runtime/env.js";
 import { bootstrapExitCode } from "./runtime/errors.js";
-import { createState } from "./runtime/state.js";
 
 const ACCOUNT_PATH_SEPARATOR = /[\\/]/;
 const ipcMode = isEnvEnabled(env.NAPUKETTO_IPC);
@@ -99,7 +98,7 @@ async function main(): Promise<void> {
         await failBoot("NAPUKETTO_WRAPPER_PATH 未设置", 1, "INVALID_STATE");
         return;
     }
-    if (!(await bootstrap(createState(), ipc))) {
+    if (!(await bootstrap(ipc))) {
         await failBoot("bootstrap 未完成，详见 napuketto-boot.log", 1, "UNKNOWN");
         return;
     }

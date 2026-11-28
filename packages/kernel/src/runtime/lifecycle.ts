@@ -136,40 +136,35 @@ export function createKernelRuntime(opts: KernelRuntimeOptions): KernelRuntime {
         ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     });
 
-    if (opts.autoRegister !== false) {
-        groupCache.register();
-        msgBridge.register();
-        groupBridge.register();
-        friendBridge.register();
-        recentContactBridge?.register();
-        loginBridge?.register();
-        buddyCache.register();
-    }
-    if (opts.reportOnlineStatus === true) {
-        reportOnlineStatus(msgApi, opts.logger);
-    }
-
     let disposed = false;
     const dispose = (): void => {
         if (disposed) {
             return;
         }
         disposed = true;
-        groupCache.unregister();
-        msgBridge.unregister();
-        groupBridge.unregister();
-        friendBridge.unregister();
-        recentContactBridge?.unregister();
-        loginBridge?.unregister();
-        buddyCache.unregister();
-        msgChannel.dispose();
-        groupChannel.dispose();
-        friendChannel.dispose();
-        recentContactChannel.dispose();
-        loginChannel.dispose();
+        for (const release of [
+            () => buddyCache.unregister(),
+            () => loginBridge?.unregister(),
+            () => recentContactBridge?.unregister(),
+            () => friendBridge.unregister(),
+            () => groupBridge.unregister(),
+            () => msgBridge.unregister(),
+            () => groupCache.unregister(),
+            () => msgChannel.dispose(),
+            () => groupChannel.dispose(),
+            () => friendChannel.dispose(),
+            () => recentContactChannel.dispose(),
+            () => loginChannel.dispose(),
+        ]) {
+            try {
+                release();
+            } catch (err) {
+                opts.logger?.warn({ error: errorMessage(err) }, "内核运行时资源清理失败");
+            }
+        }
     };
 
-    return {
+    const runtime: KernelRuntime = {
         msgChannel,
         groupChannel,
         friendChannel,
@@ -196,6 +191,31 @@ export function createKernelRuntime(opts: KernelRuntimeOptions): KernelRuntime {
         dispose,
         [Symbol.dispose]: dispose,
     };
+
+    try {
+        if (opts.autoRegister !== false) {
+            groupCache.register();
+            msgBridge.register();
+            registerSessionBridges(runtime);
+            buddyCache.register();
+        }
+        if (opts.reportOnlineStatus === true) {
+            reportOnlineStatus(msgApi, opts.logger);
+        }
+    } catch (err) {
+        dispose();
+        throw err;
+    }
+
+    return runtime;
+}
+
+/** 注册消息分发之外的会话监听。 */
+export function registerSessionBridges(runtime: KernelRuntime): void {
+    runtime.groupBridge.register();
+    runtime.friendBridge.register();
+    runtime.recentContactBridge?.register();
+    runtime.loginBridge?.register();
 }
 
 /** wrapper exports → util（支持直接传 exports 或 NodeQQNTWrapperUtil 本身）。 */

@@ -17,23 +17,8 @@ import {
 import { importFileUrl, loadOb11BridgeModules } from "../runtime/module-loader.js";
 import type { Ob11ModuleLike } from "../runtime/protocol-types.js";
 import type { KernelServices } from "../runtime/service-types.js";
-import type { CoreContextLike, KernelLike } from "../runtime/types.js";
 import type { IpcActionHandler } from "./actions.js";
 import { sendEvent } from "./sender.js";
-
-/** QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准）：
- * resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）。 */
-function resolveMediaBaseDir(kernel: KernelLike, ctx: CoreContextLike): string | undefined {
-    if (ctx === undefined || ctx === null) {
-        return undefined;
-    }
-    const wrapperExports = ctx.wrapper?.exports ?? ctx.exports;
-    const qqRoot = kernel.resolveQqUserDataRoot?.(wrapperExports) ?? null;
-    if (qqRoot === null) {
-        return undefined;
-    }
-    return kernel.resolveQqGlobalPath?.(qqRoot);
-}
 
 /** 环境覆盖（缺省取全局 env；单测注入。exactOptionalPropertyTypes：显式 undefined 合法）。 */
 export interface Ob11BridgeEnv {
@@ -146,7 +131,7 @@ export async function attachOb11IpcBridge(
             ...bridgeConfig,
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准）
-        const mediaBaseDir = resolveMediaBaseDir(services.kernel, services.ctx);
+        const mediaBaseDir = services.mediaBaseDir();
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: protocolConfig,
             localMediaBaseDir: localMediaBaseDir(cfgFile, e.dataRoot ?? e.cfgDir),

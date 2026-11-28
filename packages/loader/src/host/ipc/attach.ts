@@ -9,12 +9,7 @@ import { getErrorMessage, isCallable } from "../../shared/type-guards.js";
 import { env, isEnvEnabled } from "../runtime/env.js";
 import type { KernelServices } from "../runtime/service-types.js";
 import type { CoreLike } from "../runtime/types.js";
-import {
-    createIpcActions,
-    type IpcActionHandler,
-    type IpcActionOptions,
-    registerLoginRefreshAction,
-} from "./actions.js";
+import { createIpcActions, type IpcActionHandler, registerLoginRefreshAction } from "./actions.js";
 import { readReadySelf, sendEvent } from "./sender.js";
 
 /** 订阅事件通道 → event 消息转发（事件名 "Service/method" 拆分）。 */
@@ -63,7 +58,7 @@ export function createIpcActionsForCore(core: CoreLike): Map<string, IpcActionHa
 export function attachIpcServices(
     actions: Map<string, IpcActionHandler>,
     services: KernelServices,
-    options: IpcActionOptions = {},
+    options: { diagnostics?: boolean } = {},
 ): () => void {
     // peerUin（QQ 号）→ uid 转换（kernel GroupApi.uinToUid，自研描述；
     // exactOptionalPropertyTypes：可选字段用条件展开，不显式赋 undefined）
@@ -77,26 +72,23 @@ export function attachIpcServices(
     // （正确写法），此处漏了——注入 kernel 类方法一律 bind 或箭头包装。
     const uinToUid = groupApi.uinToUid?.bind(services.groupApi);
     const diagnostics = options.diagnostics ?? isEnvEnabled(env.NAPUKETTO_DIAG);
+    const full = createIpcActions({
+        msgApi: services.msgApi,
+        groupApi: services.groupApi,
+        groupCache: services.groupCache,
+        friendApi: services.friendApi,
+        ...(services.groupNotifyApi !== undefined
+            ? { groupNotifyApi: services.groupNotifyApi }
+            : {}),
+        self: services.self,
+        ...(uinToUid !== undefined ? { uinToUid } : {}),
+    });
     if (diagnostics) {
         log("ipc: 诊断动作已启用（仅本地调试；diag.* 按方法 allowlist 执行）");
+        for (const [name, handler] of services.diagnostics()) {
+            full.set(name, handler);
+        }
     }
-    const full = createIpcActions(
-        {
-            msgApi: services.msgApi,
-            groupApi: services.groupApi,
-            groupCache: services.groupCache,
-            friendApi: services.friendApi,
-            ...(services.groupNotifyApi !== undefined
-                ? { groupNotifyApi: services.groupNotifyApi }
-                : {}),
-            self: services.self,
-            session: services.session,
-            engine: services.engine,
-            util: services.util,
-            ...(uinToUid !== undefined ? { uinToUid } : {}),
-        },
-        { diagnostics },
-    );
     for (const [name, handler] of full) {
         actions.set(name, handler);
     }

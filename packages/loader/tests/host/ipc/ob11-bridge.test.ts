@@ -44,7 +44,7 @@ function bridgeFixture(maxItems: number, maxBytes: number) {
     const send = vi.fn<MsgApiLike["sendMessage"]>().mockResolvedValue({ msgId: "sent" });
     const services = stub<KernelServices>({
         kernel: stub<KernelLike>({}),
-        ctx: {},
+        mediaBaseDir: () => undefined,
         self: { uin, nickname: "fixture", uid: "u_fixture" },
         channel: new NTEventChannel("Msg"),
         msgApi: stub<MsgApiLike>({ sendMessage: send }),

@@ -127,7 +127,7 @@ function forwardIpcLoginProgress(progress: LoginProgressLike): void {
  * 登录进度回调（QR 透出）与 control login 共用同一套 `LoginProgressLike` + `forwardIpcLoginProgress` 语义。
  */
 export function buildLoginOpts(
-    Appid: string | number,
+    appid: string,
     forcedUin: string | undefined,
     ref: LoginTargetRef,
     qrOnly: boolean,
@@ -135,7 +135,7 @@ export function buildLoginOpts(
 ): CoreLoginOptionsLike {
     const quickUin = qrOnly ? undefined : (forcedUin ?? ref.targetUin);
     const opts: CoreLoginOptionsLike = {
-        appid: Appid,
+        appid,
         initTimeoutMs: 20000,
         ...(quickUin !== undefined ? { quickUin } : {}),
         ...(qrOnly ? { qrOnly: true } : {}),
@@ -227,7 +227,7 @@ function defaultReassembleFailed(): void {
  */
 export function createLoginControlHandler(
     core: CoreLike,
-    Appid: string | number,
+    appid: string,
     control: LoginControl,
     deps: LoginControlDeps,
 ): (payload: { uin?: string; qr?: boolean }) => void {
@@ -239,7 +239,7 @@ export function createLoginControlHandler(
         }
         const isCurrent = () => !isShuttingDown() && control.currentPhase === phase;
         const opts: CoreLoginOptionsLike = {
-            appid: String(Appid),
+            appid,
             initTimeoutMs: 20000,
             quickLoginTimeoutMs: 20000,
             qrFallback: true,

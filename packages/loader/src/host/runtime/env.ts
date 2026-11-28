@@ -17,7 +17,6 @@ const env = {
     /** network 包入口（协议装配用）。 */
     NAPUKETTO_NETWORK_ENTRY: process.env["NAPUKETTO_NETWORK_ENTRY"],
     /** 自建宿主标记（=1：标准 node + stub 引导，launcher 注入）。 */
-    NAPUKETTO_SELF_HOST: process.env["NAPUKETTO_SELF_HOST"],
     /** stub QQNT.dll 目录（launcher 注入，self-host 诊断用）。 */
     NAPUKETTO_STUB_DIR: process.env["NAPUKETTO_STUB_DIR"],
     /** 强制指定快速登录账号（防风控账号挂起）。 */

@@ -1,10 +1,7 @@
-/**
- * bootstrap/core.ts：NapukettoCore 装配路径主流程编排（create → attachWrapper → 登录 → 装配 → 探测相位）。
- * session 编排在 session.ts、观测相位在 bootstrap/probe.ts、软重登相位机在 auth/relogin.ts；本文件只留编排。
- */
 import { basename, dirname } from "node:path";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { log } from "../../shared/boot-log.js";
+import { getErrorMessage } from "../../shared/type-guards.js";
 import { doLogin, type LoginTargetRef, pickLoginAccount } from "../auth/login.js";
 import {
     buildLoginOpts,
@@ -12,14 +9,6 @@ import {
     LoginControl,
     type LoginPreemptRef,
 } from "../auth/relogin.js";
-import {
-    activateSession,
-    probeCreatedSession,
-    probeSessionMethods,
-    replaceSession,
-    startSessionProbe,
-    waitSessionReady,
-} from "../auth/session.js";
 import { attachIpcServices, createIpcActionsForCore } from "../ipc/attach.js";
 import { attachOb11IpcBridge } from "../ipc/ob11-bridge.js";
 import { sendLogin, sendStatus } from "../ipc/sender.js";
@@ -27,8 +16,14 @@ import { type IpcServerOptions, startIpcServer } from "../ipc/server.js";
 import { startProtocols } from "../protocols/protocols.js";
 import { consumeQrOnlyMarker, env, isEnvEnabled } from "../runtime/env.js";
 import { resolveLoaderLogConfig, resolveLogFilePath } from "../runtime/log-config.js";
-import type { SharedState } from "../runtime/state.js";
-import type { BootstrapEnv, CoreLike, KernelLike, LoginResultLike } from "../runtime/types.js";
+import type {
+    BootstrapEnv,
+    CoreLike,
+    HostCoreOptions,
+    KernelLike,
+    LoginResultLike,
+    PreparedHostLike,
+} from "../runtime/types.js";
 import { createAssemblyLifecycle } from "./assembly-lifecycle.js";
 import { runListenerRecordingPhase, runProbePhase, runSmokeIfEnabled } from "./probe.js";
 
@@ -49,7 +44,7 @@ function resolveKernelPaths(bootEnv: BootstrapEnv): { dataRoot: string; account?
 function buildCoreCreateOptions(
     logCfg: ReturnType<typeof resolveLoaderLogConfig>,
     bootEnv: BootstrapEnv,
-): Parameters<NonNullable<KernelLike["NapukettoCore"]>["create"]>[0] {
+): HostCoreOptions {
     return {
         paths: resolveKernelPaths(bootEnv),
         logLevel: logCfg.levels.kernel ?? logCfg.level,
@@ -90,20 +85,15 @@ function mountIpcLogin(
  *   静默收敛为 false，具体原因见 napuketto-boot.log）。 */
 export async function bootstrapWithCore(
     kernel: KernelLike,
-    state: SharedState,
+    host: PreparedHostLike,
     bootEnv: BootstrapEnv,
-    Appid: string | number,
+    appid: string,
     hostIpc?: IpcServerOptions,
 ): Promise<boolean> {
     // 日志配置（napuketto.toml [log] 段 + env 覆盖；失败回退缺省）——kernel 与
     // loader 两个 logger 的格式/级别/时间戳统一从这里来
     const logCfg = resolveLoaderLogConfig(kernel);
-    // 装配层路径：NapukettoCore.create → attachWrapper → login
-    const coreCtor = kernel.NapukettoCore;
-    if (coreCtor === undefined) {
-        return false;
-    }
-    const core: CoreLike = coreCtor.create(buildCoreCreateOptions(logCfg, bootEnv));
+    const { core, attach } = host.createCore(buildCoreCreateOptions(logCfg, bootEnv));
 
     // ⭐ IPC 模式：登录前就启动 stdin 服务端（只含 login.refreshQr 动作）。
     // 否则登录中（waiting_scan）前端刷新/control 指令堆积在 pipe 缓冲区，
@@ -129,7 +119,7 @@ export async function bootstrapWithCore(
         mountIpcLogin(
             ipc,
             core,
-            createLoginControlHandler(core, Appid, control, {
+            createLoginControlHandler(core, appid, control, {
                 reassemble: (loginResult) =>
                     reassembleRef.current?.(loginResult) ?? Promise.resolve(false),
             }),
@@ -138,19 +128,15 @@ export async function bootstrapWithCore(
     }
     registerShutdownHook(() => control.abort(), "intake");
 
-    // 不传 qqSession/qqLoginService（登录前捕获的旧实例已失效/会干扰；
-    // framework 语义：登录成功后 kernel 自己 create+init）
-    const ctx = core.attachWrapper(state.wrapperExports, { ...bootEnv });
-    log(
-        `bootstrap: attachWrapper OK, engine=${typeof ctx.engine}, session=${ctx.session !== null}`,
-    );
+    const session = attach();
+    log("bootstrap: kernel 会话已装配");
 
     // 非 IPC 模式没有 IPC 装配面：两个挂载协作者退化为空停止函数。
     const noop = (): void => {
         // 无 IPC 通道时无需清理
     };
     const assembly = createAssemblyLifecycle({
-        startProtocols: (loginResult) => startProtocols(kernel, ctx, loginResult, logCfg),
+        startProtocols: (loginResult) => startProtocols(kernel, session, loginResult, logCfg),
         attachIpcServices: (newServices) =>
             ipc === undefined ? noop : attachIpcServices(ipc.actions, newServices),
         attachOb11IpcBridge: (newServices) =>
@@ -160,17 +146,24 @@ export async function bootstrapWithCore(
     });
 
     async function prepareSession(loginResult: LoginResultLike, initial: boolean): Promise<void> {
-        const chosen = replaceSession(kernel, core, state, ctx);
-        await activateSession(kernel, state, ctx, chosen, loginResult, Appid, bootEnv);
+        try {
+            await session.activate(loginResult, appid);
+        } catch (e) {
+            log(`bootstrap: 激活 session init 失败: ${getErrorMessage(e)}`);
+        }
         if (isShuttingDown()) {
             return;
         }
-        await waitSessionReady(kernel, ctx);
+        try {
+            await session.waitReady();
+        } catch (e) {
+            log(`bootstrap: 等待 session 就绪失败: ${getErrorMessage(e)}`);
+        }
         if (initial && !isShuttingDown()) {
             if (ipc !== undefined) {
                 sendStatus("sessioning");
             }
-            await runSmokeIfEnabled(kernel, ctx, loginResult);
+            await runSmokeIfEnabled(kernel, session, loginResult);
         }
     }
 
@@ -190,20 +183,6 @@ export async function bootstrapWithCore(
     };
     reassembleRef.current = softRelogin;
 
-    probeCreatedSession(state, ctx);
-    // 多源 session 就绪探测（5s 间隔，60s 上限）
-    const sessionProbe = startSessionProbe(state, ctx);
-    registerShutdownHook(() => clearInterval(sessionProbe), "intake");
-    // 探测 session 方法面（NAPI 反射，验证 startNT/init 等关键方法）
-    probeSessionMethods(ctx);
-
-    if (typeof core.login !== "function") {
-        log("bootstrap: kernel core missing login fn");
-        control.abort();
-        return false;
-    }
-    // NAPUKETTO_QUICK_UIN 强制指定快速登录账号（cli `-q <uin>` 透传；
-    // 也用于实验/自建宿主验证，防止自动选中风控账号 3054108135 导致挂起）。
     // NAPUKETTO_QR_ONLY 强制扫码：跳过快速登录直接 QR——
     // koishi 面板「扫码登录」的重启路径（qrOnly 一次性，登录后 env 不再生效）。
     // 打印可用快速登录账号（启动横幅）
@@ -211,7 +190,7 @@ export async function bootstrapWithCore(
     // 一次性扫码标记：读取即消费（从 process.env 删除），软重登/重试不被残留标记强制扫码。
     const qrOnly = consumeQrOnlyMarker();
     const ref: LoginTargetRef = { targetUin: undefined };
-    await pickLoginAccount(kernel, ctx, ref, forcedUin);
+    await pickLoginAccount(session, ref, forcedUin);
     if (isShuttingDown()) {
         return false;
     }
@@ -222,7 +201,7 @@ export async function bootstrapWithCore(
         doLogin(
             core,
             buildLoginOpts(
-                Appid,
+                appid,
                 forcedUin,
                 ref,
                 qrOnly,
@@ -260,10 +239,10 @@ export async function bootstrapWithCore(
     }
     // 装配完成：开启软重登窗口（control login 原地重登 + 重装配）
     control.markReady();
-    // listener 录制模式（先于探测——时序硬约束见 runListenerRecordingPhase）
-    runListenerRecordingPhase(kernel, ctx);
+    // listener 录制模式先挂到当前已登录会话
+    runListenerRecordingPhase(session);
     // 探测模式
-    runProbePhase(kernel, ctx);
+    runProbePhase(session);
     if (ipc !== undefined) {
         sendStatus("ready", undefined, undefined, {
             uin: loginResult.uin,

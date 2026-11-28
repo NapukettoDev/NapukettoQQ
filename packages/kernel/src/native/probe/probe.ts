@@ -243,8 +243,6 @@ function probeCreatedChain(ctx: WrapperContext, created: unknown): CreatedChainP
  * 探测 session 与 service 方法名面。
  *  主目标 = ctx.session 快照（kernel 自建就绪 session），缺省回退 QQ 主 session；
  *  自建宿主下主 session 未被 init（get*Service 恒 null，实测）。
- *  ⚠️ 先快照 ctx.session 再枚举主 session——getMainSession 有遗留副作用
- *  （resolveMainFromStartup 把空壳主 session 写回 ctx.session，session-resolver.ts）。
  *  ⚠️ names-only：不对服务实例做无参 shape 调用——活 session 上无参调原生方法
  *  = 访问违例 0xC0000005（实测崩溃，tryShape 捕不住原生段错误）。
  */
@@ -272,7 +270,7 @@ function probeSession(ctx: WrapperContext, persist?: () => void): SessionProbeRe
     };
 }
 
-/** QQ 主 session（getMainSession 有写回 ctx.session 的副作用——调用前须已快照）。 */
+/** 诊断用主 session 候选。 */
 function tryMainSession(ctx: WrapperContext): unknown {
     try {
         return getMainSession(ctx);
