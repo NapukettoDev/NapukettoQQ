@@ -4,12 +4,12 @@
  * protocols/ → ipc/ 会构成目录级循环；放在 host/runtime/ 才能两侧安全引用。
  */
 import type {
-    CoreContextLike,
     EventChannelLike,
     FriendApiLike,
     GroupApiLike,
     GroupCacheLike,
     GroupNotifyApiLike,
+    HostDiagnosticAction,
     KernelLike,
     LoggerLike,
     MsgApiLike,
@@ -23,7 +23,6 @@ export interface ReceiveLogFilterLike {
 /** kernel 业务服务集合（引导装配产物，协议/IPC 共用）。 */
 export interface KernelServices {
     kernel: KernelLike;
-    ctx: CoreContextLike;
     /** 引导进程 logger（kernel `createLogger` 产物；不可用时缺省）。 */
     logger: LoggerLike | undefined;
     /** 消息事件通道（Msg/onRecvMsg 等）。 */
@@ -37,7 +36,7 @@ export interface KernelServices {
     /** 登录状态事件通道（Login/onLoginDisConnected；milky bot_offline 源）。 */
     loginChannel: EventChannelLike;
     /** 好友缓存（onBuddyListChange 快照 diff → onBuddyAdded/Removed；OB11 friend_add 源）。 */
-    buddyCache: { events: EventChannelLike; register(): void; unregister(): void };
+    buddyCache: { events: EventChannelLike };
     /** kernel apis（精确最小面，装配方直接使用，无需断言）。 */
     msgApi: MsgApiLike;
     groupApi: GroupApiLike;
@@ -64,12 +63,9 @@ export interface KernelServices {
      * [log].unboundReceive=false 时未绑定频道的接收行不打。null = 无绑定信息（不过滤）。
      */
     receiveFilter: ReceiveLogFilterLike;
-    /** wrapper session（诊断用：IPC 动作表枚举/触发原生服务）。 */
-    session: unknown;
-    /** wrapper engine（诊断用：initLog 等初始化方法验证）。 */
-    engine: unknown;
-    /** NodeQQNTWrapperUtil（诊断用：原生 copyFile 验证富媒体文件放置）。 */
-    util: unknown;
+    /** NT 相对媒体路径的基准目录。 */
+    mediaBaseDir(): string | undefined;
+    diagnostics(): ReadonlyMap<string, HostDiagnosticAction>;
     /**
      * 释放 kernel 服务资源（软重登重装配前清理）：注销三条桥 +
      * 群缓存退订 + 消息日志退订。幂等（桥/缓存 unregister 自身判空）。

@@ -1,18 +1,13 @@
-/**
- * diagnostics.ts：显式启用的 IPC 诊断动作——常规动作表不含 `diag.*`，只有 NAPUKETTO_DIAG 显式开启才注册。
- * 每个目标只接受固定方法 allowlist（`__methods` + 少量诊断方法），参数数量有上限，未知/危险方法直接拒绝。
- * `diag.richMediaTmpPaths` 只读枚举，不触发 setters 等副作用；更激进的实验走 kernel 自己的探针原语，不扩大 IPC 面。
- */
 import {
     getErrorMessage,
     getOwnProp,
     hasCallableProp,
     isCallable,
     isRecord,
-} from "../../shared/type-guards.js";
+} from "../../infra/type-guards.js";
 
 /** 诊断上下文（由 IPC 装配注入；未注入的目标返回可读错误）。 */
-export interface IpcDiagnosticContext {
+interface HostDiagnosticContext {
     /** wrapper session（枚举/触发原生服务方法面）。 */
     session?: unknown;
     /** wrapper engine（initLog 等初始化方法验证）。 */
@@ -70,17 +65,6 @@ const ALLOWED_METHODS = {
     flashTransferService: new Set(["getFileSetIdByCode", "__methods"]),
     util: new Set(["copyFile", "__methods"]),
 } as const;
-
-/** 诊断动作名（测试与调用方对表用；不在默认动作表中）。 */
-export const DIAGNOSTIC_ACTION_NAMES = [
-    "diag.richMediaTmpPaths",
-    "diag.flashCall",
-    "diag.sessionCall",
-    "diag.engineCall",
-    "diag.richMediaCall",
-    "diag.msgServiceCall",
-    "diag.utilCall",
-] as const;
 
 /** 安全枚举方法名（own + 原型去重、去空、限长、限数量）。 */
 function methodNamesOf(obj: unknown): string[] {
@@ -230,11 +214,11 @@ function serviceOf(
     return { ok: true, target };
 }
 
-/** 注册全部诊断动作（调用方负责仅在显式调试开关开启时调用）。 */
-export function registerDiagnosticActions(
-    actions: Map<string, DiagnosticActionHandler>,
-    ctx: IpcDiagnosticContext,
-): void {
+/** 宿主只在显式启用诊断时把这些处理器接入 IPC。 */
+export function createHostDiagnostics(
+    ctx: HostDiagnosticContext,
+): Map<string, DiagnosticActionHandler> {
+    const actions = new Map<string, DiagnosticActionHandler>();
     actions.set("diag.richMediaTmpPaths", async () => runRichMediaDiag(ctx.session));
 
     actions.set("diag.flashCall", async (params) => {
@@ -286,4 +270,5 @@ export function registerDiagnosticActions(
         }
         return callDiagnosticMethod(instance, params, ALLOWED_METHODS.util);
     });
+    return actions;
 }

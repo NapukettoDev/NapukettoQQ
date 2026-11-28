@@ -207,6 +207,8 @@ export {
     waitForNetworkConnection,
     waitSessionReady,
 } from "./runtime/index.js";
+export type { PreparedSelfHost, SelfHostEnvironment } from "./runtime/self-host.js";
+export { prepareSelfHost } from "./runtime/self-host.js";
 // ---- L0：纯类型契约（types/）----
 export type {
     BuddyCategory,

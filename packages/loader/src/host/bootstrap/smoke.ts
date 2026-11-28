@@ -1,13 +1,14 @@
-/**
- * smoke.ts：收发消息冒烟自检（NAPUKETTO_SMOKE=1）——登录 + session 就绪后用 MsgBridge + MsgApi 真发/收一条，验证发送、接收与落库。
- * 目标 peer 由 NAPUKETTO_SMOKE_PEER 指定（c2c:<uin> / group:<uin>，缺省发给自己）；在协议装配前调用，不依赖 adapter/network。
- */
-
+import { registerShutdownHook } from "../../lifecycle/shutdown.js";
 import { log } from "../../shared/boot-log.js";
 import { getErrorMessage, getOwnProp } from "../../shared/type-guards.js";
 import { env } from "../runtime/env.js";
 import { forEachRawMessage } from "../runtime/state.js";
-import type { CoreContextLike, KernelLike, LoginResultLike } from "../runtime/types.js";
+import type {
+    GroupApiLike,
+    HostSessionLike,
+    KernelLike,
+    LoginResultLike,
+} from "../runtime/types.js";
 
 /** 冒烟测试默认等待（毫秒）。 */
 const SMOKE_SETTLE_MS = 5000;
@@ -45,17 +46,16 @@ function extractTexts(kernel: KernelLike, msg: unknown): string {
 /** uin → uid（c2c 目标用；group 直接拿群号作 peerUid）。 */
 async function resolvePeerUid(
     kernel: KernelLike,
-    ctx: CoreContextLike,
+    groupApi: GroupApiLike,
     target: SmokeTarget,
-    selfUid: string,
+    login: LoginResultLike,
 ): Promise<{ chatType: number; peerUid: string }> {
-    const groupApi = new kernel.GroupApi(ctx.session);
     if (target.kind === "group") {
         return { chatType: kernel.ChatType.GROUP, peerUid: target.uin };
     }
     // c2c：目标是自己 → 直接用 selfUid（避免 uidToUin 往返）
-    if (target.uin === String(ctx.login?.uin ?? "")) {
-        return { chatType: kernel.ChatType.C2C, peerUid: selfUid };
+    if (target.uin === login.uin) {
+        return { chatType: kernel.ChatType.C2C, peerUid: login.uid };
     }
     const uidMap = await groupApi.uinToUid([target.uin]);
     const uid = uidMap.get(target.uin);
@@ -71,24 +71,26 @@ async function resolvePeerUid(
  */
 export async function runSmokeTest(
     kernel: KernelLike,
-    ctx: CoreContextLike,
+    session: HostSessionLike,
     loginResult: LoginResultLike,
 ): Promise<boolean> {
-    const session = ctx.session;
-    if (!session) {
-        log("smoke: ❌ session 为空，跳过");
-        return false;
+    const services = session.createMessageServices();
+    const unregisterShutdown = registerShutdownHook(() => services.dispose());
+    try {
+        return await checkMessageRoundTrip(kernel, services, loginResult);
+    } finally {
+        unregisterShutdown();
+        services.dispose();
     }
-    const target = parseSmokeTarget(env.NAPUKETTO_SMOKE_PEER, loginResult.uin);
-    log(
-        `smoke: 目标=${target.kind}:${target.uin}（peer env=${env.NAPUKETTO_SMOKE_PEER ?? "(缺省=自己)"}）`,
-    );
+}
 
-    // ① 消息事件通道 + 桥（addKernelMsgListener 普通 JS 对象，NAPI 反射）
-    const channel = new kernel.NTEventChannel("Msg");
-    const bridge = new kernel.MsgBridge(session, channel);
-    bridge.register();
-    log("smoke: ✅ MsgBridge 注册完成（addKernelMsgListener）");
+async function checkMessageRoundTrip(
+    kernel: KernelLike,
+    services: ReturnType<HostSessionLike["createMessageServices"]>,
+    loginResult: LoginResultLike,
+): Promise<boolean> {
+    const { channel, msgApi, groupApi } = services;
+    const target = parseSmokeTarget(env.NAPUKETTO_SMOKE_PEER, loginResult.uin);
 
     // ② 订阅 onRecvMsg（接收方向验证；回调参数是消息数组，不是单条）
     let received = 0;
@@ -111,8 +113,7 @@ export async function runSmokeTest(
     });
 
     // ③ 发送方向：MsgApi.sendMessage
-    const msgApi = new kernel.MsgApi(session);
-    const peer = await resolvePeerUid(kernel, ctx, target, loginResult.uid);
+    const peer = await resolvePeerUid(kernel, groupApi, target, loginResult);
     const content = `Napuketto smoke test ${Date.now()}`;
     let sentMsgId = "";
     try {
@@ -145,14 +146,6 @@ export async function runSmokeTest(
         }
     } catch (e) {
         log(`smoke: 落库验证失败: ${getErrorMessage(e)}`);
-    }
-
-    // 收尾：注销监听（防重复回调）
-    try {
-        bridge.unregister();
-        log("smoke: ✅ MsgBridge 已注销");
-    } catch (e) {
-        log(`smoke: 注销失败（忽略）: ${getErrorMessage(e)}`);
     }
 
     const ok = sentMsgId !== "" && (received > 0 || landed);

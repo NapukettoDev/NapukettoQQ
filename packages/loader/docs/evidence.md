@@ -264,3 +264,23 @@ Koishi 下游 #46/#47 的锁定版本为 loader 0.10.9、kernel 0.16.4、adapter
   既有命名而非 loader 笔误，故 `diag.richMediaTmpPaths` 保持原名。复核命令：
   `findstr /M /C:"getRichMeidaTmpPath" wrapper.node`（正拼写命令无输出）。登录态探针
   （`NAPUKETTO_PROBE=1`）仍需真实账号环境，本次未执行。
+
+
+## F-05 与 I-01 原生边界
+
+- PR #130（`fdd3834`）引入 kernel 的 `dlopenWrapper`。任务 03 PR #177
+  （`ed7c959`）已有 loader 委托加载、关停和 IPC 状态恢复。任务 08 PR #180
+  （`cde973b`）已约束诊断启用与环境继承。当前自建宿主入口由
+  `packages/kernel/src/runtime/self-host.ts` 提供，原生反射诊断由 kernel 的
+  `native/probe/host-diagnostics.ts` 执行。loader 保留诊断开关、IPC 动作名和帧格式。
+- Windows x64 与 Linux x64（WSL）的 Node 24.16.0 使用临时数据根、合成账号及
+  `tests/host/bootstrap/fixtures/wrapper.c` 编译出的独立 PE／ELF addon。
+  通过 `HOST_TEST_ADDON=<测试 addon> node --test --test-reporter=dot packages/loader/tests/host/bootstrap/self-host-process.integration.mjs`
+  运行，两平台各通过 6 项。正常顺序为加载 → O3 注册 → 创建启动会话 → engine 初始化 →
+  登录 → session.init → startup.start → 消息监听 → 上报在线状态 → 其余业务监听 → IPC ready →
+  stop → 监听释放与退出。
+  另验证了关闭／启用 IPC 诊断、旧 kernel 缺少入口、缺失 O3 后退出、部分监听注册失败的
+  回滚，以及显式探测后的群服务方法名落盘。
+- 合成 addon 实际经过 Node 原生加载，登录和监听副作用由夹具提供。官方 wrapper 与私有
+  stub 的配套加载、真实快速登录／扫码、O3 底层释放、立即重启和 native fd 1 输出仍需
+  匹配的两平台组件及授权测试账号。真实群操作的证据条件见 kernel 文档。

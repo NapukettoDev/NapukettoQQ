@@ -42,27 +42,11 @@ export interface BootstrapEnv {
     wrapperPath: string;
 }
 
-/** attachWrapper / startNapuketto 的引导环境（kernel BootEnv 最小面，字段可缺省）。 */
-export interface BootEnvLike {
-    qqVersion?: string | undefined;
-    dataDir?: string | undefined;
-    dataRoot?: string | undefined;
-    selfUin?: string | undefined;
-    selfUid?: string | undefined;
-    wrapperPath?: string | undefined;
-}
-
 /** 消息事件通道（NTEventChannel 的最小面）。 */
 export interface EventChannelLike {
     on(event: string, handler: (payload: unknown) => void): unknown;
     /** 全事件订阅（IPC 子进程模式整通道转发用）。 */
     onAny?(handler: (event: string, ...args: unknown[]) => void): unknown;
-}
-
-/** 事件桥（MsgBridge 最小面）。 */
-export interface BridgeLike {
-    register(): void;
-    unregister(): void;
 }
 
 /** pino logger 最小面（kernel `createLogger` 返回值，自研描述，运行时实证）。 */
@@ -153,37 +137,21 @@ export interface LoginResultLike {
 /** 登录账号（kernel listLoginAccounts 返回项）。 */
 export interface LoginAccountLike {
     uin: string;
-    nickName?: string;
-    isQuickLogin?: boolean;
-}
-
-/** CoreContext（kernel NapukettoCore.create → attachWrapper 返回）。 */
-export interface CoreContextLike {
-    session?: unknown;
-    engine?: unknown;
-    login?: { uin?: string; uid?: string; nick?: string };
-    /** 老 kernel 回退路径（startNapuketto 手工 lifecycle）。 */
-    loginService?: unknown;
-    /** wrapper exports（NodeQQNTWrapperUtil 等诊断面）。 */
-    exports?: Record<string, unknown>;
-    /** wrapper 上下文（LoginBridge 取 loginService：拦截 new 捕获 / 单例 get()）。 */
-    wrapper?: {
-        loginService?: unknown;
-        exports?: Record<string, unknown>;
-    } | null;
+    nickName?: string | undefined;
+    isQuickLogin?: boolean | undefined;
 }
 
 /** 登录进度（QR 流程：二维码数据 + 状态变化）。 */
 export interface LoginProgressLike {
     state: string;
-    qr?: { pngBase64: string; qrcodeUrl: string };
-    selfInfo?: { uin: string; uid: string; nick: string };
-    message?: string;
+    qr?: { pngBase64: string; qrcodeUrl: string } | undefined;
+    selfInfo?: { uin: string; uid: string; nick: string } | undefined;
+    message?: string | undefined;
 }
 
 /** kernel CoreLoginOptions 最小面（登录参数，字段全部可选）。 */
 export interface CoreLoginOptionsLike {
-    appid?: string | number | undefined;
+    appid?: string | undefined;
     initTimeoutMs?: number | undefined;
     quickUin?: string | undefined;
     quickLoginTimeoutMs?: number | undefined;
@@ -194,19 +162,9 @@ export interface CoreLoginOptionsLike {
     activateSession?: boolean | undefined;
 }
 
-/** NapukettoCore（kernel 装配层）。 */
 export interface CoreLike {
-    attachWrapper(wrapperExports: unknown, env: BootEnvLike): CoreContextLike;
     login(options: CoreLoginOptionsLike): Promise<LoginResultLike | null>;
-    setSession(session: unknown): void;
-    /** 手动刷新二维码（QR 登录期间可用；返回是否触发，false = 不在扫码态）。 */
     refreshQr?: () => boolean;
-}
-
-/** kernel probeRuntime 结果。 */
-export interface ProbeResultLike {
-    session?: unknown;
-    services?: Record<string, unknown>;
 }
 
 /** kernel startListenerRecording 逐服务注册结果（batch-3 前置探测，milky.md §0.8.1）。 */
@@ -223,75 +181,80 @@ export interface ListenerRecordingResultLike {
 }
 
 /** [log] 配置解析结果最小面（kernel parseLogConfig 返回值，字段语义见 kernel）。 */
+type HostLogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
+
 export interface LogConfigLike {
-    level: string;
-    format?: string;
+    level: HostLogLevel;
+    format?: "pretty" | "single-line" | "json";
     banner: boolean;
-    timestamp?: string;
+    timestamp?: "local" | "iso8601" | "elapsed";
     unboundReceive: boolean;
-    levels: Partial<Record<"cli" | "kernel" | "loader" | "ob11", string>>;
-    file?: { path: string; level: string };
+    levels: Partial<Record<"cli" | "kernel" | "loader" | "ob11", HostLogLevel>>;
+    file?: { path: string; level: HostLogLevel };
     colorize?: boolean;
 }
 
-/**
- * 与 @napuketto/kernel 的最小交互面。
- * 可选成员 = 老 kernel 兼容路径（startNapuketto/quickLogin 等回退分支）；
- * 必选成员 = 自建宿主主路径必须存在（实测）。
- */
+export interface HostCoreOptions {
+    paths: { dataRoot: string; account?: string };
+    logLevel: LogConfigLike["level"];
+    consoleLog?: boolean;
+    logFormat?: NonNullable<LogConfigLike["format"]>;
+    logTimestamp?: NonNullable<LogConfigLike["timestamp"]>;
+    logColorize?: boolean;
+    logFileLevel?: LogConfigLike["level"] | undefined;
+    logFile?: string;
+    account?: string;
+}
+
+export type HostDiagnosticAction = (params: Record<string, unknown>) => Promise<unknown>;
+
+export interface HostMessageServicesLike {
+    readonly msgApi: MsgApiLike;
+    readonly groupApi: GroupApiLike;
+    dispose(): void;
+}
+
+export interface HostRuntimeLike extends HostMessageServicesLike {
+    startServices(): void;
+    readonly msgChannel: EventChannelLike;
+    readonly groupChannel: EventChannelLike;
+    readonly friendChannel: EventChannelLike;
+    readonly recentContactChannel: EventChannelLike;
+    readonly loginChannel: EventChannelLike;
+    readonly groupCache: GroupCacheLike;
+    readonly buddyCache: { events: EventChannelLike };
+    readonly friendApi: FriendApiLike;
+    readonly groupNotifyApi: GroupNotifyApiLike;
+    readonly ticketApi: unknown;
+    readonly richMediaApi: unknown;
+    readonly flashTransferApi: unknown;
+    readonly recentContactApi: unknown;
+    readonly profileApi: unknown;
+    readonly profileLikeApi: unknown;
+    readonly webApi: unknown;
+}
+
+export interface HostSessionLike {
+    listLoginAccounts(): Promise<LoginAccountLike[]>;
+    activate(login: LoginResultLike, appid: string): Promise<void>;
+    waitReady(): Promise<void>;
+    mediaBaseDir(): string | undefined;
+    createRuntime(login: LoginResultLike, logger: LoggerLike | undefined): HostRuntimeLike;
+    createMessageServices(): HostMessageServicesLike & { channel: EventChannelLike };
+    diagnostics(): ReadonlyMap<string, HostDiagnosticAction>;
+    recordListeners(): ListenerRecordingResultLike;
+    probe(filename?: string): { hasSession: boolean; serviceCount: number };
+}
+
+export interface PreparedHostLike {
+    resolveAppid(): string;
+    createCore(options: HostCoreOptions): { core: CoreLike; attach(): HostSessionLike };
+}
+
+/** 模块由 loader 动态导入，编译期不依赖 kernel。 */
 export interface KernelLike {
-    dlopenWrapper?: (path: string) => Record<string, unknown>;
-    activateO3MiscService?: (exports: Record<string, unknown>) => boolean;
+    prepareSelfHost(env: BootstrapEnv): PreparedHostLike;
     resolveSandboxWritePath?: (path: string, field: string) => string;
-    // 装配层
-    NapukettoCore?: {
-        create(options: {
-            paths: { dataRoot?: string | undefined };
-            logLevel?: string | undefined;
-            /** IPC 模式传 false：stdout 专用于 JSON 行协议，console 流会撕裂协议行。 */
-            consoleLog?: boolean;
-            /** 控制台格式/时间戳/颜色 + 文件级别/路径 + 账号标注。 */
-            logFormat?: string;
-            logTimestamp?: string;
-            logColorize?: boolean;
-            logFileLevel?: string;
-            logFile?: string;
-            account?: string;
-        }): CoreLike;
-    };
-    startNapuketto?: (options: { wrapperExports: unknown; env: BootEnvLike }) => CoreContextLike;
-    // 登录
-    listLoginAccounts(ctx: CoreContextLike): Promise<LoginAccountLike[]>;
-    quickLogin?: (ctx: CoreContextLike, options: unknown) => Promise<LoginResultLike>;
-    buildLoginConfig?: (appid: string | number, version: string, dataDir: string) => unknown;
-    // session
-    getMainSession?: (ctx: CoreContextLike) => unknown;
-    buildSessionConfig(options: unknown): unknown;
-    /** 读取设备指纹 guid（loginService.getMachineGuid，kernel 原生反射；缺省空串）。 */
-    readMachineGuid?: (loginService: unknown) => string;
-    createLifecycleSessionListener(): unknown;
-    initAndStartSession(
-        ctx: CoreContextLike,
-        config: unknown,
-        listener: unknown,
-        options: { timeoutMs: number },
-    ): Promise<unknown>;
-    waitSessionReady(ctx: CoreContextLike, options: { timeoutMs: number }): Promise<unknown>;
-    // 路径 / appid
-    parseAppidFromMajor?: (majorPath: string) => string | null;
-    resolveAppidQua?: (fullVersion: string, majorPath?: string) => { appid: string; qua: string };
-    resolveQqUserDataRoot?: (
-        wrapperExports: unknown,
-        options?: { dataRoot?: string },
-    ) => string | null;
-    resolveQqGlobalPath?: (qqDataRoot: string) => string;
-    // 探测
-    probeRuntime?: (ctx: CoreContextLike, filename?: string) => ProbeResultLike;
-    /** listener 录制器（必须先于 probeRuntime——getMainSession 写回毒化 ctx.session）。 */
-    startListenerRecording?: (
-        ctx: CoreContextLike,
-        filename?: string,
-    ) => ListenerRecordingResultLike;
     // 消息 / 桥 / 服务
     // ChatType 是 kernel 常量对象（GROUP/C2C），Record 字面量键规避 useNamingConvention
     ChatType: Record<"GROUP" | "C2C", number>;
@@ -313,71 +276,6 @@ export interface KernelLike {
         colorize?: boolean | undefined;
         base?: Record<string, unknown>;
     }) => LoggerLike;
-    NTEventChannel: new (name: string) => EventChannelLike;
-    MsgBridge: new (session: unknown, channel: EventChannelLike) => BridgeLike;
-    // channel 可选（NapCat 式发送确认）；util 可选（富媒体 copyFile）
-    MsgApi: new (
-        session: unknown,
-        channel?: EventChannelLike,
-        util?: unknown,
-    ) => MsgApiLike;
-    GroupApi: new (session: unknown) => GroupApiLike;
-    FriendApi: new (
-        session: unknown,
-        deps: { uidToUin: (uins: string[]) => Promise<Map<string, string>> },
-    ) => FriendApiLike;
-    GroupBridge: new (
-        session: unknown,
-        channel: EventChannelLike,
-    ) => { register(): void; unregister(): void };
-    FriendBridge: new (
-        session: unknown,
-        channel: EventChannelLike,
-    ) => { register(): void; unregister(): void };
-    // RecentContact 桥（peer_pin_change 源）+ Login 桥
-    //（bot_offline 源；loginService 由装配方注入 ctx.wrapper.loginService）
-    RecentContactBridge: new (
-        session: unknown,
-        channel: EventChannelLike,
-    ) => { register(): void; unregister(): void };
-    LoginBridge: new (
-        loginService: unknown,
-        channel: EventChannelLike,
-    ) => { register(): void; unregister(): void };
-    GroupCache: new (options: {
-        channel: EventChannelLike;
-        groupApi: GroupApiLike;
-    }) => {
-        register(): void;
-        unregister(): void;
-        listGroupsRefreshed(): Promise<Array<{ groupCode: string; groupName: string }>>;
-        getMember?(
-            groupCode: string,
-            uid: string,
-        ): Promise<{ uid: string; nick?: string } | undefined>;
-    };
-    BuddyCache: new (options: {
-        channel: EventChannelLike;
-        logger?: unknown;
-    }) => {
-        events: EventChannelLike;
-        register(): void;
-        unregister(): void;
-    };
-    GroupNotifyApi: new (session: unknown) => GroupNotifyApiLike;
-    TicketApi: new (
-        session: unknown,
-    ) => {
-        getCookies(domain: string, uin: string): Promise<Record<string, string>>;
-    };
-    RichMediaApi: new (session: unknown) => unknown;
-    FlashTransferApi: new (session: unknown) => unknown;
-    RecentContactApi: new (session: unknown) => unknown;
-    ProfileApi: new (session: unknown) => unknown;
-    ProfileLikeApi: new (session: unknown) => unknown;
-    WebApi: new (options: {
-        getCookies: (domain: string) => Promise<Record<string, string>>;
-    }) => unknown;
     PathWrapper: new (options: {
         dataRoot?: string | undefined;
         account: string;

@@ -110,9 +110,7 @@ export async function assembleOb11AndSatori(
         });
         // QQ NT global 目录（get_image/get_record 的 NT 相对路径解析基准）：
         // resolveQqUserDataRoot 从 wrapper util 读 QQ 用户数据根（Documents/Tencent Files）
-        const wrapperExports = services.ctx.wrapper?.exports ?? services.ctx.exports;
-        const qqRoot = kernel.resolveQqUserDataRoot?.(wrapperExports) ?? null;
-        const mediaBaseDir = qqRoot !== null ? kernel.resolveQqGlobalPath?.(qqRoot) : undefined;
+        const mediaBaseDir = services.mediaBaseDir();
         const ob11 = new adapter.NapukettoOneBot11Adapter({
             config: ob11Config,
             localMediaBaseDir: localMediaBaseDir(

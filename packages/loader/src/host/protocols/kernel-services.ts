@@ -1,9 +1,3 @@
-/**
- * kernel-services.ts：kernel 业务服务装配（IPC 模式与协议模式共用）——登录成功后创建
- * 消息/群事件通道 + 桥 + 缓存 + 各 Api + 自身信息。
- * `KernelServices` 类型在 host/runtime/service-types.ts：ipc/ 也要引用，放本文件会让 ipc/ → protocols/ 形成目录级循环。
- */
-
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isShuttingDown, registerShutdownHook } from "../../lifecycle/shutdown.js";
@@ -13,8 +7,7 @@ import { env, isEnvEnabled } from "../runtime/env.js";
 import { defaultLogConfig, resolveLogFilePath } from "../runtime/log-config.js";
 import type { KernelServices } from "../runtime/service-types.js";
 import type {
-    CoreContextLike,
-    EventChannelLike,
+    HostSessionLike,
     KernelLike,
     LogConfigLike,
     LoggerLike,
@@ -63,39 +56,6 @@ function buildLoaderLoggerOptions(
     };
 }
 
-/**
- * RecentContact 通道与桥（peer_pin_change 源）+ Login 桥（bot_offline 源）。
- * loginService 取自 wrapper 上下文（与 QrLoginSession 同源），缺失（老 kernel / 未 attach）
- * 时只跳过 Login 桥注册——通道保留，事件为空。
- */
-function createBatch3Channels(
-    kernel: KernelLike,
-    ctx: CoreContextLike,
-    session: unknown,
-    log: (msg: string) => void,
-): { recentContactChannel: EventChannelLike; loginChannel: EventChannelLike; unregister(): void } {
-    const recentContactChannel = new kernel.NTEventChannel("RecentContact");
-    const recentContactBridge = new kernel.RecentContactBridge(session, recentContactChannel);
-    recentContactBridge.register();
-    const loginChannel = new kernel.NTEventChannel("Login");
-    const loginService = ctx.wrapper?.loginService;
-    let loginBridge: { register(): void; unregister(): void } | null = null;
-    if (loginService !== null && loginService !== undefined) {
-        loginBridge = new kernel.LoginBridge(loginService, loginChannel);
-        loginBridge.register();
-    } else {
-        log("bootstrap: loginService 不可用，Login 桥未注册（bot_offline 事件不可用）");
-    }
-    return {
-        recentContactChannel,
-        loginChannel,
-        unregister: () => {
-            recentContactBridge.unregister();
-            loginBridge?.unregister();
-        },
-    };
-}
-
 function resolveServiceLogFile(logCfg: LogConfigLike | undefined): string {
     return logCfg?.file !== undefined
         ? resolveLogFilePath(logCfg.file.path)
@@ -127,7 +87,7 @@ async function registerOnlineStatus(msgApi: KernelServices["msgApi"]): Promise<v
 /** 登录成功后创建 kernel 业务服务（channel/bridge/cache/apis）。失败返回 null。 */
 export async function createKernelServices(
     kernel: KernelLike,
-    ctx: CoreContextLike,
+    session: HostSessionLike,
     loginResult: LoginResultLike,
     logCfg?: LogConfigLike,
 ): Promise<KernelServices | null> {
@@ -154,115 +114,57 @@ export async function createKernelServices(
                 ? logger.child({ module: "ob11" }, { level: ob11Level })
                 : logger.child({ module: "ob11" })
             : logger;
-    const session = ctx.session;
-    if (!session) {
-        log("bootstrap: session 为空，无法创建 kernel 服务");
-        return null;
-    }
-    const disposeHooks: Array<() => void> = [];
+    const runtime = session.createRuntime(loginResult, logger);
+    const receiveFilter: ReceiveLogFilter = { current: null };
+    let offMsgLogging: (() => void) | undefined;
     const dispose = (): void => {
-        for (const stop of disposeHooks.splice(0).reverse()) {
-            try {
-                stop();
-            } catch (err) {
-                log(`bootstrap: kernel 服务清理失败: ${getErrorMessage(err)}`);
-            }
+        try {
+            offMsgLogging?.();
+        } finally {
+            runtime.dispose();
         }
     };
     const unregisterShutdown = registerShutdownHook(dispose);
     try {
-        // 消息事件通道 + 桥
-        const channel = new kernel.NTEventChannel("Msg");
-        const bridge = new kernel.MsgBridge(session, channel);
-        disposeHooks.push(() => bridge.unregister());
-        bridge.register();
-        // 控制台消息日志（NapCat 同款：收到消息打印到控制台；渲染逻辑见 msg-log.ts）。
-        // 返回退订函数（软重登重装配时清理）。接收行已降 debug；[log].unboundReceive=false 时按 kurobot 绑定表过滤未绑定频道。
-        // 接收行颜色：IPC 关；colorize 决策传播（env）缺省保持彩色（终端现状）。
-        const receiveFilter: ReceiveLogFilter = { current: null };
-        const offMsgLogging = setupMsgLogging(
+        offMsgLogging = setupMsgLogging(
             kernel,
-            channel,
+            runtime.msgChannel,
             logger,
             !ipcMode && (logCfg?.colorize ?? true),
             logCfg?.unboundReceive === false ? receiveFilter : undefined,
         );
-        disposeHooks.push(offMsgLogging);
-        // kernel APIs
-        const groupApi = new kernel.GroupApi(session);
-        // channel 传入 MsgApi：sendMsg 后等 onMsgInfoListUpdate 确认（NapCat 式）
-        // util 传入 MsgApi：富媒体发送 copyFile（NapCat 式图片预处理）
-        const util = ctx.exports?.["NodeQQNTWrapperUtil"];
-        const msgApi = new kernel.MsgApi(session, channel, util);
-        await registerOnlineStatus(msgApi);
+        await registerOnlineStatus(runtime.msgApi);
         if (isShuttingDown()) {
             dispose();
             return null;
         }
-        const friendApi = new kernel.FriendApi(session, {
-            uidToUin: (uids: string[]) => groupApi.uidToUin(uids),
-        });
-        // 群事件通道 + 桥 + 群缓存（ADR-008：事件主动维护 + 查询惰性回填）
-        const groupChannel = new kernel.NTEventChannel("Group");
-        const groupBridge = new kernel.GroupBridge(session, groupChannel);
-        disposeHooks.push(() => groupBridge.unregister());
-        groupBridge.register();
-        // 好友事件通道 + 桥（OB11 request/friend 事件源）
-        const friendChannel = new kernel.NTEventChannel("Buddy");
-        const friendBridge = new kernel.FriendBridge(session, friendChannel);
-        disposeHooks.push(() => friendBridge.unregister());
-        friendBridge.register();
-        // RecentContact / Login 通道 + 桥（peer_pin / bot_offline 源）
-        const batch3 = createBatch3Channels(kernel, ctx, session, log);
-        disposeHooks.push(batch3.unregister);
-        const groupCache = new kernel.GroupCache({ channel: groupChannel, groupApi });
-        disposeHooks.push(() => groupCache.unregister());
-        groupCache.register();
-        // 好友缓存：快照 diff 归一化事件（OB11 friend_add 源）
-        const buddyCache = new kernel.BuddyCache({ channel: friendChannel, logger });
-        disposeHooks.push(() => buddyCache.unregister());
-        buddyCache.register();
-        const groupNotifyApi = new kernel.GroupNotifyApi(session);
-        const ticketApi = new kernel.TicketApi(session);
-        const richMediaApi = new kernel.RichMediaApi(session);
-        const flashTransferApi = new kernel.FlashTransferApi(session);
-        // 会话列表（get_peer_pins 数据源）
-        const recentContactApi = new kernel.RecentContactApi(session);
-        const profileApi = new kernel.ProfileApi(session);
-        const profileLikeApi = new kernel.ProfileLikeApi(session);
-        // 群空间 web API（Cookie 经 TicketApi.getCookies 注入）
-        const webApi = new kernel.WebApi({
-            getCookies: (domain: string) => ticketApi.getCookies(domain, loginResult.uin),
-        });
+        runtime.startServices();
         return {
             kernel,
-            ctx,
             logger,
-            channel,
-            groupChannel,
-            friendChannel,
-            recentContactChannel: batch3.recentContactChannel,
-            loginChannel: batch3.loginChannel,
-            msgApi,
-            groupApi,
-            friendApi,
-            groupCache,
-            buddyCache,
-            groupNotifyApi,
-            ticketApi,
-            richMediaApi,
-            flashTransferApi,
-            recentContactApi,
-            profileApi,
-            profileLikeApi,
-            webApi,
+            channel: runtime.msgChannel,
+            groupChannel: runtime.groupChannel,
+            friendChannel: runtime.friendChannel,
+            recentContactChannel: runtime.recentContactChannel,
+            loginChannel: runtime.loginChannel,
+            msgApi: runtime.msgApi,
+            groupApi: runtime.groupApi,
+            friendApi: runtime.friendApi,
+            groupCache: runtime.groupCache,
+            buddyCache: runtime.buddyCache,
+            groupNotifyApi: runtime.groupNotifyApi,
+            ticketApi: runtime.ticketApi,
+            richMediaApi: runtime.richMediaApi,
+            flashTransferApi: runtime.flashTransferApi,
+            recentContactApi: runtime.recentContactApi,
+            profileApi: runtime.profileApi,
+            profileLikeApi: runtime.profileLikeApi,
+            webApi: runtime.webApi,
             self: { uin: loginResult.uin, nickname: loginResult.nick ?? "", uid: loginResult.uid },
             calibLogger: calibLogger ?? NOOP_LOGGER,
             receiveFilter,
-            session,
-            engine: ctx.engine,
-            // util：wrapper exports 上的 NodeQQNTWrapperUtil（诊断用原生 copyFile）
-            util: ctx.exports?.["NodeQQNTWrapperUtil"],
+            mediaBaseDir: () => session.mediaBaseDir(),
+            diagnostics: () => session.diagnostics(),
             dispose,
         };
     } catch (err) {

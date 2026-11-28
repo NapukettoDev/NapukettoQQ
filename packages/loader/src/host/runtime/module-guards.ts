@@ -15,12 +15,9 @@ import type {
 } from "./protocol-types.js";
 import type { KernelLike } from "./types.js";
 
-/** kernel 模块：至少提供一条装配入口（startNapuketto / NapukettoCore.create）。 */
+/** 自建宿主的必需入口。 */
 export function isKernelModule(val: unknown): val is KernelLike {
-    if (!isRecord(val)) {
-        return false;
-    }
-    return hasCallableProp(val, "startNapuketto") || hasCallableProp(val, "NapukettoCore");
+    return hasCallableProp(val, "prepareSelfHost");
 }
 
 /** network 模块：EventBroadcaster 构造器（协议隔离事件总线）。 */

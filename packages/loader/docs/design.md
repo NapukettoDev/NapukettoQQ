@@ -13,7 +13,7 @@ launchSelfHost（调用进程）
   └─ spawn      标准 node 跑 self-host.cjs，env 注入 NAPUKETTO_*
 self-host（宿主子进程）
   ├─ lifecycle/ 实例锁 → 停止哨兵 / 信号
-  ├─ 动态 import kernel → dlopenWrapper → activateO3MiscService
+  ├─ 动态 import kernel → prepareSelfHost
   └─ host/     kernel 动态 import → 登录 → session → 协议装配 ｜ IPC
 ```
 
@@ -39,9 +39,9 @@ src/
     runtime/      子进程共享基础：env · errors · state · load-config · log-config
                   · module-loader / module-guards · protocol-types / service-types / types（纯类型）
     bootstrap/    引导与观测：bootstrap · core · assembly-lifecycle · probe · smoke · media-patch-status
-    auth/         登录与会话状态机：login · relogin · session
+    auth/         登录与会话状态机：login · relogin
     protocols/    协议与服务装配：protocols · kernel-services · msg-log · assemble-ob11 · optional
-    ipc/          IPC 进程边界：actions · at-resolver · attach · codec · diagnostics
+    ipc/          IPC 进程边界：actions · at-resolver · attach · codec
                   · json-safe · ob11-bridge · sender · server（不设 barrel）
 ```
 
@@ -193,8 +193,11 @@ Bugly（QQ 内置崩溃上报）是否外传环境或崩溃材料目前只是报
 临时目录和用户数据目录，工作目录仍由 CLI 设为沙箱数据根。文件日志通过
 kernel 日志设施检查路径，自定义协议缓存通过同一边界检查后装配。
 
-自建宿主动态导入 kernel 后使用 `dlopenWrapper` 和 `activateO3MiscService` 完成
-原生加载与事件分发激活。这两个原语自 kernel 0.12.3 起提供，当前装配依赖以仓库锁定版本为准。
+自建宿主动态导入 kernel 后调用 `prepareSelfHost`。kernel 先完成原生加载与 O3 分发激活，
+然后解析 appid、装配 engine 与启动会话。loader 编排登录、IPC 与协议生命周期，通过
+kernel 的宿主契约取登录账号、准备会话、创建业务运行时及执行显式启用的诊断。
+部署时将 `NAPUKETTO_KERNEL_ENTRY` 指向提供 `prepareSelfHost` 的 kernel 构建产物。
+旧入口缺少该能力时会在原生引导阶段报告错误并退出。
 
 ### 实例锁与进程治理
 

@@ -1,7 +1,7 @@
 /**
  * actions.ts：IPC 动作表（koishi 动作 → kernel API，动作名点分域，params 宽松透传）。
  * ⚠️ 不自研 kernel 依赖：loader 靠 file:// 动态 import kernel，编译期不建 workspace 依赖；错误码统一走 shared/type-guards。
- * Peer / at 归一化在 at-resolver.ts；诊断动作默认不注册（见 diagnostics.ts）。
+ * Peer / at 归一化在 at-resolver.ts。
  */
 import { z } from "zod";
 import { IpcRespondToGroupRequestParamsSchema } from "../../contract/ipc-schema.js";
@@ -9,13 +9,9 @@ import { log } from "../../shared/boot-log.js";
 import { getErrorCode, getErrorMessage } from "../../shared/type-guards.js";
 import type { GroupNotifyApiLike, MsgApiLike } from "../runtime/types.js";
 import { resolveAtElements, toPeer, type UinToUid } from "./at-resolver.js";
-import { type IpcDiagnosticContext, registerDiagnosticActions } from "./diagnostics.js";
-
-export type { IpcPeer } from "./at-resolver.js";
-export { DIAGNOSTIC_ACTION_NAMES } from "./diagnostics.js";
 
 /** kernel apis 最小面（仅本表用到的成员；真实实例由引导装配提供）。 */
-export interface IpcApiContext extends IpcDiagnosticContext {
+export interface IpcApiContext {
     msgApi: Pick<
         MsgApiLike,
         "sendMessage" | "recallMessage" | "fetchMessages" | "setMsgEmojiLikeById" | "markRead"
@@ -70,20 +66,8 @@ export function registerLoginRefreshAction(
     actions.set("login.refreshQr", async () => refreshQr());
 }
 
-/** 动作表构造选项。 */
-export interface IpcActionOptions {
-    /**
-     * 是否注册 `diag.*` 诊断动作。默认 false：常规动作表不含反射面；
-     * 只有本地显式调试（`NAPUKETTO_DIAG=1` / `LaunchOptions.diagnostics`）才开启。
-     */
-    diagnostics?: boolean;
-}
-
 /** 构造动作表（map 顺序即注册顺序，重复动作名后注册覆盖）。 */
-export function createIpcActions(
-    ctx: IpcApiContext,
-    options: IpcActionOptions = {},
-): Map<string, IpcActionHandler> {
+export function createIpcActions(ctx: IpcApiContext): Map<string, IpcActionHandler> {
     const actions = new Map<string, IpcActionHandler>();
 
     actions.set("login.getSelf", async () => ctx.self);
@@ -166,13 +150,6 @@ export function createIpcActions(
         }
         await api.respondToRequest(request, approve, reason);
     });
-
-    // 诊断动作默认不注册：常规动作表只含业务动作，避免外部驱动触达原生反射面。
-    // 显式调试（NAPUKETTO_DIAG=1 / LaunchOptions.diagnostics）才挂 diag.*，且内部仍按
-    // 目标方法 allowlist 收窄（见 diagnostics.ts）。
-    if (options.diagnostics === true) {
-        registerDiagnosticActions(actions, ctx);
-    }
 
     return actions;
 }

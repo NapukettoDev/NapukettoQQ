@@ -63,8 +63,8 @@ id），软重登后随旧 session 失效，重录须重启进程。
 
 `probeRuntime(ctx)`（`src/native/probe/probe.ts`，`NAPUKETTO_PROBE=1` 时 loader 调用）输出
 `NAPUKETTO_CFG_DIR/napuketto-probe.json`：session 枚举、各 `get*Service` 方法面、engine 调用、
-loginService 形状，`types/services/` 以该产物为权威来源。时序坑：probe 内 `getMainSession`
-写回会把空壳主 session 毒化进 `ctx.session`（`session-resolver.ts`），录制器须先于探测取服务。
+loginService 形状，`types/services/` 以该产物为权威来源。方法名枚举可确认服务暴露了
+哪些入口。参数字段、返回值和业务副作用需要独立实机证据。
 
 ## 字段样本与边界表现
 
@@ -379,3 +379,19 @@ Milky `resource_id` 均为 stat 通过的绝对路径。`Thumb/` 零文件、thu
   登录 URL 插值进 message / stack。
 - 剩余条件：未在装有真实 QQ 的 Windows/Linux 上复核原生 `onQRCodeGetPicture` 的 URL 形态与
   过期自动刷新频率；未做 Bugly 外传抓包验证。
+
+
+## F-14 群踢人
+
+- 当前 `src/apis/group/group.ts` 组装 `kickFlag=0`，同时传 `kickList` 和
+  `kickListUids`，并把 `refuseForever=false/true` 分别映射为 `optFlag=1/0`。
+  `src/types/services/group-service.ts` 将返回描述为 `GeneralCallResult`。
+  当前 `unwrap` 将数值 0 视为成功，其他值抛出 `UNKNOWN`。
+- 历史实现 `10fc6e6` 与历史测试 `c34c5e1` 记录了上述假定和模拟结果。
+  本次复核了 `native/probe/probe.ts`，它记录 `getGroupService` 的方法名，
+  有意省略对业务方法的无参调用。隔离宿主用合成服务确认了方法名落盘路径，
+  `tests/apis/group-kick.test.ts` 覆盖现有请求组装、非零结果映射和空列表拒绝。
+- 尚需实际 QQ NT、匹配的 Windows／Linux stub 和经明确授权的测试账号及群。
+  对普通成员移除、拒绝再次入群、管理员／群主目标、调用账号权限不足，以及目标已离群
+  等可确认的失败路径，分别记录平台、QQ 构建版本、脱敏返回码、成员关系前后状态，
+  以及普通移除与拒绝再次入群的可观测差异。现有参数与返回语义仍待真机校准。

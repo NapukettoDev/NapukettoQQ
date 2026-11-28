@@ -130,10 +130,6 @@ export function createRecordingListener(
 /**
  * 启动 listener 录制：session 十服务 + LoginService（exports 单例）逐服务注册
  * 万能监听器，JSONL 逐行追加。返回摘要；文件路径写入结果（bootstrap 日志用）。
- *
- * ⚠️ 调用时序约束：必须在任何探测（probeRuntime / getMainSession）之前调用——
- * resolveMainFromStartup 会把空壳主 session 写回 ctx.session（session-resolver.ts），
- * 而空壳的 service getter 函数仍在、调用却返回 null。
  */
 export function startListenerRecording(
     ctx: WrapperContext,

@@ -6,10 +6,9 @@
 import { log } from "../../shared/boot-log.js";
 import { getErrorMessage } from "../../shared/type-guards.js";
 import type {
-    CoreContextLike,
     CoreLike,
     CoreLoginOptionsLike,
-    KernelLike,
+    HostSessionLike,
     LoginResultLike,
 } from "../runtime/types.js";
 
@@ -20,13 +19,12 @@ export interface LoginTargetRef {
 
 /** 打印可用快速登录账号 + 返回目标账号（启动横幅）。forcedUin（cli `-q` / NAPUKETTO_QUICK_UIN）优先。 */
 export async function pickLoginAccount(
-    kernel: KernelLike,
-    ctx: CoreContextLike,
+    session: HostSessionLike,
     loginResultRef: LoginTargetRef,
     forcedUin?: string,
 ): Promise<void> {
     try {
-        const accounts = await kernel.listLoginAccounts(ctx);
+        const accounts = await session.listLoginAccounts();
         if (accounts.length > 0) {
             log(`可用于快速登录 of QQ（${accounts.length} 个）：`);
             accounts.forEach((acct, idx) => {

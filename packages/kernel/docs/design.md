@@ -31,7 +31,7 @@
 ### 装配与数据流
 
 ```text
-loader ──dlopen/startNapuketto──▶ wrapper.node（engine → session）
+loader ──prepareSelfHost──▶ kernel ──dlopen/O3──▶ wrapper.node（engine → session）
   │                                     │ session.getXxxService()
   ▼                                     ▼
 NapukettoCore ──▶ CoreContext     Msg/Group/Buddy/…Bridge（每 service 一个原生 listener）
@@ -47,7 +47,12 @@ NapukettoCore ──▶ CoreContext     Msg/Group/Buddy/…Bridge（每 service 
   （paths / logger / wrapper / login），不引入全局单例。
 - `native/wrapper/loader.ts` 负责原生 dlopen 与 QQ 数据目录定位，`native/wrapper/lifecycle.ts` 负责
   engine/session 初始化与平台配置；`session-resolver` 提供主 session 读取，并防止探测写回毒化。
-- 登录状态机在 kernel（ADR-010），终端渲染在 cli；登录成功后由 loader 装配业务服务。
+- 登录状态机在 kernel（ADR-010），终端渲染在 cli。自建宿主通过 `prepareSelfHost` 在
+  engine 装配前加载 wrapper 并激活 O3 分发，O3 缺失时报告原生引导失败。
+- kernel 保留启动时创建的 session，登录成功后先 init 再启动并等待消息服务。软重登可复用
+  已就绪的 session；每次协议装配从 kernel 取得独立运行时与清理函数。
+- 自建宿主的会话探测与诊断在 kernel 执行。运行时探测由显式开关启动，IPC 诊断仍受原有
+  方法允许列表约束。宿主契约返回业务 API、事件通道、数据路径与观测结果。
 
 ### 事件桥
 
