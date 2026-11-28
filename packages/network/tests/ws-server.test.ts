@@ -272,14 +272,17 @@ describe("WsServer", () => {
     it("close 关闭全部连接、send 静默、重复 close 与未 open close 安全", async () => {
         const port = await getFreePort();
         const server = new WsServer({ host: "127.0.0.1", port });
+        cleanups.push(() => server.close());
         await expect(server.close()).resolves.toBeUndefined();
 
         await server.open();
         const url = `ws://127.0.0.1:${port}`;
         const ws = await connectOk(url);
+        cleanups.push(async () => ws.terminate());
 
+        const closed = waitClose(ws);
         await server.close();
-        expect((await waitClose(ws)).code).toBe(1001);
+        await expect(closed).resolves.toMatchObject({ code: 1001 });
         expect(() => server.send({ after: "close" })).not.toThrow();
         await expect(server.close()).resolves.toBeUndefined();
     });
