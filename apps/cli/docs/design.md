@@ -176,33 +176,14 @@ supervisor 与 `restart` 派生进程使用。终端与信号由 CLI 原有处�
 `noEmit`，发布入口 `dist/index.mjs` 和声明 `dist/index.d.mts` 由 tsdown 生成。
 
 ## 测试布局
-测试收拢在包根 `tests/` 下（镜像 `src/` 子目录结构），文件名对应被测模块；
-跨模块的领域套件可用领域名：
+测试收拢在包根 `tests/` 下。`tests/config/` 覆盖 schema 与协议配置校验，
+`tests/commands/` 在临时目录用独立 Node 进程执行发布入口 `dist/index.mjs`，
+运行前需构建 CLI 及其工作区依赖。
 
-```text
-tests/cli/error.test.ts
-tests/commands/config.test.ts
-tests/commands/ops.test.ts
-tests/commands/start.test.ts
-tests/config/inline.test.ts
-tests/config/schema.test.ts
-tests/config/store.test.ts
-tests/config/source.test.ts   # inline + store 来源优先级
-tests/config/template.test.ts   # 配置模板段落归属
-tests/runtime/boot.test.ts
-tests/runtime/lines.test.ts     # 逐行切分 + 无换行超长行截断
-tests/runtime/state.test.ts
-tests/runtime/supervisor.test.ts
-tests/runtime/qr.test.ts      # 终端二维码渲染（uqr 矩阵 roundtrip）
-tests/logger.test.ts
-```
-
-约束：
-
-- 同一条领域规则只在一个测试文件断言（例如占位 QQ 号规则归
-  `tests/config/schema.test.ts`），其他文件只验证该路径把 `ConfigError` 透出。
-- 搬移文件后必须核对 `vi.mock` 说明符：它按测试文件位置解析，tsc 不会报错。
-- POSIX-only 用例（环境变量大小写别名）保持 `it.runIf(process.platform !== "win32")`。
+- 配置命令验证生效来源、退出码、stdout 与 TOML 文件内容。QQ 号格式等字段规则归 schema 测试。
+- 运维命令读取真实状态文件并探测测试创建的进程，Windows 和 Linux 校验实际命令行。
+  终止与 detached 拉起在系统调用边界记录，保留存活探测、身份判断与命令分支。
+  旧状态缺少指纹时，supervisor 和 boot 保持兼容；无可结束的 boot 时，缺少指纹的 self-host 跳过树杀。
 
 ## 变更检查清单
 - [ ] 新文件归属明确；顶层不再新增散落模块
