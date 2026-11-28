@@ -117,13 +117,13 @@ pnpm exec napuketto restart             # 重启 supervisor
 [开发指南](./docs/guides/development.md) · [安全策略](./.github/SECURITY.md) ·
 [Koishi适配器](https://www.npmjs.com/package/koishi-plugin-adapter-napuketto)
 
-## 社区
-
-> [!CAUTION]
-> **本项目没有且不会有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
-
 ## 状态
 
 <p align="center">
   <img src="https://repobeats.axiom.co/api/embed/1bf92988cdc683dd8eec6232b526e6c619984c37.svg" alt="Repobeats analytics image">
 </p>
+
+## 社区
+
+> [!CAUTION]
+> **本项目没有且不会有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
