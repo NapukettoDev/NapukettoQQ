@@ -1,15 +1,6 @@
 /**
- * message-element.ts Linux 原生对象形态回归测试（2026-11 线上 issue）
- *
- * Linux 3.2.x 原生 `wrapper.node` 与 Windows 形态差异：
- *  - Windows：省略未命中的变体字段（`undefined`）；
- *  - Linux：把**所有**未命中的变体字段显式赋值为 `null`
- *    （纯文本元素的 `picElement: null` / `grayTipElement: null` / …）。
- *
- * 事故链路：`collectCandidates` 把每个元素的 `picElement`（可能是 null）传给
- * `picLocalCandidates`，旧实现只判 `=== undefined`，读 `null.picPath` 抛
- * TypeError → 整个 `Msg/onRecvMsg` 分支在 channel.emit 前中断（OB11 收不到
- * message 事件）。本文件锁定「null 与 undefined 等价」的转换契约。
+ * Linux 会将未命中的变体置为 `null`。桥层会扫描每个元素的图片路径，
+ * 因此即使非图片元素也必须能安全传给 `picLocalCandidates`。
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,7 +29,6 @@ function makeMsg(elements: RawElement[]): RawMessage {
     };
 }
 
-/** Linux 形态：所有未命中的变体字段显式 null。 */
 const NULL_VARIANTS = {
     textElement: null,
     picElement: null,
@@ -52,7 +42,6 @@ const NULL_VARIANTS = {
     multiForwardMsgElement: null,
 } as const satisfies Partial<RawElement>;
 
-/** 构造 Linux 形态元素（默认全部变体字段 null，可覆盖命中的那个）。 */
 function linuxElement(overrides: Partial<RawElement> & { elementType: number }): RawElement {
     return { ...NULL_VARIANTS, ...overrides };
 }

@@ -129,7 +129,6 @@ export function toMessageRecallEvent(
 ): MilkyEvent<MessageRecallData> | null {
     const gray = msg.elements.find((el) => el.grayTipElement != null)?.grayTipElement;
     const revoke = gray?.revokeElement;
-    // Linux 原生对象变体字段显式置 null（== null 判据）
     if (revoke == null) {
         return null;
     }

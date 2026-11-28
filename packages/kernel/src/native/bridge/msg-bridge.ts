@@ -45,11 +45,7 @@ export class MsgBridge {
         try {
             pending = hasPendingPicPaths(msgs);
         } catch {
-            // 异常隔离（Linux 原生 null 事故）：图片落盘宽限只是增强层，
-            // 其判定异常绝不能阻断整批事件——否则一条畸形元素就让 channel.emit
-            // 完全静默（OB11 收不到任何 message 事件，debug 日志也无记录）。
-            // 这里按「无需等待」降级同步发射，逐元素的空值兜底由 canonical 层
-            // （toCanonicalElements 宽容不抛）负责。
+            // 候选路径判定失败时立即发出事件，避免单条畸形元素阻断整批消息。
             pending = false;
         }
         if (!pending) {

@@ -47,14 +47,12 @@ const AT_ALL_TARGET = "all";
  *  - 进程内为 `Map<0, path>`（收向实测）；
  *  - 跨进程/JSON 序列化后退化为平面对象 `{"0": path}`（`JSON.stringify(Map)`
  *    内容全丢，无规整的传输会得到空对象 `{}`）；
- *  - 个别形态可能直接给字符串路径（兜底容忍）。
+ *  - 也可能直接给字符串路径，或用空值表示缩略图缺失（包括容器中的值）。
  *
  * ⚠️ 线上事故：koishi IPC 模式下 thumbPath 到达父进程已是平面对象，
  * 直接 `.get(0)` 抛 TypeError，整条视频消息事件分派失败。
  */
 function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefined {
-    // Linux 3.2.x 原生对象把未命中的变体字段显式置 null（不是省略成 undefined），
-    // 必须用 `== null` 同时挡住两种情况，否则会穿透到索引访问。
     if (thumb == null || thumb === "") {
         return undefined;
     }
@@ -66,7 +64,6 @@ function readVideoThumbPath(thumb: VideoElement["thumbPath"]): string | undefine
         return value == null || value === "" ? undefined : value;
     }
     const value = thumb[String(VIDEO_THUMB_KEY)];
-    // 平面对象/Map 的内部值在原生宿主上同样可能是显式 null
     return value == null || value === "" ? undefined : value;
 }
 
@@ -114,13 +111,7 @@ function textToCanonical(textEl: TextElement | null | undefined): CanonicalEleme
     return { type: "text", text: content };
 }
 
-/**
- * 空值视为缺失（跨平台原生对象形态差异）：
- *  - Windows 省略未命中的字段 → undefined；
- *  - Linux 3.2.x 显式置 null；
- *  - Linux 原生对象也常给 "" 而不是省略字段。
- * 三者统一归为 undefined，避免 null 被当成有效值继续下传。
- */
+/** 原生字符串字段也可能用空字符串表示缺失。 */
 function emptyToUndefined(value: string | null | undefined): string | undefined {
     return value == null || value === "" ? undefined : value;
 }
@@ -148,12 +139,9 @@ function isLocalPathCandidate(value: string): boolean {
  * pic 元素的本地路径候选（按 canonical 选取顺序去重）。
  *
  * 收向实测：sourcePath 是 nt_data 下的绝对路径，指向「自动下载完成后才会出现」的
- * 文件——补丁生效前该文件不存在。导出给 pic-path-grace（桥层等待落盘）与
- * picToCanonical 共用同一候选序。
+ * 文件。桥层对每个元素扫描候选路径，和 canonical 转换共用同一候选顺序。
  */
 export function picLocalCandidates(pic: PicElement | null | undefined): string[] {
-    // Linux 原生对象的 `picElement` 在非 PIC 元素上是显式 null（Windows 为省略），
-    // 这里必须同时挡住 null/undefined（线上事故：null 读取 picPath 崩溃）。
     if (pic == null) {
         return [];
     }
@@ -219,8 +207,6 @@ function videoToCanonical(video: VideoElement | null | undefined): CanonicalElem
     if (video.videoUrl != null) {
         base.url = video.videoUrl;
     }
-    // thumbPath 接收形态不唯一（Map / 序列化平面对象 / 字符串 / Linux 显式 null），
-    // 统一走防御读取
     const thumb = readVideoThumbPath(video.thumbPath);
     if (thumb !== undefined) {
         base.thumbPath = thumb;
@@ -244,7 +230,6 @@ function fileToCanonical(file: FileElement | null | undefined): CanonicalElement
     }
     const path = file.filePath ?? "";
     const name = file.fileName;
-    // Linux 原生对象未命中的字段显式 null（不仅是 undefined）
     if (name == null) {
         return { type: "file", path };
     }
@@ -278,7 +263,6 @@ function arkToCanonical(
     el: RawElement,
 ): CanonicalElement {
     const bytes = ark?.bytesData;
-    // Linux 原生对象未命中的变体字段显式 null（arkElement 本身与 bytesData 均按空值判）
     if (bytes == null || bytes === "") {
         return { type: "unknown", raw: el };
     }

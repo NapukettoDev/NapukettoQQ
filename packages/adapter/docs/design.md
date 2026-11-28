@@ -397,7 +397,8 @@ PCM。`peakBytes` 为动作同时持有的临时媒体载荷峰值，包含 PCM 
   enrichment 完成，结果经 ctx 注入。改翻译不得新增 API 调用或缓存读取。
 - 缓存只读（ADR-008）：diff / baseline / 首帧抑制属 kernel 缓存层（`cache/essence-cache.ts`，
   ADR-028），adapter 不写缓存；精华列表拉取用 kernel 串行链（并发回写会把新列表覆盖成旧列表）。
-- 元素存在性一律 `!= null`：Linux 原生对象把未命中的变体显式置 null，`!== undefined` 会误判（直读字段抛错或普通消息误入分支）。
+- 元素存在性用 `!= null` 判断。Windows 省略未命中的变体字段，Linux 原生对象会将其置为 `null`。
+  已存在的群提示对象也可能缺少 `type`，分发群提示前需单独检查。误判会导致读字段抛错或普通消息被当作通知处理。
 - 时间统一经 `toUnixSeconds`：兼容 Windows 毫秒与 Linux 秒，禁止在翻译里直接 `/1000`。
 - 启动前历史积压一律拦截（issue #122）：QQNT 在登录 / 重连时会把历史消息与旧好友申请
   全量重放，收链路只报「实时」数据。消息侧在 `subscribeRawMessages` 统一按订阅时刻

@@ -108,8 +108,6 @@ function groupElementToEvent(
     grp: TipGroupElement | null | undefined,
     ctx: NoticeTranslateContext,
 ): MilkyEvent | null {
-    // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
-    // 判别字段 type 同样可能是显式 null，不能只判 undefined）
     if (grp == null || grp.type == null) {
         return null;
     }
@@ -273,7 +271,6 @@ export function toMilkyNoticeEvent(
 ): MilkyEvent | null {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
         if (g == null) {
             continue;
         }

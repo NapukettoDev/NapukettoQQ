@@ -117,7 +117,6 @@ function toRevokeEvent(
 ): SatoriEventContent | null {
     for (const el of raw.elements) {
         const revoke = el.grayTipElement?.revokeElement;
-        // Linux 原生对象变体字段显式置 null（== null 判据）
         if (revoke == null) {
             continue;
         }
@@ -149,8 +148,6 @@ function toMemberChangeEvent(
 ): SatoriEventContent | null {
     for (const el of raw.elements) {
         const grp = el.grayTipElement?.groupElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
-        // 判别字段 type 同样可能是显式 null，不能只判 undefined）
         if (grp == null || grp.type == null) {
             continue;
         }
@@ -207,7 +204,6 @@ function toMember(
     uidToUinMap: Map<string, string>,
 ): GuildMember {
     const member: GuildMember = { user: toUser(toUinString(uid, uidToUinMap), nick) };
-    // Linux 原生对象未命中的字段显式 null（不只是 undefined）
     if (remark != null && remark !== "" && remark !== nick) {
         member.nick = remark;
     }

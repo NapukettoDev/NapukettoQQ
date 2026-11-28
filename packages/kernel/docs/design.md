@@ -273,7 +273,9 @@ bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evid
 - `parseQuaFromMajor()` 从 `major.node` 扫描 `V1_(WIN|LNX|MAC)_NQ_…_GW_B`；
   `resolveAppidQua()` 优先内置 qua，解析不到才用 `buildQua` 拼（Linux 用 `_` 连接版本）。
 - `buildEngineConfig` / `buildSessionConfig` 接受显式 `platform` 覆盖；`use_xlog` 在非
-  Windows 打开。appid 唯一来源是 `major.node` 动态解析，失败显式抛错，不回退过期值。
+  Windows 打开。
+- Core 登录和会话激活优先使用显式 `appid`，缺省从 `wrapper.node` 同目录的 `major.node` 解析。
+  路径优先取 wrapper 上下文的 `wrapperPath`，其次取 `NAPUKETTO_WRAPPER_PATH`。解析失败抛 `INVALID_PARAM`。
 - `resolveQqUserDataRoot`：Linux 直接用数据根（`NAPUKETTO_DATA_ROOT` 或 `attachWrapper` 的
   `env.dataRoot`）；Windows 走官方 `getNTUserDataInfoConfig()` + `Tencent Files` 兜底。
   `resolveQqGlobalPath` 统一拼 `<数据根>/nt_qq/global`，不读写 `$HOME`。

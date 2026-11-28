@@ -51,15 +51,6 @@ import type {
 /** 群文件业务类型（group_upload 的 file.busid,与 kernel 群文件系列同源语义）。 */
 const GROUP_FILE_BUS_ID = 102;
 
-/**
- * 检查消息是否含文件元素（group_upload 开关分支判定）。
- *
- * ⚠️ 用空值判定（`!= null`）而非 `!== undefined`（Linux 原生宿主）：
- * Windows 原生对象省略未命中的元素变体字段，Linux 3.2.x 原生对象则把**全部**
- * 变体字段显式置 `null`（`"grayTipElement":null` 等）。用 `!== undefined`
- * 会把每条普通消息都判成「含该元素」——OB11 入站消息因此全部被误路由到
- * grayTip notice 分支并静默丢弃（真机复现）。
- */
 export function hasFileElement(msg: RawMessage): boolean {
     return msg.elements.some((el) => el.fileElement != null);
 }
@@ -97,7 +88,6 @@ function toRecall(
     g: GrayTipElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupRecallNoticeEvent | OB11FriendRecallNoticeEvent | null {
-    // Linux 原生对象把未命中的变体字段显式置 null（== null 判据，见 design 不变量）
     if (g?.revokeElement == null) {
         return null;
     }
@@ -215,8 +205,6 @@ function toGroupChange(
     g: GrayTipElement,
     ctx: NoticeTranslateContext,
 ): OB11GroupEvent | null {
-    // Linux 原生对象未命中的变体字段显式置 null（== null 判据；
-    // 判别字段 type 同样可能是显式 null，不能只判 undefined）
     const grp = g?.groupElement;
     if (grp == null || grp.type == null) {
         return null;
@@ -343,7 +331,6 @@ export function toFriendAdd(entry: BuddyListEntry, selfUin: string): OB11FriendA
 export function toGroupUpload(msg: RawMessage, selfUin: string): OB11GroupUploadNoticeEvent | null {
     const el = msg.elements.find((e) => e.fileElement != null);
     const file = el?.fileElement;
-    // Linux 原生对象未命中的变体字段显式 null（== null 判据）
     if (file == null) {
         return null;
     }
@@ -406,7 +393,6 @@ function logUntranslatedGrayTip(msg: RawMessage, ctx: NoticeTranslateContext): v
 export function toOb11NoticeEvent(msg: RawMessage, ctx: NoticeTranslateContext): OB11Event | null {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
         if (g == null) {
             continue;
         }

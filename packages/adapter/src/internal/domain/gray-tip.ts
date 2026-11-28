@@ -1,21 +1,13 @@
 /**
- * grayTip 元素工具（OB11 / Satori 共用，克隆合并）
- *
- * grayTip（系统提示消息）涉及的操作者/成员 uid 需要批量 uid→uin 转换，
- * 两协议翻译层共用同一套收集逻辑。
+ * 系统提示（grayTip）的操作者和成员 uid 在协议边界批量转换为 uin。
+ * Linux 会把缺失的变体置为 `null`，元素和子元素都按空值判定是否存在。
  */
 import type { GrayTipElement, RawMessage } from "@napuketto/kernel";
 
-/**
- * 消息是否含 grayTip 元素（OB11 / Milky 收链路分流判据，收拢）。
- * `!= null` 空值判定：Linux 原生宿主把未命中的变体字段显式置 null，
- * `!== undefined` 会把普通消息误判成 grayTip 消息（见 OB11 hasFileElement 注）。
- */
 export function hasGrayTip(msg: RawMessage): boolean {
     return msg.elements.some((el) => el.grayTipElement != null);
 }
 
-/** 非空 uid 才加入集合（Linux 原生对象未命中的字段是显式 null，不只 undefined）。 */
 function collectUids(uids: Set<string>, ...candidates: Array<string | null | undefined>): void {
     for (const uid of candidates) {
         if (uid != null && uid !== "") {
@@ -24,18 +16,15 @@ function collectUids(uids: Set<string>, ...candidates: Array<string | null | und
     }
 }
 
-/** 收集 grayTip 涉及的 uid（批量 uidToUin 用）。 */
 export function collectGrayTipUids(msg: RawMessage): string[] {
     const uids = new Set<string>();
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据，读字段前先挡）
         if (g == null) {
             continue;
         }
         collectUids(uids, g.revokeElement?.operatorUid, g.aioOpGrayTipElement?.peerUid);
         const grp = g.groupElement;
-        // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
         if (grp == null) {
             continue;
         }
@@ -50,15 +39,10 @@ export function collectGrayTipUids(msg: RawMessage): string[] {
     return [...uids];
 }
 
-/**
- * 第一条「已挂载但不可翻译」的 grayTip 元素（校准日志入口）。
- * 与 OB11 / Milky notice 翻译共用：翻译函数返回 null 时用本函数定位元素打 raw
- * 日志，两协议的日志口径一致（跳过 REVOKE——撤回翻译独立成事件）。
- */
+/** 通知翻译未命中时定位原始元素供日志使用。撤回由独立事件处理。 */
 export function firstUntranslatedGrayTip(msg: RawMessage): GrayTipElement | undefined {
     for (const el of msg.elements) {
         const g = el.grayTipElement;
-        // Linux 原生对象未命中的变体字段显式置 null：g/revokeElement 都按空值判
         if (g != null && g.revokeElement == null) {
             return g;
         }
@@ -66,15 +50,9 @@ export function firstUntranslatedGrayTip(msg: RawMessage): GrayTipElement | unde
     return undefined;
 }
 
-/**
- * 撤回 grayTip 元素（非撤回消息返回 undefined；Milky 收链路 notice/召回
- * 分流判据，自 milky adapter.ts 收拢）。
- */
 export function findRevokeElement(
     msg: RawMessage,
 ): NonNullable<GrayTipElement["revokeElement"]> | undefined {
-    // `?? undefined`：Linux 原生对象显式 null 在类型上不满足 NonNullable 返回；
-    // 统一归一成 undefined（调用方只做「是否命中」判定）。
     return (
         msg.elements.find((el) => el.grayTipElement?.revokeElement != null)?.grayTipElement
             ?.revokeElement ?? undefined

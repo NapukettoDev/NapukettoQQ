@@ -109,13 +109,11 @@ async function extractPicElement(
     el: RawElement,
     deps: GetMediaDeps,
 ): Promise<MediaInfoResult | undefined> {
-    // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
     const pic = el.picElement;
     if (pic == null) {
         return undefined;
     }
     const out: MediaInfoResult = {};
-    // Linux 原生对象把未命中的字段显式置 null（不只是 undefined）
     if (pic.fileSize != null) {
         out.file_size = pic.fileSize;
     }
@@ -145,7 +143,6 @@ async function downloadPttFallback(
     try {
         const downloaded = await deps.msgApi.downloadPtt(msgId, peer);
         const rel = downloaded.filePath;
-        // Linux 原生对象未命中的字段显式 null（!= null 判据）
         if (rel != null && rel !== "") {
             const localAfter = await exportQqMedia(rel, deps.mediaBaseDir, deps.cacheDir);
             if (localAfter !== undefined) {
@@ -197,11 +194,9 @@ export function createMediaActions(api: OneBotApi): Ob11Action[] {
                 if (first === undefined) {
                     throw kernelError(`消息 ${id} 不存在或已被撤回`, "NOT_FOUND");
                 }
-                // Linux 原生对象未命中的变体字段显式置 null（== null 判据）
                 const el = first.elements.find((e) => e.pttElement != null);
                 const ptt = el?.pttElement;
                 const filePath = ptt?.filePath;
-                // filePath 同样可能是显式 null（不只是 undefined）
                 if (ptt == null || filePath == null) {
                     throw kernelError(`消息 ${id} 不包含语音`, "NOT_FOUND");
                 }

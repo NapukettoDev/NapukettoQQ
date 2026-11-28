@@ -21,7 +21,6 @@ export const FEATURES = [
     "message.list.from", // message.list 支持以消息 ID 作分页令牌
 ] as const;
 
-/** 构造用户（uin）。name/nick 兼容 Linux 原生对象的显式 null。 */
 export function toUser(id: string, name?: string | null, nick?: string | null): User {
     const user: User = { id };
     if (name != null && name !== "") {

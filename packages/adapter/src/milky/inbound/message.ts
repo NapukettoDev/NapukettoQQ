@@ -89,7 +89,6 @@ export class MilkyInboundMessage {
         }
         await this.deps.enrich.fillGroupEntities(msg, ctx);
         const forward = this.findForward(msg);
-        // Linux 原生对象未命中的变体字段显式 null（!= null 判据）
         if (forward != null) {
             ctx.forwardSegments = [
                 incomingForwardSegment(forward.resId ?? "", forward.fileName ?? ""),

@@ -6,10 +6,6 @@ import type { NodeIKernelMsgService, Peer, RawMessage } from "../../types/index.
 import { unwrapResult } from "../result.js";
 import { fetchMsgsByMsgId } from "./queries.js";
 
-/**
- * 在消息列表中找含 multiForwardMsgElement 的元素（找不到返回 null）。
- * 同 findPttElement：`!= null` 兼容 Linux 的显式 null 变体字段。
- */
 function findForwardElement(
     msgs: RawMessage[],
 ): { resId: string; fileName: string; xmlContent: string } | null {
@@ -42,7 +38,7 @@ export async function sendForwardMessage(
     });
     unwrapResult("buildMultiForwardMsg", built);
     const elements = built.rspInfo?.elements;
-    // Linux 原生宿主可能给显式 null 而不是省略（统一空值判据）
+    // 原生组装成功时，返回的 elements 仍可能为 null。
     if (elements == null || elements.length === 0) {
         throw kernelError("合并转发组装失败：无元素", "UNKNOWN");
     }
@@ -60,7 +56,7 @@ export async function fetchForwardMessage(
 ): Promise<RawMessage[]> {
     const msgs = await fetchMsgsByMsgId(service, peer, [msgId]);
     const forward = findForwardElement(msgs);
-    // resId 在 Linux 原生对象上可能是显式 null（空值判据）
+    // 原生转发元素可能存在但没有可供 getMultiMsg 查询的 resId。
     if (forward === null || forward.resId == null || forward.resId === "") {
         throw kernelError("消息不包含合并转发内容", "NOT_FOUND");
     }

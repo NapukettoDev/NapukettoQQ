@@ -301,7 +301,6 @@ function receiveSegmentsOf(msg: RawMessage, uidToUin: Map<string, string>): Inco
     const fwd = msg.elements.find(
         (el) => el.multiForwardMsgElement != null,
     )?.multiForwardMsgElement;
-    // Linux 原生对象未命中的变体字段显式 null（!= null 判据）
     if (fwd != null) {
         segments.push(incomingForwardSegment(fwd.resId ?? "", fwd.fileName ?? ""));
     }

@@ -25,7 +25,6 @@ function pttDownloadResult(
     latest: PttElement | null | undefined,
     isLastPoll: boolean,
 ): PttElement | null {
-    // Linux 原生对象未命中的变体字段显式 null（不是省略成 undefined）
     if (latest == null) {
         return null;
     }
@@ -34,13 +33,6 @@ function pttDownloadResult(
     return hasPath && (done || isLastPoll) ? latest : null;
 }
 
-/**
- * 在消息列表中找含 pttElement 的元素（找不到返回 null）。
- *
- * ⚠️ `!= null` 而非 `!== undefined`（Linux 原生宿主）：Windows 省略未命中的
- * 变体字段，Linux 3.2.x 把所有变体字段显式置 null。用 `!== undefined` 会让
- * 首个元素（哪怕是文本消息）被误判成语音元素，进而把 null 传给原生下载接口。
- */
 function findPttElement(msgs: RawMessage[]): RawElement | null {
     const [first] = msgs;
     if (first === undefined) {
@@ -58,7 +50,6 @@ async function pttElementOf(
     const msgs = await fetchMsgsByMsgId(service, target, [msgId]);
     const el = findPttElement(msgs);
     const ptt = el?.pttElement;
-    // Linux 原生对象未命中的变体字段显式 null（不只是 undefined）
     if (el === null || ptt == null) {
         return null;
     }
@@ -85,7 +76,6 @@ export async function fetchPttText(
     // 转写异步完成：再拉一次拿 text
     const after = await fetchMsgsByMsgId(service, target, [msgId]);
     const text = findPttElement(after)?.pttElement?.text;
-    // Linux 原生对象未命中的字段显式 null（不只是 undefined）
     if (text == null || text === "") {
         throw kernelError("获取语音转文字结果失败", "UNKNOWN");
     }
