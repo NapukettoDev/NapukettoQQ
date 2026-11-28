@@ -127,11 +127,3 @@ pnpm exec napuketto restart             # 重启 supervisor
 <p align="center">
   <img src="https://repobeats.axiom.co/api/embed/1bf92988cdc683dd8eec6232b526e6c619984c37.svg" alt="Repobeats analytics image">
 </p>
-
-## English
-
-**Napuketto** is a self-hosted bot framework built on the QQ NT native module (`wrapper.node`).
-It runs a standard Node.js process with a stub `QQNT.dll`, loads the native module directly, and
-exposes **Milky**, **OneBot 11**, **Satori**, and **KuroBot** interfaces — no QQ client, no
-injection, no disk patching; one account = one supervised host process, all config in one
-`napuketto.toml`. *Not affiliated with Tencent; original implementation, no GPL code, [MIT](./LICENSE).*
