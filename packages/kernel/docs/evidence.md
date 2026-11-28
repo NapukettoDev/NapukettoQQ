@@ -41,9 +41,9 @@ arguments`），argc 不符时只断言、无副作用；NAPI 方法挂在实例
 
 | 项 | 值 |
 |---|---|
-| 开关 | `NAPUTO_LISTENER_RECORD=1` |
+| 开关 | `NAPUKETTO_LISTENER_RECORD=1` |
 | 接缝 | loader bootstrap，在 `runProbePhase` 之前（session 就绪、协议装配之后） |
-| 产物 | `NAPUTO_CFG_DIR/napuketto-listener-record.jsonl`（本次截断后逐行 append） |
+| 产物 | `NAPUKETTO_CFG_DIR/napuketto-listener-record.jsonl`（本次截断后逐行 append） |
 | 行格式 | `{ts, service, event, args}`，args 经 probe-serialize 截断 |
 | 合成事件 | `<get>` / `<has>` / `<ownKeys>` / `<registered>`（注册行带 listenerId） |
 | 仪器面 | Msg、Group、RecentContact、BdhUpload、OnlineStatus、Lock、FileAssistant、Buddy、ProfileLike、NodeMisc + LoginService |
@@ -61,8 +61,8 @@ id），软重登后随旧 session 失效，重录须重启进程。
 
 ### 运行时探测产物
 
-`probeRuntime(ctx)`（`src/native/probe/probe.ts`，`NAPUTO_PROBE=1` 时 loader 调用）输出
-`NAPUTO_CFG_DIR/napuketto-probe.json`：session 枚举、各 `get*Service` 方法面、engine 调用、
+`probeRuntime(ctx)`（`src/native/probe/probe.ts`，`NAPUKETTO_PROBE=1` 时 loader 调用）输出
+`NAPUKETTO_CFG_DIR/napuketto-probe.json`：session 枚举、各 `get*Service` 方法面、engine 调用、
 loginService 形状，`types/services/` 以该产物为权威来源。时序坑：probe 内 `getMainSession`
 写回会把空壳主 session 毒化进 `ctx.session`（`session-resolver.ts`），录制器须先于探测取服务。
 

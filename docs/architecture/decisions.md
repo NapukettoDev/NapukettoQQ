@@ -26,7 +26,7 @@
 | ADR-017 | `KernelError` 类型化错误 + 协议错误码映射表 | 各协议各写一套错误判断 | 错误分类集中在 kernel，协议层只做映射 |
 | ADR-018 | wrapper 版本探测独立模块 | 硬编码版本路径/appid | appid、qua 与版本强相关；从 `major.node` 运行时解析 |
 | ADR-019 | loader 跨平台：不内置腾讯二进制（Linux 运行方式部分已被 ADR-027 替代） | wine 跑完整 QQ；在发布产物中内置腾讯二进制 | 只暴露标准协议端口；运行时下载官方安装包，仓库保持干净 |
-| ADR-020 | Koishi 插件经 loader IPC 共享动作表（`NAPUTO_IPC=1`） | 插件进程内直连原生；独立端口双开 | 零网络传输、零配置 IO；loader 运行时动态 import，不构成编译期依赖 |
+| ADR-020 | Koishi 插件经 loader IPC 共享动作表（`NAPUKETTO_IPC=1`） | 插件进程内直连原生；独立端口双开 | 零网络传输、零配置 IO；loader 运行时动态 import，不构成编译期依赖 |
 | ADR-021 | kurobot 连接层在 adapter 内自建（不复用 `network.WsClient`） | 给 `WsClient` 加子协议/onOpen/close-code 退避 | 子协议握手、应用层心跳、close-code 感知退避都是协议语义，下沉 network 违反协议无关 |
 | ADR-022 | 版本管理用 Changesets；GitHub Release 的 repo tag 与包版本解耦 | 手工改版本；repo tag 锚定包版本 | 多包联动 bump 自动化；各包独立版本、独立发布 |
 | ADR-023 | Koishi 适配器独立成仓 | 继续 submodule + 主仓 workspace 双身份 | submodule 只适合源码保密边界；独立发布单元需要自己的 lockfile/CI/版本节奏 |

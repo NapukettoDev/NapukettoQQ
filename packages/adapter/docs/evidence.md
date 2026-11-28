@@ -56,7 +56,7 @@ pnpm vitest run packages/adapter/src/milky/__tests__/transport.test.ts
 KuroBot 连接用例用 `ws` 起真端口假服务端，复刻 `handleProtocols` 子协议校验；重连用例
 注入快值（`retryBaseDelayMs=20ms`），生产缺省 1s 起、60s 封顶。
 
-Milky 服务方法面探测：`NAPUTO_PROBE=1` 拉起 CLI 后读 probe JSON（names-only）确认运行时
+Milky 服务方法面探测：`NAPUKETTO_PROBE=1` 拉起 CLI 后读 probe JSON（names-only）确认运行时
 `get*Service` 的方法名。实测登录后 session 注册表 getter 恒 null，运行中重新取服务拿不到
 实例；装配期一次性持有引用的服务不受影响。
 

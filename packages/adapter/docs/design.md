@@ -40,7 +40,8 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
   entry `core/index` 构出 `dist/core/index.mjs`，公开子路径仍是 `@napuketto/adapter/core`。
   loader 按 `adapterEntry.replace(INDEX_MJS_RE, "core/index.mjs")` 字符串拼接取入口、
   不看 `exports` 映射，故 `dist/` 镜像公开子路径、`src/` 镜像内部分层。
-- 边界靠门禁而非约定：biome `noRestrictedImports` 禁止 `framework/**` import `internal/**`。
+- 边界靠门禁而非约定：Fallow `boundaries`（`.fallowrc.jsonc` 的 `adapter-framework` /
+  `adapter-internal` 分区）禁止 `framework/**` import `internal/**`。
 
 ### 统一模型与生命周期
 
