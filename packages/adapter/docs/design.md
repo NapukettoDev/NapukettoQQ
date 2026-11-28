@@ -181,6 +181,8 @@ Milky 的 `base64://` 媒体沿用动作缓存租约，先核验至多 41,943,04
 Milky HTTP 入口仍按传输层的整个请求体上限验收，缺省 16 MiB。
 
 - 三协议复用 `internal/infra/media-cache.ts`，不改 kernel/network/media 的公开契约。
+  该入口汇出缓存编排；同名目录内分别定义命名和元数据、进程内锁与动作作用域、只读巡检、
+  声明式回收及引用租约。文件系统巡检与回收共享目录边界校验。
   Milky http/base64、Satori http 资源、OB11 远程头像属于发送临时文件；动作级租约从下载前
   覆盖转换、发送与失败分支，动作结束清理。OB11 `download_file`、`get_image`、
   `get_record` 返回可供同账号协议重复使用的路径，成功返回后保留 24h。后续动作验证
