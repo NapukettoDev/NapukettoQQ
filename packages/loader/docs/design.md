@@ -245,8 +245,12 @@ kernel 的宿主契约取登录账号、准备会话、创建业务运行时及�
 - 消息类型：status（booting/dlopening/logging/sessioning/ready/failed）、login、qr、
   event、result、log、ping/pong、action、control（stop/restart/login/status）。
 - 宿主启动即读 stdin。物理行上限 16 MiB（UTF-8 原始字节，含可选 CR，不含 LF）。
-  超长行丢弃至下一 LF，日志不含原文。不调度 EOF 时未结束的尾帧。最多 256 个在途动作，
-  无等待队列；超限以原请求 ID 返回 `IPC_BUSY`。ping 和 control 不占用动作名额。
+  一条帧可跨多个 Buffer，服务端收齐后才解码 UTF-8。同一 Buffer 内可有多条帧。
+  超长行丢弃至下一 LF，日志不含原文，后续完整帧继续处理。不调度 EOF 时未结束的尾帧。
+- 最多 256 个在途动作，无等待队列。超限以原请求 ID 返回 `IPC_BUSY`，在途动作完成后
+  释放名额。ping 和 control 不占用动作名额。
+- `startIpcServer` 返回的 `stop()` 仅停止服务端读写与心跳。stdin 断开还会调用一次退出回调，
+  原因为 `IPC stdin 已断开`。两条路径都允许已进入执行的动作走到完成，并丢弃其迟到响应。
 - 登录前可调用 `login.getSelf`（身份未知时返回 `INVALID_STATE`）；core 创建后开放
   `login.refreshQr`。登录后 `attachIpcServices` 把
   kernel 点分动作并入同一张表，Msg/Group/Buddy/RecentContact/Login 五条通道转 event。
