@@ -92,6 +92,8 @@ payload 不改写；缓存维护与协议翻译各自订阅通道。
   filter 与超时（默认 30s），超时抛 `TIMEOUT`；`onError` 汇总订阅者异常。
 - `emit` 对订阅者做快照并逐个 try/catch：单个订阅者异常不打断派发，统一走 `onError`。
 - 关闭默认 10 监听器上限，允许同一 Service 挂多个订阅者（缓存 + 协议）。
+- 回归测试通过真实通道验证同步抛错和异步拒绝都经 `onError` 交付，后续订阅者仍能收
+  到事件。`waitFor` 命中或超时后，后续事件不再调用原过滤器，且没有遗留定时器。
 
 ### 业务 API 与错误语义
 
@@ -187,6 +189,9 @@ Linux 3.2.x 原生对象把**未命中的变体字段显式置 `null`**（Window
 
 ### 登录与快速登录超时兜底
 
+- 显式指定的账号缺失时抛 `NOT_FOUND`，不会回退到其他历史账号。网络错误允许在 MSF
+  就绪后重试，初次尝试计入三次总上限。回归测试用合成登录服务和虚拟时钟驱动真实账号
+  选择、网络就绪轮询、重试及单步超时路径。
 - `quickLogin` 对 `getLoginList` 与每次 `attemptQuickLogin` 用 `raceWithTimeout` 包裹，
   默认 `QUICK_LOGIN_TIMEOUT_MS = 20_000`（`QuickLoginOptions.quickLoginTimeoutMs` 可配）。
 - 超时按登录失败处理：`快速登录失败: 快速登录超时`（`NOT_LOGIN`），复用既有
@@ -296,6 +301,10 @@ bridge 并存、不替代 bridge。命令、产物格式与首录观察见 [evid
 再等 `Msg/onMsgInfoListUpdate` 中 `sendStatus` 为 2/3 的确认（15s 超时）。返回值取确认消息
 的 `msgId`（`confirmSend` 交回命中的 `RawMessage`），缺失才回退生成值——Windows 两者一致，
 Linux wrapper 落库 id 与生成值不同，必须以确认消息为准，否则 `get_msg` / `recallMsg` 查不到。
+
+`confirmSend` 按更新消息的 `guildId` 关联本次发送，无关消息和非终态继续等待。状态 0
+和确认超时都抛 `SEND_FAILED`。回归测试将合成更新送入真实消息通道，并用迟到更新的
+`guildId` 读取与虚拟时钟观测成功、失败和超时后的监听及定时器清理。
 
 ### 按原生消息 ID 表态
 
