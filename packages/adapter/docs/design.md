@@ -339,6 +339,8 @@ PCM。`peakBytes` 为动作同时持有的临时媒体载荷峰值，包含 PCM 
 - `Msg/onRecvSysMsg` 是群名片/头衔/精华/表情回应等系统事件的总闸，payload 是原始
   protobuf 字节（带符号 int8 数组）。共享层在 `src/internal/domain/sysmsg.ts`，OB11 与
   Milky 各自只维护识别表。
+  同名目录按层分为无依赖的 `proto-wire.ts`、QQ 回调收窄与信封 `envelope.ts`、
+  以及识别和遥测 `pipeline.ts`。
 - 解码：`decodeProtoTree` 手写 wire-format（varint + length-delimited，BigInt 保 64 位；
   定长 wire 跳过；深度/字段数/varint 长度设上限），length-delimited 递归 try-parse，
   失败挂不透明 bytes。
