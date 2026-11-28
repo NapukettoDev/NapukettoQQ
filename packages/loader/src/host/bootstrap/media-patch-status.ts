@@ -1,5 +1,5 @@
 /**
- * media-patch-status：stub 补丁状态读取与引导日志（契约：stub 后台线程写 NAPUTO_MEDIA_PATCH_STATUS 指向的状态 JSON）。
+ * media-patch-status：stub 补丁状态读取与引导日志（契约：stub 后台线程写 NAPUKETTO_MEDIA_PATCH_STATUS 指向的状态 JSON）。
  * 组件 B（代码补丁）定案先写 pending，组件 A（实例扫描）命中或窗口关闭后写终态；bootstrap 后读一次，pending/缺失 45s 复读一次。
  * 日志仅为观测面：补丁降级不阻塞宿主，协议层路径防御（kernel）兜底保证下游拿不到不存在的本地路径。
  */
@@ -28,7 +28,7 @@ const FIRST_LINE_RE = /\r?\n/;
 
 /** 读取状态文件（缺失 / 坏 JSON / 非对象 → undefined）。 */
 export function readMediaPatchStatus(path?: string): MediaPatchStatus | undefined {
-    const target = path ?? env.NAPUTO_MEDIA_PATCH_STATUS;
+    const target = path ?? env.NAPUKETTO_MEDIA_PATCH_STATUS;
     if (target === undefined || target === "" || !existsSync(target)) {
         return undefined;
     }

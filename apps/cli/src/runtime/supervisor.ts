@@ -451,7 +451,7 @@ export async function runSupervisor(opts: SupervisorOptions = {}): Promise<void>
         // 时注入（子进程 -q 直跑继承，launchSelfHost 不再覆盖——同名 env 优先级见 launcher）。
         childEnv: {
             ...effectiveConsoleEnv(logCfg),
-            ...(config.nativeMediaPatch === false ? { NAPUTO_DISABLE_MEDIA_PATCH: "1" } : {}),
+            ...(config.nativeMediaPatch === false ? { NAPUKETTO_DISABLE_MEDIA_PATCH: "1" } : {}),
         },
         prefixEnabled: effectiveConsoleFormat(logCfg) === "pretty",
         isStopping: () => stopping,

@@ -167,12 +167,12 @@ Linux：
 | `NAPUKETTO_IPC` | 否 | `1` = IPC 子进程模式 |
 | `NAPUKETTO_DIAG` | 否 | `1` = 显式启用 IPC 诊断动作（默认关闭，仅本地调试） |
 | `NAPUKETTO_DATA_ROOT` | 否 | 数据根（停止哨兵；调用方 `extraEnv` 注入） |
-| `NAPUTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，issue #105） |
-| `NAPUTO_MEDIA_PATCH_STATUS` | 否 | 补丁状态文件路径（恒注入 `<账号数据目录>/media-patch-status.json`；stub 写 JSON，self-host 读后记日志） |
+| `NAPUKETTO_DISABLE_MEDIA_PATCH` | 否 | `1` = stub 跳过入站图片自动下载补丁（killswitch；`nativeMediaPatch: false` 注入，issue #105） |
+| `NAPUKETTO_MEDIA_PATCH_STATUS` | 否 | 补丁状态文件路径（恒注入 `<账号数据目录>/media-patch-status.json`；stub 写 JSON，self-host 读后记日志） |
 
 - 前缀唯一：只读 / 只透传规范前缀 `NAPUKETTO_*`，不做任何旧拼写别名翻译；2026-11 前缀
-  统一前的历史拼写既不会被读取，也不会进入子进程。唯一例外是闭源 stub 硬编码的两个
-  原生契约键（见下表，禁止改名）。
+  统一前的历史拼写既不会被读取，也不会进入子进程。闭源 stub 硬编码的补丁契约键同样使用
+  `NAPUKETTO_*`，改名必须与 stub 重编同批发布。
 - `NAPUKETTO_QR_ONLY` 只对本次登录生效：`bootstrap-core` 读取后从 `process.env` 删除该键，
   软重登与后续重试不再被残留标记强制扫码。
 - 子进程日志配置是可选公开契约：调用方可用 `LaunchOptions.log`（level / format /

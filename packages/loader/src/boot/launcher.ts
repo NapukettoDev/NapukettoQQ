@@ -64,7 +64,7 @@ export interface LaunchOptions {
     /**
      * 入站图片自动下载补丁（私有 native/ stub 组件）开关。
      * true（缺省）/ undefined = 启用并注入状态文件路径；false = 注入
-     * NAPUTO_DISABLE_MEDIA_PATCH=1 killswitch（stub 跳过全部内存操作）。
+     * NAPUKETTO_DISABLE_MEDIA_PATCH=1 killswitch（stub 跳过全部内存操作）。
      */
     nativeMediaPatch?: boolean;
     /** 自建宿主入口（默认 dist/host/self-host.cjs）。 */

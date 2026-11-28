@@ -92,10 +92,11 @@ const CONTROL_ENV_KEYS = [
 ] as const;
 
 /**
- * 闭源 stub 硬编码读取的原生契约键（禁止改名）：只透传，不翻译。
+ * 闭源 stub 硬编码读取的原生契约键（与规范前缀一致）：只透传，不翻译。
+ * 改名必须与 stub 重编同批发布，否则已发布 DLL 会读不到。
  * 仅在调用方未用强类型 `nativeMediaPatch` 覆盖时保留父进程值。
  */
-const NATIVE_CONTRACT_ENV_KEYS = ["NAPUTO_DISABLE_MEDIA_PATCH"] as const;
+const NATIVE_CONTRACT_ENV_KEYS = ["NAPUKETTO_DISABLE_MEDIA_PATCH"] as const;
 
 /** 子进程环境变量名（self-host.cjs 与 kernel 引导读取）。前缀统一 `NAPUKETTO_*`。 */
 export const ENV = {
@@ -126,14 +127,14 @@ export const ENV = {
     DATA_ROOT: "NAPUKETTO_DATA_ROOT",
     /**
      * 入站图片自动下载补丁 killswitch（=1 时 stub 跳过全部内存操作）。
-     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_DISABLE_MEDIA_PATCH`，禁止改名。
+     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUKETTO_DISABLE_MEDIA_PATCH`，改名须与 stub 重编同批发布。
      */
-    MEDIA_PATCH_DISABLE: "NAPUTO_DISABLE_MEDIA_PATCH",
+    MEDIA_PATCH_DISABLE: "NAPUKETTO_DISABLE_MEDIA_PATCH",
     /**
      * 入站图片自动下载补丁状态文件路径（stub 后台线程写 JSON，self-host 读后记日志）。
-     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUTO_MEDIA_PATCH_STATUS`，禁止改名。
+     * ⚠️ 原生契约：闭源 stub 硬编码读取 `NAPUKETTO_MEDIA_PATCH_STATUS`，改名须与 stub 重编同批发布。
      */
-    MEDIA_PATCH_STATUS: "NAPUTO_MEDIA_PATCH_STATUS",
+    MEDIA_PATCH_STATUS: "NAPUKETTO_MEDIA_PATCH_STATUS",
 } as const;
 
 /** 环境快照类型（process.env 或其显式子集）。 */

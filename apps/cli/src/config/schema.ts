@@ -83,7 +83,7 @@ export interface CliConfig {
     accounts: CliAccountConfig[];
     /**
      * 入站图片自动下载补丁开关（stub 私有组件）。缺省 true；false 时 supervisor 向账号子进程
-     * 注入 NAPUTO_DISABLE_MEDIA_PATCH=1；-q 直跑不经 supervisor，用同名环境变量显式禁用。
+     * 注入 NAPUKETTO_DISABLE_MEDIA_PATCH=1；-q 直跑不经 supervisor，用同名环境变量显式禁用。
      */
     nativeMediaPatch: boolean;
     /** [log] 日志配置段（kernel parseLogConfig 解析；未配置段时 undefined = 全缺省）。 */

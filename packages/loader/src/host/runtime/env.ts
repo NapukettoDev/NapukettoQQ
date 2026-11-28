@@ -1,7 +1,7 @@
 /**
  * env.ts：引导进程环境变量访问层——对象字面量快照，取一次即可（launcher spawn 前已注入完毕）。
  * noPropertyAccessFromIndexSignature 让 process.env 点访问报 TS4111，故用字面量成员携带 CONSTANT_CASE 键名。
- * 前缀唯一：只读规范前缀 `NAPUKETTO_*`，不做旧拼写别名兼容；唯一例外是闭源 stub 硬编码的 `NAPUTO_MEDIA_PATCH_STATUS`（禁止改名）。
+ * 前缀唯一：只读规范前缀 `NAPUKETTO_*`，不做旧拼写别名兼容（闭源 stub 的补丁状态键同样走该前缀）。
  */
 const env = {
     /** kernel 入口（.mjs，bootstrap 动态 import）。 */
@@ -46,10 +46,9 @@ const env = {
     NAPUKETTO_DATA_ROOT: process.env["NAPUKETTO_DATA_ROOT"],
     /**
      * 入站图片自动下载补丁状态文件路径（launcher 注入；stub 后台线程写 JSON）。
-     * 原生二进制硬编码读 `NAPUTO_MEDIA_PATCH_STATUS`：属性名与环境变量名一致，
-     * 不设新前缀别名（闭源 native 契约零破坏）。
+     * 属性名与环境变量名一致：闭源 stub 硬编码读同名键，改名须与 stub 重编同批发布。
      */
-    NAPUTO_MEDIA_PATCH_STATUS: process.env["NAPUTO_MEDIA_PATCH_STATUS"],
+    NAPUKETTO_MEDIA_PATCH_STATUS: process.env["NAPUKETTO_MEDIA_PATCH_STATUS"],
 };
 
 /**

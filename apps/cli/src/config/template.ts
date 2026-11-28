@@ -32,7 +32,7 @@ restartDelayMs = 2000
 
 # 入站图片自动下载补丁（issue #105）：QQ 原生收图管线在无头宿主有两道闸门，
 # stub 私有组件运行期放行（不修改 QQ 安装目录，版本特征失配自动降级）。
-# 缺省 true；false = 注入 NAPUTO_DISABLE_MEDIA_PATCH=1（stub 跳过全部内存操作），
+# 缺省 true；false = 注入 NAPUKETTO_DISABLE_MEDIA_PATCH=1（stub 跳过全部内存操作），
 # 入站图片不落盘，协议层只暴露可用 URL 或空路径（kernel 路径防御层兜底）。
 nativeMediaPatch = true
 
