@@ -1,111 +1,210 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import process from "node:process";
-import { expect, it, vi } from "vitest";
-import { bootstrapWithCore } from "../../../src/host/bootstrap/core.js";
-import type { IpcServerOptions } from "../../../src/host/ipc/server.js";
-import type { KernelServices } from "../../../src/host/protocols/kernel-services.js";
-import { createState } from "../../../src/host/runtime/state.js";
-import type { KernelLike } from "../../../src/host/runtime/types.js";
-import { requestShutdown } from "../../../src/lifecycle/shutdown.js";
+import { expect, it } from "vitest";
+import { stub } from "../../../../adapter/tests/internal/stub.js";
+import {
+    type AssemblyLifecycleDeps,
+    type AssemblyShutdownHook,
+    type AssemblyShutdownPhase,
+    createAssemblyLifecycle,
+} from "../../../src/host/bootstrap/assembly-lifecycle.js";
+import type { KernelServices } from "../../../src/host/runtime/service-types.js";
 
-const { assemble, attachIpc, attachOb11, captureLoginControl } = vi.hoisted(() => ({
-    assemble: vi.fn(),
-    attachIpc: vi.fn(),
-    attachOb11: vi.fn(),
-    captureLoginControl: vi.fn(),
-}));
-vi.mock("../../../src/shared/boot-log.js", () => ({ log: vi.fn() }));
-vi.mock("../../../src/host/auth/login.js", () => ({
-    doLogin: async () => ({ uin: "12345", uid: "u_fixture" }),
-    pickLoginAccount: vi.fn(),
-}));
-vi.mock(import("../../../src/host/auth/relogin.js"), async (original) => ({
-    ...(await original()),
-    createLoginControlHandler: captureLoginControl,
-}));
-vi.mock("../../../src/host/auth/session.js", () => ({
-    replaceSession: vi.fn(),
-    activateSession: vi.fn(),
-    waitSessionReady: vi.fn(),
-    probeCreatedSession: vi.fn(),
-    probeSessionMethods: vi.fn(),
-    startSessionProbe: vi.fn(),
-}));
-vi.mock("../../../src/host/bootstrap/probe.js", () => ({
-    runProbePhase: vi.fn(),
-    runListenerRecordingPhase: vi.fn(),
-    runSmokeIfEnabled: vi.fn(),
-}));
-vi.mock("../../../src/host/ipc/attach.js", () => ({
-    attachIpcServices: attachIpc,
-    createIpcActionsForCore: () => [],
-}));
-vi.mock("../../../src/host/ipc/ob11-bridge.js", () => ({ attachOb11IpcBridge: attachOb11 }));
-vi.mock("../../../src/host/ipc/sender.js", () => ({ sendLogin: vi.fn(), sendStatus: vi.fn() }));
-vi.mock("../../../src/host/protocols/protocols.js", () => ({ startProtocols: assemble }));
+type Hooks = Record<AssemblyShutdownPhase, AssemblyShutdownHook[]>;
 
-it("软重登与关停均先让协议停用，再释放缓存所属的服务", async () => {
-    const home = await mkdtemp(join(tmpdir(), "napuketto-cache-lifecycle-"));
-    const calls: string[] = [];
-    const exit = new Error("fixture process exit");
-    const processExit = vi.spyOn(process, "exit").mockImplementation(() => {
-        throw exit;
+interface ShutdownState {
+    shuttingDown: boolean;
+}
+
+/** 每代装配面用登录 uin 标记，停止函数据此记录清理代次。 */
+function servicesFixture(calls: string[], uin: string): KernelServices {
+    return stub<KernelServices>({
+        self: { uin, nickname: `fixture-${uin}`, uid: `u_${uin}` },
+        dispose: () => {
+            calls.push(`services-${uin}`);
+        },
+        stopAdapters: async () => {
+            calls.push(`adapters-${uin}`);
+        },
     });
-    try {
-        for (const generation of [1, 2]) {
-            assemble.mockResolvedValueOnce({
-                stopAdapters: async () => {
-                    calls.push(`adapters-${generation}`);
-                },
-                dispose: () => {
-                    calls.push(`services-${generation}`);
-                },
-            } satisfies Pick<KernelServices, "stopAdapters" | "dispose">);
-            attachIpc.mockReturnValueOnce(() => {
-                calls.push(`ipc-${generation}`);
-            });
-            attachOb11.mockResolvedValueOnce(() => {
-                calls.push(`ob11-${generation}`);
-            });
-        }
-        const kernel = {
-            ["NapukettoCore"]: { create: () => ({ attachWrapper: () => ({}), login: vi.fn() }) },
-        } as unknown as KernelLike;
-        const ipc = { actions: new Map() } satisfies IpcServerOptions;
-        await expect(
-            bootstrapWithCore(
-                kernel,
-                createState(),
-                {
-                    qqVersion: "fixture",
-                    dataDir: home,
-                    dataRoot: home,
-                    wrapperPath: "",
-                },
-                "fixture",
-                ipc,
-            ),
-        ).resolves.toBe(true);
+}
 
-        type Reassemble = (result: { uin: string; uid: string }) => Promise<boolean>;
-        const callbacks = captureLoginControl.mock.calls[0]?.[3] as
-            | { reassemble: Reassemble }
-            | undefined;
-        expect(callbacks).toBeDefined();
-        const reassemble = callbacks?.reassemble;
-        if (reassemble === undefined) {
-            throw new Error("fixture login callback missing");
-        }
-        await expect(reassemble({ uin: "23456", uid: "u_next" })).resolves.toBe(true);
-        expect(calls).toEqual(["ob11-1", "adapters-1", "ipc-1", "services-1"]);
+function baseDeps(
+    calls: string[],
+    state: ShutdownState,
+): Omit<AssemblyLifecycleDeps, "registerShutdownHook"> {
+    return {
+        startProtocols: async (loginResult) => servicesFixture(calls, loginResult.uin),
+        attachIpcServices: (services) => {
+            const uin = services.self.uin;
+            return () => {
+                calls.push(`ipc-${uin}`);
+            };
+        },
+        attachOb11IpcBridge: async (services) => {
+            const uin = services.self.uin;
+            return () => {
+                calls.push(`ob11-${uin}`);
+            };
+        },
+        isShuttingDown: () => state.shuttingDown,
+    };
+}
 
-        await expect(requestShutdown("fixture")).rejects.toBe(exit);
-        expect(calls.slice(4)).toEqual(["ob11-2", "adapters-2", "ipc-2", "services-2"]);
-        expect(processExit).toHaveBeenCalledExactlyOnceWith(0);
-    } finally {
-        processExit.mockRestore();
-        await rm(home, { recursive: true, force: true });
+function recordHooks(): {
+    hooks: Hooks;
+    register: NonNullable<AssemblyLifecycleDeps["registerShutdownHook"]>;
+} {
+    const hooks: Hooks = { protocols: [], services: [] };
+    return {
+        hooks,
+        register: (hook, phase) => {
+            hooks[phase].push(hook);
+            return () => undefined;
+        },
+    };
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+    let settle: ((value: T) => void) | undefined;
+    const promise = new Promise<T>((resolve) => {
+        settle = resolve;
+    });
+    return {
+        promise,
+        resolve: (value) => {
+            if (settle === undefined) {
+                throw new Error("deferred 未初始化");
+            }
+            settle(value);
+        },
+    };
+}
+
+async function runShutdownPhase(hooks: Hooks, phase: AssemblyShutdownPhase): Promise<void> {
+    for (const hook of hooks[phase]) {
+        await hook();
     }
+}
+
+it("软重登与关停均先停协议消费方，再释放缓存所属的服务", async () => {
+    const calls: string[] = [];
+    const state: ShutdownState = { shuttingDown: false };
+    const { hooks, register } = recordHooks();
+    const lifecycle = createAssemblyLifecycle({
+        ...baseDeps(calls, state),
+        registerShutdownHook: register,
+    });
+
+    await expect(lifecycle.mount({ uin: "1", uid: "u1" }, async () => undefined)).resolves.toBe(
+        true,
+    );
+    expect(hooks.protocols).toHaveLength(1);
+    expect(hooks.services).toHaveLength(1);
+
+    await expect(
+        lifecycle.reassemble({ uin: "2", uid: "u2" }, async () => {
+            calls.push("prepare-2");
+        }),
+    ).resolves.toBe(true);
+    expect(calls).toEqual(["ob11-1", "adapters-1", "ipc-1", "services-1", "prepare-2"]);
+
+    // 关停按真实阶段顺序落钩："protocols"（桥 + 适配器）先于 "services"（IPC + dispose）。
+    await runShutdownPhase(hooks, "protocols");
+    await runShutdownPhase(hooks, "services");
+    expect(calls.slice(5)).toEqual(["ob11-2", "adapters-2", "ipc-2", "services-2"]);
+});
+
+it("startProtocols 异步返回时已关停：立即释放刚创建的服务且不挂载 IPC", async () => {
+    const calls: string[] = [];
+    const state: ShutdownState = { shuttingDown: false };
+    const { register } = recordHooks();
+    const started = deferred<void>();
+    const startResult = deferred<KernelServices | null>();
+    const services = servicesFixture(calls, "1");
+    const lifecycle = createAssemblyLifecycle({
+        ...baseDeps(calls, state),
+        startProtocols: () => {
+            started.resolve(undefined);
+            return startResult.promise;
+        },
+        attachIpcServices: () => {
+            calls.push("ipc-mounted");
+            return () => undefined;
+        },
+        attachOb11IpcBridge: async () => {
+            calls.push("ob11-mounted");
+            return () => undefined;
+        },
+        registerShutdownHook: register,
+    });
+
+    const mounting = lifecycle.mount({ uin: "1", uid: "u1" }, async () => undefined);
+    await started.promise;
+    state.shuttingDown = true;
+    startResult.resolve(services);
+
+    await expect(mounting).resolves.toBe(false);
+    expect(calls).toEqual(["adapters-1", "services-1"]);
+});
+
+it("attachOb11IpcBridge 异步返回时已关停：立刻停桥且不把桥留在装配面", async () => {
+    const calls: string[] = [];
+    const state: ShutdownState = { shuttingDown: false };
+    const { hooks, register } = recordHooks();
+    const bridgeStarted = deferred<void>();
+    const bridgeResult = deferred<() => void>();
+    const lifecycle = createAssemblyLifecycle({
+        ...baseDeps(calls, state),
+        attachOb11IpcBridge: () => {
+            bridgeStarted.resolve(undefined);
+            return bridgeResult.promise;
+        },
+        registerShutdownHook: register,
+    });
+
+    const mounting = lifecycle.mount({ uin: "1", uid: "u1" }, async () => undefined);
+    await bridgeStarted.promise;
+    state.shuttingDown = true;
+    bridgeResult.resolve(() => {
+        calls.push("ob11-1");
+    });
+
+    await expect(mounting).resolves.toBe(false);
+    expect(calls).toEqual(["ob11-1"]);
+
+    await runShutdownPhase(hooks, "protocols");
+    await runShutdownPhase(hooks, "services");
+    expect(calls).toEqual(["ob11-1", "adapters-1", "ipc-1", "services-1"]);
+});
+
+it("stopOb11Bridge 或 stopIpcServices 抛错时 finally 仍继续释放适配器与缓存服务", async () => {
+    const calls: string[] = [];
+    const state: ShutdownState = { shuttingDown: false };
+    const { hooks, register } = recordHooks();
+    const lifecycle = createAssemblyLifecycle({
+        ...baseDeps(calls, state),
+        attachIpcServices: () => () => {
+            calls.push("ipc-1");
+            throw new Error("ipc stop failed");
+        },
+        attachOb11IpcBridge: async () => () => {
+            calls.push("ob11-1");
+            throw new Error("ob11 stop failed");
+        },
+        registerShutdownHook: register,
+    });
+    await expect(lifecycle.mount({ uin: "1", uid: "u1" }, async () => undefined)).resolves.toBe(
+        true,
+    );
+
+    const stopProtocols = hooks.protocols[0];
+    const disposeServices = hooks.services[0];
+    if (stopProtocols === undefined || disposeServices === undefined) {
+        throw new Error("关停钩子未注册");
+    }
+
+    await expect(Promise.resolve(stopProtocols())).rejects.toThrow("ob11 stop failed");
+    expect(calls).toEqual(["ob11-1", "adapters-1"]);
+
+    expect(() => disposeServices()).toThrow("ipc stop failed");
+    expect(calls).toEqual(["ob11-1", "adapters-1", "ipc-1", "services-1"]);
 });

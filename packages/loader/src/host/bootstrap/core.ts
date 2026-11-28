@@ -24,12 +24,12 @@ import { attachIpcServices, createIpcActionsForCore } from "../ipc/attach.js";
 import { attachOb11IpcBridge } from "../ipc/ob11-bridge.js";
 import { sendLogin, sendStatus } from "../ipc/sender.js";
 import { type IpcServerOptions, startIpcServer } from "../ipc/server.js";
-import type { KernelServices } from "../protocols/kernel-services.js";
 import { startProtocols } from "../protocols/protocols.js";
 import { consumeQrOnlyMarker, env, isEnvEnabled } from "../runtime/env.js";
 import { resolveLoaderLogConfig, resolveLogFilePath } from "../runtime/log-config.js";
 import type { SharedState } from "../runtime/state.js";
 import type { BootstrapEnv, CoreLike, KernelLike, LoginResultLike } from "../runtime/types.js";
+import { createAssemblyLifecycle } from "./assembly-lifecycle.js";
 import { runListenerRecordingPhase, runProbePhase, runSmokeIfEnabled } from "./probe.js";
 
 /**
@@ -145,34 +145,19 @@ export async function bootstrapWithCore(
         `bootstrap: attachWrapper OK, engine=${typeof ctx.engine}, session=${ctx.session !== null}`,
     );
 
-    let services: KernelServices | null = null;
-    let stopIpcServices: (() => void) | null = null;
-    let stopOb11Bridge: (() => void) | null = null;
-
-    async function stopProtocols(): Promise<void> {
-        const stopBridge = stopOb11Bridge;
-        stopOb11Bridge = null;
-        try {
-            stopBridge?.();
-        } finally {
-            await services?.stopAdapters?.();
-        }
-    }
-
-    function disposeServices(): void {
-        const stopIpc = stopIpcServices;
-        const current = services;
-        stopIpcServices = null;
-        services = null;
-        try {
-            stopIpc?.();
-        } finally {
-            current?.dispose();
-        }
-    }
-
-    registerShutdownHook(stopProtocols, "protocols");
-    registerShutdownHook(disposeServices);
+    // 非 IPC 模式没有 IPC 装配面：两个挂载协作者退化为空停止函数。
+    const noop = (): void => {
+        // 无 IPC 通道时无需清理
+    };
+    const assembly = createAssemblyLifecycle({
+        startProtocols: (loginResult) => startProtocols(kernel, ctx, loginResult, logCfg),
+        attachIpcServices: (newServices) =>
+            ipc === undefined ? noop : attachIpcServices(ipc.actions, newServices),
+        attachOb11IpcBridge: (newServices) =>
+            ipc === undefined
+                ? Promise.resolve(noop)
+                : attachOb11IpcBridge(ipc.actions, newServices),
+    });
 
     async function prepareSession(loginResult: LoginResultLike, initial: boolean): Promise<void> {
         const chosen = replaceSession(kernel, core, state, ctx);
@@ -189,64 +174,19 @@ export async function bootstrapWithCore(
         }
     }
 
-    async function attachIpc(newServices: KernelServices): Promise<void> {
-        if (ipc === undefined) {
-            return;
-        }
-        stopIpcServices = attachIpcServices(ipc.actions, newServices);
-        const stopBridge = await attachOb11IpcBridge(ipc.actions, newServices);
-        if (isShuttingDown()) {
-            stopBridge();
-        } else {
-            stopOb11Bridge = stopBridge;
-        }
-    }
-
-    /** 初次引导与软重登共用，关停期间不发布新的装配结果。 */
-    const runAssembly = async (
-        loginResult: LoginResultLike,
-        initial: boolean,
-    ): Promise<boolean> => {
-        await prepareSession(loginResult, initial);
-        if (isShuttingDown()) {
-            return false;
-        }
-        const newServices = await startProtocols(kernel, ctx, loginResult, logCfg);
-        if (newServices === null) {
-            log("bootstrap: 协议服务装配失败，引导中止");
-            return false;
-        }
-        if (isShuttingDown()) {
-            try {
-                await newServices.stopAdapters?.();
-            } finally {
-                newServices.dispose();
-            }
-            return false;
-        }
-        services = newServices;
-        await attachIpc(newServices);
-        return !isShuttingDown();
-    };
+    /** 初次引导：准备 session 后挂载装配面；关停期间不发布新的装配结果。 */
+    const runAssembly = (loginResult: LoginResultLike, initial: boolean): Promise<boolean> =>
+        assembly.mount(loginResult, () => prepareSession(loginResult, initial));
 
     /**
      * 软重登重装配（ready 态 control login 成功，relogin.ts 经 deps 调用）：
-     * 清理旧装配面 → 用新登录结果重跑装配链。
-     * 清理顺序：协议消费方（OB11 桥退订+动作表移除）→ IPC 事件转发/动作表
-     * → kernel 桥/缓存/消息日志（dispose，幂等）。失败返回 false（上报退出）。
+     * 先停旧装配面（协议消费方 → 缓存服务），再准备 session 并重跑装配链。
+     * 失败返回 false（上报退出）。
      */
     const softRelogin = async (loginResult: LoginResultLike): Promise<boolean> => {
         sendStatus("sessioning");
         log(`bootstrap: 软重登 uin=${loginResult.uin}——清理旧装配并重跑装配链`);
-        try {
-            await stopProtocols();
-        } finally {
-            disposeServices();
-        }
-        if (isShuttingDown()) {
-            return false;
-        }
-        return await runAssembly(loginResult, false);
+        return await assembly.reassemble(loginResult, () => prepareSession(loginResult, false));
     };
     reassembleRef.current = softRelogin;
 
