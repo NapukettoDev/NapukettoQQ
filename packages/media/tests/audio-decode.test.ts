@@ -264,6 +264,42 @@ describe("encodePcmToSilk 归一化分支", () => {
         expect(leftovers).toEqual([]);
     });
 
+    it("PCM 与 SILK 共用调用方写入预算，超限时保留输入和原目标", async () => {
+        const input = join(dir, "stereo.wav");
+        const target = join(dir, "output.silk");
+        const wav = makeWav({ rate: 24000, channels: 2 }, makePcm(1, 24000));
+        const pcm = makePcm(1, 24000);
+        writeFileSync(input, wav);
+        writeFileSync(target, "existing");
+        execaMock.mockImplementation(() =>
+            mockFfmpegChild([pcm.subarray(0, 4096), pcm.subarray(4096)]),
+        );
+
+        await expect(
+            encodePcmToSilk(input, 0, { outputPath: target, maxOutputBytes: 4096 }),
+        ).rejects.toMatchObject({ name: "MediaSizeLimitError" });
+        const sizes: number[] = [];
+        await expect(
+            encodePcmToSilk(input, 0, {
+                outputPath: target,
+                maxOutputBytes: pcm.length,
+                onPcmWritten: (bytes) => {
+                    sizes.push(bytes);
+                },
+            }),
+        ).rejects.toMatchObject({ name: "MediaSizeLimitError" });
+        expect(sizes).toEqual([pcm.length]);
+        expect(readdirSync(dir).sort()).toEqual(["output.silk", "stereo.wav"]);
+        expect(readFileSync(input)).toEqual(wav);
+        expect(readFileSync(target, "utf8")).toBe("existing");
+        const output = await encodePcmToSilk(input, 0, {
+            outputPath: target,
+            maxOutputBytes: pcm.length + 4096,
+        });
+        expect(output).toBe(target);
+        expect(isSilk(readFileSync(target))).toBe(true);
+    });
+
     it("ffmpeg 假成功（exit 0 但未产出）→ 抛错（读临时 PCM ENOENT）", async () => {
         execaMock.mockResolvedValue({ exitCode: 0, stdout: "" });
         const wav = join(dir, "stereo.wav");

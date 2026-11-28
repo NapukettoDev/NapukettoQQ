@@ -13,7 +13,7 @@ import { copyFile, mkdtemp, open, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import type { CanonicalElement } from "@napuketto/kernel";
-import { errorMessage, kernelError } from "@napuketto/kernel";
+import { errorMessage, isKernelError, kernelError } from "@napuketto/kernel";
 import {
     detectFileType,
     downloadPublicUrl,
@@ -24,6 +24,8 @@ import {
     getVideoInfo,
     MAX_AUDIO_INPUT_BYTES,
     type MediaOutboundPolicy,
+    MediaSizeLimitError,
+    type SilkEncodeOptions,
 } from "@napuketto/media";
 import type { AdapterLoggerLike } from "../infra/log.js";
 import { cacheMediaFile, MEDIA_TEMP_ROOT } from "../infra/media-cache.js";
@@ -42,12 +44,17 @@ export async function downloadProtocolMedia(
     options: {
         outboundPolicy?: MediaOutboundPolicy | undefined;
         headers?: Record<string, string> | undefined;
+        maxBytes?: number | undefined;
         errorLabel?: string;
     } = {},
 ): Promise<void> {
     try {
-        await mediaDownloader(options.outboundPolicy)(url, filePath, { headers: options.headers });
+        await mediaDownloader(options.outboundPolicy)(url, filePath, {
+            headers: options.headers,
+            maxBytes: options.maxBytes,
+        });
     } catch (err) {
+        if (options.maxBytes !== undefined && err instanceof MediaSizeLimitError) throw err;
         throw kernelError(
             `${options.errorLabel ?? "下载失败"}: ${errorMessage(err)}`,
             "SEND_FAILED",
@@ -62,8 +69,8 @@ export async function downloadProtocolMedia(
 async function readFileHead(path: string): Promise<string> {
     const handle = await open(path, "r");
     try {
-        const buf = Buffer.alloc(8);
-        await handle.read(buf, 0, 8, 0);
+        const buf = Buffer.alloc(10);
+        await handle.read(buf, 0, buf.length, 0);
         return buf.toString("utf8");
     } finally {
         await handle.close();
@@ -75,15 +82,24 @@ async function readFileHead(path: string): Promise<string> {
  * 已是 silk（#!SILK_V3 头）原样返回；转码失败原样返回（由 kernel 发送时兜底），
  * 可选 logger 记录降级上下文。
  */
-export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Promise<string> {
+export async function ensureSilk(
+    path: string,
+    logger?: AdapterLoggerLike,
+    budget?: Pick<SilkEncodeOptions, "maxOutputBytes" | "onPcmWritten">,
+): Promise<string> {
     try {
         const info = await stat(path);
         if (!info.isFile() || info.size > MAX_AUDIO_INPUT_BYTES) {
             throw kernelError("语音复制输入必须是 32MiB 以内的普通文件", "INVALID_PARAM");
         }
         const header = await readFileHead(path);
-        if (header.startsWith("#!SILK")) {
+        if (header.startsWith("#!SILK") || header.startsWith("\u0002#!SILK")) {
             return path;
+        }
+        if (budget !== undefined) {
+            return await cacheMediaFile(MEDIA_TEMP_ROOT, ".silk", async (outputPath) => {
+                return await encodePcmToSilk(path, 0, { ...budget, outputPath });
+            });
         }
         const ext = extname(path);
         return await cacheMediaFile(
@@ -95,6 +111,12 @@ export async function ensureSilk(path: string, logger?: AdapterLoggerLike): Prom
             },
         );
     } catch (err) {
+        if (
+            err instanceof MediaSizeLimitError ||
+            (isKernelError(err) && (err.code === "INVALID_PARAM" || err.code === "INVALID_STATE"))
+        ) {
+            throw err;
+        }
         logger?.warn({ path, error: errorMessage(err) }, "语音 silk 转码失败，原样透传");
         return path;
     }
@@ -159,8 +181,24 @@ export interface PreparedVideoElements {
 }
 
 /** 是否是需要补缩略图的视频元素。 */
-function needsVideoThumb(el: CanonicalElement): el is Extract<CanonicalElement, { type: "video" }> {
+type VideoElement = Extract<CanonicalElement, { type: "video" }>;
+
+function needsVideoThumb(el: CanonicalElement): el is VideoElement {
     return el.type === "video" && (el.thumbPath === undefined || el.thumbPath === "");
+}
+
+export async function prepareVideoThumbnail(
+    el: VideoElement,
+    writeThumbnail: (input: string) => Promise<string>,
+): Promise<VideoElement> {
+    const info = await getVideoInfo(el.path);
+    return {
+        ...el,
+        thumbPath: await writeThumbnail(el.path),
+        width: el.width ?? info.width,
+        height: el.height ?? info.height,
+        durationSec: el.durationSec ?? Math.max(1, Math.round(info.durationMs / 1000)),
+    };
 }
 
 /**
@@ -198,17 +236,9 @@ export async function prepareVideoElements(
             }
             index += 1;
             const thumbPath = join(dir, `thumb-${index}.png`);
-            const info = await getVideoInfo(el.path);
-            await extractVideoFrame(el.path, thumbPath);
-            out.push({
-                ...el,
-                thumbPath,
-                // kernel 把 width/height 写进 thumbWidth/thumbHeight（收向语义是缩略图尺寸；
-                // 首帧不缩放 → 与视频宽高一致）
-                width: el.width ?? info.width,
-                height: el.height ?? info.height,
-                durationSec: el.durationSec ?? Math.max(1, Math.round(info.durationMs / 1000)),
-            });
+            out.push(
+                await prepareVideoThumbnail(el, (input) => extractVideoFrame(input, thumbPath)),
+            );
         }
         return { elements: out, cleanup };
     } catch (err) {

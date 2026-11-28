@@ -157,6 +157,27 @@ Satori 可通过 `message.get` 获取可重新发送的 QQ 本地媒体引用，
 原先依赖 `internal:` 剥前缀的本地用法迁移为授权目录内路径。
 旧的共享 `.napuketto-media-v1` 目录可在停止使用旧版本后由运营者回收。
 
+### OB11 消息媒体预算
+
+`send_msg`、`send_group_msg` 和 `send_private_msg` 在 HTTP、WS 和 IPC 上使用每账号同一套预算。
+两个限制可以分别设置，省略时使用以下默认值。
+
+```toml
+[accounts.onebot11.media.messageBudget]
+maxItems = 16
+maxBytes = 125829120
+```
+
+`maxItems` 接受 1–256 的整数。图片、语音、视频及显式视频 `thumb` 各计一项，每次重复引用
+都会重新计数。`maxBytes` 接受 1–536870912 的整数字节数，默认 120 MiB。该预算合计本地
+副本、HTTP(S) 下载、重复引用及转码产物的实际大小，并计入中间 PCM 和自动生成的缩略图。
+消息媒体的 `file` 和视频 `thumb` 均可使用 HTTP(S) 地址，受本账号的 `outboundPolicy` 约束。
+合并转发只接受已登记的消息 ID，继续使用独立的节点上限。
+
+内联和嵌入配置使用同名 `media.messageBudget`。嵌入调用方可从 `@napuketto/adapter` 或
+`@napuketto/adapter/onebot11` 导入 `Ob11MessageMediaBudgetConfig` 与 `Ob11MessageMediaStats`，
+并通过 `onMessageMediaPrepared` 接收每次成功准备的统计。
+
 ## 环境变量
 
 | 变量 | 作用 |

@@ -12,13 +12,6 @@
 import type { CanonicalElement, Peer } from "@napuketto/kernel";
 import { ChatType, errorMessage } from "@napuketto/kernel";
 import { z } from "zod";
-import {
-    ensureSilk,
-    prepareImageElements,
-    prepareVideoElements,
-} from "../../../internal/domain/media.js";
-import { resolveLocalMedia } from "../../../internal/infra/local-media.js";
-import type { AdapterLoggerLike } from "../../../internal/infra/log.js";
 import type { OneBotApi } from "../../api/onebot-api.js";
 import {
     applySendContext,
@@ -28,6 +21,7 @@ import {
 } from "../../helper/index.js";
 import { defineOb11Action, type Ob11Action, resolveTargetPeer } from "../base-action.js";
 import { MAX_MESSAGE_SEGMENTS } from "../limits.js";
+import { prepareOb11MessageMedia } from "./media-preparation.js";
 
 const sendMsgSchema = z.object({
     message_type: z.enum(["group", "private"]).optional(),
@@ -53,7 +47,15 @@ const sendGroupMsgSchema = z.object({ group_id: z.number(), ...sendMsgBodyFields
 /** send_msg 依赖（OneBotApi 视图，由装配方注入）。 */
 export type SendMsgDeps = Pick<
     OneBotApi,
-    "msgApi" | "messageUnique" | "uinToUid" | "logger" | "getLocalMediaRoots" | "groupCache"
+    | "msgApi"
+    | "messageUnique"
+    | "uinToUid"
+    | "logger"
+    | "getLocalMediaRoots"
+    | "getMediaOutboundPolicy"
+    | "getMessageMediaBudget"
+    | "onMessageMediaPrepared"
+    | "groupCache"
 >;
 
 /** NT UID 前缀（`u_...`：调用方直接给 uid，发送方向直通，不再走 uinToUid）。 */
@@ -72,7 +74,13 @@ async function sendOb11Message(
     } else {
         canonical = cqMessageToCanonical(payload.message);
     }
-    canonical = await prepareLocalElements(canonical, deps);
+    const prepared = await prepareOb11MessageMedia(canonical, deps, deps.getMessageMediaBudget?.());
+    canonical = prepared.elements;
+    try {
+        await deps.onMessageMediaPrepared?.(prepared.stats);
+    } catch (err) {
+        deps.logger?.warn({ error: errorMessage(err) }, "OB11 媒体准备统计回调失败");
+    }
     // 发送方向 ID 转换：at.qq 是 uin → uid（一次批量 uinToUid）；
     // reply.id 是 OB11 message_id → NT msgId（MessageUnique 反查，反查不到原样透传）。
     // `u_...` 已是 NT UID（调用方直接给 uid）：直通，不参与 uin→uid 批量转换
@@ -111,20 +119,8 @@ async function sendOb11Message(
             return el;
         });
     }
-    // 语音段：非 silk 输入转 silk（QQ 语音协议）；转换在协议层完成，kernel 不背 media（红线）
-    canonical = await ensureVoiceSilk(canonical, deps.logger);
-    // 图片段：缺尺寸/MIME 时用 @napuketto/media 补齐（PIC 发送契约 picWidth /
-    // picHeight / picType；缺失会让手机端显示空白）
-    const withImageMeta = await prepareImageElements(canonical, deps.logger);
-    // 视频段：缺首帧缩略图时用 ffmpeg 抽帧并补时长/尺寸（QQ 视频消息发送契约，
-    // 缺失时 native 只回 sendStatus=0）
-    const prepared = await prepareVideoElements(withImageMeta);
-    try {
-        const { msgId } = await deps.msgApi.sendMessage(peer, prepared.elements);
-        return { message_id: deps.messageUnique.alloc(msgId, peer) };
-    } finally {
-        await prepared.cleanup();
-    }
+    const { msgId } = await deps.msgApi.sendMessage(peer, canonical);
+    return { message_id: deps.messageUnique.alloc(msgId, peer) };
 }
 
 /** send_msg 依赖中 groupCache 的非空视图（补 at 显示名用）。 */
@@ -185,27 +181,6 @@ async function memberDisplayName(
     }
 }
 
-async function prepareLocalElements(
-    elements: readonly CanonicalElement[],
-    deps: SendMsgDeps,
-): Promise<CanonicalElement[]> {
-    const roots = deps.getLocalMediaRoots?.();
-    const prepared: CanonicalElement[] = [];
-    for (const el of elements) {
-        if (!("path" in el)) {
-            prepared.push(el);
-            continue;
-        }
-        const path = await resolveLocalMedia(el.path, roots);
-        if (el.type === "video" && el.thumbPath) {
-            prepared.push({ ...el, path, thumbPath: await resolveLocalMedia(el.thumbPath, roots) });
-        } else {
-            prepared.push({ ...el, path });
-        }
-    }
-    return prepared;
-}
-
 /** CQ 特殊字符转义（auto_escape，&、[、]、, 前置 &amp;）。 */
 function escapeText(text: string): string {
     return text
@@ -213,22 +188,6 @@ function escapeText(text: string): string {
         .replaceAll("[", "&#91;")
         .replaceAll("]", "&#93;")
         .replaceAll(",", "&#44;");
-}
-
-/** 语音元素统一转 silk：非 silk 自动转码（QQ 语音格式），已是 silk 原样。 */
-async function ensureVoiceSilk(
-    elements: CanonicalElement[],
-    logger: AdapterLoggerLike | undefined,
-): Promise<CanonicalElement[]> {
-    const out: CanonicalElement[] = [];
-    for (const el of elements) {
-        if (el.type === "voice") {
-            out.push({ ...el, path: await ensureSilk(el.path, logger) });
-        } else {
-            out.push(el);
-        }
-    }
-    return out;
 }
 
 /** 消息发送域动作工厂（send_msg / send_private_msg / send_group_msg）。 */

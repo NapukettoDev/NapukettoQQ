@@ -7,14 +7,20 @@ import {
     FFMPEG_WORK_OPTIONS,
     LOCAL_MEDIA_INPUT_OPTIONS,
     localMediaPath,
+    mediaOutputLimit,
     openMediaInput,
     publishMediaFile,
     readBoundedMediaFile,
     readMediaPrefix,
     writeFfmpegOutput,
 } from "./process.js";
-import type { AudioInfo, DecodedAudio, MediaOperationOptions } from "./types.js";
-import { MediaError, replaceExt } from "./types.js";
+import type {
+    AudioInfo,
+    DecodedAudio,
+    MediaOperationOptions,
+    MediaOutputOptions,
+} from "./types.js";
+import { MediaError, MediaSizeLimitError, replaceExt } from "./types.js";
 
 /** SILK 默认采样率（Hz）。 */
 export const SILK_SAMPLE_RATE = 24_000;
@@ -310,12 +316,24 @@ function monoWavPcm(header: Buffer, fileSize: number): WavPcm | undefined {
     return undefined;
 }
 
+export interface SilkEncodeOptions extends MediaOutputOptions {
+    /** 转码目标。指定时父目录须已存在，且由调用方控制。 */
+    outputPath?: string | undefined;
+    /** 归一化 PCM 清理后报告其实际写入量。 */
+    onPcmWritten?: ((bytes: number) => void) | undefined;
+}
+
 /** 编码音频为 SILK；已通过边界检查的 SILK 原样返回。 */
 export async function encodePcmToSilk(
     input: string,
     sampleRate = 0,
-    { signal }: MediaOperationOptions = {},
+    options: SilkEncodeOptions = {},
 ): Promise<string> {
+    const { signal, maxOutputBytes, onPcmWritten } = options;
+    const limit = mediaOutputLimit(
+        MAX_NORMALIZED_PCM_BYTES + MAX_AUDIO_INPUT_BYTES,
+        maxOutputBytes,
+    );
     checkMediaSignal(signal);
     const source = await localMediaPath(input, MAX_AUDIO_INPUT_BYTES);
     const prefix = await readMediaPrefix(source, 12, signal);
@@ -328,16 +346,19 @@ export async function encodePcmToSilk(
         ? monoWavPcm(await readMediaPrefix(source, 512 * 1024, signal), (await stat(source)).size)
         : undefined;
     const directRate = pcm?.sampleRate ?? (wav ? 0 : sampleRate);
+    const silkPath = options.outputPath ?? replaceExt(input, ".silk");
     const data =
         pcm !== undefined || directRate !== 0
             ? await readPcm(source, directRate, pcm, signal)
-            : await normalizeToPcm(source, signal);
+            : await normalizeToPcm(source, dirname(silkPath), limit, signal);
+    const pcmBytes = directRate === 0 ? data.byteLength : 0;
+    if (pcmBytes > 0) onPcmWritten?.(pcmBytes);
     const result = await runSilk("encode", data, directRate || SILK_SAMPLE_RATE, signal);
     assertAudioDuration(result.duration);
-    if (result.data.byteLength > MAX_AUDIO_INPUT_BYTES || result.data.byteLength === 0) {
-        throw new MediaError("SILK 输出超出大小限制或为空");
+    if (result.data.byteLength > Math.min(MAX_AUDIO_INPUT_BYTES, limit - pcmBytes)) {
+        throw new MediaSizeLimitError("SILK 输出超出大小限制");
     }
-    const silkPath = replaceExt(input, ".silk");
+    if (result.data.byteLength === 0) throw new MediaError("SILK 输出为空");
     await publishAudio(input, silkPath, [result.data], signal);
     return silkPath;
 }
@@ -358,8 +379,14 @@ async function readPcm(
     return data;
 }
 
-async function normalizeToPcm(source: string, signal?: AbortSignal): Promise<Buffer> {
-    const partial = join(dirname(source), `.napuketto-${randomBytes(8).toString("hex")}.pcm`);
+async function normalizeToPcm(
+    source: string,
+    directory: string,
+    limit: number,
+    signal?: AbortSignal,
+): Promise<Buffer> {
+    const partial = join(directory, `.napuketto-${randomBytes(8).toString("hex")}.pcm`);
+    const maxBytes = Math.min(MAX_NORMALIZED_PCM_BYTES, limit);
     try {
         await writeFfmpegOutput(
             [
@@ -382,13 +409,14 @@ async function normalizeToPcm(source: string, signal?: AbortSignal): Promise<Buf
                 "s16le",
             ],
             partial,
-            MAX_NORMALIZED_PCM_BYTES,
+            maxBytes,
             120_000,
             signal,
         );
-        return await readBoundedMediaFile(partial, MAX_NORMALIZED_PCM_BYTES, signal);
+        return await readBoundedMediaFile(partial, maxBytes, signal);
     } catch (error) {
         checkMediaSignal(signal);
+        if (error instanceof MediaSizeLimitError) throw error;
         throw new MediaError(`ffmpeg 音频归一化失败: ${source}`, { cause: error });
     } finally {
         await rm(partial, { force: true });

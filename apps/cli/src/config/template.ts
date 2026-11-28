@@ -94,6 +94,9 @@ groupUploadAsNotice = false
 # [accounts.onebot11.media]
 # outboundPolicy = "public-only"
 # localMediaRoots = []                    # 默认拒绝本地文件，可填写专用导出目录
+# [accounts.onebot11.media.messageBudget]
+# maxItems = 16                           # 每条消息 1–256 项
+# maxBytes = 125829120                     # 每条消息 1–536870912 字节
 
 # ---- HTTP 反向服务器（接收第三方 POST 指令），可配置多个 ----
 [[accounts.onebot11.httpServers]]

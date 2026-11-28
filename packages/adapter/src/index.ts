@@ -38,7 +38,14 @@ export type { KurobotAdapterOptions, KurobotConfig } from "./kurobot/index.js";
 export { kurobotConfigSchema, NapukettoKurobotAdapter } from "./kurobot/index.js";
 export type { MilkyAdapterOptions, MilkyConfig } from "./milky/index.js";
 export { milkyConfigSchema, NapukettoMilkyAdapter } from "./milky/index.js";
-export type { OB11Config, OneBot11AdapterOptions } from "./onebot11/index.js";
+export type {
+    OB11Config,
+    Ob11MessageMediaBudgetConfig,
+    Ob11MessageMediaObserver,
+    Ob11MessageMediaPreparation,
+    Ob11MessageMediaStats,
+    OneBot11AdapterOptions,
+} from "./onebot11/index.js";
 export { NapukettoOneBot11Adapter, ob11ConfigSchema } from "./onebot11/index.js";
 export type { SatoriAdapterOptions, SatoriConfig } from "./satori/index.js";
 export { NapukettoSatoriAdapter, satoriConfigSchema } from "./satori/index.js";

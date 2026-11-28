@@ -91,6 +91,7 @@ export class NapukettoOneBot11Adapter extends BaseProtocolAdapter<OB11Config> {
             opts,
             () => config.get?.()?.media?.outboundPolicy,
             () => config.get?.()?.media?.localMediaRoots,
+            () => config.get?.()?.media?.messageBudget,
         );
         this.pipeline = new Ob11EventPipeline({
             selfUin: this.selfUin,

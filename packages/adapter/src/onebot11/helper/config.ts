@@ -10,6 +10,18 @@ import { z } from "zod";
 import { createServerSchema, validateServerTokens } from "../../framework/transport-schema.js";
 import { protocolMediaSchema } from "../../internal/infra/media-config.js";
 
+const ob11MessageMediaBudgetSchema = z.strictObject({
+    maxItems: z.number().int().min(1).max(256).optional(),
+    maxBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(512 * 1024 * 1024)
+        .optional(),
+});
+
+export type Ob11MessageMediaBudgetConfig = z.infer<typeof ob11MessageMediaBudgetSchema>;
+
 /** HTTP 反向服务器默认端口。 */
 const DEFAULT_HTTP_PORT = 3000;
 /** 反向 WS server 默认端口。 */
@@ -61,7 +73,9 @@ const wsReverseSchema = z.object({
 
 /** OB11 配置 schema。 */
 const configFields = z.object({
-    media: protocolMediaSchema.optional(),
+    media: protocolMediaSchema
+        .extend({ messageBudget: ob11MessageMediaBudgetSchema.optional() })
+        .optional(),
     /** 鉴权 token（全局默认，实例未指定时继承）。 */
     token: z.string().optional(),
     /** 心跳 meta 事件间隔（毫秒），0 关闭心跳。 */

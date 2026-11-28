@@ -28,7 +28,8 @@ const forwardNodeSchema = z.object({
     type: z.literal("node").optional(),
     data: z
         .object({
-            id: z.union([z.number(), z.string()]),
+            id: z.unknown().optional(),
+            content: z.unknown().optional(),
         })
         .optional(),
 });
@@ -70,8 +71,11 @@ function resolveSourceMessages(
     for (const raw of messages) {
         const parsed = forwardNodeSchema.safeParse(raw);
         if (parsed.success) {
+            if (parsed.data.data?.content !== undefined) {
+                throw kernelError("合并转发仅支持 node.data.id 引用", "INVALID_PARAM");
+            }
             const id = parsed.data.data?.id;
-            if (id !== undefined) {
+            if (typeof id === "number" || typeof id === "string") {
                 const msgId = unique.getMsgId(Number(id));
                 if (msgId !== undefined) {
                     const peer = unique.getPeer(msgId);

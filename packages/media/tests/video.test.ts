@@ -69,6 +69,22 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+it("调用方上限在写盘前拦截视频转码和抽帧输出", async () => {
+    mockVideo(() => mockFfmpegChild([PNG.subarray(0, 24), PNG.subarray(24)]));
+    const target = join(dir, "thumb.png");
+    writeFileSync(target, "existing");
+    await expect(transcodeVideo(input, { maxOutputBytes: 24 })).rejects.toMatchObject({
+        name: "MediaSizeLimitError",
+    });
+    await expect(extractVideoFrame(input, target, { maxOutputBytes: 24 })).rejects.toMatchObject({
+        name: "MediaSizeLimitError",
+    });
+    expect(readFileSync(target, "utf8")).toBe("existing");
+    expect(readdirSync(dir).sort()).toEqual([basename(input), basename(target)].sort());
+    expect(await extractVideoFrame(input, target, { maxOutputBytes: PNG.length })).toBe(target);
+    expect(readFileSync(target)).toEqual(PNG);
+});
+
 function ffmpegCall() {
     const [, args, options] = execaMock.mock.calls.find(([command]) => command === "ffmpeg") ?? [];
     return { args: args as string[], options: options as object };
