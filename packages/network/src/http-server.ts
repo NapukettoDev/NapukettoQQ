@@ -5,25 +5,23 @@
  * 鉴权（token）通过 `authorize` 钩子，规则由协议层决定。
  */
 
-import { createServer, type Server, STATUS_CODES } from "node:http";
+import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";
-import type { Duplex } from "node:stream";
-import { types } from "node:util";
 import { getRequestListener, RequestError } from "@hono/node-server";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { WebSocketServer } from "ws";
+import { dispatchJsonRequest } from "./http/request-dispatcher.js";
+import { attachWsUpgrade } from "./http/ws-upgrade.js";
 import { closeServerConnections } from "./server-lifecycle.js";
 import {
     DEFAULT_MAX_BODY_BYTES,
     type HttpRouteContext,
     type HttpServerOptions,
-    incomingMessageToRequestContext,
     type RequestContext,
     type Respond,
     type TransportAdapter,
-    type WsSocket,
     type WsUpgradeHook,
 } from "./types.js";
 import { wsPayloadLimit } from "./ws-flow.js";
@@ -31,57 +29,10 @@ import { wsPayloadLimit } from "./ws-flow.js";
 const HTTP_STATUS = {
     badRequest: 400,
     unauthorized: 401,
-    notFound: 404,
     payloadTooLarge: 413,
     internalError: 500,
     unavailable: 503,
-    timeout: 504,
 } as const;
-
-const STATUS_REASON = /^[ -~]{1,128}$/;
-
-type UpgradeDecision =
-    | { accept: (socket: WsSocket) => void }
-    | { status: number; reason?: string | undefined };
-
-function decideUpgrade(hook: WsUpgradeHook | undefined, req: RequestContext): UpgradeDecision {
-    let decision: UpgradeDecision | undefined;
-    try {
-        const result: unknown = hook?.(
-            req,
-            (accept) => {
-                decision ??= { accept };
-            },
-            (status, reason) => {
-                decision ??= { status, reason };
-            },
-        );
-        if (types.isPromise(result)) {
-            result.catch(() => undefined);
-            return { status: HTTP_STATUS.internalError };
-        }
-        return decision ?? { status: HTTP_STATUS.notFound };
-    } catch {
-        return { status: HTTP_STATUS.internalError };
-    }
-}
-
-function rejectUpgrade(socket: Duplex, status: number, reason?: string): void {
-    if (socket.destroyed || !socket.writable) {
-        socket.destroy();
-        return;
-    }
-    if (!Number.isInteger(status) || status < 400 || status > 599) {
-        status = HTTP_STATUS.internalError;
-        reason = undefined;
-    }
-    const text =
-        reason !== undefined && STATUS_REASON.test(reason) ? reason : (STATUS_CODES[status] ?? "");
-    socket.once("error", () => socket.destroy());
-    socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, () =>
-        socket.destroy(),
-    );
-}
 
 function toRequestContext(c: Context): RequestContext {
     const raw = c.req.header();
@@ -131,9 +82,7 @@ export class HttpServer implements TransportAdapter {
             }
             return c.json({ error: "internal server error" }, HTTP_STATUS.internalError);
         });
-        // 请求体上限（2026-11-03 依赖审计整改）：第三方可直接 POST，
-        // 无上限时一个超大 JSON 就能把解析阶段的内存打爆。默认值考虑
-        // base64 媒体，见 types.ts DEFAULT_MAX_BODY_BYTES。
+        // 在 JSON 解析前限制请求体大小；默认上限兼顾 base64 媒体。
         this.app.use(
             bodyLimit({
                 maxSize: opts.bodyLimitBytes ?? DEFAULT_MAX_BODY_BYTES,
@@ -176,63 +125,13 @@ export class HttpServer implements TransportAdapter {
             return c.json({ error: "invalid json body" }, HTTP_STATUS.badRequest);
         }
 
-        return this.dispatch(c, reqCtx, req);
-    }
-
-    private dispatch(c: Context, reqCtx: RequestContext, req: unknown): Promise<Response> {
-        return new Promise<Response>((resolve) => {
-            let settled = false;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const signal = c.req.raw.signal;
-            const finish = (response: Response): void => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                signal.removeEventListener("abort", onAbort);
-                this.pending.delete(onClose);
-                resolve(response);
-            };
-            // 客户端已断开，仅结算等待与清理；该状态不会再发送到客户端。
-            const onAbort = (): void => finish(new Response(null, { status: 499 }));
-            const onClose = (): void =>
-                finish(c.json({ error: "server shutdown" }, HTTP_STATUS.unavailable));
-            const respond: Respond = (res, status = 200) => {
-                if (settled) return;
-                try {
-                    finish(
-                        new Response(res === undefined ? null : JSON.stringify(res), {
-                            status,
-                            ...(res === undefined
-                                ? {}
-                                : { headers: { "Content-Type": "application/json" } }),
-                        }),
-                    );
-                } catch {
-                    finish(c.json({ error: "internal server error" }, HTTP_STATUS.internalError));
-                }
-            };
-            this.pending.add(onClose);
-            signal.addEventListener("abort", onAbort, { once: true });
-            if (signal.aborted) {
-                onAbort();
-                return;
-            }
-            if (this.closing) {
-                onClose();
-                return;
-            }
-            if (this.opts.timeoutMs !== undefined && this.opts.timeoutMs > 0) {
-                timer = setTimeout(() => {
-                    finish(c.json({ error: "request timeout" }, HTTP_STATUS.timeout));
-                }, this.opts.timeoutMs);
-                timer.unref();
-            }
-            try {
-                this.invokeHandler(c, reqCtx, req, respond);
-            } catch {
-                respond({ error: "internal server error" }, HTTP_STATUS.internalError);
-            }
-        });
+        return dispatchJsonRequest(
+            c,
+            this.pending,
+            this.opts,
+            () => this.closing !== undefined,
+            (respond) => this.invokeHandler(c, reqCtx, req, respond),
+        );
     }
 
     private invokeHandler(
@@ -299,10 +198,7 @@ export class HttpServer implements TransportAdapter {
         }
     }
 
-    /**
-     * 同端口 WS 升级：挂原生 server 的 upgrade 事件，经 noServer WSS 完成握手。
-     * @hono/node-server 默认不监听 upgrade，先挂先得（与 hono 无冲突）。
-     */
+    /** 由 HTTP 生命周期持有同端口 WebSocket 服务。 */
     private attachUpgrade(server: Server): void {
         const wss = new WebSocketServer({
             noServer: true,
@@ -310,32 +206,12 @@ export class HttpServer implements TransportAdapter {
             skipUTF8Validation: false,
         });
         this.wss = wss;
-        server.on("upgrade", (req, socket: Duplex, head: Buffer) => {
-            const decision = decideUpgrade(this.onUpgrade, incomingMessageToRequestContext(req));
-            if (this.closing) {
-                rejectUpgrade(socket, HTTP_STATUS.unavailable);
-                return;
-            }
-            if ("status" in decision) {
-                rejectUpgrade(socket, decision.status, decision.reason);
-                return;
-            }
-            try {
-                wss.handleUpgrade(req, socket, head, (client) => {
-                    try {
-                        const result: unknown = decision.accept(client);
-                        if (types.isPromise(result)) {
-                            result.catch(() => client.terminate());
-                        }
-                    } catch {
-                        client.terminate();
-                    }
-                });
-            } catch {
-                // ws 已接手握手与 socket 监听器，握手内部异常交给 socket 回收。
-                socket.destroy();
-            }
-        });
+        attachWsUpgrade(
+            server,
+            wss,
+            () => this.onUpgrade,
+            () => this.closing !== undefined,
+        );
     }
 
     close(): Promise<void> {

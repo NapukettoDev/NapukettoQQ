@@ -43,6 +43,7 @@ ADR-011 否决了「媒体工具放进 kernel 或 common utils」：`ffmpeg`（�
 | `src/public-download.ts` | 包内传输 | 绑定公网 DNS 校验与实际连接，逐跳直连并保留 TLS 主机认证 |
 | `src/types.ts` | `ImageSize`、`FileTypeResult`、`AudioInfo`、`VideoInfo`、`DecodedAudio`、`TranscodeOptions`、`DecodeSilkToWavOptions`、`MediaError` | 跨模块公共类型与统一错误类 |
 | `src/index.ts` | 上述全部 | 公开包门面，只做 re-export |
+| `src/audio/` | — | 私有实现：SILK 帧扫描与限额、Worker 取消与退出等待、WAV 头与 PCM 块定位、PCM 归一化与安全写出 |
 | `src/silk-worker.mts` | — | 随包构建的私有 Worker 入口，执行同步 WASM 编解码 |
 | `tests/audio.test.ts` | — | `audio.test.ts` 基线测试：锁定 `encodePcmToSilk` 的格式分派与 `MediaError` 失败路径；以 `vi.mock("execa")` 桩掉 `ffmpeg`，不依赖真实二进制 |
 

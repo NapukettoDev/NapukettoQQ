@@ -62,6 +62,7 @@ ADR-002 否决了「传输层直接绑定 OB11 类型」：一旦把协议语义
 | :--- | :--- | :--- |
 | `src/types.ts` | `TransportAdapter`、`RequestContext`、`AuthorizeHook`、`Respond`、`HttpRouteContext`、`RawRequestHook`、`WsUpgradeHook`、`WsSocket`、`isWsOpen`、`ServerOptions`、`HttpServerOptions`、`HttpClientOptions`、`WsServerOptions`、`WsClientOptions` | 核心契约。`TransportAdapter` 是四类传输的统一面（`send` / `open` / `close` / 可选 `onRequest`），`EventBroadcaster` 只依赖它；`Respond(res, status?)` 的 `status` 仅 HTTP 侧使用（WS 忽略） |
 | `src/http-server.ts` | `HttpServer` | 基于 `hono` + `@hono/node-server` 的反向 server。处理链：`authorize` → `onRawRequest`（命中即短路返回 `Response`）→ JSON 解析 → `onPathRequest`（优先）/ `onRequest` → `respond`；`onUpgrade` 在 `open()` 时挂到原生 `upgrade` 事件，实现 SSE 与 WS 同端口共存 |
+| `src/http/` | — | 私有实现：`ws-upgrade.ts` 负责 Upgrade 决策与握手交接，`request-dispatcher.ts` 负责 JSON 响应、请求超时、客户端断开和服务端关停的单次结算 |
 | `src/http-client.ts` | `HttpClient` | 正向 HTTP 上报：`send` 同步提交，按实例串行 POST，失败和拒收经 `onError` 回报 |
 | `src/ws-server.ts` | `WsServer` | 反向 WS server：消息经 `onRequest` 分发，`respond` 回同一客户端。握手鉴权走 `authorize`，通过后 `onConnection` 把连接与 `RequestContext` 交给调用方，可用于带内鉴权；鉴权失败以 close code `4401` 关闭 |
 | `src/ws-client.ts` | `WsClient` | 正向 WS client：`open()` 成功 resolve / 失败 reject（不自动重试），断线后按 `reconnect` 策略重连（`maxAttempts` 计数），支持 `heartbeat` 与 `rejectUnauthorized: false`（自签证书） |

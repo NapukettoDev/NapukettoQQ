@@ -144,6 +144,9 @@ supervisor 与 `restart` 派生进程使用。终端与信号由 CLI 原有处�
 - **守护重启退避**（issue #144）：子进程运行不足 30s 视为连续秒退，重启延迟按
   `restartDelayMs × 2^n` 增长、60s 封顶；稳定运行超过 30s 清零退避计数。日志打印连续
   失败次数与下次延迟，避免登录后秒退演变成高频循环重登（易触发 QQ 风控）。
+- `runtime/state.ts` 汇出兼容接口。状态文件读写与路径边界在 `state-store.ts`，
+  进程生命周期操作在 `process-control.ts`，PID 身份校验在 `process-identity.ts`，
+  `status-view.ts` 组合磁盘状态与进程存活结果供 `status` 使用。
 - **runtime.json 写入权责**：supervisor 与受管 boot 共享同一账号状态文件，supervisor
   拥有 `kind`/`restartCount`/启动时间与 boot pid，受管 boot 通过
   `SUPERVISOR_CHILD_ENV`（supervisor spawn 时注入）识别托管模式，只以
