@@ -3,7 +3,7 @@
  * EssenceListSync），sysmsg 732:1 作加速触发器；operator 仅 add 回填。
  */
 
-import type { EssenceAddedItem } from "@napuketto/kernel";
+import type { EssenceAddedItem, GroupEventChannel } from "@napuketto/kernel";
 import { EssenceListSync, narrowEssenceGroupArg } from "@napuketto/kernel";
 import { extractEssenceSetSysMsg } from "../../internal/domain/essence.js";
 import type { SysMsgField } from "../../internal/domain/sysmsg.js";
@@ -22,9 +22,12 @@ export class Ob11InboundEssence {
     constructor(deps: Ob11InboundEssenceDeps) {
         this.deps = deps;
         this.essenceSync = new EssenceListSync({
+            allowsGroup: (groupCode) =>
+                deps.api.groupCache?.allowsGroupEvents?.(groupCode) !== false,
             fetchList: (groupCode) => deps.api.webApi.getEssenceMsgList(groupCode),
-            onAdded: (groupCode, added) => this.broadcastDiff(groupCode, added, "add"),
-            onRemoved: (groupCode, removed, prev) =>
+            onAdded: (groupCode, added, signal) =>
+                this.broadcastDiff(groupCode, added, "add", signal),
+            onRemoved: (groupCode, removed, prev, signal) =>
                 this.broadcastDiff(
                     groupCode,
                     removed.map((seq) => ({
@@ -34,13 +37,26 @@ export class Ob11InboundEssence {
                         addDigestTime: null,
                     })),
                     "delete",
+                    signal,
                 ),
+            onNotifyError: (groupCode, err) =>
+                deps.logger?.warn({ group: groupCode, err: String(err) }, "精华事件广播失败"),
+            onQueueFull: (groupCode) =>
+                deps.logger?.debug({ group: groupCode }, "精华同步队列已满，下次事件时重试"),
             onFetchError: (g, err) =>
                 deps.logger?.warn(
                     { group: g, err: String(err) },
                     "ob11: 精华列表拉取失败（diff 跳过）",
                 ),
         });
+    }
+
+    start(channel?: GroupEventChannel): void {
+        this.essenceSync.start(channel, this.deps.api.groupApi);
+    }
+
+    stop(): void {
+        this.essenceSync.stop();
     }
 
     /** sysmsg 732:1 加速触发器：抽取群号踢入串行链（抽取失败 → false 落校准路径）。 */
@@ -71,6 +87,7 @@ export class Ob11InboundEssence {
         groupCode: string,
         items: readonly EssenceAddedItem[],
         subType: "add" | "delete",
+        signal?: AbortSignal,
     ): Promise<void> {
         const { enrich, broadcast, selfUin } = this.deps;
         for (const item of items) {
@@ -83,7 +100,10 @@ export class Ob11InboundEssence {
                 );
                 continue;
             }
-            const messageId = await enrich.resolveEssenceMsgId(groupCode, item.messageSeq);
+            const messageId = await enrich.resolveEssenceMsgId(groupCode, item.messageSeq, signal);
+            if (signal?.aborted === true) {
+                return;
+            }
             if (messageId === null) {
                 continue; // resolveEssenceMsgId 内已校准日志
             }

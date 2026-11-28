@@ -22,7 +22,7 @@ export type GroupEventChannel = NTEventChannel<GroupListener, "Group">;
 export class GroupBridge {
     private readonly service: NodeIKernelGroupService;
     private readonly channel: GroupEventChannel;
-    private listenerId: number | null = null;
+    private registration: { id?: number } | null = null;
 
     constructor(session: NodeIQQNTWrapperSession, channel: GroupEventChannel) {
         this.service = requireKernelService(session.getGroupService(), "getGroupService", [
@@ -33,40 +33,57 @@ export class GroupBridge {
 
     /** 注册原生监听（幂等）。 */
     register(): void {
-        if (this.listenerId !== null) {
+        if (this.registration !== null) {
             return;
         }
+        const registration: { id?: number } = {};
+        this.registration = registration;
+        // 原生注销后仍可能调用先前捕获的监听器。
+        const currentChannel = () =>
+            this.registration === registration ? this.channel : undefined;
         // listener 为普通 JS 对象（NAPI 反射读取方法回调）
         const listener: GroupListener = {
             onGroupListInited: (listEmpty) =>
-                this.channel.emit("Group/onGroupListInited", listEmpty),
+                currentChannel()?.emit("Group/onGroupListInited", listEmpty),
             onGroupListUpdate: (updateType, groupList) =>
-                this.channel.emit("Group/onGroupListUpdate", updateType, groupList),
+                currentChannel()?.emit("Group/onGroupListUpdate", updateType, groupList),
             onGroupDetailInfoChange: (detailInfo) =>
-                this.channel.emit("Group/onGroupDetailInfoChange", detailInfo),
-            onMemberListChange: (arg) => this.channel.emit("Group/onMemberListChange", arg),
+                currentChannel()?.emit("Group/onGroupDetailInfoChange", detailInfo),
+            onMemberListChange: (arg) => currentChannel()?.emit("Group/onMemberListChange", arg),
             onMemberInfoChange: (groupCode, dataSource, members) =>
-                this.channel.emit("Group/onMemberInfoChange", groupCode, dataSource, members),
+                currentChannel()?.emit("Group/onMemberInfoChange", groupCode, dataSource, members),
             onGroupNotifiesUpdated: (doubt, notifies) =>
-                this.channel.emit("Group/onGroupNotifiesUpdated", doubt, notifies),
+                currentChannel()?.emit("Group/onGroupNotifiesUpdated", doubt, notifies),
             onGroupSingleScreenNotifies: (doubt, seq, notifies) =>
-                this.channel.emit("Group/onGroupSingleScreenNotifies", doubt, seq, notifies),
+                currentChannel()?.emit("Group/onGroupSingleScreenNotifies", doubt, seq, notifies),
             onShutUpMemberListChanged: (groupCode, members) =>
-                this.channel.emit("Group/onShutUpMemberListChanged", groupCode, members),
+                currentChannel()?.emit("Group/onShutUpMemberListChanged", groupCode, members),
             // 群精华列表变化（方法名证据见 listeners/group.ts 注释）
             onGroupEssenceListChange: (arg) =>
-                this.channel.emit("Group/onGroupEssenceListChange", arg),
+                currentChannel()?.emit("Group/onGroupEssenceListChange", arg),
         };
-        this.listenerId = this.service.addKernelGroupListener(listener);
+        try {
+            const id = this.service.addKernelGroupListener(listener);
+            if (this.registration === registration) {
+                registration.id = id;
+            } else {
+                this.service.removeKernelGroupListener(id);
+            }
+        } catch (err) {
+            if (this.registration === registration) {
+                this.registration = null;
+            }
+            throw err;
+        }
     }
 
     /** 注销原生监听（幂等）。 */
     unregister(): void {
-        if (this.listenerId === null) {
-            return;
+        const id = this.registration?.id;
+        this.registration = null;
+        if (id !== undefined) {
+            this.service.removeKernelGroupListener(id);
         }
-        this.service.removeKernelGroupListener(this.listenerId);
-        this.listenerId = null;
     }
 
     /** 释放（等价 unregister，幂等）。 */

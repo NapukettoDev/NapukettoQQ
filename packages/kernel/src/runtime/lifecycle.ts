@@ -137,12 +137,12 @@ export function createKernelRuntime(opts: KernelRuntimeOptions): KernelRuntime {
     });
 
     if (opts.autoRegister !== false) {
+        groupCache.register();
         msgBridge.register();
         groupBridge.register();
         friendBridge.register();
         recentContactBridge?.register();
         loginBridge?.register();
-        groupCache.register();
         buddyCache.register();
     }
     if (opts.reportOnlineStatus === true) {
@@ -155,12 +155,12 @@ export function createKernelRuntime(opts: KernelRuntimeOptions): KernelRuntime {
             return;
         }
         disposed = true;
+        groupCache.unregister();
         msgBridge.unregister();
         groupBridge.unregister();
         friendBridge.unregister();
         recentContactBridge?.unregister();
         loginBridge?.unregister();
-        groupCache.unregister();
         buddyCache.unregister();
         msgChannel.dispose();
         groupChannel.dispose();

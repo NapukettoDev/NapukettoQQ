@@ -2,6 +2,7 @@
  * GroupApi：群语义化 API（ADR-009 统一错误语义），内部解包原生返回，失败抛 KernelError。
  * 方法面：群列表 / 详情 / 成员 / uin↔uid + 群管（踢人 / 禁言 / 管理员 / 名片 / 群名 / 退群 / 精华 / @all）。
  */
+import { NTEventChannel } from "../../infra/event-channel.js";
 import {
     errorMessage,
     hasBooleanProp,
@@ -40,6 +41,10 @@ import {
 
 /** 群 API：从 session 拿 group service，包装成语义化方法。 */
 export class GroupApi {
+    private readonly membershipEvents = new NTEventChannel<
+        { quit: (groupCode: string) => void },
+        "GroupMembership"
+    >("GroupMembership");
     private readonly service: NodeIKernelGroupService;
     /** 精华消息需要 msg service（按 msgId 拉消息取 msgSeq/msgRandom）。 */
     private readonly msgService: NodeIKernelMsgService;
@@ -247,6 +252,12 @@ export class GroupApi {
     async quitGroup(groupCode: string, needDeleteLocalMsg = false): Promise<void> {
         const raw = await this.service.quitGroupV2({ groupCode, needDeleteLocalMsg });
         unwrap("quitGroupV2", raw.result, raw.errMsg);
+        this.membershipEvents.emit("GroupMembership/quit", groupCode);
+    }
+
+    /** 订阅本实例成功完成的主动退群。 */
+    onGroupQuit(listener: (groupCode: string) => void): () => void {
+        return this.membershipEvents.on("GroupMembership/quit", listener);
     }
 
     /** 设置精华消息（msgId 经 msgService 取 msgSeq/msgRandom）。 */

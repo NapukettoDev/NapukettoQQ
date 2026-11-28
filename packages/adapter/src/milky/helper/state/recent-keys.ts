@@ -25,6 +25,14 @@ export class RecentKeyCache {
         return true;
     }
 
+    deleteMatching(predicate: (key: string) => boolean): void {
+        for (const key of this.entries.keys()) {
+            if (predicate(key)) {
+                this.entries.delete(key);
+            }
+        }
+    }
+
     /** 惰性清理过期键（每次 claim 顺带执行，量级小无需定时器）。 */
     private prune(now: number): void {
         for (const [key, expiry] of this.entries) {

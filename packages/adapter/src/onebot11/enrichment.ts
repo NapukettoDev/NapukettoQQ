@@ -126,7 +126,11 @@ export class Ob11Enrichment {
      * resolveMsgIdBySeq fallback 层）→ MessageUnique.alloc 幂等分配（可被 get_msg
      * 反查的正确空间，对照 recall 的 msgSeq 错位）。未命中返回 null（跳过事件）。
      */
-    async resolveEssenceMsgId(groupCode: string, seq: number): Promise<number | null> {
+    async resolveEssenceMsgId(
+        groupCode: string,
+        seq: number,
+        signal?: AbortSignal,
+    ): Promise<number | null> {
         const peer = { chatType: ChatType.GROUP, peerUid: groupCode };
         const msgs = await this.api.msgApi.fetchMessages(peer, { count: 60 }).catch((err) => {
             this.calibLogger?.debug(
@@ -135,6 +139,9 @@ export class Ob11Enrichment {
             );
             return [];
         });
+        if (signal?.aborted === true) {
+            return null;
+        }
         const hit = msgs.find((m) => Number(m.msgSeq) === seq);
         if (hit === undefined) {
             this.calibLogger?.warn(
