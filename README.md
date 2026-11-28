@@ -127,3 +127,9 @@ pnpm exec napuketto restart             # 重启 supervisor
 
 > [!CAUTION]
 > **本项目没有且不会有任何官方社区与交流群聊**，无任何 QQ 群、Telegram 群组或 Discord 频道
+
+## English
+
+**Napuketto** is a self-hosted Node.js bot runtime supporting **Milky**, **Satori**, **OneBot 11**, and **KuroBot** protocols (with an embedded [Koishi](https://github.com/NapukettoDev/Adapter-Koishi) adapter).
+
+This project is primarily built for Chinese-speaking users, so documentation is maintained in Chinese only. For personal learning and protocol research only · [MIT License](./LICENSE).
