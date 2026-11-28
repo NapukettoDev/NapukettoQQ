@@ -112,6 +112,9 @@ QQ 原生富媒体、协议连接和 Webhook 由各自的业务规则处理。Ku
 - 群精华列表缓存 / 首帧基线抑制 / 串行 diff 同步器已下沉 kernel 缓存层（ADR-028）：
   `EssenceListSync` / `diffEssenceList` / `narrowEssenceGroupArg` 从 `@napuketto/kernel`
   导入；`src/internal/domain/essence.ts` 只保留 `extractEssenceSetSysMsg`（732:1 字段提取）。
+  OB11 与 Milky 的事件管线订阅时启用同步，退订时停用。同步跟随群列表成员资格与
+  成功退群通知，重订阅和重新入群从首帧基线开始。OB11 反查消息 ID 后再次检查该批任务
+  的有效性。Milky 快路径仍即时广播，退群与停用同时清理对应的快路径去重状态。
 - adapter 协调层分层：巨型 `adapter.ts`（onebot11 / milky / kurobot）拆为四块——
   `adapter.ts` 只留构造装配、生命周期钩子与传输启停（OB11 另有 IPC 桥
   `subscribeOnly` / `unsubscribeOnly` 公共面；kurobot 另持连接生命周期与

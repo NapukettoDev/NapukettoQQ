@@ -2,7 +2,7 @@
  * Milky inbound 精华域：双路径发射——732:1 快路径（sysmsg 域 claim 后即时广播）
  * 与列表 diff（remove 路径 + operator 回填），essenceKeys 按 群:seq:方向 去重。
  */
-import type { EssenceAddedItem } from "@napuketto/kernel";
+import type { EssenceAddedItem, GroupEventChannel } from "@napuketto/kernel";
 import { EssenceListSync, isRecord, narrowEssenceGroupArg } from "@napuketto/kernel";
 import { numericUin } from "../../internal/domain/uid-uin.js";
 import { sliceRaw } from "../../internal/infra/log.js";
@@ -21,15 +21,33 @@ export class MilkyInboundEssence {
     constructor(deps: MilkyInboundEssenceDeps) {
         this.deps = deps;
         this.essenceSync = new EssenceListSync({
+            allowsGroup: (groupCode) =>
+                deps.api.groupCache?.allowsGroupEvents?.(groupCode) !== false,
             fetchList: (groupCode) => deps.api.webApi.getEssenceMsgList(groupCode),
-            onAdded: (groupCode, added) => this.broadcastAdded(groupCode, added),
-            onRemoved: (groupCode, removed) => this.broadcastRemoved(groupCode, removed),
+            onAdded: (groupCode, added, signal) => this.broadcastAdded(groupCode, added, signal),
+            onRemoved: (groupCode, removed, _prev, signal) =>
+                this.broadcastRemoved(groupCode, removed, signal),
+            onMembershipChange: (allows) => {
+                this.essenceKeys.deleteMatching((key) => !allows(key.split(":", 1)[0] ?? ""));
+            },
+            onNotifyError: (groupCode, err) =>
+                deps.logger?.warn({ group: groupCode, err: String(err) }, "精华事件广播失败"),
+            onQueueFull: (groupCode) =>
+                deps.logger?.debug({ group: groupCode }, "精华同步队列已满，下次事件时重试"),
             onFetchError: (g, err) =>
                 deps.logger?.warn(
                     { group: g, err: String(err) },
                     "milky: 精华列表拉取失败（diff 跳过）",
                 ),
         });
+    }
+
+    start(channel?: GroupEventChannel): void {
+        this.essenceSync.start(channel, this.deps.api.groupApi);
+    }
+
+    stop(): void {
+        this.essenceSync.stop();
     }
 
     /** sysmsg 732:1 快路径去重守卫：非精华恒 true；精华 claim 失败（diff 已抢发）→ false。 */
@@ -45,7 +63,7 @@ export class MilkyInboundEssence {
         if (typeof groupId !== "number" || typeof seq !== "number") {
             return true; // 非预期载荷不参与去重（保守放行）
         }
-        return this.claimChange(groupId, seq, true);
+        return this.essenceSync.accepts(String(groupId)) && this.claimChange(groupId, seq, true);
     }
 
     /** 精华列表变更：拉全量列表 diff（remove 路径 + operator 回填；串行防乱序）。 */
@@ -62,9 +80,16 @@ export class MilkyInboundEssence {
     }
 
     /** diff 广播：add（operator = add_digest_uin，快路径已发则跳过）→ remove（operator 省略）。 */
-    private broadcastAdded(groupCode: string, added: readonly EssenceAddedItem[]): void {
+    private broadcastAdded(
+        groupCode: string,
+        added: readonly EssenceAddedItem[],
+        signal?: AbortSignal,
+    ): void {
         const now = Math.floor(Date.now() / 1000);
         for (const item of added) {
+            if (signal?.aborted === true) {
+                return;
+            }
             if (this.claimChange(groupCode, item.messageSeq, true)) {
                 this.broadcastChange(
                     groupCode,
@@ -77,9 +102,16 @@ export class MilkyInboundEssence {
         }
     }
 
-    private broadcastRemoved(groupCode: string, removed: readonly number[]): void {
+    private broadcastRemoved(
+        groupCode: string,
+        removed: readonly number[],
+        signal?: AbortSignal,
+    ): void {
         const now = Math.floor(Date.now() / 1000);
         for (const seq of removed) {
+            if (signal?.aborted === true) {
+                return;
+            }
             if (this.claimChange(groupCode, seq, false)) {
                 this.broadcastChange(groupCode, seq, false, null, now);
             }

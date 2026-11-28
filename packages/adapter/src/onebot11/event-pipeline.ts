@@ -47,6 +47,7 @@ export class Ob11EventPipeline {
         // 启动 / 重连基准：早于此刻的历史消息与旧好友申请不再上报（issue #122）
         this.request.markStartup();
         const { msgChannel, groupChannel, friendChannel, buddyCacheEvents } = this.deps;
+        this.essence.start(groupChannel);
         this.unsubscribes.push(
             subscribeRawMessages(msgChannel, (msg) => this.message.handleRawMessage(msg), {
                 logger: this.deps.logger,
@@ -90,6 +91,7 @@ export class Ob11EventPipeline {
     }
 
     unsubscribeAll(): void {
+        this.essence.stop();
         for (const off of this.unsubscribes) {
             off();
         }

@@ -57,6 +57,7 @@ export class MilkyEventPipeline {
         this.deps.request.markStartup();
         const { msgChannel, groupChannel, buddyChannel, recentContactChannel, loginChannel } =
             this.deps;
+        this.deps.essence.start(groupChannel);
         this.unsubscribes.push(
             subscribeRawMessages(
                 msgChannel,
@@ -109,6 +110,7 @@ export class MilkyEventPipeline {
 
     /** 退订（幂等）。 */
     unsubscribeAll(): void {
+        this.deps.essence.stop();
         for (const off of this.unsubscribes) {
             off();
         }

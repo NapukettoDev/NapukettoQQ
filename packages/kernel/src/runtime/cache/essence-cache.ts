@@ -1,11 +1,7 @@
-/**
- * EssenceListSync：群精华列表缓存（群号 → seq → 条目）+ 首帧基线抑制 + 串行 diff 同步（ADR-008 / ADR-028）。
- * 首帧只建缓存不产出事件（启动首推不得误报为「逐条加精」）；732:1 触发器与列表回调共用一条 promise 链，
- * 并发回写乱序会把新列表覆盖成旧列表，故同一时刻只有一个拉取在跑。无全局单例（ADR-015）——每协议实例一份。
- */
-
-import type { EssenceMsgItem } from "../../apis/index.js";
+import type { EssenceMsgItem, GroupApi } from "../../apis/index.js";
 import { isRecord } from "../../infra/type-guards.js";
+import type { GroupEventChannel } from "../../native/bridge/index.js";
+import { GroupMembership } from "./group-membership.js";
 
 /** 单个候选值 → 群号字符串（非空字符串 / 正整数）。 */
 function toGroupCode(value: unknown): string | null {
@@ -139,47 +135,176 @@ export interface EssenceListSyncDeps {
     /** 全量精华列表拉取（WebApi.getEssenceMsgList）。 */
     fetchList: (groupCode: string) => Promise<EssenceMsgItem[]>;
     /** diff 新增项广播（协议层做事件翻译 + message_id 反查 / 快路径去重）。 */
-    onAdded: (groupCode: string, added: readonly EssenceAddedItem[]) => void | Promise<void>;
+    onAdded: (
+        groupCode: string,
+        added: readonly EssenceAddedItem[],
+        signal?: AbortSignal,
+    ) => void | Promise<void>;
     /** diff 移除项广播（prev 供 sender 回填）。 */
     onRemoved: (
         groupCode: string,
         removed: readonly number[],
         prev: ReadonlyMap<number, EssenceCacheEntry>,
+        signal?: AbortSignal,
     ) => void | Promise<void>;
-    /** 列表拉取失败（串行链不中断，下个触发器继续；缺省静默）。 */
+    /** 列表拉取失败时保留旧基线。 */
     onFetchError?: (groupCode: string, err: unknown) => void;
+    /** 通知失败时继续处理后续任务。 */
+    onNotifyError?: (groupCode: string, err: unknown) => void;
+    /** 队列无法容纳新任务时由后续事件补拉。 */
+    onQueueFull?: (groupCode: string) => void;
+    /** 重新订阅前已掌握的群成员资格。 */
+    allowsGroup?: (groupCode: string) => boolean;
+    /** 成员资格变化时清理协议实例持有的其他状态。 */
+    onMembershipChange?: (allows: (groupCode: string) => boolean) => void;
 }
 
-/**
- * 精华列表串行同步器（OB11 / Milky adapter 共用）：
- *  - 列表缓存（群号 → seq → 条目）+ 串行链——并发回写乱序会把新列表覆盖成旧列表，
- *    732:1 触发器与列表回调共用一条链，谁先到谁触发，diff 幂等 + 串行天然去重；
- *  - 基线未建立只建基线不产出事件（避免全量首推被误报为逐条加精）。
- */
+const MAX_WAITING_GROUPS = 64;
+
+interface EssenceJob {
+    groupCode: string;
+    controller: AbortController;
+}
+
+/** 每个协议装配实例串行拉取并对比精华列表。 */
 export class EssenceListSync {
     private readonly deps: EssenceListSyncDeps;
+    private readonly membership = new GroupMembership();
     private readonly caches = new Map<string, Map<number, EssenceCacheEntry>>();
-    private chain: Promise<void> = Promise.resolve();
+    private readonly waiting = new Map<string, EssenceJob>();
+    private running: EssenceJob | undefined;
+    private scheduled = false;
+    private active = true;
+    private subscription: AbortController | undefined;
+    private unsubscribe: Array<() => void> = [];
 
     constructor(deps: EssenceListSyncDeps) {
         this.deps = deps;
     }
 
-    /** 入队单群串行同步（拉取 → diff → 广播 → 更新缓存）。 */
-    enqueue(groupCode: string): void {
-        this.chain = this.chain.then(
-            () => this.sync(groupCode),
-            () => undefined,
+    start(channel?: GroupEventChannel, groupApi?: Pick<GroupApi, "onGroupQuit">): void {
+        if (this.subscription !== undefined) {
+            return;
+        }
+        this.active = true;
+        this.subscription = new AbortController();
+        const { signal } = this.subscription;
+        if (channel !== undefined) {
+            this.unsubscribe.push(
+                channel.on("Group/onGroupListInited", (listEmpty) => {
+                    if (!signal.aborted && listEmpty) {
+                        this.membership.replace([]);
+                        this.prune();
+                    }
+                }),
+                channel.on("Group/onGroupListUpdate", (type, groups) => {
+                    if (!signal.aborted) {
+                        this.membership.update(type, groups);
+                        this.prune();
+                    }
+                }),
+            );
+        }
+        const offQuit = groupApi?.onGroupQuit?.((groupCode) => {
+            if (!signal.aborted) {
+                this.membership.leave(groupCode);
+                this.prune();
+            }
+        });
+        if (offQuit !== undefined) {
+            this.unsubscribe.push(offQuit);
+        }
+    }
+
+    stop(): void {
+        this.active = false;
+        this.subscription?.abort();
+        this.subscription = undefined;
+        for (const off of this.unsubscribe.splice(0)) {
+            off();
+        }
+        this.running?.controller.abort();
+        this.waiting.clear();
+        this.caches.clear();
+        this.membership.clear();
+        this.deps.onMembershipChange?.(() => false);
+    }
+
+    accepts(groupCode: string): boolean {
+        return (
+            this.active &&
+            this.membership.allows(groupCode) &&
+            this.deps.allowsGroup?.(groupCode) !== false
         );
     }
 
-    /** 单群同步：拉取失败走 onFetchError；基线未建立只建缓存。 */
-    private async sync(groupCode: string): Promise<void> {
+    private prune(): void {
+        for (const groupCode of this.caches.keys()) {
+            if (!this.membership.allows(groupCode)) {
+                this.caches.delete(groupCode);
+            }
+        }
+        for (const groupCode of this.waiting.keys()) {
+            if (!this.membership.allows(groupCode)) {
+                this.waiting.delete(groupCode);
+            }
+        }
+        if (this.running !== undefined && !this.membership.allows(this.running.groupCode)) {
+            this.running.controller.abort();
+        }
+        this.deps.onMembershipChange?.((groupCode) => this.membership.allows(groupCode));
+    }
+
+    enqueue(groupCode: string): void {
+        if (!this.accepts(groupCode) || this.waiting.has(groupCode)) {
+            return;
+        }
+        if (this.waiting.size >= MAX_WAITING_GROUPS) {
+            this.deps.onQueueFull?.(groupCode);
+            return;
+        }
+        this.waiting.set(groupCode, { groupCode, controller: new AbortController() });
+        this.schedule();
+    }
+
+    private schedule(): void {
+        if (this.running !== undefined || this.scheduled || this.waiting.size === 0) {
+            return;
+        }
+        this.scheduled = true;
+        queueMicrotask(() => {
+            this.scheduled = false;
+            const job = this.waiting.values().next().value;
+            if (job === undefined) {
+                return;
+            }
+            this.waiting.delete(job.groupCode);
+            this.running = job;
+            void this.sync(job)
+                .catch((err: unknown) => {
+                    this.deps.onNotifyError?.(job.groupCode, err);
+                })
+                .finally(() => {
+                    this.running = undefined;
+                    this.schedule();
+                });
+        });
+    }
+
+    private async sync({ groupCode, controller: { signal } }: EssenceJob): Promise<void> {
+        if (!this.accepts(groupCode)) {
+            return;
+        }
         let items: EssenceMsgItem[];
         try {
             items = await this.deps.fetchList(groupCode);
         } catch (err) {
-            this.deps.onFetchError?.(groupCode, err);
+            if (!signal.aborted) {
+                this.deps.onFetchError?.(groupCode, err);
+            }
+            return;
+        }
+        if (signal.aborted || !this.accepts(groupCode)) {
             return;
         }
         const prev = this.caches.get(groupCode);
@@ -188,7 +313,9 @@ export class EssenceListSync {
         if (prev === undefined) {
             return;
         }
-        await this.deps.onAdded(groupCode, added);
-        await this.deps.onRemoved(groupCode, removed, prev);
+        await this.deps.onAdded(groupCode, added, signal);
+        if (!signal.aborted) {
+            await this.deps.onRemoved(groupCode, removed, prev, signal);
+        }
     }
 }
