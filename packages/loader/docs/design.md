@@ -38,7 +38,7 @@ src/
   host/           宿主进程内运行时（CJS bundle 入口 host/self-host.ts）
     runtime/      子进程共享基础：env · errors · state · load-config · log-config
                   · module-loader / module-guards · protocol-types / service-types / types（纯类型）
-    bootstrap/    引导与观测：bootstrap · core · probe · smoke · media-patch-status
+    bootstrap/    引导与观测：bootstrap · core · assembly-lifecycle · probe · smoke · media-patch-status
     auth/         登录与会话状态机：login · relogin · session
     protocols/    协议与服务装配：protocols · kernel-services · msg-log · assemble-ob11 · optional
     ipc/          IPC 进程边界：actions · at-resolver · attach · codec · diagnostics
@@ -309,8 +309,11 @@ login-race ──竞速 settle──→ assembling ──装配成功──→ r
 - login-race 的抢占结果经 `preemptRef` 接管初始竞速，由初次装配发布 `login(logged_in)`。
   ready 态重装配完成后发布 `status(ready, selfInfo)` 与 `login(logged_in, 新 selfInfo)`。
 - 互斥 claim/release：在途登录或重装配期间的新指令直接忽略。
-- 清理顺序：OB11 桥 stop（含动作表条目移除）→ `attachIpcServices` stop →
-  `services.dispose()`（桥 / 缓存 / 消息日志退订，幂等）。
+- 清理顺序：OB11 桥 stop（含动作表条目移除）→ `services.stopAdapters()`（cli 模式
+  网络适配器）→ `attachIpcServices` stop → `services.dispose()`（桥 / 缓存 / 消息日志
+  退订，幂等）。装配面的挂载/销毁状态集中在 `assembly-lifecycle.ts`：关停阶段
+  `"protocols"` 先于 `"services"`，软重登先停旧面再挂载新面，异步装配返回时已关停
+  则立即回滚刚创建/挂载的资源。
 - 重装配失败：sendStatus(failed) 后走统一关停并退出 1，交宿主重启循环回收。
 
 ### 协议装配：一协议一广播器
