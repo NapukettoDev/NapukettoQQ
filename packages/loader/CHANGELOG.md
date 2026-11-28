@@ -1,5 +1,11 @@
 # @napuketto/loader
 
+## 0.18.1
+
+### Patch Changes
+
+- be5fd4c: 装配面生命周期（协议服务 → IPC 转发 → OB11 桥）抽离为独立单元，软重登与关停仍按 OB11 桥 → 网络适配器 → IPC 转发 → kernel 服务顺序释放；缓存生命周期测试改为直接覆盖该单元，不再伪造整条引导链。
+
 ## 0.18.0
 
 ### Minor Changes
