@@ -130,6 +130,10 @@ pnpm exec napuketto restart             # 重启 supervisor
 
 ## English
 
-**Napuketto** is a self-hosted Node.js bot runtime supporting **Milky**, **Satori**, **OneBot 11**, and **KuroBot** protocols (with an embedded [Koishi](https://github.com/NapukettoDev/Adapter-Koishi) adapter).
+**Napuketto** is a self-hosted, multi-protocol bot runtime for Node.js 24+ (Windows / Linux x64) and Docker (`linux/amd64`), designed around a standalone, supervised per-account host architecture with all settings managed in a single `napuketto.toml`.
 
-This project is primarily built for Chinese-speaking users, so documentation is maintained in Chinese only. For personal learning and protocol research only · [MIT License](./LICENSE).
+- **Protocols & Adapters**: Exposes **Milky**, **Satori**, **OneBot 11**, and **KuroBot**, plus an embedded [Koishi](https://github.com/NapukettoDev/Adapter-Koishi) adapter.
+- **Quick Start**: Scaffold a project with `pnpm create napuketto` or deploy via the official Docker image.
+- **Documentation**: Primarily built for Chinese-speaking users; full docs and guides are maintained in Chinese.
+
+*Original implementation, no GPL code, [MIT License](./LICENSE). Intended strictly for personal technical learning, protocol research, and academic exchange.*
